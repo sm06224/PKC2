@@ -24,7 +24,7 @@
  * Layer rule: adapter 層なので core / features 経由で参照可。
  */
 
-import { graphZoomWheelSensitivity, graphNodeRadiusFactor } from '../../features/graph/flags';
+import { graphZoomWheelSensitivity, graphNodeRadiusFactor, graphGalaxyMode } from '../../features/graph/flags';
 import type { Entry } from '@core/model/record';
 
 export interface GraphCanvasNode {
@@ -44,6 +44,12 @@ export interface GraphCanvasNode {
    * 設定されていれば mousemove で当たった時に下端 tooltip 表示。
    */
   preview?: string;
+  /**
+   * PR-Δ22 (2026-05-07、user 指摘「銀河的に空間所属を表現しろ」):
+   * folder depth を z 軸として galaxy mode で perspective 投影。
+   * 0 = root level、深いほど大きい数値。renderer 側 BFS depth から populate。
+   */
+  depth?: number;
 }
 
 export interface GraphCanvasLink {
@@ -88,6 +94,13 @@ export interface GraphCanvasPayload {
    */
   nodeRevisions?: ReadonlyMap<string, readonly number[]>;
   /**
+   * PR-Δ13 (2026-05-07、user 報告「時系列の中で参照ラインが見えていない、
+   * どの更新時点でどの種別の参照を含むようになったのかわかればその時点で
+   * 参照ラインを引くべき」):lid → relations 配列。time-proximity mode で
+   * head node 同士を結ぶ参照ラインを描画(relation kind で色分け)。
+   */
+  nodeReferences?: ReadonlyMap<string, ReadonlyArray<{ to: string; kind: string }>>;
+  /**
    * PR-I G17 (2026-05-06):Venn-style グルーピング memberships。
    * ON のとき、各 node lid → 所属 group ids(folder ancestor lids + tag
    * names)の配列。draw 時に concentric translucent ring を node 周りに
@@ -109,6 +122,18 @@ interface CanvasViewState {
    * user's zoom/pan instead of re-fitting. Reset by `resetGraphCanvasZoom`.
    */
   autoFitDone?: boolean;
+  /**
+   * PR-Δ33 (2026-05-07、user 指示「特定のエントリや結節点、リレーションを
+   * 掴んで引っ張ることで、ぶら下がるものが動く」):node drag 中の状態。
+   * dragLid:現在 drag 中の node、null = drag していない。
+   * dragOrigUser:drag 開始時の dragLid と 1/2-hop 先の neighbor の元位置を
+   *   user-space で記録。move 中はここから delta を加減して positions を更新。
+   * dragMouseStart:mousedown 時の client 座標。move 中の delta 計算に使用。
+   */
+  dragLid?: string | null;
+  dragOrigUser?: Map<string, { x: number; y: number }>;
+  dragNeighborFactor?: Map<string, number>;
+  dragMouseStartClient?: { x: number; y: number } | null;
 }
 
 // PR-DD (2026-05-06、user 報告「銀河の星々のように」):zoom range を
@@ -526,6 +551,42 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   ctx.fillStyle = theme.bgTag;
   ctx.fillRect(0, 0, payload.width, payload.height);
 
+  // PR-Δ26 (2026-05-07、user 指摘「Galaxy 期待外れ、名前負け」):
+  // galaxy mode 時、銀河風の背景効果を描画。
+  //   1. Galactic core radial gradient(中心明、外側暗)
+  //   2. Starfield(deterministic 1000+ small dots)
+  //   3. Edge を nebula 色(青紫グラデ)に置換
+  //   4. 各 node に glow halo
+  if (graphGalaxyMode() === 1) {
+    // Core gradient
+    const cx = payload.width / 2, cy = payload.height / 2;
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(payload.width, payload.height) * 0.6);
+    coreGrad.addColorStop(0, 'rgba(90, 70, 130, 0.35)');
+    coreGrad.addColorStop(0.4, 'rgba(40, 30, 70, 0.22)');
+    coreGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = coreGrad;
+    ctx.fillRect(0, 0, payload.width, payload.height);
+    // Starfield (deterministic stars based on canvas dims)。
+    const starCount = 600;
+    let s = 1234567;
+    const rand = (): number => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 0xffffffff;
+    };
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    for (let i = 0; i < starCount; i++) {
+      const sx = rand() * payload.width;
+      const sy = rand() * payload.height;
+      const sr = 0.3 + rand() * 1.0;
+      const sa = 0.3 + rand() * 0.6;
+      ctx.globalAlpha = sa;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // View transform.
   ctx.translate(view.tx, view.ty);
   ctx.scale(view.scale, view.scale);
@@ -559,29 +620,62 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.stroke();
   }
 
-  // PR-I G17 (2026-05-06):Venn-style memberships。各 node の所属 group
-  // ごとに deterministic な hue で translucent ring を concentric に
-  // 描画。複数 group に所属する node は ring が重なり Venn 相当の重畳
-  // を視覚化(node 自体の色 + group 1 の ring + group 2 の ring …)。
+  // PR-Δ21 (2026-05-07、user 指摘「Venn って何?どう見てもベンでは
+  // ない」):旧 concentric ring を撤回。**真の集合 hull**(group
+  // メンバーの凸包に相当する circle envelope)を translucent fill で
+  // 描画して、複数 hull の交差領域を visually に Venn 図化する。
+  // Algorithm:
+  //   1. group ごとに member node の bounding circle(centroid +
+  //      max distance + radius padding)を計算
+  //   2. 各 hull を低 alpha (0.12) の deterministic hue で fill、
+  //      重なり部分は加算合成で濃く見える(色相の混色 = Venn 効果)
+  //   3. hull の輪郭線も同 hue で描画(0.6 alpha)、所属境界を明示
+  //   4. node 自体は通常通り別 layer で描画される(後段)。
   if (payload.vennMemberships && payload.vennMemberships.size > 0) {
     const baseR = payload.collideRadius * graphNodeRadiusFactor();
+    // group → list of node positions
+    const groupMembers = new Map<string, Array<{ x: number; y: number }>>();
     for (const node of payload.nodes) {
       const memberships = payload.vennMemberships.get(node.id);
       if (!memberships || memberships.length === 0) continue;
       const p = payload.positions.get(node.id);
       if (!p) continue;
-      memberships.forEach((groupId, idx) => {
-        // 各 ring は node 円の外周から段階的に外へ広がる(idx 0 = +6,
-        // idx 1 = +11, ...)。半径は user-space pixel、line width は
-        // view.scale で割って render pixel 一定化。
-        const ringR = baseR + 6 + idx * 5;
-        const hue = vennHueForGroupId(groupId);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, ringR, 0, Math.PI * 2);
-        ctx.strokeStyle = `hsla(${hue}, 80%, 50%, 0.55)`;
-        ctx.lineWidth = 4 / view.scale;
-        ctx.stroke();
-      });
+      for (const g of memberships) {
+        const arr = groupMembers.get(g) ?? [];
+        arr.push(p);
+        groupMembers.set(g, arr);
+      }
+    }
+    // Draw bounding-circle hulls in group-id-determinstic hue.
+    for (const [groupId, pts] of groupMembers) {
+      if (pts.length === 0) continue;
+      let cx = 0, cy = 0;
+      for (const p of pts) { cx += p.x; cy += p.y; }
+      cx /= pts.length;
+      cy /= pts.length;
+      let maxR = 0;
+      for (const p of pts) {
+        const d = Math.hypot(p.x - cx, p.y - cy);
+        if (d > maxR) maxR = d;
+      }
+      const hullR = maxR + baseR + 18;
+      const hue = vennHueForGroupId(groupId);
+      // Fill with low alpha for blending(複数 hull が重なるとそこが濃く
+      // 見える = Venn 図の交差領域表現)。
+      ctx.fillStyle = `hsla(${hue}, 75%, 55%, 0.12)`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, hullR, 0, Math.PI * 2);
+      ctx.fill();
+      // Outline at higher alpha to show set boundary.
+      ctx.strokeStyle = `hsla(${hue}, 75%, 50%, 0.55)`;
+      ctx.lineWidth = 1.5 / view.scale;
+      ctx.stroke();
+      // Group label at top of hull.
+      ctx.fillStyle = `hsla(${hue}, 65%, 45%, 0.85)`;
+      ctx.font = `600 ${11 / view.scale}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(groupId, cx, cy - hullR + 4 / view.scale);
     }
   }
 
@@ -590,9 +684,20 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
   // emoji を中央に重畳描画(円は薄く残して selection / hover の
   // affordance を保持)。
   const baseR = payload.collideRadius * graphNodeRadiusFactor();
-  for (const node of payload.nodes) {
+  // PR-Δ22 (2026-05-07、user 指摘「銀河的に空間所属を表現しろ」):
+  // galaxy mode 時、folder depth を z 軸として透視投影。深い node ほど
+  // 小さく / 暗く / 後方に描画される。perspective scale = 1/(1 + d*0.18)。
+  // 描画順は深い順(後方)→ 浅い順(前方)で z-sort 効果。
+  const galaxyOn = graphGalaxyMode() === 1;
+  const drawOrder = galaxyOn
+    ? [...payload.nodes].sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0))
+    : payload.nodes;
+  for (const node of drawOrder) {
     const p = payload.positions.get(node.id);
     if (!p) continue;
+    const depth = node.depth ?? 0;
+    const persp = galaxyOn ? 1 / (1 + depth * 0.18) : 1;
+    const alpha = galaxyOn ? Math.max(0.35, persp) : 1;
     const isSelected = node.id === payload.selectedLid;
     const isInRegion = payload.regionLids.includes(node.id);
 
@@ -602,8 +707,54 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     // し、ノードサイズを label に対して相対的に小さく。
     const degree = node.degree ?? 0;
     const scale = Math.min(1.5, 1 + degree * 0.04);
-    const r = baseR * scale;
+    const r = baseR * scale * persp;
 
+    // PR-Δ22:galaxy mode で alpha 適用(深い node を奥に配置)。
+    ctx.globalAlpha = alpha;
+    // PR-Δ26 (2026-05-07、user 指摘「Galaxy 期待外れ」):galaxy mode 時
+    // 各 node に glow halo を radial gradient で描画。星のような輝き感。
+    if (galaxyOn && node.archetype !== 'folder') {
+      const haloR = baseR * 4 * persp;
+      const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, haloR);
+      const haloHue = node.cssColor ?? archetypeFill(node.archetype, themeIsDark(theme.bg));
+      halo.addColorStop(0, haloHue);
+      halo.addColorStop(0.3, haloHue.replace(/[\d.]+\)$/, '0.4)') || 'rgba(180,180,255,0.4)');
+      halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, haloR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // PR-Δ24 (2026-05-07、user 訂正「フォルダはリレーションの結節点
+    // として小さく描画」):folder archetype は **小さい diamond(◇)** で
+    // 描画、entry node の半分以下のサイズ + label 省略。
+    if (node.archetype === 'folder') {
+      const jr = Math.max(5 / view.scale, r * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - jr);
+      ctx.lineTo(p.x + jr, p.y);
+      ctx.lineTo(p.x, p.y + jr);
+      ctx.lineTo(p.x - jr, p.y);
+      ctx.closePath();
+      ctx.fillStyle = theme.bgTag;
+      ctx.fill();
+      ctx.strokeStyle = isSelected || isInRegion ? theme.accent : theme.fgMuted;
+      ctx.lineWidth = (isSelected || isInRegion ? 2.5 : 1) / view.scale;
+      ctx.stroke();
+      // junction の小 label(folder title)を下に出す。
+      const labelText = truncate(node.label, 20);
+      ctx.font = `400 ${10}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.lineWidth = 2 / view.scale;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = theme.bg;
+      ctx.strokeText(labelText, p.x, p.y + jr + 2);
+      ctx.fillStyle = theme.fgMuted;
+      ctx.fillText(labelText, p.x, p.y + jr + 2);
+      ctx.globalAlpha = 1;
+      continue;
+    }
     // Circle (背景色、emoji 視認性のため薄め).
     ctx.beginPath();
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
@@ -647,6 +798,8 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.fillStyle = theme.fg;
     ctx.fillText(labelText, p.x, p.y + r + 4);
   }
+  // PR-Δ22:reset alpha after galaxy depth fading.
+  ctx.globalAlpha = 1;
 
   // PR-Δ6 (2026-05-07、user 報告「時系列グラフに Git 的更新点表示」):
   // time-proximity mode で各 entry の revisions timestamps を小 dot として
@@ -668,12 +821,12 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
       if (!revs || revs.length === 0) continue;
       const p = payload.positions.get(lid);
       if (!p) continue;
-      // Connect main node to each revision dot (Git-commit-graph 風)。
+      // Connect main node (head, updated_at) to each revision dot
+      // and to created_at marker (trunk root). Git-commit-graph 風。
       for (const t of revs) {
         if (!Number.isFinite(t)) continue;
         const xRatio = (t - minT) / span;
         const x = padX + xRatio * usableW;
-        // Skip dots beyond current node's X (revisions should be earlier).
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
         ctx.lineTo(x, p.y);
@@ -685,20 +838,81 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     }
   }
 
-  // Region-select rect (drawn last so it's above everything).
+  // PR-Δ13 (2026-05-07):time-proximity 参照ライン。head node 間を結ぶ
+  // relation を、kind 別の色で描画。drawn AFTER revision trails so
+  // reference lines sit on top.
+  if (
+    payload.mode === 'time-proximity'
+    && payload.nodeReferences
+    && payload.nodeReferences.size > 0
+  ) {
+    ctx.lineWidth = 1.2 / view.scale;
+    ctx.globalAlpha = 0.7;
+    for (const [from, refs] of payload.nodeReferences) {
+      const a = payload.positions.get(from);
+      if (!a) continue;
+      for (const ref of refs) {
+        const b = payload.positions.get(ref.to);
+        if (!b) continue;
+        ctx.strokeStyle = relationColor(ref.kind, theme.graphEdge);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        // Arrow head at target (small triangle).
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 12) {
+          const ux = dx / len, uy = dy / len;
+          const ah = 6 / view.scale;
+          const aw = 3 / view.scale;
+          const tx = b.x - ux * 12;
+          const ty = b.y - uy * 12;
+          ctx.beginPath();
+          ctx.moveTo(tx + ux * ah, ty + uy * ah);
+          ctx.lineTo(tx - uy * aw, ty + ux * aw);
+          ctx.lineTo(tx + uy * aw, ty - ux * aw);
+          ctx.closePath();
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // PR-Δ31 (2026-05-07、user 指示「矩形選択じゃなく楕円選択のほうがいい」):
+  // start→end の bounding rect を楕円(ellipse)に置換。drag 軌跡が斜めの
+  // ときは扁平楕円になる。中心は中点、ラジアスは |end-start|/2。
+  // happy-dom test 環境では ctx.ellipse が未実装のため、手動 path
+  // (arc 64 セグメント)で描画する。
   if (view.rectStart && view.rectEnd) {
-    const x = Math.min(view.rectStart.ux, view.rectEnd.ux);
-    const y = Math.min(view.rectStart.uy, view.rectEnd.uy);
-    const w = Math.abs(view.rectEnd.ux - view.rectStart.ux);
-    const h = Math.abs(view.rectEnd.uy - view.rectStart.uy);
+    const cx = (view.rectStart.ux + view.rectEnd.ux) / 2;
+    const cy = (view.rectStart.uy + view.rectEnd.uy) / 2;
+    const rx = Math.max(1, Math.abs(view.rectEnd.ux - view.rectStart.ux) / 2);
+    const ry = Math.max(1, Math.abs(view.rectEnd.uy - view.rectStart.uy) / 2);
+    const tracePath = (): void => {
+      ctx.beginPath();
+      const SEG = 64;
+      for (let i = 0; i <= SEG; i++) {
+        const t = (i / SEG) * Math.PI * 2;
+        const px = cx + Math.cos(t) * rx;
+        const py = cy + Math.sin(t) * ry;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      // closePath は happy-dom 未実装。lineTo で i=SEG が始点に戻るため不要。
+    };
     ctx.fillStyle = theme.accent;
     ctx.globalAlpha = 0.1;
-    ctx.fillRect(x, y, w, h);
+    tracePath();
+    ctx.fill();
     ctx.globalAlpha = 1;
     ctx.strokeStyle = theme.accent;
     ctx.lineWidth = 1.5 / view.scale;
     ctx.setLineDash([4 / view.scale, 2 / view.scale]);
-    ctx.strokeRect(x, y, w, h);
+    tracePath();
+    ctx.stroke();
     ctx.setLineDash([]);
   }
 
@@ -895,6 +1109,72 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
       drawGraphCanvas(canvas);
       return;
     }
+    // PR-Δ33 (2026-05-07、user 指示「ノードを掴んで引っ張ると接続ノードが
+    // ぶら下がる」):pressDownLid が set されている状態で 5px 以上動いたら
+    // drag mode に engage。drag 中は dragLid / 1-hop / 2-hop neighbor の
+    // 元位置を保存し、cursor delta を decay 付きで適用。
+    if (pressDownLid && mouseDownPos) {
+      const movedDist = Math.hypot(me.clientX - mouseDownPos.x, me.clientY - mouseDownPos.y);
+      const payload = payloads.get(canvas);
+      if (!view.dragLid && movedDist > 5 && payload) {
+        view.dragLid = pressDownLid;
+        view.dragMouseStartClient = { x: mouseDownPos.x, y: mouseDownPos.y };
+        const orig = new Map<string, { x: number; y: number }>();
+        const factor = new Map<string, number>();
+        const seedPos = payload.positions.get(pressDownLid);
+        if (seedPos) {
+          orig.set(pressDownLid, { x: seedPos.x, y: seedPos.y });
+          factor.set(pressDownLid, 1);
+        }
+        const layer1: string[] = [];
+        for (const link of payload.links) {
+          let other: string | null = null;
+          if (link.from === pressDownLid) other = link.to;
+          else if (link.to === pressDownLid) other = link.from;
+          if (!other || orig.has(other)) continue;
+          const p = payload.positions.get(other);
+          if (!p) continue;
+          orig.set(other, { x: p.x, y: p.y });
+          factor.set(other, 0.55);
+          layer1.push(other);
+        }
+        for (const l1 of layer1) {
+          for (const link of payload.links) {
+            let other: string | null = null;
+            if (link.from === l1) other = link.to;
+            else if (link.to === l1) other = link.from;
+            if (!other || orig.has(other)) continue;
+            const p = payload.positions.get(other);
+            if (!p) continue;
+            orig.set(other, { x: p.x, y: p.y });
+            factor.set(other, 0.25);
+          }
+        }
+        view.dragOrigUser = orig;
+        view.dragNeighborFactor = factor;
+        // drag に切り替わったので pan は中止。
+        panStart = null;
+      }
+      if (view.dragLid && view.dragOrigUser && view.dragNeighborFactor && view.dragMouseStartClient && payload) {
+        const u0 = (() => {
+          const lg = clientToLogical(canvas, view.dragMouseStartClient.x, view.dragMouseStartClient.y);
+          return logicalToUser(canvas, lg.x, lg.y);
+        })();
+        const u1 = (() => {
+          const lg = clientToLogical(canvas, me.clientX, me.clientY);
+          return logicalToUser(canvas, lg.x, lg.y);
+        })();
+        const dx = u1.x - u0.x;
+        const dy = u1.y - u0.y;
+        const positions = payload.positions as Map<string, { x: number; y: number }>;
+        for (const [lid, orig] of view.dragOrigUser) {
+          const f = view.dragNeighborFactor.get(lid) ?? 0;
+          positions.set(lid, { x: orig.x + dx * f, y: orig.y + dy * f });
+        }
+        drawGraphCanvas(canvas);
+        return;
+      }
+    }
     if (!panStart) return;
     // PR-Δ1 (2026-05-07):pan delta も uniform scale で変換、aspect
     // 歪みを伝播させない。
@@ -923,8 +1203,18 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
       if (start) {
         const dist = Math.hypot(me.clientX - start.x, me.clientY - start.y);
         if (dist < 5) {
+          // PR-Δ32 (2026-05-07):Ctrl/Meta/Shift 修飾子で multi-select を
+          // toggle するため、modifier kind を detail に同梱して action-
+          // binder 側で分岐させる。
+          const modifier = me.ctrlKey
+            ? 'ctrl'
+            : me.metaKey
+            ? 'meta'
+            : me.shiftKey
+            ? 'shift'
+            : 'none';
           const evt = new CustomEvent('pkc-graph-node-click', {
-            detail: { lid: pressDownLid },
+            detail: { lid: pressDownLid, modifier },
             bubbles: true,
           });
           canvas.dispatchEvent(evt);
@@ -934,6 +1224,31 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
     panStart = null;
     pressDownLid = null;
     mouseDownPos = null;
+    // PR-Δ33: drag 終了で session 状態を破棄(positions は更新済みのまま
+    // 次の re-render まで保持される)。
+    if (view.dragLid) {
+      view.dragLid = null;
+      view.dragOrigUser = undefined;
+      view.dragNeighborFactor = undefined;
+      view.dragMouseStartClient = null;
+    }
+  }, { signal });
+
+  // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作、右クリック=context
+  // menu」):右クリックで node hit test → `pkc-graph-node-context` event を
+  // 発行。action-binder 側で renderContextMenu({showOpen: true}) を表示する。
+  // ノード以外の場所(空白)では event を発行せず、native contextmenu を
+  // 抑止するだけ(graph 上での意図しない browser menu は誤操作扱い)。
+  canvas.addEventListener('contextmenu', (ev) => {
+    const me = ev as MouseEvent;
+    me.preventDefault();
+    const lid = hitTestNodeAt(canvas, me.clientX, me.clientY);
+    if (!lid) return;
+    const evt = new CustomEvent('pkc-graph-node-context', {
+      detail: { lid, x: me.clientX, y: me.clientY },
+      bubbles: true,
+    });
+    canvas.dispatchEvent(evt);
   }, { signal });
 
   // ── Touch: pinch + 1-finger pan / region-select / tap. ──
@@ -1058,19 +1373,23 @@ function finalizeRegionSelect(canvas: HTMLCanvasElement): void {
   const view = viewStates.get(canvas);
   const payload = payloads.get(canvas);
   if (!view || !payload || !view.rectStart || !view.rectEnd) return;
-  // Convert logical rect → user-space rect.
+  // PR-Δ31 (2026-05-07):矩形 → 楕円 hit test。中心 (cx,cy) を中点、半径
+  // (rx,ry) を |end-start|/2 とし、楕円式 ((x-cx)/rx)² + ((y-cy)/ry)² ≤ 1
+  // を満たす node を含める。
   const u0 = logicalToUser(canvas, view.rectStart.ux, view.rectStart.uy);
   const u1 = logicalToUser(canvas, view.rectEnd.ux, view.rectEnd.uy);
-  const rx = Math.min(u0.x, u1.x);
-  const ry = Math.min(u0.y, u1.y);
-  const rw = Math.abs(u1.x - u0.x);
-  const rh = Math.abs(u1.y - u0.y);
+  const cx = (u0.x + u1.x) / 2;
+  const cy = (u0.y + u1.y) / 2;
+  const rx = Math.abs(u1.x - u0.x) / 2;
+  const ry = Math.abs(u1.y - u0.y) / 2;
   const lids: string[] = [];
-  if (rw >= 4 && rh >= 4) {
+  if (rx >= 4 && ry >= 4) {
     for (const node of payload.nodes) {
       const p = payload.positions.get(node.id);
       if (!p) continue;
-      if (p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh) lids.push(node.id);
+      const dx = (p.x - cx) / rx;
+      const dy = (p.y - cy) / ry;
+      if (dx * dx + dy * dy <= 1) lids.push(node.id);
     }
     canvas.dispatchEvent(new CustomEvent('pkc-graph-region-selected', {
       detail: { lids },

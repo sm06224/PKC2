@@ -515,7 +515,13 @@ export type UserAction =
    * is intentionally NOT wired — see the docs for rationale.
    */
   | { type: 'PURGE_ORPHAN_ASSETS' }
-  | { type: 'TOGGLE_MULTI_SELECT'; lid: string }
+  /**
+   * `includeAnchor`: true (default、後方互換)時、現在の selectedLid も
+   * 自動で multi 集合に含める(sidebar Ctrl+click 動作)。false 時、
+   * **明示的に lid のみ** を toggle(Filer checkbox の独立性確保、
+   * PR-Δ16 user 指摘「Filerで勝手に選択される挙動 = 副作用 UX 事故」)。
+   */
+  | { type: 'TOGGLE_MULTI_SELECT'; lid: string; includeAnchor?: boolean }
   /**
    * SELECT_RANGE — Shift+click range select.
    *

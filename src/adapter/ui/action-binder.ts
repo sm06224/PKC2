@@ -1183,14 +1183,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             const targetEntry = currentState.container.entries.find((x) => x.lid === lid);
             stayInFiler = !!targetEntry && targetEntry.archetype === 'folder';
           }
-          // PR-Δ3-fix (2026-05-07、user 報告「一つのテキストエントリを
-          // 選択したのに、べつのエントリも選択される、選択を外せない」):
-          // 通常 click(modifier 無し)時は **multi-select 残留を必ず
-          // clear** する。これまで multiSelectedLids は SELECT_ENTRY で
-          // 触らない設計だったので、過去の Ctrl/Shift+click の選択が
-          // sidebar / filer rows の data-pkc-multi-selected として残り
-          // 「別エントリも選択されている」ように見えていた。plain click
-          // = 単一選択への明示的リセット、これが OS 標準 UX。
+          // PR-Δ18 (2026-05-07、user 報告「Filer で選択を開始した時に
+          // エントリクリックを抑制していないから誤クリックで Detail が
+          // 開始する。使い物にならん」):
+          //   filer view + 既に multi-select している状態 = 「選択モード」
+          //   このときの plain row click は detail へ遷移せず、行 lid を
+          //   multi に toggle するだけ(includeAnchor: false で sidebar
+          //   selectedLid 巻込み回避)。クリアは Esc または Clear ボタン。
+          if (
+            currentState.viewMode === 'filer'
+            && currentState.multiSelectedLids.length > 0
+            && !stayInFiler
+          ) {
+            dispatcher.dispatch({
+              type: 'TOGGLE_MULTI_SELECT',
+              lid,
+              includeAnchor: false,
+            });
+            return;
+          }
+          // PR-Δ3-fix:filer / sidebar の plain click は multi 残留を
+          // clear して単一選択に戻す(OS 標準 UX)。但し上の filer 選択
+          // モード時は exit せず toggle で済ませる(return 済み)。
           if (currentState.multiSelectedLids.length > 0) {
             dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
           }
@@ -1386,6 +1400,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'create-entry': {
         const arch = (target.getAttribute('data-pkc-archetype') ?? 'text') as ArchetypeId;
+        // PR-Δ19 (2026-05-07、user 報告「Filer を開いている時に最上部の
+        // エントリ作成ボタンを押すと Detail 遷移が抑制され、画面が
+        // ロックする」):
+        //   非 detail mode (filer / calendar / kanban / graph) で
+        //   CREATE_ENTRY → phase='editing' に遷移するが、renderer は
+        //   filer/calendar 等を描画して editor が出ない → 画面ロック。
+        //   作成ボタンが押された瞬間に SET_VIEW_MODE 'detail' を先 dispatch、
+        //   editor が確実に表示される状態を作ってから CREATE_ENTRY。
+        const preStateForView = dispatcher.getState();
+        if (preStateForView.viewMode !== 'detail') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        }
         // FI-05: During editing, "📎 File" opens a file picker and inserts
         // a link instead of dispatching CREATE_ENTRY (which would clobber
         // the current editing state).
@@ -1743,15 +1769,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'mobile-back-to-list': {
-        // 2026-04-26 mobile master-detail back-arrow. Mirrors the
-        // Escape key path inside `handleKeydown` but reachable from
-        // a touch surface where the soft keyboard's Escape is not
-        // available. CSS gates the button visibility to the phone
-        // pointer-coarse @media block, so on desktop / tablet this
-        // case is unreachable through the UI.
+        // 2026-04-26 mobile master-detail back-arrow.
+        // PR-Δ11 (2026-05-07、user 報告「Filer→Detail→Filer 動線が
+        // 直感的じゃない、内部パンクズの順序が崩壊」):previous view
+        // mode を見て、filer / kanban / calendar / graph から来ていれば
+        // そこに戻る。優先順位:editing → cancel-edit、filer 由来 →
+        // 元の filer scope に戻る、それ以外 → DESELECT_ENTRY (従来)。
         const st = dispatcher.getState();
         if (st.phase === 'editing') {
           dispatcher.dispatch({ type: 'CANCEL_EDIT' });
+        } else if (st.lastFilerScopeLid !== undefined) {
+          // user が filer から detail に来たため、filer に戻す。
+          // SET_VIEW_MODE: 'filer' は reducer で lastFilerScopeLid を
+          // selectedLid に restore する。
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
         } else if (st.selectedLid) {
           dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
         }
@@ -2754,6 +2785,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'ctx-open-detail': {
+        // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作、右クリック
+        // で context menu 化」):graph 上の右クリック menu から detail を
+        // 開く専用 action。SET_VIEW_MODE 'detail' + SELECT_ENTRY を併発。
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        break;
+      }
       case 'ctx-preview': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -3102,14 +3142,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'filer-toggle-row-multi-select': {
-        // PR-Δ3 (2026-05-07、修正指示9):filer 行 checkbox。
-        // sidebar の Ctrl+click と同じ semantics、checkbox UX で
-        // discoverability を上げる。
+        // PR-Δ3 / Δ9 / Δ16:filer 行 checkbox は **明示的に押した lid
+        // のみ** を toggle(includeAnchor: false で sidebar selectedLid
+        // を auto 含めない)。Filer は sidebar と独立 domain。
         e.preventDefault();
         e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
         const rowLid = target.getAttribute('data-pkc-lid');
         if (rowLid) {
-          dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: rowLid });
+          dispatcher.dispatch({
+            type: 'TOGGLE_MULTI_SELECT',
+            lid: rowLid,
+            includeAnchor: false,
+          });
         }
         break;
       }
@@ -3247,6 +3294,22 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'toggle-graph-venn-grouping-mode': {
         // PR-I G17 (2026-05-06):Venn-style グルーピング ring の ON/OFF。
         dispatcher.dispatch({ type: 'TOGGLE_GRAPH_VENN_GROUPING_MODE' });
+        break;
+      }
+      case 'toggle-graph-galaxy-mode': {
+        // PR-Δ22 (2026-05-07):galaxy 3D perspective ON/OFF。
+        // graph.galaxy_mode flag(0/1)を SET_FLAG で flip。
+        const cur = dispatcher.getState();
+        const flagsEntry = cur.container?.entries.find((e) => e.archetype === 'system-flags');
+        let curVal = 0;
+        if (flagsEntry) {
+          try {
+            const j = JSON.parse(flagsEntry.body) as { values?: Record<string, unknown> };
+            const v = j.values?.['graph.galaxy_mode'];
+            if (typeof v === 'number') curVal = v;
+          } catch { /* ignore */ }
+        }
+        dispatcher.dispatch({ type: 'SET_FLAG', key: 'graph.galaxy_mode', value: curVal === 1 ? 0 : 1 });
         break;
       }
       case 'clear-graph-region-selection': {
@@ -7116,10 +7179,55 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // して detail に飛ばす(folder click であっても graph では同じ — graph
   // ペーン内で folder navigation する semantics は無い)。
   root.addEventListener('pkc-graph-node-click', (ev) => {
-    const detail = (ev as CustomEvent).detail as { lid?: unknown } | undefined;
+    const detail = (ev as CustomEvent).detail as {
+      lid?: unknown;
+      modifier?: unknown;
+    } | undefined;
     if (!detail || typeof detail.lid !== 'string' || detail.lid.length === 0) return;
-    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+    // PR-Δ32 (2026-05-07、user 指示「Ctrl+クリックで複数選択」):graph node の
+    // 左クリックで modifier=ctrl/meta を伴うときは TOGGLE_MULTI_SELECT を
+    // dispatch して multi-select に追加/除外する。
+    if (detail.modifier === 'ctrl' || detail.modifier === 'meta' || detail.modifier === 'shift') {
+      dispatcher.dispatch({
+        type: 'TOGGLE_MULTI_SELECT',
+        lid: detail.lid,
+        includeAnchor: false,
+      });
+      return;
+    }
+    // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作専用、誤操作防止」):
+    // node 左クリックは SELECT_ENTRY のみで viewMode は変えない。Detail で
+    // 開きたい場合は右クリック context menu の「Open」を経由する。
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: detail.lid });
+  });
+  // PR-Δ34: graph node 上での contextmenu(右クリック)で「開く」を含む
+  // menu を出す。clientX/Y は graph-canvas の hit test 結果と同じ座標系。
+  root.addEventListener('pkc-graph-node-context', (ev) => {
+    const detail = (ev as CustomEvent).detail as {
+      lid?: unknown; x?: unknown; y?: unknown;
+    } | undefined;
+    if (!detail || typeof detail.lid !== 'string') return;
+    if (typeof detail.x !== 'number' || typeof detail.y !== 'number') return;
+    const state = dispatcher.getState();
+    if (!state.container) return;
+    const lid = detail.lid;
+    const entry = state.container.entries.find((en) => en.lid === lid);
+    dismissContextMenu();
+    const folders = state.container.entries
+      .filter((en) => en.archetype === 'folder' && en.lid !== lid)
+      .map((en) => ({ lid: en.lid, title: en.title }));
+    const hasParent = entry
+      ? getStructuralParent(state.container.relations, state.container.entries, lid) !== null
+      : false;
+    const menu = renderContextMenu(lid, detail.x, detail.y, {
+      archetype: entry?.archetype,
+      canEdit: !state.readonly,
+      hasParent,
+      folders,
+      showOpen: true,
+    });
+    root.appendChild(menu);
+    clampMenuToViewport(menu);
   });
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);

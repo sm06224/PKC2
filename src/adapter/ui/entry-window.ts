@@ -1873,6 +1873,75 @@ if (useSplitEditor) {
   function pkcSyncEnabled() {
     try { return localStorage.getItem(SYNC_KEY) === 'true'; } catch (_e) { return false; }
   }
+
+  /* PR-Δ9 (2026-05-07、user 報告「左側の編集エリアにキャレット表示
+   * されないのがおかしい」):popup の textarea 用 caret-row indicator。
+   * center pane の caret-indicator.ts と同じ視覚効果を popup の document
+   * 内に inline 再現する。textarea の row 高さに合わせた band を caret
+   * 行に重ねる(absolute、tint background、accent left-border)。 */
+  var pkcCaretIndicator = null;
+  function pkcEnsureCaretIndicator() {
+    if (pkcCaretIndicator) return pkcCaretIndicator;
+    var el = document.createElement('div');
+    el.id = 'pkc-popup-caret-indicator';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = [
+      'position:fixed',
+      'pointer-events:none',
+      'z-index:5',
+      'display:none',
+      'background:color-mix(in srgb, var(--c-accent) 8%, transparent)',
+      'border-left:3px solid color-mix(in srgb, var(--c-accent) 70%, transparent)',
+      'transition:top 80ms linear',
+    ].join(';');
+    document.body.appendChild(el);
+    pkcCaretIndicator = el;
+    return el;
+  }
+  function pkcPaintCaretIndicator() {
+    var ta = document.getElementById('body-edit');
+    if (!ta || document.activeElement !== ta) {
+      if (pkcCaretIndicator) pkcCaretIndicator.style.display = 'none';
+      return;
+    }
+    var el = pkcEnsureCaretIndicator();
+    /* compute caret line via newline count + line-height */
+    var pos = ta.selectionStart || 0;
+    var line = 0;
+    var v = ta.value;
+    for (var i = 0; i < pos; i++) if (v.charCodeAt(i) === 10) line++;
+    var cs = window.getComputedStyle(ta);
+    var lineH = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.4);
+    var padTop = parseFloat(cs.paddingTop) || 0;
+    var rect = ta.getBoundingClientRect();
+    var caretYInTextarea = padTop + line * lineH - ta.scrollTop;
+    var caretYViewport = rect.top + caretYInTextarea;
+    /* PR-Δ12 v2 (2026-05-07、再修正):window viewport 絶対座標で hide
+       判定する。textarea 内 clip + viewport 絶対 clip の AND。
+       textarea が popup window 自身の scroll で off-screen に出ても
+       caret indicator は隠れる。 */
+    var winH = window.innerHeight || document.documentElement.clientHeight;
+    var inTextareaVisible = caretYInTextarea >= 0 && (caretYInTextarea + lineH) <= rect.height;
+    var inViewport = caretYViewport >= 0 && (caretYViewport + lineH) <= winH;
+    if (!inTextareaVisible || !inViewport) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'block';
+    el.style.top = caretYViewport + 'px';
+    el.style.left = (rect.left + (parseFloat(cs.borderLeftWidth) || 0)) + 'px';
+    el.style.width = (rect.width - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0)) + 'px';
+    el.style.height = lineH + 'px';
+  }
+  document.addEventListener('selectionchange', pkcPaintCaretIndicator);
+  document.addEventListener('focusin', pkcPaintCaretIndicator);
+  document.addEventListener('focusout', function() {
+    setTimeout(pkcPaintCaretIndicator, 0);
+  });
+  document.addEventListener('input', pkcPaintCaretIndicator, true);
+  document.addEventListener('scroll', pkcPaintCaretIndicator, true);
+  window.addEventListener('resize', pkcPaintCaretIndicator);
+
   function pkcCaretSourceLine(ta) {
     var pos = ta.selectionStart || 0;
     var line = 0;

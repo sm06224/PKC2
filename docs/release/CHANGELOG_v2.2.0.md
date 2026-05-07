@@ -184,6 +184,49 @@ v2.1.1 → v2.2.0 の間に着地した仕様 / methodology PR(#211〜#234):
   - **新 parity test** `flags-inspector-parity > every Tier 0 flag row is fully inside the inspector body without scrolling`:全 7 row の header + input が body の visible rect 内にあることを `getBoundingClientRect()` で実 DOM 値 assert(Playwright auto-scroll 起動前)。Inverse 確認(CSS revert)で本 PR の修正前 build に対し正しく FAIL することを確認済み
   - **新 parity test** `every Tier 0 numeric flag edits via real keyboard input → __flags__ source flips`:全 numeric flag を triple-click→keyboard.type→Tab の OS 実イベント経由で編集し、source DEF→CONT 反映を全件確認
 
+### Wave 10-9 stabilization 連続 hotfix Δ5〜Δ34(2026-05-07、修正指示 9〜10 + user 連続報告)
+
+Wave 10-9 の **stabilization 連続 hotfix**。user 実機テストで挙がった修正指示 9〜10 + wave 中追加報告(Galaxy / Venn / rubber band / Ctrl+click / 楕円 / 右クリック等)を 1 stack PR(#363)に集約して着地。詳細は [`docs/development/wave-10-9-stabilization-summary.md`](../development/wave-10-9-stabilization-summary.md)。
+
+#### 着地内容(Δ5〜Δ34)
+
+- **Δ5**:filer multi-select に **bulk tag / color-tag / relation 一括付与** を追加。`bulk-add-tag-input` / `bulk-set-color-tag` / structural relation 同時連結。tag 入力は Enter 確定で全選択 entry に同 tag を unshift、他要素(タイトル / body / 既存 tags)は完全不変保証。
+- **Δ6 combo**:graph theme/WCAG 改修 + **color-tag relations**(同色 group の chain edge を `cssColor` 直指定で描画、`renderer.ts:6441-6467` + `graph-canvas.ts:604`)+ time-proximity 重複改善 + Git 風更新点 dot。
+- **Δ7**:filer 行ズレ撃退の決定版。pixel-fixed `line-height: 21px` + `height: 33px` で sub-pixel 起因の行ピクセルズレを完全撃退、`getBoundingClientRect()` で delta 0px 確認 + screenshot crop で視覚 parity 検証。font 差 / theme switch でも崩れない。
+- **Δ8** + Δ8-fix2:inline-calc 計算式評価が **indent 行 + list marker 行** で動かない bug を抹本修正。`handleEditorEnter` で `value[start-1] === '='` のとき早期 return して inline-calc に Enter を譲る。`detectInlineCalcRequest` を backward scan + list marker(`-` / `1.`)skip に拡張。**14 ケース matrix**(indent variations / list markers / 全角混在 / decimals / parens / unary minus / div0)で全件 pass 確認、smoke D-10 spec 追加。
+- **Δ9**:`TOGGLE_MULTI_SELECT` reducer が `selectedLid` を action.lid に移動して filer scope を破壊する bug を修正。`includeAnchor` flag 導入で sidebar / Filer の multi-select 独立性確保。同 PR で **Venn/Region toggle 不反応** + **graph node 重なり** も改善(linkDistance 240 / charge -1000 / collideRadius 70)。
+- **Δ10**:time-proximity mode の同 X bucket(同月 entry)重なりを 38→4 pairs に削減。2D grid 配置 + lane 振り分けで viewport 内に均等散布。
+- **Δ11**:Detail→Filer 戻り動線(navigation breadcrumb)+ popup caret indicator 初期実装 + 時系列重なり改善の continuation。
+- **Δ12〜Δ16**:popup caret 表示の viewport-absolute clip 修正(Δ12)/ 時系列軸再設計(graphTimeRangeStart/End)(Δ13)/ Flags Tier 1 readonly 化 + UI 表示(Δ14)/ sidebar 震動撃退(Δ15)/ multi-select anchor flag(`TOGGLE_MULTI_SELECT { includeAnchor: false }`)で sidebar/Filer/graph 独立(Δ16)。
+- **Δ17〜Δ19**:folder=junction 視覚化(time-proximity では除外、他 mode では diamond)(Δ17)/ filer multi-select 中 row click は detail 切替せず TOGGLE_MULTI_SELECT 経由で誤操作防止(Δ18)/ filer view で create-entry 押下時の screen lock を SET_VIEW_MODE 'detail' 先打ちで解消(Δ19)。
+- **Δ20〜Δ22**:region UX 用途を toolbar text で明示(Δ20)/ Venn を真の集合 hull(凸包風 circle envelope + translucent fill + additive blending)に再設計(Δ21)/ Galaxy を perspective scale 1/(1+depth*0.18) + alpha + z-sort で 3D 化(Δ22)。
+- **Δ23〜Δ24**:ZIP import OOM 撃退の streaming 化(`streamZipEntries` + `readZipCentralDirectory` + `readZipEntryData`)(Δ23)/ folder 完全除外撤回 → time-proximity 限定で除外、他 mode では junction として描画(Δ24)。
+- **Δ25〜Δ26**:Filer 一括操作 UI を **Filer view 内** に移設(sidebar から脱出、`buildFilerMultiActionBar` 関数化)(Δ25)+ 深 folder path の breadcrumb collapse + segment max-width + ellipsis(Δ25-2)/ Galaxy 銀河強化:600 個 starfield + node halo + galactic core radial gradient(Δ26)。
+- **Δ27**:ZIP import の **SHA-256 dedup を撤回**(50-200ms × 1000 assets = 100 秒 hang の元凶)、key Set のみで dedup。`bytesToBase64` を 0x8000 byte chunk 分割 + `String.fromCharCode.apply` で高速化。**progress toast** を 250ms throttle で表示、`console.log` checkpoint も整備。
+- **Δ28**:時系列 archetype が **一直線並び** に見える違和感を hash-based jitter ±15px(X/Y)で自然散布。
+- **Δ29**:Galaxy/Venn の toggle button **caption 即時更新**。dispatcher は state listeners を event listeners より先に notify するため、`SET_FLAG` の state listener 実行時点で flag source が古い値だった root cause を `FLAGS_CHANGED` handler 内 `queueMicrotask` 再 render で解消。
+- **Δ30**:graph view 上部にも **multi-action-bar** を表示。Filer まで戻らずに graph 内で直接 bulk delete / move / tag / color。`buildFilerMultiActionBar(state, viewCtx)` を一般化、sidebar 側は `viewMode === 'graph'` のとき skip。
+- **Δ31**:region 選択を **矩形 → 楕円** に置換。描画は 64-segment 手動 path(happy-dom が `ctx.ellipse` 未対応のため)、hit test は `((x-cx)/rx)² + ((y-cy)/ry)² ≤ 1`。region-slice test を ellipse 内包前提に再調整。
+- **Δ32**:graph node 左クリックで **Ctrl/Meta/Shift 修飾子** を modifier として `pkc-graph-node-click` CustomEvent detail に同梱、action-binder 側で `TOGGLE_MULTI_SELECT { includeAnchor: false }` に分岐。
+- **Δ33**:node drag → **接続ノードが rubber band で追従**。dragLid + 1-hop neighbor (factor 0.55) + 2-hop neighbor (factor 0.25) の元位置を保存し、cursor delta を decay 付きで positions Map に直接反映。drag 終了で session 状態破棄。
+- **Δ34**:左クリック=**graph 操作専用**(SELECT_ENTRY のみ、view 切替なし)、右クリック=**context menu**(`pkc-graph-node-context` event → `renderContextMenu({ showOpen: true })` で 🔍 Open + 既存 Edit / Delete / Move)。誤操作で意図せず detail に飛ぶ問題を解消。
+
+#### Wave 統計
+
+- 着地 commit 数:**122**(Δ1〜Δ34、Δ8-fix2 等の連続修正含む)
+- 着地 PR 数:**100**(#260〜#363、欠 #352、stack の HEAD は #363)
+- bundle.js:785 → ~947 KB / bundle.css:120 → ~146 KB(budget 再評価候補)
+- tests:6259 → **6564** pass、smoke spec 41 → ~100 件、すべて green
+
+#### 既知の残バグ(merge 後持越し、user 認識済み)
+
+- bundle.css 146 KB:CHANGELOG 記載 budget 98 KB 超過 → 次 wave で領域 9 重複削減 Phase 2c で吸収予定
+- rubber band drag は 2-hop までで止まる(N-hop physics は別 wave)
+- drag 後の position は次 re-render で消える(pin 留めは未実装、別 wave 候補)
+- 既存 lint 警告 2 件(action-binder.ts:242 U+3000 / parse-capture-json.ts:16 import restriction、本 wave 起源ではない)
+
+詳細 + merge 戦略は [`docs/development/wave-10-9-stabilization-summary.md`](../development/wave-10-9-stabilization-summary.md) + [`docs/development/codespaces-merge-playbook-wave-10-9.md`](../development/codespaces-merge-playbook-wave-10-9.md) 参照。
+
 ### Wave 10-9 hotfix PR-Δ4(2026-05-07、修正指示9)
 
 - **graph node 過密 + サイズ抹本見直し(PKC1 依存撃退)**:user 報告「ノードサイズがリレーションやタイトルに比べて異常に大きく、ノード間が過密、視認性の著しい低下あり」への対応。

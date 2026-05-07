@@ -5404,6 +5404,18 @@ mark.pkc-search-mark {
   color: var(--c-fg, currentColor);
   cursor: pointer;
   padding: 0 var(--space-1, 0.25rem);
+  /* PR-Δ25 (2026-05-07、user 報告「深い folder 階層で path が表示
+   * しきれない」):各 segment に max-width + ellipsis、超過時は省略表示。
+   * tooltip(title 属性)で full text 確認可能。 */
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkc-filer-breadcrumb-ellipsis {
+  cursor: help;
+  opacity: 0.7;
+  font-style: italic;
 }
 
 .pkc-filer-breadcrumb-segment:hover {
@@ -5532,12 +5544,24 @@ mark.pkc-search-mark {
   padding: var(--space-1-5, 0.375rem) var(--space-2, 0.5rem);
   border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
   vertical-align: middle;
-  /* PR-SSS (2026-05-07、修正指示7 #3):table-layout: fixed と
+  /* PR-Δ2 (2026-05-07、修正指示7 #3):table-layout: fixed と
    * 連動した cell 単位の overflow trim。tags cell は inline-block
    * の chip 列でも同様に枠から溢れない。 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* PR-Δ7-fix3 (2026-05-07、user 視覚指摘):em-based の line-height は
+   * CJK / emoji の line-box 揺らぎを吸収しきれない(audit で 0.5 px 残)。
+   * **pixel 固定**で確定値を強制し、全 row の baseline を完全揃え。
+   * 21px line-height + 6px×2 padding = 33px row 高(text vertical-align: middle で
+   * cell 中央に icon / title が rest)。 */
+  line-height: 21px;
+  height: 33px;
+  box-sizing: border-box;
+}
+.pkc-filer-row-icon,
+.pkc-filer-row-title {
+  line-height: 21px;
 }
 
 .pkc-filer-cell-name {

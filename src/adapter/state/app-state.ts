@@ -357,6 +357,13 @@ export interface AppState {
    */
   graphVennGroupingMode?: boolean;
   /**
+   * PR-Δ13 (2026-05-07、user 報告「時系列範囲をユーザーが指定して
+   * 描画できるようにすべき」):time-proximity mode の表示範囲指定。
+   * ms epoch、`null` で auto(全 entry の範囲)。
+   */
+  graphTimeRangeStart?: number | null;
+  graphTimeRangeEnd?: number | null;
+  /**
    * Inventory subset query state (Phase 5、Bases 風 filter/sort/group)。
    * Runtime-only, scoped to the current filer scope folder.
    */
@@ -3064,8 +3071,18 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'SET_GRAPH_REGION_SELECTED_LIDS': {
-      const next: AppState = { ...state, graphRegionSelectedLids: action.lids };
-      return { state: next, events: [] };
+      // PR-Δ20 (2026-05-07、user 指摘「region 選択の用途不明」):
+      // region で囲った lids を **multiSelectedLids にも反映** して、
+      // sidebar の multi-action-bar で bulk 操作(Tag / Color / Folder
+      // 移動 / Delete)を直接実行できるようにする。region 選択 = 一括
+      // 操作の入口、という意味付け。
+      const lidsCopy = [...action.lids];
+      const next: AppState = {
+        ...state,
+        graphRegionSelectedLids: action.lids,
+        multiSelectedLids: lidsCopy,
+      };
+      return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids: lidsCopy }] };
     }
     case 'TOGGLE_GRAPH_VENN_GROUPING_MODE': {
       // PR-I G17 (2026-05-06):graph view の Venn-style グルーピング
@@ -3296,6 +3313,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'TOGGLE_MULTI_SELECT': {
+      // PR-Δ9: selectedLid は触らない(主選択は SELECT_ENTRY 責務)。
+      // PR-Δ16 (2026-05-07、user 報告「Filerで勝手に選択される挙動 =
+      // 左ペインで選択したエントリが Filer 側の選択ロジック時にすでに
+      // 選択済みとして処理している。意図しない副作用動作で最悪の UX
+      // 事故」):
+      //   sidebar Ctrl+click は anchor inclusion 期待(includeAnchor=true)
+      //   Filer checkbox は明示的に押した lid のみ toggle 期待
+      //   (includeAnchor=false)
+      // includeAnchor の default は true(既存挙動互換)、Filer 側は
+      // false で dispatch する。
       const lids = [...state.multiSelectedLids];
       const idx = lids.indexOf(action.lid);
       if (idx >= 0) {
@@ -3303,11 +3330,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       } else {
         lids.push(action.lid);
       }
-      // Also include current selectedLid if not already
-      if (state.selectedLid && !lids.includes(state.selectedLid)) {
+      const includeAnchor = action.includeAnchor !== false; // default true
+      if (includeAnchor && state.selectedLid && !lids.includes(state.selectedLid)) {
         lids.unshift(state.selectedLid);
       }
-      const next: AppState = { ...state, selectedLid: action.lid, multiSelectedLids: lids };
+      const next: AppState = { ...state, multiSelectedLids: lids };
       return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids }] };
     }
     case 'SELECT_RANGE': {

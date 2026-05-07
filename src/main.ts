@@ -602,16 +602,21 @@ async function boot(): Promise<void> {
       // Flags Protocol v1 (2026-05-03): refresh the runtime flag
       // registry's container snapshot so subsequent
       // `getRegisteredFlags()` calls reflect the new payload.
-      // defineFlag-captured values are still bound at module-import
-      // time (live-update would require reload) but the inspector UI
-      // re-resolves on each render and will surface the new source
-      // immediately.
       setContainerFlagSource(event.flags.values);
       // Phase 3a (2026-05-04): re-apply runtime UI scale multiplier
       // immediately after the flag registry is primed, so a flag
       // edit reflects in `--theme-scale` (and the rem cascade) on
       // the same dispatch tick — no waiting for the next render.
       applyThemeScale();
+      // PR-Δ29 (2026-05-07、user 報告「Galaxy / Venn の button caption が
+      // 即時に変わらない」):dispatcher は state listeners を event より
+      // 先に notify するため、SET_FLAG の state listener 実行時点では
+      // flag source がまだ古い値。renderer は graphGalaxyMode() の旧値で
+      // button text を出してしまう。FLAGS_CHANGED 直後に **再 render を
+      // microtask 経由で trigger** して新 flag 値を反映する。
+      queueMicrotask(() => {
+        render(dispatcher.getState(), root);
+      });
     }
   });
 
@@ -1127,7 +1132,25 @@ function mountImportHandler(root: HTMLElement, dispatcher: Dispatcher): void {
 
     // Route to appropriate importer based on file extension
     if (file.name.endsWith('.zip')) {
-      const result = await importContainerFromZip(file);
+      // PR-Δ27 (2026-05-07、user 報告「ZIP 開こうとすると止まる、
+      // progress も無くて UX 低い」):進捗 toast を 1 件だけ作って
+      // 同 message で coalesce 更新(toast.ts の coalescing 機構)。
+      console.log(`[PKC2] ZIP import start: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+      let lastToast: HTMLElement | null = null as HTMLElement | null;
+      let lastReportTime = 0;
+      const onProgress = (info: { done: number; total: number; currentName: string }): void => {
+        const now = Date.now();
+        // throttle to 1 update / 250ms to avoid DOM thrash
+        if (now - lastReportTime < 250 && info.done < info.total) return;
+        lastReportTime = now;
+        const pct = Math.round((info.done / info.total) * 100);
+        const msg = `📦 ZIP 取り込み中 ${info.done}/${info.total} (${pct}%)`;
+        if (lastToast) lastToast.remove();
+        lastToast = showToast({ message: msg, kind: 'info', autoDismissMs: 60000 });
+      };
+      const result = await importContainerFromZip(file, onProgress);
+      if (lastToast) lastToast.remove();
+      console.log(`[PKC2] ZIP import done: ok=${result.ok}`);
       if (result.ok) {
         dispatcher.dispatch({
           type: 'SYS_IMPORT_PREVIEW',

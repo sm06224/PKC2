@@ -94,7 +94,7 @@ export const graphMaxSpeed = defineFlag<number>(
 
 export const graphIterations = defineFlag<number>(
   'graph.iterations',
-  220,
+  400,
   {
     range: [10, 2000],
     category: FLAG_CATEGORY,
@@ -122,6 +122,23 @@ export const graphNodeRadiusFactor = defineFlag<number>(
     range: [0.2, 1.0],
     category: FLAG_CATEGORY,
     description: 'node 視覚半径 / collide_radius 比率(0.35 = label / edge を node より優先表示)。小さくするほど label が相対的に大きく見える',
+    tier: 0,
+  },
+);
+
+/**
+ * PR-Δ22 (2026-05-07、user 指摘「空間的所属を表現しろ。2D じゃ無理。
+ * 銀河的にしろ」):3D perspective projection mode。0 で off(2D 平面)、
+ * 1 で ON(z 軸を folder depth に割当て、近い node は大きく明るく、
+ * 遠い node は小さく暗く描画)。
+ */
+export const graphGalaxyMode = defineFlag<number>(
+  'graph.galaxy_mode',
+  0,
+  {
+    range: [0, 1],
+    category: FLAG_CATEGORY,
+    description: '銀河的 3D perspective(0=off / 1=on)。folder depth = z 軸として奥行き表現',
     tier: 0,
   },
 );

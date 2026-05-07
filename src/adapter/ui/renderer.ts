@@ -94,7 +94,7 @@ import { parseFrontmatter } from '../../features/markdown/frontmatter';
 import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
 import { extractThumbnailRef } from '../../features/auto-fill/thumbnail-frontmatter';
 import { seedSimulation, stepSimulation } from '../../features/graph/force-layout';
-import { getGraphForceParams, graphIterations } from '../../features/graph/flags';
+import { getGraphForceParams, graphIterations, graphGalaxyMode } from '../../features/graph/flags';
 import {
   classifyUrl,
   classifyFirstUrlInBody,
@@ -604,7 +604,23 @@ function scrollSelectedSidebarNodeIntoView(
     `[data-pkc-selected="true"][data-pkc-lid="${CSS.escape(state.selectedLid)}"]`,
   );
   if (!node) return;
-  node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // PR-Δ15 (2026-05-07、user 報告「エントリをクリックするとエントリが
+  // 震える動作をした後に全体の再描画ないし座標再設定が走っているように
+  // 感じる」):scrollIntoView は node が **viewport 完全内** にある場合
+  // でも僅か scroll する場合がある(sub-pixel 補正)。click 元の row は
+  // 定義により 100% visible なので、`scrollIntoView` を completely 包含
+  // 検知 + skip にして震動を撃退。partially clipped(切れている)時のみ
+  // scroll。happy-dom 等で rect が 0 の場合は実機ではないので skip 判定
+  // を bypass(test 互換)。
+  const sidebarRect = sidebar.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  const haveLayout = sidebarRect.height > 0 && nodeRect.height > 0;
+  const fullyInView = haveLayout
+    && nodeRect.top >= sidebarRect.top
+    && nodeRect.bottom <= sidebarRect.bottom;
+  if (!fullyInView) {
+    node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
   root.dataset.pkcLastScrolledLid = state.selectedLid;
 }
 
@@ -3498,8 +3514,18 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     sidebar.appendChild(hints);
   }
 
-  // Multi-selection action bar
-  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+  // PR-Δ25 (2026-05-07、user 訂正「Filer で選択時に左ペインに一括操作 UI
+  // が出るのは誤り、Filer 側に表示すべき」):viewMode === 'filer' のとき
+  // sidebar には bar を出さない(filer view 側で同 helper を呼んで filer
+  // 内部に表示する)。それ以外の view では従来通り sidebar 表示。
+  // PR-Δ30 (2026-05-07):graph view も同様に view 内で表示するため
+  // sidebar 側は skip。
+  if (
+    state.multiSelectedLids.length > 0
+    && !state.readonly
+    && state.viewMode !== 'filer'
+    && state.viewMode !== 'graph'
+  ) {
     const bar = createElement('div', 'pkc-multi-action-bar');
     bar.setAttribute('data-pkc-region', 'multi-action-bar');
 
@@ -4547,9 +4573,85 @@ function renderCalendarView(state: AppState): HTMLElement {
   return cal;
 }
 
+/**
+ * PR-Δ25 (2026-05-07、user 訂正「Filer の一括操作 UI は Filer 側に出す
+ * べき」):sidebar の multi-action-bar と等価な UI を filer view 上部に
+ * 描画。コードは sidebar 版をミラー(reducer は同一 dispatch を受ける)、
+ * 重複は意図的(sidebar/filer の独立性確保)。
+ */
+function buildFilerMultiActionBar(state: AppState, viewCtx: 'filer' | 'graph' = 'filer'): HTMLElement {
+  const bar = createElement('div', `pkc-multi-action-bar pkc-${viewCtx}-multi-action-bar`);
+  bar.setAttribute('data-pkc-region', 'multi-action-bar');
+  bar.setAttribute('data-pkc-view-ctx', viewCtx);
+  const info = createElement('span', 'pkc-multi-action-info');
+  info.textContent = `${state.multiSelectedLids.length} selected`;
+  bar.appendChild(info);
+  const deleteBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+  deleteBtn.setAttribute('data-pkc-action', 'bulk-delete');
+  deleteBtn.textContent = 'Delete';
+  bar.appendChild(deleteBtn);
+  if (state.container) {
+    const folders = state.container.entries.filter(
+      (e) => e.archetype === 'folder' && !state.multiSelectedLids.includes(e.lid),
+    );
+    if (folders.length > 0) {
+      const moveSelect = document.createElement('select');
+      moveSelect.className = 'pkc-multi-action-move';
+      moveSelect.setAttribute('data-pkc-action', 'bulk-move-select');
+      const ph = document.createElement('option');
+      ph.value = ''; ph.textContent = 'Move to...'; ph.disabled = true; ph.selected = true;
+      moveSelect.appendChild(ph);
+      const rootOpt = document.createElement('option');
+      rootOpt.value = '__root__'; rootOpt.textContent = '/ (Root)';
+      moveSelect.appendChild(rootOpt);
+      for (const f of folders) {
+        const opt = document.createElement('option');
+        opt.value = f.lid; opt.textContent = `📁 ${f.title || '(untitled)'}`;
+        moveSelect.appendChild(opt);
+      }
+      bar.appendChild(moveSelect);
+    }
+    // tag input
+    const tagInput = document.createElement('input');
+    tagInput.type = 'text';
+    tagInput.className = 'pkc-multi-action-tag-input';
+    tagInput.placeholder = 'タグ追加 (Enter)';
+    tagInput.setAttribute('data-pkc-action', 'bulk-add-tag-input');
+    tagInput.setAttribute('data-pkc-field', 'bulk-add-tag');
+    tagInput.title = '選択中の全エントリに同じタグを追加';
+    bar.appendChild(tagInput);
+    // color tag
+    const colorSelect = document.createElement('select');
+    colorSelect.className = 'pkc-multi-action-color';
+    colorSelect.setAttribute('data-pkc-action', 'bulk-set-color-tag');
+    const cph = document.createElement('option');
+    cph.value = ''; cph.textContent = 'Color...'; cph.disabled = true; cph.selected = true;
+    colorSelect.appendChild(cph);
+    for (const c of ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray']) {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      colorSelect.appendChild(opt);
+    }
+    const cloneOpt = document.createElement('option');
+    cloneOpt.value = '__none__'; cloneOpt.textContent = '✕ 解除';
+    colorSelect.appendChild(cloneOpt);
+    bar.appendChild(colorSelect);
+  }
+  const clearBtn = createElement('button', 'pkc-btn-small');
+  clearBtn.setAttribute('data-pkc-action', 'clear-multi-select');
+  clearBtn.textContent = 'Clear';
+  bar.appendChild(clearBtn);
+  return bar;
+}
+
 function renderFilerView(state: AppState): HTMLElement {
   const filer = createElement('div', 'pkc-filer');
   filer.setAttribute('data-pkc-region', 'filer-view');
+
+  // PR-Δ25:filer view top に multi-action-bar を表示。
+  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+    filer.appendChild(buildFilerMultiActionBar(state));
+  }
 
   // Trash mode short-circuits the normal folder-scope render. The
   // toolbar's "Trash" toggle dispatches SET_FILER_SCOPE 'trash' and
@@ -4889,12 +4991,38 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
     }
     trail.push({ label: scope.title || scope.lid, lid: scope.lid, isCurrent: true });
   }
-  for (let i = 0; i < trail.length; i++) {
-    const seg = trail[i]!;
+  // PR-Δ25 (2026-05-07、user 報告「深い folder 階層で path が表示
+  // しきれない」):trail.length > 5 のとき middle 部を「⋯」で集約し、
+  // 集約 button hover で full path を tooltip 表示、click で展開。
+  // 常に root + 最初 + 末尾 2 segments は visible にして context を保つ。
+  const collapsedTrail: typeof trail = [];
+  if (trail.length <= 5) {
+    collapsedTrail.push(...trail);
+  } else {
+    collapsedTrail.push(trail[0]!); // root
+    collapsedTrail.push(trail[1]!); // top-level
+    // ellipsis placeholder; lid carries full middle path joined
+    const middle = trail.slice(2, trail.length - 2);
+    const ellipsisLabels = middle.map((s) => s.label).join(' / ');
+    collapsedTrail.push({ label: `⋯ (${middle.length})`, lid: `__ellipsis__:${ellipsisLabels}` });
+    collapsedTrail.push(trail[trail.length - 2]!);
+    collapsedTrail.push(trail[trail.length - 1]!);
+  }
+
+  for (let i = 0; i < collapsedTrail.length; i++) {
+    const seg = collapsedTrail[i]!;
     if (i > 0) {
       const sep = createElement('span', 'pkc-filer-breadcrumb-sep');
       sep.textContent = ' / ';
       breadcrumb.appendChild(sep);
+    }
+    if (seg.lid && seg.lid.startsWith('__ellipsis__:')) {
+      const tooltipText = seg.lid.slice('__ellipsis__:'.length);
+      const ellSpan = createElement('span', 'pkc-filer-breadcrumb-segment pkc-filer-breadcrumb-ellipsis');
+      ellSpan.textContent = seg.label;
+      ellSpan.title = tooltipText;
+      breadcrumb.appendChild(ellSpan);
+      continue;
     }
     if (seg.lid === null) {
       // Root segment is clickable — DESELECT_ENTRY moves the filer
@@ -5811,6 +5939,15 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   wrap.setAttribute('data-pkc-graph-mode', mode);
   if (state.graphFocusLid) wrap.setAttribute('data-pkc-graph-focus-lid', state.graphFocusLid);
 
+  // PR-Δ30 (2026-05-07、user 報告「選択してる時にバルク操作できるのは
+  // いいんだけど、Filer まで戻るのはだるい」):graph view top にも
+  // multi-action-bar を表示して、graph 内で直接 bulk delete / move /
+  // tag / color が完結するようにする。viewCtx='graph' で class を
+  // 切り分けて positioning を独立調整可能にする。
+  if (state.multiSelectedLids.length > 0 && !state.readonly) {
+    wrap.appendChild(buildFilerMultiActionBar(state, 'graph'));
+  }
+
   // Toolbar: mode selector + focus indicator + clear-focus button.
   const toolbar = createElement('div', 'pkc-center-graph-toolbar');
   toolbar.setAttribute('data-pkc-region', 'graph-toolbar');
@@ -5859,30 +5996,53 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   zoomReset.title = '拡大縮小・パン位置をリセット(wheel / pinch / drag で操作可能)';
   toolbar.appendChild(zoomReset);
 
-  // PR-E G8 後半 (2026-05-06):region-slice toggle。ON のとき、背景 drag
-  // で rect 選択ができる(従来 pan は当面その mode 内で機能停止)。
-  // Selected lids 数を併記し、>0 のとき clear ボタンも出す。
+  // PR-Δ20 (2026-05-07、user 指摘「region 選択の操作性悪い、何に
+  // 使うのか UX 考えた?」):region-slice toggle のラベルと title を
+  // 用途明示に書き直し、affordance を強化。
+  //   旧:「⌗ region 選択」(用途不明)
+  //   新:「⬚ 範囲選択 → 一括操作」+ tooltip で具体例(同 folder 移動、
+  //       同 tag 付与、bulk delete など)
+  // 選択数表示を always-on にし、>0 で「これらに対して bulk 操作
+  // (sidebar 下部 multi-action-bar)」を提示する小 link を出す。
   const regionMode = state.graphRegionSelectMode ?? false;
   const regionLids = state.graphRegionSelectedLids ?? [];
   const regionToggle = createElement('button', 'pkc-btn-small');
   regionToggle.setAttribute('data-pkc-action', 'toggle-graph-region-select-mode');
-  regionToggle.textContent = regionMode ? '⌗ region 選択中' : '⌗ region 選択';
-  regionToggle.title = '背景 drag で rect を引き、内部の entry を一括選択(再 click で OFF)';
+  regionToggle.textContent = regionMode ? '⬚ 範囲選択中(drag で囲む)' : '⬚ 範囲選択';
+  regionToggle.title = '背景 drag で囲った範囲内の entry を一括選択。'
+    + '選択後は左 sidebar の multi-action-bar で「全 entry に Tag 追加」'
+    + '「Folder へ移動」「Color tag」「Delete」等の bulk 操作が可能。'
+    + '使用例:近接性で関連していた entries を一気に同 folder に整理 / 同 tag を付与。';
   if (regionMode) regionToggle.setAttribute('data-pkc-active', 'true');
   toolbar.appendChild(regionToggle);
   if (regionLids.length > 0) {
     const count = createElement('span', 'pkc-graph-region-count');
-    count.textContent = `選択 ${regionLids.length} 件`;
+    count.textContent = `${regionLids.length} 件選択中(sidebar の multi-action-bar から bulk 操作可)`;
+    count.title = '左 sidebar の選択 bar で Tag / Color / Folder 移動 / Delete を一括実行';
     toolbar.appendChild(count);
     const clear = createElement('button', 'pkc-btn-small');
     clear.setAttribute('data-pkc-action', 'clear-graph-region-selection');
-    clear.textContent = '✕ 選択解除';
+    clear.textContent = '✕ 解除';
     toolbar.appendChild(clear);
   }
 
-  // PR-I G17 (2026-05-06):Venn-style グルーピング toggle。ON のとき
-  // node ごとに folder ancestors + tags への所属を concentric ring で
-  // 描画する(色は group id ハッシュで deterministic に hue 決定)。
+  // PR-Δ22 (2026-05-07、user 指摘「銀河的に空間所属を表現しろ、d3.js
+  // 級の幾何学」):galaxy 3D perspective toggle。flag 経由で ON/OFF。
+  // graph.galaxy_mode flag を 0↔1 で flip する SET_FLAG dispatch を
+  // 出すボタン(専用 action)を出す。
+  const galaxyOn = graphGalaxyMode() === 1;
+  const galaxyToggle = createElement('button', 'pkc-btn-small');
+  galaxyToggle.setAttribute('data-pkc-action', 'toggle-graph-galaxy-mode');
+  galaxyToggle.textContent = galaxyOn ? '🌌 Galaxy ON' : '🌌 Galaxy';
+  galaxyToggle.title = '3D perspective(folder depth = 奥行き)。'
+    + '深い folder の entry は小さく / 暗く描画され、所属階層が「銀河的」に'
+    + '見える。Flags `graph.galaxy_mode` で同等切替可。';
+  if (galaxyOn) galaxyToggle.setAttribute('data-pkc-active', 'true');
+  toolbar.appendChild(galaxyToggle);
+
+  // PR-Δ21 (2026-05-07、user 指摘「Venn って何?どう見てもベンでは
+  // ない」):旧 concentric ring を撤回、真の集合 hull(translucent fill
+  // で重なり領域を Venn 表現)に置換済み。toggle 名は維持。
   const vennMode = state.graphVennGroupingMode ?? false;
   const vennToggle = createElement('button', 'pkc-btn-small');
   vennToggle.setAttribute('data-pkc-action', 'toggle-graph-venn-grouping-mode');
@@ -5911,7 +6071,11 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   // 視覚的に zero-shot で読める。other modes は従来通り force layout。
   let sim;
   if (mode === 'time-proximity') {
-    sim = seedTimeProximityLayout(nodes, allEntries, width, height);
+    sim = seedTimeProximityLayout(
+      nodes, allEntries, width, height,
+      state.graphTimeRangeStart ?? null,
+      state.graphTimeRangeEnd ?? null,
+    );
   } else {
     sim = seedSimulation(nodes.map((n) => ({ id: n.id })), width, height);
     const iter = graphIterations();
@@ -5983,6 +6147,8 @@ function renderCenterGraphView(state: AppState): HTMLElement {
       degree: degreeMap.get(n.id) ?? 0,
       // PR-WWW (2026-05-07、修正指示5 残):hover preview tooltip。
       ...(n.preview ? { preview: n.preview } : {}),
+      // PR-Δ22 (2026-05-07):galaxy mode の z 軸として folder depth。
+      ...(n.depth !== undefined ? { depth: n.depth } : {}),
     })),
     positions,
     links,
@@ -5997,13 +6163,37 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     ...(mode === 'time-proximity' && state.container?.revisions
       ? {
           nodeRevisions: (() => {
+            // PR-Δ13:trunk root は created_at(entry の起源)、
+            // intermediate dots は revisions の created_at、head は
+            // entry の updated_at(node 自体の x 位置)。
+            // entry の updated_at は node 位置と同じなので追加しない。
+            // 配列は時系列降順(node 位置から後方延長で描画される)。
             const m = new Map<string, number[]>();
+            const entries = state.container?.entries ?? [];
+            for (const e of entries) {
+              const ct = Date.parse(e.created_at ?? '');
+              const ut = Date.parse(e.updated_at ?? '');
+              if (Number.isFinite(ct) && ct !== ut) {
+                m.set(e.lid, [ct]);
+              }
+            }
             for (const rev of state.container.revisions) {
               const t = Date.parse(rev.created_at ?? '');
               if (!Number.isFinite(t)) continue;
               const arr = m.get(rev.entry_lid) ?? [];
               arr.push(t);
               m.set(rev.entry_lid, arr);
+            }
+            return m;
+          })(),
+          // PR-Δ13:relations は head node 同士の参照ラインとして描画。
+          // 全 relations を pair で渡し、graph-canvas 側で line + arrow。
+          nodeReferences: (() => {
+            const m = new Map<string, Array<{ to: string; kind: string }>>();
+            for (const r of state.container?.relations ?? []) {
+              const arr = m.get(r.from) ?? [];
+              arr.push({ to: r.to, kind: r.kind });
+              m.set(r.from, arr);
             }
             return m;
           })(),
@@ -6070,38 +6260,49 @@ interface GraphNodeView {
   colorClass?: string;
   /** Hover tooltip 用 preview(title + body excerpt). PR-WWW(2026-05-07). */
   preview?: string;
+  /** PR-Δ22 (2026-05-07):galaxy mode の z 軸 = folder depth。 */
+  depth?: number;
 }
 
 /**
  * Time-proximity layout (PR-D G8 — 時系列接近性).
  *
- * Force layout を bypass。entries の created_at で x 座標を線形配置:
- *   - 最古エントリ → x = padding
- *   - 最新エントリ → x = width - padding
- * y 座標は archetype を lane に分けて衝突を避ける。同じ archetype 内
- * では created_at で sort して順番に積む(deterministic、同一 input で
- * 必ず同一 layout)。
+ * PR-Δ13 (2026-05-07、user 報告「根がエントリというのは発想が逆。
+ * 今のエントリ=葉/花が成立するための根は最終更新側、または始端と終端」):
+ *   redesign。entry の x 座標 = `updated_at`(= 現在の "head"、Git の
+ *   trunk 先端)。`created_at` は origin marker として trunk 後方に。
+ *   created → 各 revision → updated は graph-canvas 側で line + dot で
+ *   描画(Δ6 の nodeRevisions payload を活用)。
  *
- * 結果として「左:古い / 右:新しい / 上下:archetype 別」というグリッド
- * 風配置になる。force layout のように毎レンダーで微妙に位置がずれる
- * 動きは無く、user は「同じ entry はいつも同じ場所」を期待できる。
+ * y 座標は archetype を lane に分けて衝突を避ける。同 archetype 内では
+ * 同 X bucket の node を 2D grid (Δ10) で展開して重なり回避。
+ *
+ * 結果:「左:古い trunk / 右:新しい head」、各 entry は head に置かれ、
+ * trunk の根(created_at)へ後方延長で revision dot が時系列に並ぶ。
  */
 function seedTimeProximityLayout(
   nodes: readonly GraphNodeView[],
   entries: readonly Entry[],
   width: number,
   height: number,
+  rangeStart?: number | null,
+  rangeEnd?: number | null,
 ): { id: string; x: number; y: number; vx: number; vy: number }[] {
   if (nodes.length === 0) return [];
-  const created = new Map<string, number>();
+  const headTime = new Map<string, number>();
   for (const e of entries) {
-    const t = Date.parse(e.created_at);
-    created.set(e.lid, Number.isFinite(t) ? t : 0);
+    const t = Date.parse(e.updated_at);
+    headTime.set(e.lid, Number.isFinite(t) ? t : 0);
   }
-  const ts = nodes.map((n) => created.get(n.id) ?? 0).filter((t) => t > 0);
-  const minT = ts.length > 0 ? Math.min(...ts) : 0;
-  const maxT = ts.length > 0 ? Math.max(...ts) : 1;
+  const ts = nodes.map((n) => headTime.get(n.id) ?? 0).filter((t) => t > 0);
+  const dataMinT = ts.length > 0 ? Math.min(...ts) : 0;
+  const dataMaxT = ts.length > 0 ? Math.max(...ts) : 1;
+  // PR-Δ13:user 指定 range があれば優先。なければ data の min/max。
+  const minT = typeof rangeStart === 'number' && Number.isFinite(rangeStart) ? rangeStart : dataMinT;
+  const maxT = typeof rangeEnd === 'number' && Number.isFinite(rangeEnd) ? rangeEnd : dataMaxT;
   const span = Math.max(1, maxT - minT);
+  // 古い created に対する alias 維持(関数末尾で利用するため)。
+  const created = headTime;
 
   // Bucket nodes by archetype to assign lanes.
   const lanes = new Map<string, number>();
@@ -6151,12 +6352,39 @@ function seedTimeProximityLayout(
     const bucket = byBucket.get(key) ?? [n];
     const idx = bucket.indexOf(n);
     const total = bucket.length;
-    // 均等分布(N entries → N+1 等分の中央 N 点)、lane height の 80% を使う。
-    const yOffset = total > 1
-      ? ((idx + 1) / (total + 1) - 0.5) * (laneH * 0.8)
-      : (hashStringToUnit(n.id) - 0.5) * (laneH * 0.4);
+    // PR-Δ10 (2026-05-07、user 報告「時系列グラフでもノードが重なった
+    // ままになってる」、Playwright 計測 38 overlap pairs/30 nodes):
+    // bucket 内に N 個ある場合、Y を lane height いっぱいに均等分散させる。
+    // 4+ entries が同 X bucket に落ちると Y ピッチが node 衝突半径(70px)
+    // 以下になり重なる。X 方向にも bucketW 内で散らして 2D 配置にする。
+    // PR-Δ28 (2026-05-07、user 視覚指摘「同じ種別のエントリが一直線
+     // に並んでてきもい」):
+    // Δ10 の grid 配置は確定的だが entry が perfectly 整列して
+     // 機械的・気持ち悪い見た目。各 entry に **hash-based jitter** を
+    // grid 位置から ±20px 程度乗せて自然な散らばりを作る。time order は
+    // X 軸が保証するので Y は意味より見栄え優先。
+    let xOffset = 0;
+    let yOffset: number;
+    if (total > 1) {
+      const minPitch = 80;
+      const rows = Math.max(1, Math.floor(laneH / minPitch));
+      const cols = Math.ceil(total / rows);
+      const col = Math.floor(idx / rows);
+      const row = idx % rows;
+      xOffset = (col - (cols - 1) / 2) * minPitch;
+      yOffset = (row + 0.5 - rows / 2) * (laneH / Math.max(1, rows));
+      // Δ28:hash jitter で direction 揺らぎ。X / Y それぞれ ±15px。
+      const h1 = hashStringToUnit(n.id);
+      const h2 = hashStringToUnit(n.id + '_y');
+      xOffset += (h1 - 0.5) * 30;
+      yOffset += (h2 - 0.5) * 30;
+    } else {
+      // 単独 entry も Y を full lane height 内で hash 散らし、archetype
+      // 一直線を撲滅。
+      yOffset = (hashStringToUnit(n.id) - 0.5) * (laneH * 0.85);
+    }
     const y = padY + lane * laneH + laneH / 2 + yOffset;
-    return { id: n.id, x, y, vx: 0, vy: 0 };
+    return { id: n.id, x: x + xOffset, y, vx: 0, vy: 0 };
   });
 }
 
@@ -6186,8 +6414,28 @@ function buildGraphForMode(
   }
 
   const inScope = (id: string): boolean => nodeIds.has(id);
-  const filteredEntries = entries.filter((e) => inScope(e.lid));
-  const linksRaw = relations.filter((r) => inScope(r.from) && inScope(r.to));
+  // PR-Δ17 → Δ24 (2026-05-07、user 訂正「フォルダを不可視化するのではなく
+  // リレーションとして結節点から線を伸ばして表現」):
+  //   folder は entry ではなく junction(結節点)、しかし完全除外では
+  //   なく **junction symbol として小さく描画 + folder→子 の線を残す**。
+  //   time-proximity mode では folder を独立 entry として X 軸に並べる
+  //   ことに意味がない(folder には updated_at が user 編集としては
+  //   無いに等しい)ため除外、それ以外の mode では junction として残す。
+  const isFolder = (lid: string): boolean => {
+    const e = entries.find((x) => x.lid === lid);
+    return e?.archetype === 'folder';
+  };
+  const excludeFolderAsNode = mode === 'time-proximity';
+  const filteredEntries = entries.filter((e) => {
+    if (!inScope(e.lid)) return false;
+    if (excludeFolderAsNode && e.archetype === 'folder') return false;
+    return true;
+  });
+  const linksRaw = relations.filter((r) => {
+    if (!inScope(r.from) || !inScope(r.to)) return false;
+    if (excludeFolderAsNode && (isFolder(r.from) || isFolder(r.to))) return false;
+    return true;
+  });
 
   // PR-LLL (2026-05-06、user 修正指示5「リレーションは線の色で分けて」):
   // link.kind を payload まで運ぶ。色は graph-canvas の relationColor() で決定。
@@ -6347,6 +6595,7 @@ function buildGraphForMode(
       archetype: e.archetype,
       ...(cssColor ? { cssColor } : {}),
       preview,
+      depth: depthMap.get(e.lid) ?? 0,
     };
   });
 
@@ -9306,6 +9555,8 @@ export interface ContextMenuOptions {
   hasParent?: boolean;
   /** Available folders for "move to folder" sub-menu. */
   folders?: { lid: string; title: string }[];
+  /** PR-Δ34: graph view 等から呼ばれる時に「開く」item を先頭に出す。 */
+  showOpen?: boolean;
 }
 
 export function renderContextMenu(
@@ -9353,6 +9604,8 @@ export function renderContextMenu(
   const hasFolders = !!(opts.folders && opts.folders.length > 0);
 
   const items: Item[] = [
+    // PR-Δ34: graph 等で右クリックされた時のみ「Open」を先頭に表示。
+    { action: 'ctx-open-detail', label: '🔍 Open', tip: 'このエントリを Detail で開く', lid, show: !!opts.showOpen },
     // Mutating actions — gated on canEdit.
     { action: 'begin-edit', label: '✏️ Edit', tip: 'このエントリを編集', lid, show: canEdit },
     { action: 'ctx-preview', label: '👁️ Preview', tip: 'レンダリング済みプレビューを新しいウィンドウで開く', lid, show: isPreviewable || isSandboxable },
