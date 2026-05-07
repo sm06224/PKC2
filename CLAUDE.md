@@ -171,3 +171,58 @@ PKC2 は 2026-04-25 以降 **User + Claude の 2 名体制**(ChatGPT 統括役�
 **PR 作成前のセルフチェックでは `npm run test:smoke` を必ず実行**(src / tests / dist / build / adapter / features を触る PR は必須、docs-only PR は省略可)。Playwright smoke は実ブラウザでの視覚レイアウト確認も兼ねるため、CI green を待つ前に手元で見つけられる失敗を pre-flight で潰す。
 
 **Merge 自体は Claude が実行しない**。`mcp__github__merge_pull_request` は使用せず、CI green + audit 通過を確認後に User の判断に委ねる。
+
+## Wave 運用規律(2026-05-07 reform-2026-05 Phase 10、wave 10-9 の教訓)
+
+Wave 10-9 stabilization(122 commit / 100 PR / 2 日)で得られた運用教訓。「user が叩く前に Claude が先回りして潰す」を狙う構造規律。
+
+### 1. 1 wave あたりの PR 数は **30〜50 件** で打ち止め
+
+100 PR 溜めてからの一括 merge は **Δ6 着地事故**(stacked PR の base を retarget せず squash → 中間 branch に着地、main は変化なし)を引き起こす。30〜50 件溜まった時点で **下から sequential merge** して main を最新化、次 stack を再開。
+
+### 2. Stacked PR の squash merge は **base retarget が先**
+
+`gh pr merge <top> --squash` は **PR の現在の base** に merge する。stack の頂点 PR の base が中間 branch のままだと中間 branch に着地して main は更新されない。**top PR を main に squash する前に必ず base を main に付け替える**(GitHub UI の "Edit base branch" or `gh pr edit <num> --base main`)。
+
+### 3. 「既存問題」は通さない、必ず別 hotfix PR を立てる
+
+wave 中に「これは既存問題で本 wave 起源ではない」と判断したものは:
+- ❌ 「通す」(放置して wave に紛れ込ませる)→ CI で詰まる、後始末コストが膨らむ
+- ✅ **その場で別 hotfix PR を立てる**(scope は最小、`fix(<area>): pre-existing X 解消` で 1 commit)
+
+wave 10-9 では lint 2 件(U+3000 + features→adapter import)を「既存」として通した結果、wave 締め直後の CI で 100 件の bulk close 後に詰まり recovery PR を 2 本(#365 + INDEX 登録)足す羽目になった。**通さない、即剥がす**。
+
+### 4. Case matrix の最低件数を規約化
+
+Inline operation(キーボード入力 / 1 行 commit / state mutation 等)を加える PR では、**case matrix を最低 10 件以上 + user 提供ケースを必ず含める**。私は wave 10-9 中に「3 ケース」で OK と判断して user 報告(「具体ケース 3 件に根拠はあるのか?」)で 14 ケースに拡張させられた。最初から 10〜14 ケース matrix を default にする:
+
+| 軸 | 最低カバー |
+|----|----------|
+| 入力長 | 短 / 中 / 長 |
+| 文字種 | ASCII / CJK / 混在 / 絵文字 |
+| 構造 | 行頭 / 行中 / 行末 / indent / list marker |
+| エッジ | 空 / 1 文字 / 不正値 / 境界値 |
+
+### 5. visual parity test を **最低 1 件** 視覚機能 PR に必須
+
+`docs/development/visual-state-parity-testing.md` 既定の **`elementFromPoint` / `page.mouse.click(x, y)` で実 OS event 経由の assert** を、視覚を持つ feature(クリック / ホバー / ドラッグ / overlay)の PR で必ず 1 件以上添付。**vitest unit / happy-dom DOM だけで「test pass = ship」と判定するのは禁止**(reform-2026-05 §6 既定、Phase 10 で「最低 1 件」を数値規律化)。
+
+### 6. user の典型的な叩きを Claude が先回りして潰す
+
+wave 10-9 で頻発した user 指摘の傾向と先回り対応:
+
+| user 指摘パターン | Claude 側の先回り |
+|-----------------|-----------------|
+| 「ケース 3 件に根拠あるのか」 | §4 の matrix 10 件以上を default に |
+| 「視覚的に確認したか」 | §5 の visual parity test を必須化 |
+| 「想定未熟」 | user 提供ケースを必ず matrix に組み入れ + edge case を自発的に追加 |
+| 「動かない」 | `?pkc-debug=<feature>` URL flag overlay + Report dump 導線を機能ごとに用意(`debug-via-url-flag-protocol.md`)|
+| 「サブピクセル差を体感影響なしと判断」 | delta = 0 が ship 基準、computed pixel parity test で確認 |
+
+### 7. Doc orphan / dead-link は **作成と同時に登録**(後回し禁止)
+
+wave 締めで急いで作った doc を `docs/development/INDEX.md` 登録忘れ → CI `check:doc-orphans` で fail。`Write` で新 doc を作ったら **同 commit で INDEX への 1 行追加** を必須に。`doc-archival-discipline.md` §6.1 の register-each-orphan rule を厳守。
+
+### 8. user の疲弊は Claude の責任
+
+「鉄人レース」スタイル(納得まで叩き続ける)は user 側を疲弊させる。私が「疲れない」のを免罪符にせず、**叩かれる前に詰める精度** を上げるのが私の仕事。本 §1〜§7 を Claude が能動的に守り、user の叩き回数を減らす。叩かれてから直すのは妥協、叩かれる前に詰めるのが本筋。
