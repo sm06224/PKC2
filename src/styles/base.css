@@ -1784,6 +1784,13 @@
   object-fit: contain;
 }
 
+/* L-5(2026-05-07、wave-10-2 Phase 1):行頭 align prefix
+ * `||` / `|>` / `<|` を line 先頭に置くと paragraph 全体に text-align 適用。
+ * markdown-render が data-pkc-align 属性を p に付与、CSS でこれを読む。 */
+.pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
+.pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
+.pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+
 /* ── Markdown rendered body ── */
 .pkc-md-rendered {
   font-family: var(--font-body);
