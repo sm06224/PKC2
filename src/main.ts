@@ -602,16 +602,21 @@ async function boot(): Promise<void> {
       // Flags Protocol v1 (2026-05-03): refresh the runtime flag
       // registry's container snapshot so subsequent
       // `getRegisteredFlags()` calls reflect the new payload.
-      // defineFlag-captured values are still bound at module-import
-      // time (live-update would require reload) but the inspector UI
-      // re-resolves on each render and will surface the new source
-      // immediately.
       setContainerFlagSource(event.flags.values);
       // Phase 3a (2026-05-04): re-apply runtime UI scale multiplier
       // immediately after the flag registry is primed, so a flag
       // edit reflects in `--theme-scale` (and the rem cascade) on
       // the same dispatch tick — no waiting for the next render.
       applyThemeScale();
+      // PR-Δ29 (2026-05-07、user 報告「Galaxy / Venn の button caption が
+      // 即時に変わらない」):dispatcher は state listeners を event より
+      // 先に notify するため、SET_FLAG の state listener 実行時点では
+      // flag source がまだ古い値。renderer は graphGalaxyMode() の旧値で
+      // button text を出してしまう。FLAGS_CHANGED 直後に **再 render を
+      // microtask 経由で trigger** して新 flag 値を反映する。
+      queueMicrotask(() => {
+        render(dispatcher.getState(), root);
+      });
     }
   });
 

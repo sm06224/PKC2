@@ -233,6 +233,31 @@ test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', a
   expect(result.activeText).not.toBeNull();
 });
 
+test('D-16 Galaxy/Venn toggle button caption updates immediately', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seedManyEntries(page);
+  const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]').first();
+  const tbox = await tab.boundingBox();
+  if (!tbox) throw new Error('graph tab missing');
+  await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
+  await page.locator('[data-pkc-region="graph-canvas"]').waitFor();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+
+  // Galaxy
+  const galBefore = await page.locator('[data-pkc-action="toggle-graph-galaxy-mode"]').first().textContent();
+  await page.locator('[data-pkc-action="toggle-graph-galaxy-mode"]').first().click();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+  const galAfter = await page.locator('[data-pkc-action="toggle-graph-galaxy-mode"]').first().textContent();
+  console.log('D-16 Galaxy before:', JSON.stringify(galBefore), 'after:', JSON.stringify(galAfter));
+
+  // Venn
+  const venBefore = await page.locator('[data-pkc-action="toggle-graph-venn-grouping-mode"]').first().textContent();
+  await page.locator('[data-pkc-action="toggle-graph-venn-grouping-mode"]').first().click();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+  const venAfter = await page.locator('[data-pkc-action="toggle-graph-venn-grouping-mode"]').first().textContent();
+  console.log('D-16 Venn before:', JSON.stringify(venBefore), 'after:', JSON.stringify(venAfter));
+});
+
 test('D-15 navigation breadcrumb Detail→Filer→Detail→Filer flow', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seedManyEntries(page);
