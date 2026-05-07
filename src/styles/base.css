@@ -1784,6 +1784,29 @@
   object-fit: contain;
 }
 
+/* L-2(2026-05-07、wave-10-2 Phase 1):Inline 修飾(highlight / ruby / em-dot)
+ * - <mark> highlight:既存 browser default + theme 対応 background
+ * - <ruby><rt>:browser default で OK、補助 styling のみ
+ * - <em class="pkc-em-dot">:CSS text-emphasis で日本語の圏点を表現 */
+.pkc-md-rendered mark {
+  background: var(--c-mark-bg, #fff59d);
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 2px;
+}
+.pkc-md-rendered ruby rt {
+  font-size: 0.6em;
+  color: var(--c-fg-muted, #6b7280);
+}
+.pkc-md-rendered em.pkc-em-dot {
+  font-style: normal;
+  /* 日本語の圏点(傍点) — modern browser support */
+  -webkit-text-emphasis: dot;
+  text-emphasis: dot;
+  -webkit-text-emphasis-position: over right;
+  text-emphasis-position: over right;
+}
+
 /* ── Markdown rendered body ── */
 .pkc-md-rendered {
   font-family: var(--font-body);
