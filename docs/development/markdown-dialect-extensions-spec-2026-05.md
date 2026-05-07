@@ -911,68 +911,88 @@ export:
 
 ---
 
-## 10. 段階導入(Phase 分割)
+## 10. 段階導入(Phase 分割、**2026-05-07 update:defer 反映**)
 
-### Phase 1 — Light(PR ~30-150 LOC、syntax 衝突小)
+**2026-05-07 user 判断**:具体ユースケース未確定の syntax / embed 系は defer(§11 参照)。Phase 1 / 2 は **明確な use case がある記法のみ** で構成、Phase 3 は IR 確定 / archetype 拡張等の前提待ち。
 
-| 順 | ID | 内容 |
-|----|-----|------|
-| L-1 | C | Section break(`+++` + role minimum:auto / cover / body) |
-| L-2 | G | Inline 修飾(`==` highlight / `[[ruby:` / `[[em:`) |
-| L-3 | D | Blockquote 図形化(`>` / `>>` / `>>>`) |
-| L-4 | U | Comments(`%%` / `%%%`) |
-| L-5 | Y | 行頭 align prefix(`\|\|` / `\|>` / `<\|`) |
-| L-6 | Z(inline) | 簡易 inline(`:text:attrs:`) |
-| L-7 | V(基本) | 図 / 表 caption + 自動採番(`:::figure` + `[@id]`) |
+### Phase 1 — Light(PR ~30-150 LOC、syntax 衝突小、use case 明確)
+
+| 順 | ID | 内容 | use case 例 |
+|----|-----|------|------------|
+| L-1 | C | Section break(`+++ {role=cover/section/...}` 基本 role のみ、attrs syntax fix) | book / report / slide でページ区切り |
+| L-2 | G | Inline 修飾(`==` highlight / `[[ruby:` / `[[em:` 圏点) | 強調 / ふりがな / 圏点 |
+| L-3 | D(部分) | Blockquote 通常 quote 強化(`>` のみ。`>>` `>>>` は defer) | 標準的な引用 |
+| L-4 | U | Comments(`%%` inline / `%%%` block) | TODO メモ、reviewer notes |
+| L-5 | Y | 行頭 align prefix(`\|\|` / `\|>` / `<\|`、段落全体適用) | 中央 / 右寄せ |
+| L-6 | Z(inline) | 簡易 inline(`:text:attrs:`、完全順不同 vocabulary) | 短い色付け / 強調 |
+| L-7 | V(基本) | 図 / 表 caption + 自動採番(`:::figure` + `[@id]`) | レポート / 学術 |
 
 → 7 PR、~1 週間目安。
 
-### Phase 2 — Medium(PR ~150-500 LOC、parser + render 拡張)
+### Phase 2 — Medium(PR ~150-500 LOC、parser + render 拡張、use case 明確)
 
-| 順 | ID | 内容 |
-|----|-----|------|
-| M-1 | A | Backmatter parse + IR 取込 |
-| M-2 | B | Heading level → semantic role mapping(template_kind) |
-| M-3 | E | CSV cell 書式(型注釈 row) |
-| M-4 | H | 自己 doc block ref(implicit + explicit) |
-| M-5 | J | 暗黙ラベル(heading path / term slug) |
-| M-6 | O-1/2 | Orientation / margins per section |
-| M-7 | T | Conditional content(`:::if`) |
-| M-8 | W | Variables / macros(展開 + recursion guard) |
-| M-9 | Z(block) | 簡易 block(`::: <attrs>`) |
-| M-10 | S | 修飾の行継続(YAML attrs / multi-line) |
+| 順 | ID | 内容 | use case 例 |
+|----|-----|------|------------|
+| M-1 | A | Backmatter parse + IR 取込 | bibliography / slide_notes |
+| M-2 | B | Heading level → semantic role mapping(template_kind) | book/report/slide で章節項対応 |
+| M-3 | E | CSV cell 書式(型注釈 row) | Word/PPT export で表のセル書式に直訳 |
+| M-4 | J | 暗黙ラベル(heading path / term slug) | 自動アンカー、navigate URL fragment |
+| M-5 | O-1/2 | Orientation / margins per section | 印刷物 / 横長表 |
+| M-6 | T | Conditional content(`:::if{format=...}`) | 1 source 多 audience |
+| M-7 | W(基本) | Variables `{{vars.x}}`(frontmatter 値展開、render 時) | プロジェクト名 / 日付の DRY |
+| M-8 | Z(block) | 簡易 block(`::: <attrs>`、完全順不同) | 短い装飾 block |
+| M-9 | S(基本) | 修飾の行継続(`:::block` の YAML attrs multi-line) | 長 attrs を読みやすく |
+| M-10 | I(部分) | 用語定義 + glossary + lint(index は defer) | 用語管理 / 表記揺らぎ警告 |
+| M-11 | slash | `/pkcXXXX` snippet 中核 20 種(`/pkccenter` 等) | 入力支援 |
 
-→ 10 PR、~2-3 週間目安。
+→ 11 PR、~2-3 週間目安。
 
-### Phase 3 — Heavy(PR ~500+ LOC、spec sub-doc 必要)
+### Phase 3 — Heavy(PR ~500+ LOC、別 wave 連携 / 前提あり)
 
-| 順 | ID | 内容 |
-|----|-----|------|
-| H-1 | I | 用語定義 + glossary + index + lint(全部入り) |
-| H-2 | L | 部分 export 名前解決(4 layer) |
-| H-3 | M | hover preview(editor UX) |
-| H-4 | O-3/4 | Header/footer + variable system |
-| H-5 | O-5 | ページ番号 制御(roman / restart / format) |
-| H-6 | X | Track changes(`::ins` / `::del` + reviewer) |
-| H-7 | K | autocomplete engine(IR 連動) |
-| H-8 | F | Spreadsheet embed(interactive、要 10-4 連携) |
-| H-9 | slash | `/pkcXXXX` 全 20+ snippet 一式 |
-| H-10 | format export | HTML / Word / PPT / PDF への射影 engine(別 wave 候補) |
+| 順 | ID | 内容 | 前提 |
+|----|-----|------|------|
+| H-1 | I(全部入り) | 用語 index 自動生成 + container index 拡張 | 用途実例蓄積後 |
+| H-2 | M | hover preview(editor UX) | autocomplete engine が先 |
+| H-3 | O-3/4 | Header/footer + 標準変数システム | print export 実装が先 |
+| H-4 | O-5 | ページ番号 制御(roman / restart / format) | 同上 |
+| H-5 | X | Track changes(`::ins` / `::del`) | 共同編集機能の要望が出てから |
+| H-6 | K | autocomplete engine(IR 連動) | 10-3 IR 確定後 |
+| H-7 | format export engine | HTML / Word / PPT / PDF 射影 | 10-3 IR + 10-5 PKC-extension 連携 |
 
-→ 10+ PR、~4-6 週間目安。Phase 3 の H-8 / H-10 は別 wave 連携(10-4 / 10-3 IR / 10-5 PKC-extension)。
+→ 7 PR、~4-6 週間目安。
 
 ### 段階導入の理由
 
-- Phase 1 は user の手応え重視(視覚的 win + Quick Win wave のリズム継承)
-- Phase 2 で IR 連動の基盤が完成(M-4 / M-5 / M-8 が IR 必要)
-- Phase 3 は IR 確定が前提、10-3 IR Q&A wave と並走
+- **Phase 1** は user の手応え重視(視覚的 win + Quick Win wave のリズム継承)+ syntax 衝突懸念が低い項目のみ
+- **Phase 2** で IR 連動の基盤が完成(M-2 / M-4 / M-7 が IR 必要)
+- **Phase 3** は IR 確定 / 別 wave 連携が前提、10-3 IR Q&A wave と並走
 - Heavy 系は spec sub-doc を別途起こす(本 spec が overflow しないよう分離)
+
+### Defer 一覧(§11 参照)
+
+Phase 1〜3 から外した項目:
+
+- §3.2 自己 doc / cross-entry の **embed**(`![](#id)` / `[entry:lid#id]{embed=true}`)→ 既存 link で代替
+- §3.6 Macros(`{{macros.x}}` block 展開)→ Variables 基本のみ着地、macro は具体要望待ち
+- §3.7 Track changes(`::ins`/`::del`) — 共同編集要望待ち、Phase 3 候補のまま
+- §5.2 Spreadsheet entry embed(live=true / values-only)→ 10-4 archetype 着地後
+- §3.5 部分 export 名前解決(4 layer / shadow_references)→ embed defer に伴い不要
+- §4.2 Blockquote の `>>` `>>>` 段階意味付け → 標準 `>` のみ Phase 1、段階は具体要望待ち
+- §1.4 S-1 Heading attrs 多行化 / S-3 inline 改行継続 → 単一行で当面足りる、要望待ち
 
 ---
 
-## 11. 表記検討事項(open questions、user 議論待ち)
+## 11. 表記検討事項(open questions、**deferred** until 具体ユースケース 出現)
 
-実装前に user 合意が必要な syntax / semantic 決定事項:
+**2026-05-07 user 判断**:syntax 詳細を議論しても具体ユースケースが浮かばない領域は **先送り**。本書では reference として残すが、**Phase 1 / 2 の実装範囲には含めない**。実際の使用場面で「ここの記法が無いと困る」という pain が出てから再 open する。
+
+> User direction(2026-05-07):
+> > 表記検討している分に関しては先送りにしないか？ユースケースが浮かばない。
+> > 埋め込みに関しては既存の機能もあるので一旦は保留でいい気がする。
+
+### 11.1 Deferred items + 再 open trigger
+
+実装前に user 合意が必要な syntax / semantic 決定事項(現時点では使用ケース未確定、defer):
 
 ### OQ-1. `+++` の attrs 表記方法
 
@@ -1061,6 +1081,40 @@ macros:
 - (iii) 単純 textual replace で再帰なし(non-Turing-complete)
 
 私推奨:**(i)**(柔軟 + 安全、tooling 簡単)。
+
+### 11.2 埋め込み(transclude / embed)関連 — **deferred、既存機能で代替**
+
+**2026-05-07 user 判断**:既存の `[entry:lid]` link / `![asset:key]` asset embed / container 内 entry 参照で当面足りる。新 syntax の embed は具体ユースケース待ち。
+
+- §3.2 自己 doc transclusion `![](#id)`(同 doc 内ブロックの全文展開)— defer
+- §3.2 cross-entry block embed `[entry:lid#thesis-1]{embed=true}` — defer
+- §3.6 Variables / macros の `{{macros.x}}` block 展開 — **基本変数 `{{vars.x}}` のみ Phase 2 維持、macro は defer**
+- §5.2 Spreadsheet entry embed(`![](entry:budget-2026){live=true}`)— defer(10-4 wave 後に再評価)
+- §11 OQ-8 shadow_references serialization — defer(§3.2 cross-entry embed の defer に伴い不要)
+
+**再 open trigger**:
+- (a) 「同 doc 内で同じ block を 2 箇所以上に出したい」要望が出る → §3.2 self-transclude を再評価
+- (b) Word / PPT export で「他 entry の内容を本文中に展開したい」要望が出る → cross-entry embed を再評価
+- (c) 10-4 spreadsheet archetype 着地後、live 数値の文中埋め込み要望 → §5.2 を再評価
+- (d) macro 文字列繰り返しの DRY 化要望 → §3.6 macro 部分を再評価
+
+### 11.3 Deferred な OQ 一覧(参考保持)
+
+OQ-1 〜 OQ-9 の中で具体ユースケース未確定なもの:
+
+| OQ | 状態 |
+|----|------|
+| OQ-1 `+++` attrs 表記 | Phase 1 では `{role=cover}` 形のみ着地、他は defer(具体ユースケース待ち) |
+| OQ-2 簡易 block / inline attrs 順序 | **Phase 1 で確定**(user 提案通り完全順不同) |
+| OQ-3 行頭 align 適用範囲 | **Phase 1 で確定**(段落全体、user 推奨通り) |
+| OQ-4 Inline `:` 衝突回避 | **Phase 1 で確定**(spec 固定 vocabulary)|
+| OQ-5 Blockquote `>` 段階 | defer(`>` のみ Phase 1、`>>` `>>>` は具体ユースケース待ち) |
+| OQ-6 Variables 展開 timing | **Phase 2 で確定**(render 時) |
+| OQ-7 Special token 優先順位 | **Phase 1 / 2 で個別 token 着地時に parse rule 確定**(まとめての議論不要) |
+| OQ-8 shadow_references serialization | defer(11.2 embed defer に伴い不要) |
+| OQ-9 Macro cycle detection | defer(macro 自体が defer なので不要) |
+
+**Phase 1 / 2 で着地する 4 件(OQ-2/3/4/6)以外は全部 defer**。
 
 ---
 
