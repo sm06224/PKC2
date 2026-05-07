@@ -1826,6 +1826,8 @@
 }
 .pkc-md-rendered .pkc-fig-ref:hover {
   text-decoration: underline;
+}
+
 /* L-1(2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`)
  * `<hr class="pkc-section-break" data-pkc-role="...">` に展開、role 別 styling。
  * Word/PPT/PDF export engine は data-pkc-role を消費して page break /
