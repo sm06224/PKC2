@@ -1046,6 +1046,9 @@ function preprocessAlignPrefix(source: string): {
   let currentAlign: AlignKind | null = null;
   // Detect prefix at line start. `||` `|>` `<|` followed by optional space.
   const prefixRe = /^(\|\||\|>|<\|)(?:\s)?(.*)$/;
+  // alignMap は **OUTPUT line index** に対する map(2026-05-07 hotfix で
+  // input → output index へ移行)。prefix 行は前後で paragraph 分離されるため、
+  // `breaks: true` で連続行が 1 paragraph に merge される問題を回避する。
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
@@ -1072,8 +1075,17 @@ function preprocessAlignPrefix(source: string): {
       const sym = m[1]!;
       const rest = m[2] ?? '';
       const align: AlignKind = sym === '||' ? 'center' : sym === '|>' ? 'right' : 'left';
+      // **重要**:prefix 行は前段落から切り離して新 paragraph にする。
+      // `breaks: true` で `\n` が `<br>` になるため、前行が非空だと markdown-it
+      // が同 paragraph に merge してしまい、前行の align だけが効く bug が発生
+      // していた(2026-05-07、user 報告)。空行を挿入して強制的に別段落化。
+      const prevOut = out.length > 0 ? out[out.length - 1]! : '';
+      if (prevOut.trim() !== '') {
+        out.push('');
+      }
+      const outIdx = out.length;
       currentAlign = align;
-      alignMap.set(i, align);
+      alignMap.set(outIdx, align);
       out.push(rest);
       continue;
     }
@@ -1084,7 +1096,8 @@ function preprocessAlignPrefix(source: string): {
       continue;
     }
     if (currentAlign) {
-      alignMap.set(i, currentAlign);
+      const outIdx = out.length;
+      alignMap.set(outIdx, currentAlign);
     }
     out.push(line);
   }
@@ -1216,6 +1229,15 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^#{1,6}\s|\*\*|__|\*[^*\s]|_[^_\s]|`[^`]+`|^\d+\.\s|^[-*+]\s|^>\s|^```|^---$|^[*]{3,}$|\[.+\]\(.+\)|^\|.+\||^[-*+]\s+\[[ xX]\]/m.test(text)) return true;
   // FI-08.x: bare URLs should flow through markdown-it linkify (D-FB1=B).
   if (/\b(?:https?|ftp):\/\/[^\s<>]/i.test(text)) return true;
+  // wave-10-2 Phase 1 dialect extensions: L-1 / L-2 / L-3 / L-4 / L-5 / L-7 を
+  // markdown render に通す。これがないと「`||` 等だけ」の body が plain-text 経路に
+  // 流れて L-5 の align prefix も applied されない(2026-05-07 user 報告)。
+  if (/^(?:\|\||\|>|<\|)/m.test(text)) return true;        // L-5 align prefix
+  if (/^\+\+\+\s*(?:\{[^}]*\})?\s*$/m.test(text)) return true; // L-1 section break
+  if (/==[^=]+==|\[\[(?:ruby|em):/.test(text)) return true;     // L-2 highlight / ruby / em-dot
+  if (/^:::figure(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure block
+  if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
+  if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
   return false;
 }
 

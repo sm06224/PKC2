@@ -122,6 +122,17 @@ describe('L-5: 行頭 align prefix', () => {
     expect(html).not.toContain('data-pkc-align');
   });
 
+  it('連続する prefix 行(空行なし)は **異 align ごとに別 paragraph** として render される(2026-05-07 hotfix)', () => {
+    const src = `|| 中央寄せ
+<| 左寄せ
+|> 右寄せ`;
+    const html = renderMarkdown(src);
+    // 各 prefix 行は前後で paragraph 分離される
+    expect(html).toContain('<p data-pkc-align="center">中央寄せ</p>');
+    expect(html).toContain('<p data-pkc-align="left">左寄せ</p>');
+    expect(html).toContain('<p data-pkc-align="right">右寄せ</p>');
+  });
+
   it('全 13 ケース matrix:文字種 / 構造 / 境界値', () => {
     const cases: { input: string; expectAlign?: 'center' | 'right' | 'left' | null; describe: string }[] = [
       { input: '|| ASCII', expectAlign: 'center', describe: 'ASCII center' },
@@ -135,7 +146,7 @@ describe('L-5: 行頭 align prefix', () => {
       { input: '   || インデント前置', expectAlign: null, describe: 'leading whitespace は対象外' },
       { input: '|||| 4 連続', expectAlign: 'center', describe: '|| が 2 連続後に内容' },
       { input: '|| line1\n|| line2\n|| line3', expectAlign: 'center', describe: '全行に prefix(冗長)' },
-      { input: 'normal\n|| then center', expectAlign: null, describe: '途中行の prefix は段落全体には影響しない(段落 start のみが trigger)' },
+      { input: 'normal\n|| then center', expectAlign: 'center', describe: '途中行の prefix は新 paragraph として center 化(2026-05-07 hotfix で前後を強制分離)' },
       { input: '|| start\n\n通常', expectAlign: 'center', describe: '空行で reset、後続は通常' },
     ];
     for (const c of cases) {
