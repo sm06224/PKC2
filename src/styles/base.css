@@ -5532,12 +5532,28 @@ mark.pkc-search-mark {
   padding: var(--space-1-5, 0.375rem) var(--space-2, 0.5rem);
   border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
   vertical-align: middle;
-  /* PR-SSS (2026-05-07、修正指示7 #3):table-layout: fixed と
+  /* PR-Δ2 (2026-05-07、修正指示7 #3):table-layout: fixed と
    * 連動した cell 単位の overflow trim。tags cell は inline-block
    * の chip 列でも同様に枠から溢れない。 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* PR-Δ7 (2026-05-07、user 報告「ファイラの名前列が行ずれする件は
+   * 直っていない。長大な名前の処理かなんかでズレてんじゃない？
+   * あるいはフォントのせい」):JP / ASCII 混在 + emoji + ellipsis '…'
+   * のフォント混在で各 row の computed line-height が揺らぎ、視覚的な
+   * 行ズレ(sub-pixel + descender 差で最大 1〜2px)が出ていた。
+   * `line-height` を整数倍 + `box-sizing: border-box` + `height` 固定
+   * で全 cell の上端 / 下端を完全揃え。 */
+  line-height: 1.5;
+  height: calc(1.5em + var(--space-1-5, 0.375rem) * 2);
+  box-sizing: border-box;
+}
+/* PR-Δ7:icon と title 共通の line-height を上書きして cell 内 baseline
+   を揃える。emoji + ellipsis の fallback font rendering 差を吸収。 */
+.pkc-filer-row-icon,
+.pkc-filer-row-title {
+  line-height: 1.5;
 }
 
 .pkc-filer-cell-name {

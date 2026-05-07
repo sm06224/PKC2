@@ -233,6 +233,108 @@ test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', a
   expect(result.activeText).not.toBeNull();
 });
 
+test('D-09 filer row alignment with mixed length names (regression)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  const shell = page.locator('#pkc-root');
+  await shell.waitFor();
+
+  // Seed entries with mix of very-long names + short names + special chars
+  // to expose any row-height inconsistency caused by truncation / fallback
+  // font metrics.
+  await page.evaluate(async () => {
+    const entries: Array<{
+      lid: string; title: string; body: string; archetype: string;
+      created_at: string; updated_at: string; tags?: string[];
+    }> = [
+      { lid: 'short', title: 'Short', body: '', archetype: 'text', created_at: '2025-01-01T00:00:00Z', updated_at: '2025-01-01T00:00:00Z' },
+      { lid: 'long', title: '非常に長いエントリ名で50文字を超えてtruncateMiddleの分岐が発火する想定のテストエントリ', body: '', archetype: 'text', created_at: '2025-02-01T00:00:00Z', updated_at: '2025-02-01T00:00:00Z' },
+      { lid: 'medium', title: 'Medium length name', body: '', archetype: 'todo', created_at: '2025-03-01T00:00:00Z', updated_at: '2025-03-01T00:00:00Z' },
+      { lid: 'longer', title: 'これも長めのタイトルでエントリーの確認用にちょうど48文字くらいです、はい', body: '', archetype: 'text', created_at: '2025-04-01T00:00:00Z', updated_at: '2025-04-01T00:00:00Z' },
+      { lid: 'tagged', title: 'Tagged short', body: '', archetype: 'text', created_at: '2025-05-01T00:00:00Z', updated_at: '2025-05-01T00:00:00Z', tags: ['一括テスト', 'foo', 'bar'] },
+      { lid: 'emoji', title: '🚀 Emoji prefix entry', body: '', archetype: 'text', created_at: '2025-06-01T00:00:00Z', updated_at: '2025-06-01T00:00:00Z' },
+      { lid: 'narrow', title: 'a', body: '', archetype: 'text', created_at: '2025-07-01T00:00:00Z', updated_at: '2025-07-01T00:00:00Z' },
+      { lid: 'cjk', title: '日本語のみの短いタイトル', body: '', archetype: 'textlog', created_at: '2025-08-01T00:00:00Z', updated_at: '2025-08-01T00:00:00Z' },
+    ];
+    const cont = {
+      meta: {
+        container_id: 'diag-row-align',
+        schema_version: 1,
+        title: 'Row align test',
+        created_at: '2026-05-07T00:00:00Z',
+        updated_at: '2026-05-07T00:00:00Z',
+      },
+      entries, relations: [], revisions: [], assets: {},
+    };
+    await new Promise<void>((res, rej) => {
+      const req = indexedDB.open('pkc2', 2);
+      req.onerror = (): void => rej(req.error);
+      req.onsuccess = (): void => {
+        const db = req.result;
+        const tx = db.transaction(['containers', 'assets'], 'readwrite');
+        tx.objectStore('containers').clear();
+        tx.objectStore('assets').clear();
+        tx.objectStore('containers').put(cont, cont.meta.container_id);
+        tx.objectStore('containers').put(cont.meta.container_id, '__default__');
+        tx.oncomplete = (): void => { db.close(); res(); };
+        tx.onerror = (): void => rej(tx.error);
+      };
+    });
+  });
+  await page.reload();
+  await shell.waitFor();
+
+  // Switch to filer view.
+  const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]').first();
+  await filerTab.waitFor();
+  const ftbox = await filerTab.boundingBox();
+  if (!ftbox) throw new Error('filer tab missing');
+  await page.mouse.click(ftbox.x + ftbox.width / 2, ftbox.y + ftbox.height / 2);
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+
+  // Capture per-row Y / height + per-cell heights for alignment audit.
+  const audit = await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>(
+      'tr.pkc-filer-row[data-pkc-lid]',
+    ));
+    return rows.map((r) => {
+      const rect = r.getBoundingClientRect();
+      const cells = Array.from(r.querySelectorAll<HTMLTableCellElement>('td')).map((td) => {
+        const tdRect = td.getBoundingClientRect();
+        // Inner content height (e.g. title span, icon).
+        const inner = td.firstElementChild;
+        const innerRect = inner instanceof HTMLElement ? inner.getBoundingClientRect() : null;
+        return {
+          cls: td.className,
+          height: tdRect.height,
+          y: tdRect.y,
+          innerHeight: innerRect?.height ?? 0,
+          innerY: innerRect?.y ?? 0,
+        };
+      });
+      return {
+        lid: r.getAttribute('data-pkc-lid'),
+        y: rect.y,
+        height: rect.height,
+        cells,
+      };
+    });
+  });
+  console.log('D-09 row alignment audit:', JSON.stringify(audit, null, 2));
+
+  await page.screenshot({
+    path: 'test-results/diag-2026-05-07/D-09-filer-row-alignment.png',
+    fullPage: false,
+  });
+
+  // Auto-detect row stride inconsistency.
+  const heights = audit.map((r) => r.height);
+  const minH = Math.min(...heights);
+  const maxH = Math.max(...heights);
+  const heightDelta = maxH - minH;
+  console.log('D-09 row height min/max/delta:', minH, maxH, heightDelta);
+});
+
 test('D-08 filer bulk tag/color application preserves other fields (PR-Δ5)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seedManyEntries(page);
