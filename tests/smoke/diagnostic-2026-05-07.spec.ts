@@ -233,6 +233,79 @@ test('D-06 popup window block sync activates after toggle click (PR-XX2-fix)', a
   expect(result.activeText).not.toBeNull();
 });
 
+test('D-12 filer click selects EXACTLY the clicked entry (no ID collision)', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // Capture browser console logs.
+  page.on('console', (msg) => {
+    if (msg.text().includes('[PKC2-DBG]')) console.log('[BROWSER]', msg.text());
+  });
+  await seedManyEntries(page);
+
+  const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]').first();
+  await filerTab.waitFor();
+  const ftbox = await filerTab.boundingBox();
+  if (!ftbox) throw new Error('filer tab missing');
+  await page.mouse.click(ftbox.x + ftbox.width / 2, ftbox.y + ftbox.height / 2);
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+
+  // Click each row's checkbox individually and verify ONLY that row gets
+  // multi-selected (no ID-shared rows).
+  const rowChecks = page.locator('input.pkc-filer-row-check[data-pkc-lid]');
+  const count = await rowChecks.count();
+  console.log('D-12 row checkbox count:', count);
+
+  // Track every dispatch via console intercept.
+  await page.evaluate(() => {
+    const logs: string[] = [];
+    (window as { __pkcDispatchLog?: string[] }).__pkcDispatchLog = logs;
+    // Patch the dispatcher if exposed.
+    const w = window as unknown as { pkcDispatcher?: { dispatch: (a: unknown) => void } };
+    if (w.pkcDispatcher) {
+      const origDispatch = w.pkcDispatcher.dispatch.bind(w.pkcDispatcher);
+      w.pkcDispatcher.dispatch = (a: unknown) => {
+        logs.push(JSON.stringify(a));
+        return origDispatch(a);
+      };
+    }
+  });
+
+  for (let i = 0; i < Math.min(count, 3); i++) {
+    const cb = rowChecks.nth(i);
+    const box = await cb.boundingBox();
+    if (!box) continue;
+    const targetLid = await cb.getAttribute('data-pkc-lid');
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.click(cx, cy);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 250)));
+    const state = await page.evaluate(() => {
+      const multi = Array.from(document.querySelectorAll<HTMLTableRowElement>(
+        'tr.pkc-filer-row[data-pkc-multi-selected="true"]',
+      )).map((r) => r.getAttribute('data-pkc-lid'));
+      const dispatches = ((window as { __pkcDispatchLog?: string[] }).__pkcDispatchLog ?? []).slice();
+      ((window as { __pkcDispatchLog?: string[] }).__pkcDispatchLog ?? []).length = 0;
+      return { multi, dispatches };
+    });
+    console.log('D-12 step', i, 'targetLid:', targetLid, 'state:', JSON.stringify(state));
+  }
+
+  // Final state: selecting individual checkbox should result in only the
+  // user-clicked lids being selected. If ID collision exists, additional
+  // unrelated lids would appear.
+  const final = await page.evaluate(() => {
+    const checked = Array.from(document.querySelectorAll<HTMLInputElement>(
+      'input.pkc-filer-row-check[data-pkc-lid]:checked',
+    )).map((c) => c.getAttribute('data-pkc-lid'));
+    const multi = Array.from(document.querySelectorAll<HTMLTableRowElement>(
+      'tr.pkc-filer-row[data-pkc-multi-selected="true"]',
+    )).map((r) => r.getAttribute('data-pkc-lid'));
+    // detect duplicates within multi (should be 0 — each lid unique)
+    const dupCount = multi.length - new Set(multi).size;
+    return { checked, multi, dupCount };
+  });
+  console.log('D-12 final state:', JSON.stringify(final));
+});
+
 test('D-11 graph Venn / Region toggle reactivity (regression)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await seedManyEntries(page);

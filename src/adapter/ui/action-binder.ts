@@ -3103,10 +3103,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       case 'filer-toggle-row-multi-select': {
         // PR-Δ3 (2026-05-07、修正指示9):filer 行 checkbox。
-        // sidebar の Ctrl+click と同じ semantics、checkbox UX で
-        // discoverability を上げる。
+        // PR-Δ9:stopImmediatePropagation で同一 element 上の後続 click
+        // handler 実行も止める(行の select-entry 誤発火 path を塞ぐ)。
         e.preventDefault();
         e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
         const rowLid = target.getAttribute('data-pkc-lid');
         if (rowLid) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: rowLid });

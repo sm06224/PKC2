@@ -2511,9 +2511,12 @@ describe('sort', () => {
   });
 
   it('TOGGLE_MULTI_SELECT adds lid and includes anchor', () => {
+    // PR-Δ9 (2026-05-07):TOGGLE_MULTI_SELECT は selectedLid を更新
+    // しなくなった(filer view で text entry を multi-select すると
+    // scope が壊れる bug の修正)。selectedLid は SELECT_ENTRY が責務。
     const s: AppState = { ...readyState(), selectedLid: 'e1', multiSelectedLids: [] };
     const { state } = reduce(s, { type: 'TOGGLE_MULTI_SELECT', lid: 'e2' });
-    expect(state.selectedLid).toBe('e2');
+    expect(state.selectedLid).toBe('e1'); // unchanged after Δ9
     expect(state.multiSelectedLids).toContain('e1');
     expect(state.multiSelectedLids).toContain('e2');
   });

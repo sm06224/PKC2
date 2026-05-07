@@ -3296,6 +3296,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'TOGGLE_MULTI_SELECT': {
+      // PR-Δ9 (2026-05-07、user 報告「ファイラの選択アルゴリズムどう
+      // なってる?同じID とかをみなして不要にマルチ選択されてない?」):
+      // 旧実装は `selectedLid: action.lid` も更新していたため、filer
+      // view で text entry の checkbox を click すると selectedLid が
+      // 移動 → filer scope 計算が selectedLid を見て scope 切替 →
+      // 表示 entries が 0 になり「選択が消えた」と見える bug が発生。
+      // 修正:multi-select toggle は **multi 集合のみ** を更新し、
+      // selectedLid には影響を与えない。主選択は SELECT_ENTRY が責務。
       const lids = [...state.multiSelectedLids];
       const idx = lids.indexOf(action.lid);
       if (idx >= 0) {
@@ -3303,11 +3311,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       } else {
         lids.push(action.lid);
       }
-      // Also include current selectedLid if not already
+      // Also include current selectedLid if not already (sidebar の Ctrl+
+      // click で「先に主選択中の entry も multi に組み込む」既存挙動)。
       if (state.selectedLid && !lids.includes(state.selectedLid)) {
         lids.unshift(state.selectedLid);
       }
-      const next: AppState = { ...state, selectedLid: action.lid, multiSelectedLids: lids };
+      const next: AppState = { ...state, multiSelectedLids: lids };
       return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids }] };
     }
     case 'SELECT_RANGE': {
