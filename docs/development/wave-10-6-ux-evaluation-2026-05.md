@@ -9,6 +9,21 @@ User direction:
 
 > 注:本 doc は user の確認支援用の一時メモです。実装後の見直し対象が出たら修正 PR の起点にしてください。実装に未反映の評価のみここに残し、修正完了したら削除する想定。
 
+## Resolution status(2026-05-07 更新)
+
+| ID | Status | 備考 |
+|----|--------|------|
+| U1 | 🟡 deferred | next wave で対応(Inventory toolbar 一体化)|
+| U2 | ✅ RESOLVED(Quick Win wave PR #368) | small-N graph fit-to-content、auto-fit zoom-IN cap 2.5x |
+| U3 | 🟡 deferred | folder.detail_as_filer = true default 化は要設計議論、別 wave |
+| **U4** | ✅ RESOLVED(PR-EE) | `カレント` 文字列削除済、breadcrumb で代替 |
+| **U5** | ✅ RESOLVED(本 wave) | `<optgroup>` で 4 group 整理 |
+| **U6** | ✅ RESOLVED(既存 confirm) | `action-binder.ts:1628` で confirm() 実装済 |
+| U7 | 🟡 low priority | i18n 議論先行、別 wave |
+| **U8** | ✅ RESOLVED(本 wave) | 括弧書き補足を削除、短 label に統一 |
+
+**残課題**:U1 / U3(設計議論)/ U7(i18n)。本 doc は U1 / U3 / U7 が解消されたら archive 候補。
+
 ---
 
 ## 高優先度の懸念(設計レベル)
@@ -60,7 +75,14 @@ User direction:
 
 ## 中優先度の懸念(機能の磨き込み)
 
-### U4 [小] `.` 行の archetype label 「カレント」の表現が独自すぎる
+### U4 [小] `.` 行の archetype label 「カレント」の表現が独自すぎる ✅ RESOLVED(PR-EE)
+
+**Status(2026-05-07)**:**Already resolved by PR-EE**(2026-05-06、`buildFilerNavCard / buildFilerNavRow` を削除、breadcrumb で代替)。コードベース全体に `カレント` 文字列なし。本 eval doc の screenshot は古い build を反映。
+
+---
+
+(以下 historical record、reference のみ:)
+
 
 **症状**:`M02-filer-explorer-empty.png` の `.` 行の 種類 列に「カレント」と表示。
 
@@ -68,7 +90,14 @@ User direction:
 
 **修正候補**:`.` 行 → `自身` 表示 / `..` 行 → `親` 表示 に統一 / または日本語ラベルを廃止して空欄(name 列の `.` `..` 表記だけで十分かも)。
 
-### U5 [小] 5 つ並ぶ subset profile select が長い
+### U5 [小] 5 つ並ぶ subset profile select が長い ✅ RESOLVED(2026-05-07、Quick Win wave)
+
+**Status(2026-05-07)**:**Resolved**。`<optgroup>` で 4 group(既定 / Layout / Catalogue / Query)に整理、各 option label の冗長な括弧説明(Amazon / 楽天 / 蔵書 等)を簡潔化。Graph option は PR-HHH で既に廃止済。`renderer.ts:7440-7484` 改修。
+
+---
+
+(以下 historical record、reference のみ:)
+
 
 **症状**:meta pane の "Filer 表示" select に 7 種(explorer / contact-sheet / book-base / video-base / novel-base / graph / inventory)が一列に並ぶ。
 
@@ -83,7 +112,14 @@ User direction:
 ```
 HTML の `<optgroup>` で実装可能。
 
-### U6 [小] Trash の「ゴミ箱を空にする」破壊的操作に確認なし
+### U6 [小] Trash の「ゴミ箱を空にする」破壊的操作に確認なし ✅ RESOLVED
+
+**Status(2026-05-07)**:**Already resolved**。`action-binder.ts:1628` で `confirm('ゴミ箱を空にしますか?\n削除済みエントリの全履歴が完全に削除され、復元できなくなります。')` の dialog が既に実装済。本 eval doc の screenshot は古い build を反映。
+
+---
+
+(以下 historical record、reference のみ:)
+
 
 **症状**:`M05-filer-trash.png` から推測 — 「ゴミ箱を空にする」ボタンは即発火型。
 
@@ -97,7 +133,14 @@ HTML の `<optgroup>` で実装可能。
 
 ローカライズしないと外国語を覚えるしかない。frontmatter で日本語キー対応を発見的に許容しているなら、frontmatter を `著者: 村上春樹` で書ける(YAML mini parser は対応済)旨を docs に明記すると良い。
 
-### U8 Graph mode select の label が長すぎ
+### U8 Graph mode select の label が長すぎ ✅ RESOLVED(2026-05-07、Quick Win wave)
+
+**Status(2026-05-07)**:**Resolved**。括弧書きの補足(`(structural + semantic)` / `(時系列接近性)`)を削除し、canonical 短 label に統一(`Relations` / `Color tags` / `Tag groups` / `Folder hierarchy` / `Time proximity`)。`renderer.ts:5944-5949` 改修。
+
+---
+
+(以下 historical record、reference のみ:)
+
 
 `Relations(structural + semantic)` のように補足が括弧書きで select に入っており、横にはみ出る。短く `Relations` `Color tags` `Tag groups` `Folder hierarchy` で十分(現在のコードは既に近い)。
 
