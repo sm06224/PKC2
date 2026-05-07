@@ -88,6 +88,13 @@ export interface GraphCanvasPayload {
    */
   nodeRevisions?: ReadonlyMap<string, readonly number[]>;
   /**
+   * PR-Δ13 (2026-05-07、user 報告「時系列の中で参照ラインが見えていない、
+   * どの更新時点でどの種別の参照を含むようになったのかわかればその時点で
+   * 参照ラインを引くべき」):lid → relations 配列。time-proximity mode で
+   * head node 同士を結ぶ参照ラインを描画(relation kind で色分け)。
+   */
+  nodeReferences?: ReadonlyMap<string, ReadonlyArray<{ to: string; kind: string }>>;
+  /**
    * PR-I G17 (2026-05-06):Venn-style グルーピング memberships。
    * ON のとき、各 node lid → 所属 group ids(folder ancestor lids + tag
    * names)の配列。draw 時に concentric translucent ring を node 周りに
@@ -668,12 +675,12 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
       if (!revs || revs.length === 0) continue;
       const p = payload.positions.get(lid);
       if (!p) continue;
-      // Connect main node to each revision dot (Git-commit-graph 風)。
+      // Connect main node (head, updated_at) to each revision dot
+      // and to created_at marker (trunk root). Git-commit-graph 風。
       for (const t of revs) {
         if (!Number.isFinite(t)) continue;
         const xRatio = (t - minT) / span;
         const x = padX + xRatio * usableW;
-        // Skip dots beyond current node's X (revisions should be earlier).
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
         ctx.lineTo(x, p.y);
@@ -683,6 +690,49 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
         ctx.fill();
       }
     }
+  }
+
+  // PR-Δ13 (2026-05-07):time-proximity 参照ライン。head node 間を結ぶ
+  // relation を、kind 別の色で描画。drawn AFTER revision trails so
+  // reference lines sit on top.
+  if (
+    payload.mode === 'time-proximity'
+    && payload.nodeReferences
+    && payload.nodeReferences.size > 0
+  ) {
+    ctx.lineWidth = 1.2 / view.scale;
+    ctx.globalAlpha = 0.7;
+    for (const [from, refs] of payload.nodeReferences) {
+      const a = payload.positions.get(from);
+      if (!a) continue;
+      for (const ref of refs) {
+        const b = payload.positions.get(ref.to);
+        if (!b) continue;
+        ctx.strokeStyle = relationColor(ref.kind, theme.graphEdge);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        // Arrow head at target (small triangle).
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 12) {
+          const ux = dx / len, uy = dy / len;
+          const ah = 6 / view.scale;
+          const aw = 3 / view.scale;
+          const tx = b.x - ux * 12;
+          const ty = b.y - uy * 12;
+          ctx.beginPath();
+          ctx.moveTo(tx + ux * ah, ty + uy * ah);
+          ctx.lineTo(tx - uy * aw, ty + ux * aw);
+          ctx.lineTo(tx + uy * aw, ty - ux * aw);
+          ctx.closePath();
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   // Region-select rect (drawn last so it's above everything).

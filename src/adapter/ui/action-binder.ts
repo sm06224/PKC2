@@ -3107,9 +3107,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'filer-toggle-row-multi-select': {
-        // PR-Δ3 (2026-05-07、修正指示9):filer 行 checkbox。
-        // PR-Δ9:stopImmediatePropagation で同一 element 上の後続 click
-        // handler 実行も止める(行の select-entry 誤発火 path を塞ぐ)。
+        // PR-Δ3 / Δ9 / Δ16:filer 行 checkbox は **明示的に押した lid
+        // のみ** を toggle(includeAnchor: false で sidebar selectedLid
+        // を auto 含めない)。Filer は sidebar と独立 domain。
         e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') {
@@ -3117,7 +3117,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         const rowLid = target.getAttribute('data-pkc-lid');
         if (rowLid) {
-          dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid: rowLid });
+          dispatcher.dispatch({
+            type: 'TOGGLE_MULTI_SELECT',
+            lid: rowLid,
+            includeAnchor: false,
+          });
         }
         break;
       }

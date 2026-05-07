@@ -1916,8 +1916,14 @@ if (useSplitEditor) {
     var rect = ta.getBoundingClientRect();
     var caretYInTextarea = padTop + line * lineH - ta.scrollTop;
     var caretYViewport = rect.top + caretYInTextarea;
-    /* clip to visible textarea region */
-    if (caretYInTextarea < 0 || caretYInTextarea > rect.height) {
+    /* PR-Δ12 v2 (2026-05-07、再修正):window viewport 絶対座標で hide
+       判定する。textarea 内 clip + viewport 絶対 clip の AND。
+       textarea が popup window 自身の scroll で off-screen に出ても
+       caret indicator は隠れる。 */
+    var winH = window.innerHeight || document.documentElement.clientHeight;
+    var inTextareaVisible = caretYInTextarea >= 0 && (caretYInTextarea + lineH) <= rect.height;
+    var inViewport = caretYViewport >= 0 && (caretYViewport + lineH) <= winH;
+    if (!inTextareaVisible || !inViewport) {
       el.style.display = 'none';
       return;
     }

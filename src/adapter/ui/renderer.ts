@@ -604,7 +604,20 @@ function scrollSelectedSidebarNodeIntoView(
     `[data-pkc-selected="true"][data-pkc-lid="${CSS.escape(state.selectedLid)}"]`,
   );
   if (!node) return;
-  node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // PR-Δ15 (2026-05-07、user 報告「エントリをクリックするとエントリが
+  // 震える動作をした後に全体の再描画ないし座標再設定が走っているように
+  // 感じる」):scrollIntoView は node が **viewport 完全内** にある場合
+  // でも僅か scroll する場合がある(sub-pixel 補正)。click 元の row は
+  // 定義により 100% visible なので、`scrollIntoView` を completely 包含
+  // 検知 + skip にして震動を撃退。partially clipped(切れている)時のみ
+  // scroll。
+  const sidebarRect = sidebar.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  const fullyInView = nodeRect.top >= sidebarRect.top
+    && nodeRect.bottom <= sidebarRect.bottom;
+  if (!fullyInView) {
+    node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
   root.dataset.pkcLastScrolledLid = state.selectedLid;
 }
 
@@ -5911,7 +5924,11 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   // 視覚的に zero-shot で読める。other modes は従来通り force layout。
   let sim;
   if (mode === 'time-proximity') {
-    sim = seedTimeProximityLayout(nodes, allEntries, width, height);
+    sim = seedTimeProximityLayout(
+      nodes, allEntries, width, height,
+      state.graphTimeRangeStart ?? null,
+      state.graphTimeRangeEnd ?? null,
+    );
   } else {
     sim = seedSimulation(nodes.map((n) => ({ id: n.id })), width, height);
     const iter = graphIterations();
@@ -5997,13 +6014,37 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     ...(mode === 'time-proximity' && state.container?.revisions
       ? {
           nodeRevisions: (() => {
+            // PR-Δ13:trunk root は created_at(entry の起源)、
+            // intermediate dots は revisions の created_at、head は
+            // entry の updated_at(node 自体の x 位置)。
+            // entry の updated_at は node 位置と同じなので追加しない。
+            // 配列は時系列降順(node 位置から後方延長で描画される)。
             const m = new Map<string, number[]>();
+            const entries = state.container?.entries ?? [];
+            for (const e of entries) {
+              const ct = Date.parse(e.created_at ?? '');
+              const ut = Date.parse(e.updated_at ?? '');
+              if (Number.isFinite(ct) && ct !== ut) {
+                m.set(e.lid, [ct]);
+              }
+            }
             for (const rev of state.container.revisions) {
               const t = Date.parse(rev.created_at ?? '');
               if (!Number.isFinite(t)) continue;
               const arr = m.get(rev.entry_lid) ?? [];
               arr.push(t);
               m.set(rev.entry_lid, arr);
+            }
+            return m;
+          })(),
+          // PR-Δ13:relations は head node 同士の参照ラインとして描画。
+          // 全 relations を pair で渡し、graph-canvas 側で line + arrow。
+          nodeReferences: (() => {
+            const m = new Map<string, Array<{ to: string; kind: string }>>();
+            for (const r of state.container?.relations ?? []) {
+              const arr = m.get(r.from) ?? [];
+              arr.push({ to: r.to, kind: r.kind });
+              m.set(r.from, arr);
             }
             return m;
           })(),
@@ -6075,33 +6116,42 @@ interface GraphNodeView {
 /**
  * Time-proximity layout (PR-D G8 — 時系列接近性).
  *
- * Force layout を bypass。entries の created_at で x 座標を線形配置:
- *   - 最古エントリ → x = padding
- *   - 最新エントリ → x = width - padding
- * y 座標は archetype を lane に分けて衝突を避ける。同じ archetype 内
- * では created_at で sort して順番に積む(deterministic、同一 input で
- * 必ず同一 layout)。
+ * PR-Δ13 (2026-05-07、user 報告「根がエントリというのは発想が逆。
+ * 今のエントリ=葉/花が成立するための根は最終更新側、または始端と終端」):
+ *   redesign。entry の x 座標 = `updated_at`(= 現在の "head"、Git の
+ *   trunk 先端)。`created_at` は origin marker として trunk 後方に。
+ *   created → 各 revision → updated は graph-canvas 側で line + dot で
+ *   描画(Δ6 の nodeRevisions payload を活用)。
  *
- * 結果として「左:古い / 右:新しい / 上下:archetype 別」というグリッド
- * 風配置になる。force layout のように毎レンダーで微妙に位置がずれる
- * 動きは無く、user は「同じ entry はいつも同じ場所」を期待できる。
+ * y 座標は archetype を lane に分けて衝突を避ける。同 archetype 内では
+ * 同 X bucket の node を 2D grid (Δ10) で展開して重なり回避。
+ *
+ * 結果:「左:古い trunk / 右:新しい head」、各 entry は head に置かれ、
+ * trunk の根(created_at)へ後方延長で revision dot が時系列に並ぶ。
  */
 function seedTimeProximityLayout(
   nodes: readonly GraphNodeView[],
   entries: readonly Entry[],
   width: number,
   height: number,
+  rangeStart?: number | null,
+  rangeEnd?: number | null,
 ): { id: string; x: number; y: number; vx: number; vy: number }[] {
   if (nodes.length === 0) return [];
-  const created = new Map<string, number>();
+  const headTime = new Map<string, number>();
   for (const e of entries) {
-    const t = Date.parse(e.created_at);
-    created.set(e.lid, Number.isFinite(t) ? t : 0);
+    const t = Date.parse(e.updated_at);
+    headTime.set(e.lid, Number.isFinite(t) ? t : 0);
   }
-  const ts = nodes.map((n) => created.get(n.id) ?? 0).filter((t) => t > 0);
-  const minT = ts.length > 0 ? Math.min(...ts) : 0;
-  const maxT = ts.length > 0 ? Math.max(...ts) : 1;
+  const ts = nodes.map((n) => headTime.get(n.id) ?? 0).filter((t) => t > 0);
+  const dataMinT = ts.length > 0 ? Math.min(...ts) : 0;
+  const dataMaxT = ts.length > 0 ? Math.max(...ts) : 1;
+  // PR-Δ13:user 指定 range があれば優先。なければ data の min/max。
+  const minT = typeof rangeStart === 'number' && Number.isFinite(rangeStart) ? rangeStart : dataMinT;
+  const maxT = typeof rangeEnd === 'number' && Number.isFinite(rangeEnd) ? rangeEnd : dataMaxT;
   const span = Math.max(1, maxT - minT);
+  // 古い created に対する alias 維持(関数末尾で利用するため)。
+  const created = headTime;
 
   // Bucket nodes by archetype to assign lanes.
   const lanes = new Map<string, number>();

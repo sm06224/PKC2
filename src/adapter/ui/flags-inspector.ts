@@ -85,7 +85,12 @@ function renderTierBadge(tier: 0 | 1 | 2): HTMLElement {
 
 function renderEditor(flag: FlagDescriptor): HTMLElement {
   const tier = flag.options.tier ?? 0;
-  const editable = tier === 0;
+  // PR-Δ14 (2026-05-07、user 報告「templates.entries の Flags 設定変更が
+  // できない、テキストエリアが編集不可」):tier 1 は元々 user-mutable
+  // 設計(`templates.entries` の comment 参照)。editable 条件を
+  // tier 0 だけから tier <= 1 に拡張し、JSON 系 user 編集 flag を
+  // 有効化。tier 2 (deep const、ABI 級)は引き続き readonly。
+  const editable = tier <= 1;
 
   // Boolean: checkbox
   if (typeof flag.defaultValue === 'boolean') {

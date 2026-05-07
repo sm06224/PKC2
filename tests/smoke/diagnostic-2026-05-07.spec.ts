@@ -656,11 +656,76 @@ test('D-12 filer click selects EXACTLY the clicked entry (no ID collision)', asy
     const multi = Array.from(document.querySelectorAll<HTMLTableRowElement>(
       'tr.pkc-filer-row[data-pkc-multi-selected="true"]',
     )).map((r) => r.getAttribute('data-pkc-lid'));
-    // detect duplicates within multi (should be 0 — each lid unique)
     const dupCount = multi.length - new Set(multi).size;
     return { checked, multi, dupCount };
   });
   console.log('D-12 final state:', JSON.stringify(final));
+
+  // PR-Δ16 (2026-05-07): user 報告「Filer 側で sidebar の selectedLid が
+  // 勝手に multi に含まれる」回帰検証。
+  // (1) Sidebar で entry e0 を SELECT_ENTRY して selectedLid='e0' に。
+  // (2) Filer で別 entry の checkbox 押す → multi は **その lid のみ**、
+  //     e0 を含まない。
+  // (3) Sidebar で Ctrl+click(anchor 動作)は引き続き e0 を含む(後方互換)。
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  // First, clear current state and re-select sidebar e0 only.
+  await page.locator('button[data-pkc-action="clear-multi-select"]').first().click().catch(() => {});
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+  await page.locator('li.pkc-entry-item[data-pkc-lid="e0"]').first().click();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  const sidebarSelected = await page.evaluate(() => {
+    return document.querySelector('[data-pkc-region="sidebar"] [data-pkc-active="true"][data-pkc-lid]')
+      ?.getAttribute('data-pkc-lid');
+  });
+  console.log('D-12 sidebar selected after click:', sidebarSelected);
+
+  // Switch to filer.
+  const ftbox2 = await filerTab.boundingBox();
+  if (ftbox2) {
+    await page.mouse.click(ftbox2.x + ftbox2.width / 2, ftbox2.y + ftbox2.height / 2);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  }
+  // Click a checkbox for a NON-e0 entry.
+  const targetCheck = page.locator('input.pkc-filer-row-check[data-pkc-lid]').nth(2);
+  const tcLid = await targetCheck.getAttribute('data-pkc-lid');
+  const tcBox = await targetCheck.boundingBox();
+  if (tcBox) {
+    await page.mouse.click(tcBox.x + tcBox.width / 2, tcBox.y + tcBox.height / 2);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  }
+  const isolatedFiler = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll<HTMLTableRowElement>(
+      'tr.pkc-filer-row[data-pkc-multi-selected="true"]',
+    )).map((r) => r.getAttribute('data-pkc-lid'));
+  });
+  console.log('D-12 sidebar=', sidebarSelected, 'tcLid=', tcLid, 'filer-multi=', JSON.stringify(isolatedFiler), '(should NOT contain sidebar lid)');
+
+  // Direction 2 (Sidebar Ctrl+click anchor):互換動作確認。
+  // (1) Sidebar で SELECT_ENTRY('e0') → selectedLid=e0
+  // (2) Sidebar で Ctrl+click('e2') → multi=['e0','e2'] (anchor 含む)
+  // 既存 Ctrl+click anchor inclusion が後方互換で保たれていること。
+  // Switch back from filer.
+  const detailTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="detail"]').first();
+  const dtbox = await detailTab.boundingBox();
+  if (dtbox) {
+    await page.mouse.click(dtbox.x + dtbox.width / 2, dtbox.y + dtbox.height / 2);
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  }
+  // Clear multi.
+  await page.locator('button[data-pkc-action="clear-multi-select"]').first().click().catch(() => {});
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+  // Plain click e0 (sidebar).
+  await page.locator('li.pkc-entry-item[data-pkc-lid="e0"]').first().click();
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+  // Ctrl+click another sidebar entry.
+  await page.locator('li.pkc-entry-item[data-pkc-lid="e6"]').first().click({ modifiers: ['Control'] });
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
+  const sidebarMulti = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll<HTMLLIElement>(
+      'li.pkc-entry-item[data-pkc-multi-selected="true"]',
+    )).map((r) => r.getAttribute('data-pkc-lid'));
+  });
+  console.log('D-12 sidebar Ctrl+click multi:', JSON.stringify(sidebarMulti), '(should contain BOTH e0 anchor and e6)');
 });
 
 test('D-11 graph Venn / Region toggle reactivity (regression)', async ({ page }) => {

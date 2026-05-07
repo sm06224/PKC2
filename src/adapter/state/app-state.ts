@@ -357,6 +357,13 @@ export interface AppState {
    */
   graphVennGroupingMode?: boolean;
   /**
+   * PR-Δ13 (2026-05-07、user 報告「時系列範囲をユーザーが指定して
+   * 描画できるようにすべき」):time-proximity mode の表示範囲指定。
+   * ms epoch、`null` で auto(全 entry の範囲)。
+   */
+  graphTimeRangeStart?: number | null;
+  graphTimeRangeEnd?: number | null;
+  /**
    * Inventory subset query state (Phase 5、Bases 風 filter/sort/group)。
    * Runtime-only, scoped to the current filer scope folder.
    */
@@ -3296,14 +3303,16 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'TOGGLE_MULTI_SELECT': {
-      // PR-Δ9 (2026-05-07、user 報告「ファイラの選択アルゴリズムどう
-      // なってる?同じID とかをみなして不要にマルチ選択されてない?」):
-      // 旧実装は `selectedLid: action.lid` も更新していたため、filer
-      // view で text entry の checkbox を click すると selectedLid が
-      // 移動 → filer scope 計算が selectedLid を見て scope 切替 →
-      // 表示 entries が 0 になり「選択が消えた」と見える bug が発生。
-      // 修正:multi-select toggle は **multi 集合のみ** を更新し、
-      // selectedLid には影響を与えない。主選択は SELECT_ENTRY が責務。
+      // PR-Δ9: selectedLid は触らない(主選択は SELECT_ENTRY 責務)。
+      // PR-Δ16 (2026-05-07、user 報告「Filerで勝手に選択される挙動 =
+      // 左ペインで選択したエントリが Filer 側の選択ロジック時にすでに
+      // 選択済みとして処理している。意図しない副作用動作で最悪の UX
+      // 事故」):
+      //   sidebar Ctrl+click は anchor inclusion 期待(includeAnchor=true)
+      //   Filer checkbox は明示的に押した lid のみ toggle 期待
+      //   (includeAnchor=false)
+      // includeAnchor の default は true(既存挙動互換)、Filer 側は
+      // false で dispatch する。
       const lids = [...state.multiSelectedLids];
       const idx = lids.indexOf(action.lid);
       if (idx >= 0) {
@@ -3311,9 +3320,8 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       } else {
         lids.push(action.lid);
       }
-      // Also include current selectedLid if not already (sidebar の Ctrl+
-      // click で「先に主選択中の entry も multi に組み込む」既存挙動)。
-      if (state.selectedLid && !lids.includes(state.selectedLid)) {
+      const includeAnchor = action.includeAnchor !== false; // default true
+      if (includeAnchor && state.selectedLid && !lids.includes(state.selectedLid)) {
         lids.unshift(state.selectedLid);
       }
       const next: AppState = { ...state, multiSelectedLids: lids };
