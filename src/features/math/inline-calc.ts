@@ -241,6 +241,23 @@ export function detectInlineCalcRequest(
     exprStart--;
   }
 
+  // PR-Δ8 (2026-05-07、user matrix M4/M5):行頭の list marker
+  // (`- ` / `* ` / `+ ` / `数字. `)は計算式から除外する。`-` は
+  // 単項マイナスと衝突、`1.` は decimal-rejection とぶつかる。
+  // 行先頭まで走査が達した(または \n 直後)場合のみ marker 検出を試みる。
+  const reachedLineStart =
+    exprStart === 0 || fullText[exprStart - 1] === '\n';
+  if (reachedLineStart) {
+    const head = fullText.slice(exprStart, caretPos - 1);
+    // List marker:`- ` / `* ` / `+ ` / `<digits>. ` の後に空白 1 つ以上 +
+    // 計算式。先頭の indent(空白 / tab)を skip した位置から marker を
+    // 探し、検出されたら exprStart をその後ろに進める。
+    const m = /^([\t ]*)([-*+]|\d+\.)\s+/.exec(head);
+    if (m) {
+      exprStart += m[0].length;
+    }
+  }
+
   const expression = fullText.slice(exprStart, caretPos - 1).trim();
   if (expression.length === 0) return null;
 

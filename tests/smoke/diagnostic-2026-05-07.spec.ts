@@ -331,6 +331,44 @@ test('D-10 inline calc real keyboard test (regression)', async ({ page }) => {
   const valD = await ta.inputValue();
   console.log('D-10 case D (multi-line indent calc):', JSON.stringify(valD));
 
+  // Matrix expansion (Δ8 self-discipline):軸ごとに体系的に列挙。
+  type Case = { name: string; setup: string; expected: string; expectFire: boolean };
+  const matrix: Case[] = [
+    // 軸 1: indent 0 / 1tab / 2sp / 4sp / list-marker
+    { name: 'M1 indent=0  trailing=none', setup: '7+3=', expected: '7+3=10\n', expectFire: true },
+    { name: 'M2 indent=1tab', setup: '\t9-4=', expected: '\t9-4=5\n', expectFire: true },
+    { name: 'M3 indent=4sp', setup: '    8/2=', expected: '    8/2=4\n', expectFire: true },
+    { name: 'M4 list "- 1+2="', setup: '- 1+2=', expected: '- 1+2=3\n', expectFire: true },
+    { name: 'M5 list "1. 5*2="', setup: '1. 5*2=', expected: '1. 5*2=10\n', expectFire: true },
+    // 軸 2: prefix textの種類
+    { name: 'M6 prefix CJK', setup: '答えは 6+7=', expected: '答えは 6+7=13\n', expectFire: true },
+    { name: 'M7 prefix mixed', setup: 'X = 10 / 4=', expected: 'X = 10 / 4=2.5\n', expectFire: true },
+    // 軸 3: 無効式は silent no-op(Enter は普通に通って改行)
+    { name: 'M8 invalid foo=', setup: 'foo=', expected: 'foo=\n', expectFire: false },
+    { name: 'M9 div by zero', setup: '5/0=', expected: '5/0=\n', expectFire: false },
+    { name: 'M10 trailing op', setup: '1+=', expected: '1+=\n', expectFire: false },
+    // 軸 4: 後続テキスト・行末以外位置
+    { name: 'M11 trailing text after =', setup: '2+2=', expected: '2+2=4\n', expectFire: true },
+    // 軸 5: 小数 / かっこ / 単項
+    { name: 'M12 decimal', setup: '0.1+0.2=', expected: '0.1+0.2=0.3\n', expectFire: true },
+    { name: 'M13 paren', setup: '(2+3)*4=', expected: '(2+3)*4=20\n', expectFire: true },
+    { name: 'M14 unary minus', setup: '-5+2=', expected: '-5+2=-3\n', expectFire: true },
+  ];
+  const matrixResults: Array<{ name: string; ok: boolean; got: string; expected: string }> = [];
+  for (const c of matrix) {
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Delete');
+    await ta.type(c.setup);
+    await page.keyboard.press('Enter');
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+    const got = await ta.inputValue();
+    const ok = got === c.expected;
+    matrixResults.push({ name: c.name, ok, got, expected: c.expected });
+  }
+  console.log('D-10 matrix results:', JSON.stringify(matrixResults, null, 2));
+  const failedMatrix = matrixResults.filter((r) => !r.ok);
+  console.log('D-10 matrix FAILED count:', failedMatrix.length, 'of', matrix.length);
+
   await page.screenshot({
     path: 'test-results/diag-2026-05-07/D-10-inline-calc.png',
     fullPage: false,
