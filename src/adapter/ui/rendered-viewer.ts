@@ -290,6 +290,73 @@ export function buildRenderedViewerHtml(
     }
     .pkc-md-rendered li.pkc-task-item ul,
     .pkc-md-rendered li.pkc-task-item ol { color: #222; text-decoration: none; }
+    /* wave-10-2 Phase 1 dialect extensions(2026-05-07):main app の
+       base.css にしか入れていなかったため、Viewer / 専用 popup ではスタイル
+       無効化されて user に「反映されない」と見えていた。base.css §1787-1855
+       を export 専用 standalone HTML にも mirror。
+       色は theme var ではなく hard code(export HTML は runtime theme を持た
+       ないため、base.css と同じ fallback 値を採用)。 */
+    /* L-5 行頭 align prefix */
+    .pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
+    .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
+    .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+    /* L-2 inline 修飾(highlight / ruby / em-dot) */
+    .pkc-md-rendered mark {
+      background: #fff59d;
+      color: inherit;
+      padding: 0 0.15em;
+      border-radius: 2px;
+    }
+    .pkc-md-rendered ruby rt {
+      font-size: 0.6em;
+      color: #6b7280;
+    }
+    .pkc-md-rendered em.pkc-em-dot {
+      font-style: normal;
+      -webkit-text-emphasis: dot;
+      text-emphasis: dot;
+      -webkit-text-emphasis-position: over right;
+      text-emphasis-position: over right;
+    }
+    /* L-7 figure caption + ref */
+    .pkc-md-rendered .pkc-fig {
+      margin: 1em 0;
+      padding: 0;
+      border: none;
+    }
+    .pkc-md-rendered .pkc-fig-caption {
+      margin-top: 0.4em;
+      font-size: 0.9em;
+      color: #6b7280;
+      text-align: center;
+    }
+    .pkc-md-rendered .pkc-fig-ref {
+      text-decoration: none;
+      color: #2563eb;
+    }
+    .pkc-md-rendered .pkc-fig-ref:hover {
+      text-decoration: underline;
+    }
+    /* L-1 section break — role 別装飾 */
+    .pkc-md-rendered .pkc-section-break {
+      border: none;
+      margin: 1.5em 0;
+      height: 1px;
+      background: #d1d5db;
+    }
+    .pkc-md-rendered .pkc-section-break[data-pkc-role="cover"],
+    .pkc-md-rendered .pkc-section-break[data-pkc-role="section"] {
+      height: 0;
+      border-top: 1px solid #d1d5db;
+      border-bottom: 1px solid #d1d5db;
+      padding-top: 0.4em;
+      margin: 2em 0;
+    }
+    .pkc-md-rendered .pkc-section-break[data-pkc-role="body"] {
+      background: transparent;
+      border-top: 1px dashed #9ca3af;
+      height: 0;
+    }
     /* Two-column layout with a sticky TOC sidebar.
        The sidebar pins to the top of the viewport so the outline
        stays visible while the reader scrolls through long bodies.
