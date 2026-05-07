@@ -13,6 +13,7 @@
  *
  * Pure (string-in, structured-out)。
  */
+// eslint-disable-next-line no-restricted-imports -- type-only import for shared shape; runtime dep ゼロ。
 import type { RecordOfferPayload } from '@adapter/transport/record-offer-handler';
 
 export interface ParsedCapture {
