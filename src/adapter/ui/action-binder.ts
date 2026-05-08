@@ -74,6 +74,7 @@ import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { htmlForRichCopy } from '../../features/markdown/rich-copy-transform';
+import { extractVars, parseFrontmatter as parseLivePreviewFrontmatter } from '../../features/markdown/frontmatter';
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
@@ -2288,7 +2289,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // 確実に再現するため、custom data 属性 / class-only style を inline
         // `style="..."` に複製した HTML を生成して clipboard に流す。round-trip
         // のため data-pkc-* / class は残置(再 import で PKC として再認識)。
-        const html = htmlForRichCopy(renderMarkdown(resolvedSrc));
+        // M-7 wave-10-2 Phase 2:Rich copy でも frontmatter vars を 展開、
+        // 宛先(Word/ONLYOFFICE)で `{{vars.name}}` literal が見えないように。
+        const richVars = extractVars(ent.body ?? '');
+        const html = htmlForRichCopy(renderMarkdown(resolvedSrc, { vars: richVars }));
         void copyMarkdownAndHtml(src, html);
         break;
       }
@@ -6967,7 +6971,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // 領域 10-1: opt-in source-line anchors so the caret-sync
       // layer (source-preview-sync.ts) can match preview blocks to
       // editor source lines (and vice versa).
-      preview.innerHTML = renderMarkdown(resolved, { sourceLineAnchors: true });
+      // M-7: live preview でも frontmatter vars を 展開、frontmatter 行自体
+      // は preview から strip(2026-05-08 hotfix:user 報告で frontmatter が
+      // raw text として preview に出ていた)。
+      const livePreviewVars = extractVars(src);
+      const livePreviewSource = parseLivePreviewFrontmatter(resolved).body;
+      preview.innerHTML = renderMarkdown(livePreviewSource, {
+        sourceLineAnchors: true,
+        vars: livePreviewVars,
+      });
     } else {
       preview.innerHTML = '';
       const pre = document.createElement('pre');

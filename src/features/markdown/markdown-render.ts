@@ -677,6 +677,68 @@ md.inline.ruler.after('emphasis', 'pkc_simple_inline', function simpleInlineRule
 
 });
 
+// ── M-7 Variables `{{vars.x}}`(2026-05-08、wave-10-2 Phase 2)──
+//
+// Spec §3.6 + OQ-6:frontmatter `vars.x` の値を本文中 `{{vars.x}}` で展開。
+//
+// 実装方針(2026-05-08 hotfix):**pre-process 段階の text 置換**で実装。
+// 当初 inline rule で実装していたが、L-2 highlight(`==xxx==`) / L-2 em-dot
+// (`[[em:xxx]]`) / L-2 ruby(`[[ruby:base|reading]]`) / L-6 simple-inline
+// (`:xxx:attrs:`)等の **content を text token として直接 push する系統**
+// の中では `{{vars.x}}` が展開されない(これらの content は inline parser
+// 経路を通らない)現象が user 報告で発覚。pre-process で source 文字列を
+// 置換 してしまえば、後段の inline rule は展開済 text を見るので必ず効く。
+//
+// 構文:
+//   `{{vars.<key>}}` で展開、`<key>` は `[A-Za-z_][\w-]*`
+//   `\{{vars.x}}` で literal 出力(escape)
+//   `{{macros.x}}` 等 vars 以外は Phase 2 では未対応 = literal で残置
+//   fenced code block(``` / ~~~)の中身では展開しない(fence-aware)
+//
+// trade-off:inline backtick code span(`` `{{vars.x}}` ``)の中も展開される。
+// spec doc / AI 規約書 / Manual に明記。Jinja2 / Handlebars 等の慣習に近い
+// 振る舞い、escape は `\{{vars.x}}` で対応可能。
+//
+// 未定義変数は post-process まで sentinel(U+E140 / U+E141)で残し、最終
+// 段で `<span class="pkc-variable-undefined">` に置換。
+
+const VAR_OPEN = '\u{E140}';
+const VAR_SEP = '\u{E141}';
+
+function expandVarsInText(source: string, vars: Record<string, string>): string {
+  if (!source) return source;
+  const lines = source.split('\n');
+  let fence: FenceState = { inFence: false, marker: '' };
+  return lines.map((line) => {
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) return line;
+    // escape(`\{{vars.x}}`)優先。先に escape を sentinel(U+E142)で隠して
+    // 通常の置換を行い、最後に元に戻す。
+    let out = line.replace(/\\\{\{(vars\.[A-Za-z_][\w-]*)\}\}/g, '\u{E142}$1\u{E143}');
+    out = out.replace(/\{\{\s*vars\.([A-Za-z_][\w-]*)\s*\}\}/g, (_match, key: string) => {
+      if (Object.prototype.hasOwnProperty.call(vars, key)) {
+        const v = vars[key]!;
+        // escape sentinel char が値内にあれば剥がす(衝突対策)
+        return v.replace(new RegExp(`[${VAR_OPEN}${VAR_SEP}]`, 'g'), '');
+      }
+      return `${VAR_OPEN}${key}${VAR_SEP}`;
+    });
+    out = out.replace(/\u{E142}(vars\.[A-Za-z_][\w-]*)\u{E143}/gu, (_m, ref: string) => `{{${ref}}}`);
+    return out;
+  }).join('\n');
+}
+
+function postProcessVariableUndefined(html: string): string {
+  // sentinel `U+E140 key U+E141` を `<span class="pkc-variable-undefined">` に変換。
+  // markdown-it が text を escape した後の状態で sentinel を含む HTML を扱う。
+  return html.replace(
+    new RegExp(`${VAR_OPEN}([A-Za-z_][\\w-]*)${VAR_SEP}`, 'g'),
+    (_match, key: string) =>
+      `<span class="pkc-variable-undefined" title="未定義変数: vars.${key}">{{vars.${key}}}</span>`,
+  );
+}
+
 // ── Heading id injection ──────────────────────────────
 //
 // Stamp an `id` attribute on every h1/h2/h3 so the right-pane Table
@@ -869,6 +931,14 @@ md.core.ruler.after('inline', 'pkc-task-list', function (state) {
  */
 export interface RenderMarkdownOptions {
   readonly currentContainerId?: string;
+  /**
+   * M-7(wave-10-2 Phase 2、2026-05-08):本文中の `{{vars.name}}` 展開に
+   * 使う変数 map。caller(presenter)は `extractVars(entry.body)` で
+   * frontmatter から抽出して渡す。spec doc §3.6 + OQ-6(展開 timing は
+   * render 時)。未定義変数は `<span class="pkc-variable-undefined">` で
+   * visible warning として残す。
+   */
+  readonly vars?: Record<string, string>;
   /**
    * 領域 10-1 Split View 同期スクロール(2026-05-05、PR #206 reform 後再実装)
    * — stamp `data-pkc-source-line="<n>"` on every block-level token's
@@ -1481,6 +1551,10 @@ export function renderMarkdown(
   text = stripComments(text);
   // L-1:section break を sentinel 化(1:1 line 変換、lineMap 不変)
   text = processSectionBreaks(text);
+  // M-7:variables `{{vars.x}}` を pre-process で text 置換(fence 外、
+  // 2026-05-08 hotfix で inline rule から切替、L-2/L-6 等の content 内も
+  // 展開されるようになる)。未定義は U+E140/E141 sentinel で post-process まで残す。
+  text = expandVarsInText(text, opts.vars ?? {});
   // L-8:`_` / `_<N>` 空行マーカー(挿入あり、lineMap 更新)
   const blankResult = processBlankLineMarkers(text, lineMap);
   text = blankResult.transformed;
@@ -1522,6 +1596,8 @@ export function renderMarkdown(
   html = postProcessSectionBreaks(html);
   // L-8:blank-line sentinel → <div class="pkc-blank-line">
   html = postProcessBlankLineMarkers(html);
+  // M-7:undefined variable sentinel → <span class="pkc-variable-undefined">
+  html = postProcessVariableUndefined(html);
   return html;
 }
 

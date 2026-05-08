@@ -465,6 +465,9 @@ E = mc^2
 
 ### 3.6 Variables / macros(W)
 
+**Status(2026-05-08)**: **Phase 2 第 1 弾として `{{vars.x}}` 着地**。frontmatter `vars:` block(YAML object)or `vars.<key>:`(flat dot)から render 時に展開、未定義は `<span class="pkc-variable-undefined">` で visible warning。`{{macros.x}}` の block 展開は **Phase 2 で defer**(spec §11 既決定)。詳細仕様 / when-to-use は AI 規約書 v1 §2.12 / Manual 章 12 §12.6 を参照。OQ-6(展開 timing)は本実装で render 時に確定。
+
+
 frontmatter:
 
 ```yaml

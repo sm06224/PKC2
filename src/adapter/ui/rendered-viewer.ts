@@ -32,6 +32,7 @@
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+import { extractVars, parseFrontmatter } from '../../features/markdown/frontmatter';
 import {
   extractTocFromEntry,
   renderStaticTocHtml,
@@ -304,6 +305,13 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
     /* L-9 段落先頭 1 字下げ(2026-05-08) */
     .pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
+    /* M-7 未定義 variable 警告(2026-05-08、wave-10-2 Phase 2) */
+    .pkc-md-rendered .pkc-variable-undefined {
+      color: #b91c1c;
+      text-decoration: underline dotted;
+      text-decoration-color: #b91c1c;
+      cursor: help;
+    }
     /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
        hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため
        base.css pkc-transclusion 群を inline mirror)。 */
@@ -680,7 +688,10 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
     return buildTextlogBodyHtml(entry, container);
   }
   const resolved = resolveAssetSource(entry.body ?? '', container);
-  const html = renderMarkdown(resolved);
+  // M-7 wave-10-2 Phase 2:Viewer popup でも frontmatter vars を展開して
+  // center pane と同等の見た目を保つ(3 surface dual-render path 規約)。
+  const vars = extractVars(entry.body ?? '');
+  const html = renderMarkdown(resolved, { vars });
   // 2026-05-08 user 報告:`![label](entry:LID)` の transclusion が center
   // pane(detail-presenter)では expand されるが Viewer popup では placeholder
   // のまま表示されない。Viewer は detail-presenter と同じ expandTransclusions
@@ -735,8 +746,12 @@ function buildTextlogBodyHtml(entry: Entry, container: Container | null): string
       const importantAttr = log.flags.includes('important')
         ? ' data-pkc-log-important="true"'
         : '';
-      const resolved = resolveAssetSource(log.bodySource ?? '', container);
-      const logHtml = renderMarkdown(resolved) || '';
+      // M-7 wave-10-2 Phase 2:Viewer popup の TEXTLOG path でも per-log
+      // frontmatter から vars を抽出 + 展開(detail center pane と同 contract)。
+      const logVars = extractVars(log.bodySource ?? '');
+      const logBody = parseFrontmatter(log.bodySource ?? '').body;
+      const resolved = resolveAssetSource(logBody, container);
+      const logHtml = renderMarkdown(resolved, { vars: logVars }) || '';
       const flagMark = log.flags.includes('important')
         ? '<span class="pkc-textlog-log-flag" aria-label="important">★</span>'
         : '';
