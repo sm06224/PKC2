@@ -558,6 +558,92 @@ describe('SLASH_COMMANDS', () => {
     expect(asset?.onSelect).toBeTypeOf('function');
     expect(asset?.insert).toBeUndefined();
   });
+
+  // 2026-05-08 YAML reform — /pkc* frontmatter snippet templates
+  it('includes /pkcfm* frontmatter template commands(7 件)', () => {
+    const ids = SLASH_COMMANDS.map((c) => c.id);
+    for (const expected of [
+      'pkcfm',
+      'pkcvars',
+      'pkcfmbook',
+      'pkcfmpaper',
+      'pkcfmvideo',
+      'pkcfmpage',
+      'pkcfmnote',
+    ]) {
+      expect(ids).toContain(expected);
+    }
+  });
+
+  it('all /pkcfm* templates start with `---\\n` and contain `---\\n` closing fence', () => {
+    const tmpls = SLASH_COMMANDS.filter((c) => c.id.startsWith('pkc'));
+    expect(tmpls.length).toBeGreaterThanOrEqual(7);
+    for (const t of tmpls) {
+      const text = typeof t.insert === 'string' ? t.insert : '';
+      expect(text.startsWith('---\n')).toBe(true);
+      // closing fence(2 個目の `---` 行)が含まれる
+      expect(text.split('\n').filter((l) => l === '---').length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('all /pkcfm* templates contain at least 1 comment line(`#` で始まる行)', () => {
+    const tmpls = SLASH_COMMANDS.filter((c) => c.id.startsWith('pkc'));
+    for (const t of tmpls) {
+      const text = typeof t.insert === 'string' ? t.insert : '';
+      const hasComment = text.split('\n').some((l) => l.trim().startsWith('#'));
+      expect(hasComment, `template ${t.id} should have a comment`).toBe(true);
+    }
+  });
+
+  it('/pkcvars template uses nested `vars:` block', () => {
+    const tmpl = SLASH_COMMANDS.find((c) => c.id === 'pkcvars');
+    const text = typeof tmpl?.insert === 'string' ? tmpl.insert : '';
+    expect(text).toMatch(/^---\n/);
+    expect(text).toContain('vars:');
+    expect(text).toMatch(/\n {2}\w/);  // 2-space indented child line
+  });
+
+  it('/pkcfmnote template uses block scalar `|` and `>`', () => {
+    const tmpl = SLASH_COMMANDS.find((c) => c.id === 'pkcfmnote');
+    const text = typeof tmpl?.insert === 'string' ? tmpl.insert : '';
+    expect(text).toMatch(/description:\s*\|/);
+    expect(text).toMatch(/summary:\s*>/);
+  });
+
+  // Integration:templates が YAML parser に通って warning 0 で parse できるか
+  it('every /pkcfm* template parses cleanly through parseFrontmatter(warnings 0)', async () => {
+    const { parseFrontmatter } = await import('@features/markdown/frontmatter');
+    const tmpls = SLASH_COMMANDS.filter((c) => c.id.startsWith('pkc'));
+    for (const t of tmpls) {
+      const text = typeof t.insert === 'string' ? t.insert : '';
+      const r = parseFrontmatter(text);
+      expect(r.found, `template ${t.id} should produce a found frontmatter`).toBe(true);
+      expect(r.warnings, `template ${t.id} should parse without warnings`).toEqual([]);
+    }
+  });
+
+  it('/pkcvars template is detectable by extractVars', async () => {
+    const { extractVars } = await import('@features/markdown/frontmatter');
+    const tmpl = SLASH_COMMANDS.find((c) => c.id === 'pkcvars');
+    const text = typeof tmpl?.insert === 'string' ? tmpl.insert : '';
+    const vars = extractVars(text);
+    // template 中の vars:project / audience / summary が抽出されている
+    expect(Object.keys(vars)).toEqual(expect.arrayContaining(['project', 'audience', 'summary']));
+  });
+
+  it('/pkcfmnote template の block scalar が改行保持 / fold される', async () => {
+    const { parseFrontmatter } = await import('@features/markdown/frontmatter');
+    const tmpl = SLASH_COMMANDS.find((c) => c.id === 'pkcfmnote');
+    const text = typeof tmpl?.insert === 'string' ? tmpl.insert : '';
+    const r = parseFrontmatter(text);
+    // description: | は改行保持(複数行)
+    expect(typeof r.meta.description).toBe('string');
+    expect(r.meta.description).toContain('\n');
+    // summary: > は fold(改行が space に)
+    expect(typeof r.meta.summary).toBe('string');
+    expect(r.meta.summary as string).not.toContain('\n');
+    expect(r.meta.summary).toContain(' fold');
+  });
 });
 
 // ── onSelect callback dispatch ──

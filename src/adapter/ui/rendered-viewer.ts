@@ -32,7 +32,11 @@
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
-import { extractVars, parseFrontmatter } from '../../features/markdown/frontmatter';
+import {
+  extractVars,
+  parseFrontmatter,
+  buildFrontmatterWarningHtml,
+} from '../../features/markdown/frontmatter';
 import {
   extractTocFromEntry,
   renderStaticTocHtml,
@@ -311,6 +315,31 @@ export function buildRenderedViewerHtml(
       text-decoration: underline dotted;
       text-decoration-color: #b91c1c;
       cursor: help;
+    }
+    /* 2026-05-08 YAML reform:frontmatter parse の soft warning banner */
+    .pkc-frontmatter-warning {
+      background: #fff7ed;
+      border: 1px solid #b91c1c;
+      border-left-width: 4px;
+      padding: 0.5rem 0.75rem;
+      margin: 0 0 0.5rem 0;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      color: #1f2937;
+    }
+    .pkc-frontmatter-warning-header {
+      font-weight: 600;
+      color: #b91c1c;
+      margin-bottom: 0.25rem;
+    }
+    .pkc-frontmatter-warning-list {
+      margin: 0;
+      padding-left: 1.2em;
+      list-style: disc;
+    }
+    .pkc-frontmatter-warning-list li {
+      margin: 0;
+      line-height: 1.5;
     }
     /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
        hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため
@@ -694,9 +723,12 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
   // detail-presenter / textlog-presenter / transclusion 全 surface と一致させる。
   const rawBody = entry.body ?? '';
   const vars = extractVars(rawBody);
-  const stripped = parseFrontmatter(rawBody).body;
+  const fm = parseFrontmatter(rawBody);
+  const stripped = fm.body;
   const resolved = resolveAssetSource(stripped, container);
   const html = renderMarkdown(resolved, { vars });
+  // 2026-05-08 YAML reform:warnings を popup 内本文先頭に出す
+  const warningHtml = buildFrontmatterWarningHtml(fm.warnings);
   // 2026-05-08 user 報告:`![label](entry:LID)` の transclusion が center
   // pane(detail-presenter)では expand されるが Viewer popup では placeholder
   // のまま表示されない。Viewer は detail-presenter と同じ expandTransclusions
@@ -704,7 +736,7 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
   // serialize し直す。current document の DOM を借りて済ませる(popup 起動前
   // のため popup document はまだ存在しない、main app の document を transient
   // 利用)。
-  if (!container || typeof document === 'undefined') return html;
+  if (!container || typeof document === 'undefined') return warningHtml + html;
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
   expandTransclusions(tmp, {
@@ -714,7 +746,7 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
     nameByKey: buildAssetNameMap(container),
     hostLid: entry.lid,
   });
-  return tmp.innerHTML;
+  return warningHtml + tmp.innerHTML;
 }
 
 /**

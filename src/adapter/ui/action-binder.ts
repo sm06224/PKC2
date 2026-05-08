@@ -74,7 +74,11 @@ import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { htmlForRichCopy } from '../../features/markdown/rich-copy-transform';
-import { extractVars, parseFrontmatter as parseLivePreviewFrontmatter } from '../../features/markdown/frontmatter';
+import {
+  extractVars,
+  parseFrontmatter as parseLivePreviewFrontmatter,
+  buildFrontmatterWarningElement,
+} from '../../features/markdown/frontmatter';
 import { expandTransclusions } from './transclusion';
 import {
   syncPreviewToCaret,
@@ -6992,6 +6996,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         vars: livePreviewVars,
         sourceLineOffset: liveSourceLineOffset,
       });
+      // 2026-05-08 YAML reform:warning を innerHTML 後 prepend
+      const liveWarningEl = buildFrontmatterWarningElement(liveFm.warnings);
+      if (liveWarningEl) preview.insertBefore(liveWarningEl, preview.firstChild);
       const state = dispatcher.getState();
       const container = state.container;
       if (container) {

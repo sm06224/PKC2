@@ -90,7 +90,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
-import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
+import { parseFrontmatter, extractVars, type FrontmatterValue } from '../../features/markdown/frontmatter';
 import { expandTransclusions } from './transclusion';
 import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
 import { extractThumbnailRef } from '../../features/auto-fill/thumbnail-frontmatter';
@@ -5492,7 +5492,7 @@ function renderFilerCardGrid(
   // 削除(user direction)。
 
   for (const child of children) {
-    const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {}, body: '', found: false };
+    const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {} as Record<string, FrontmatterValue>, body: '', found: false, warnings: [] };
     const classification = classifyEntryForCardGrid(child, fm.meta);
     const matches = classification?.kind === expectedKind;
 

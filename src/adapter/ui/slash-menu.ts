@@ -115,6 +115,119 @@ export const SLASH_COMMANDS: SlashCommand[] = [
       if (assetPickerCallback) assetPickerCallback(ctx);
     },
   },
+
+  // ── Frontmatter templates(`/pkcfm*`、2026-05-08 YAML natural extension wave)──
+  //
+  // user direction:`/pkcXXXX` 系 snippet にコメント付き frontmatter テンプレ
+  // を登録、自然な YAML を覚えなくても穴埋めで書ける入り口に。各テンプレは
+  // 標準 YAML(nested mapping / 配列 / block scalar `|`)+ 行頭/行末 `#` コメント
+  // で「どこに何を書けばよいか」を内蔵。parser の対応範囲(natural YAML 規約)
+  // と 1 対 1 で対応。
+  {
+    id: 'pkcfm',
+    label: '/pkcfm — frontmatter 基本テンプレ(comment 付き)',
+    insert:
+      '---\n' +
+      '# PKC2 frontmatter — `kind` で entry の種別を宣言、その他は任意キー\n' +
+      'kind: note          # book / paper / video / album / film / note 等(filer の subset 振り分けに使う)\n' +
+      'title: タイトル      # entry title と独立、frontmatter 専用の正式名(任意)\n' +
+      'tags: [tag1, tag2]  # 配列はインライン記法 `[a, b]` か block 記法(- a 改行 - b)\n' +
+      '---\n\n',
+  },
+  {
+    id: 'pkcvars',
+    label: '/pkcvars — `{{vars.x}}` 展開用テンプレ(nested object 形式)',
+    insert:
+      '---\n' +
+      '# vars block は本文中 `{{vars.<key>}}` で展開される。AI に「vars だけ書き換えて宛先別 variant を作って」と指示できる\n' +
+      'vars:\n' +
+      '  project: ALPHA-7        # 本文中で `{{vars.project}}` と書くと展開される\n' +
+      '  audience: 経営層         # 同名 key を変えるだけで variant 量産\n' +
+      '  summary: "1 行で要約"    # quoted string 内の `#` は comment 扱いされない\n' +
+      '---\n\n',
+  },
+  {
+    id: 'pkcfmbook',
+    label: '/pkcfmbook — book(蔵書)用 frontmatter テンプレ',
+    insert:
+      '---\n' +
+      '# 蔵書 entry — filer の book base に拾われる(kind: book 必須)\n' +
+      'kind: book\n' +
+      'title: 書名\n' +
+      'author: 著者名      # 単一なら scalar、複数なら配列に\n' +
+      'year: 2026          # 出版年(integer)\n' +
+      'publisher: 出版社\n' +
+      'isbn: "978-..."     # quoted で hyphen / 数字混在を string 確保\n' +
+      'tags: [tag1]\n' +
+      'rating: 4           # 0-5 の integer(任意)\n' +
+      '---\n\n',
+  },
+  {
+    id: 'pkcfmpaper',
+    label: '/pkcfmpaper — 論文 / 引用 frontmatter テンプレ',
+    insert:
+      '---\n' +
+      '# 論文 entry — citation metadata(authors は array of object も可)\n' +
+      'kind: paper\n' +
+      'title: 論文タイトル\n' +
+      'authors:\n' +
+      '  - { family: Smith, given: J. }   # array of object の inline 記法\n' +
+      '  - { family: Tanaka, given: A. }\n' +
+      'year: 2026\n' +
+      'journal: Journal Name\n' +
+      'doi: "10.1234/example"\n' +
+      'keywords: [keyword1, keyword2]\n' +
+      'abstract: |        # block scalar `|` で改行を保持、複数行抄録に\n' +
+      '  本論文では …\n' +
+      '  …について論じる。\n' +
+      '---\n\n',
+  },
+  {
+    id: 'pkcfmvideo',
+    label: '/pkcfmvideo — video / YouTube frontmatter テンプレ',
+    insert:
+      '---\n' +
+      '# video entry — filer の video base に拾われる\n' +
+      'kind: video\n' +
+      'title: 動画タイトル\n' +
+      'channel: チャンネル名\n' +
+      'published_at: 2026-05-08\n' +
+      'duration: "12:34"   # quoted で `:` を含む文字列 確保\n' +
+      'tags: [tag1]\n' +
+      '---\n\n',
+  },
+  {
+    id: 'pkcfmpage',
+    label: '/pkcfmpage — page layout(orient / margins)テンプレ',
+    insert:
+      '---\n' +
+      '# print export 向け page layout(nested mapping、深度 ≤ 4)\n' +
+      'page:\n' +
+      '  orient: portrait        # portrait / landscape\n' +
+      '  margins:\n' +
+      '    top: 1cm              # 単位込み string\n' +
+      '    bottom: 1cm\n' +
+      '    left: 2cm\n' +
+      '    right: 2cm\n' +
+      '---\n\n',
+  },
+  {
+    id: 'pkcfmnote',
+    label: '/pkcfmnote — 自由 note + 複数行 description テンプレ',
+    insert:
+      '---\n' +
+      '# 自由 note — block scalar で長文 description を frontmatter に置く例\n' +
+      'kind: note\n' +
+      'title: メモ\n' +
+      'description: |          # `|` literal:改行をそのまま保持\n' +
+      '  ここに複数行の説明を書く。\n' +
+      '  YAML 標準の literal block で、自然に書ける。\n' +
+      'summary: >              # `>` folded:改行を space に fold(1 段落 1 行扱い)\n' +
+      '  この summary は 1 行に\n' +
+      '  fold される(段落単位で折り畳み)。\n' +
+      'tags: [memo]\n' +
+      '---\n\n',
+  },
 ];
 
 /**

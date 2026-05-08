@@ -1804,6 +1804,34 @@
   cursor: help;
 }
 
+/* 2026-05-08 YAML reform:frontmatter parse の soft warning(limit 超過 /
+ * forbidden key / 重複 key 等)を author に気付かせる可視 banner。silent fail
+ * を避けて preview 先頭に注入する(`buildFrontmatterWarningElement` 経由)。 */
+.pkc-frontmatter-warning {
+  background: var(--c-warn-bg, #fff7ed);
+  border: 1px solid var(--c-warn, #b91c1c);
+  border-left-width: 4px;
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-3) 0;
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  color: var(--c-fg, #1f2937);
+}
+.pkc-frontmatter-warning-header {
+  font-weight: 600;
+  color: var(--c-warn, #b91c1c);
+  margin-bottom: var(--space-2);
+}
+.pkc-frontmatter-warning-list {
+  margin: 0;
+  padding-left: 1.2em;
+  list-style: disc;
+}
+.pkc-frontmatter-warning-list li {
+  margin: 0;
+  line-height: 1.5;
+}
+
 /* L-2(2026-05-07):Inline 修飾 */
 .pkc-md-rendered mark {
   background: var(--c-mark-bg, #fff59d);

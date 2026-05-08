@@ -10,7 +10,11 @@ import type { TextlogFlag } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import type { LogArticle } from '../../features/textlog/textlog-doc';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
-import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
+import {
+  parseFrontmatter,
+  extractVars,
+  buildFrontmatterWarningElement,
+} from '../../features/markdown/frontmatter';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
@@ -446,12 +450,16 @@ function renderLogArticle(
   // TEXT entry と同 contract(per-log の独立 vars)。frontmatter は preview に
   // 出さず strip。fence なしの YAML 風テキストは通常 markdown として残る。
   const logVars = extractVars(source);
-  source = parseFrontmatter(source).body;
+  const logFm = parseFrontmatter(source);
+  source = logFm.body;
+  // 2026-05-08 YAML reform:per-log warning は textEl 先頭に prepend
+  const logWarningEl = buildFrontmatterWarningElement(logFm.warnings);
   if (assets && mimeByKey && hasAssetReferences(source)) {
     source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
   }
   if (hasMarkdownSyntax(source)) {
     textEl.innerHTML = renderMarkdown(source, { currentContainerId, vars: logVars });
+    if (logWarningEl) textEl.insertBefore(logWarningEl, textEl.firstChild);
     textEl.classList.add('pkc-md-rendered');
     // Slice 5-B: expand `![](entry:...)` transclusion placeholders.
     // Guarded by `entries` so the presenter is safe to call without

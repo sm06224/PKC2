@@ -1,6 +1,10 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
-import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
+import {
+  parseFrontmatter,
+  extractVars,
+  buildFrontmatterWarningElement,
+} from '../../features/markdown/frontmatter';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
@@ -79,19 +83,25 @@ const textPresenter: DetailPresenter = {
     // 領域 10-6 ζ'' Phase 2a — strip leading frontmatter before markdown
     // render. Properties land in the meta pane via renderFrontmatterSection.
     // No-op when the body has no frontmatter.
-    let source = parseFrontmatter(entry.body).body;
+    const fmResult = parseFrontmatter(entry.body);
+    let source = fmResult.body;
     if (assets && mimeByKey && hasAssetReferences(source)) {
       source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
     }
     // M-7 wave-10-2 Phase 2(2026-05-08):frontmatter `vars.*` を抽出して
     // renderMarkdown へ渡し、本文中の `{{vars.x}}` を展開する。
     const vars = extractVars(entry.body);
+    // 2026-05-08 YAML reform:limit 超過 / forbidden key 等の soft warning を
+    // preview 先頭に表示(silent fail を避ける)。warnings 空なら null で no-op。
+    const warningEl = buildFrontmatterWarningElement(fmResult.warnings);
 
     // Render as markdown if the body contains markdown syntax
     if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
       body.innerHTML = renderMarkdown(source, { currentContainerId, vars });
+      // Prepend warning AFTER innerHTML(innerHTML clears children)
+      if (warningEl) body.insertBefore(warningEl, body.firstChild);
       // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
       // markdown renderer. Guarded by `entries` being supplied so
       // tests / callers without container context still work.
@@ -118,6 +128,16 @@ const textPresenter: DetailPresenter = {
     // the leading `---\n…\n---` block does not leak into the visible
     // textContent when the body has no markdown syntax (M-7 follow-up,
     // 2026-05-08). Otherwise users see raw frontmatter as the preview.
+    if (warningEl) {
+      // 平文 fallback でも warning は visible に出す
+      const wrapper = document.createElement('div');
+      wrapper.className = 'pkc-view-body';
+      wrapper.appendChild(warningEl);
+      const pre = document.createElement('pre');
+      pre.textContent = source;
+      wrapper.appendChild(pre);
+      return wrapper;
+    }
     const body = document.createElement('pre');
     body.className = 'pkc-view-body';
     body.textContent = source;
@@ -209,6 +229,9 @@ const textPresenter: DetailPresenter = {
         vars: previewVars,
         sourceLineOffset,
       });
+      // 2026-05-08 YAML reform:warning DOM を innerHTML 後に prepend
+      const previewWarningEl = buildFrontmatterWarningElement(fm.warnings);
+      if (previewWarningEl) preview.insertBefore(previewWarningEl, preview.firstChild);
     } else if (initialSource) {
       const pre = document.createElement('pre');
       pre.className = 'pkc-view-body';
