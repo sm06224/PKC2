@@ -1784,6 +1784,108 @@
   object-fit: contain;
 }
 
+/* L-5(2026-05-07):行頭 align prefix */
+.pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
+.pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
+.pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+
+/* L-9(2026-05-08):段落先頭 1 字下げ(行頭 `__` / `＿` プレフィックス、
+ * 日本語文書の段落字下げ慣習)。data-pkc-indent="1" は paragraph 起点を
+ * 1 文字ぶん右に押す(text-indent: 1em)。1 字 = body の現 font-size 1 文字幅。 */
+.pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
+
+/* L-2(2026-05-07):Inline 修飾 */
+.pkc-md-rendered mark {
+  background: var(--c-mark-bg, #fff59d);
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 2px;
+}
+.pkc-md-rendered ruby rt {
+  font-size: 0.6em;
+  color: var(--c-fg-muted, #6b7280);
+}
+.pkc-md-rendered em.pkc-em-dot {
+  font-style: normal;
+  -webkit-text-emphasis: dot;
+  text-emphasis: dot;
+  -webkit-text-emphasis-position: over right;
+  text-emphasis-position: over right;
+}
+
+/* L-7(2026-05-07):図 / 表 / 式 caption + 自動採番 */
+.pkc-md-rendered .pkc-fig {
+  margin: 1em 0;
+  padding: 0;
+  border: none;
+}
+.pkc-md-rendered .pkc-fig-caption {
+  margin-top: 0.4em;
+  font-size: 0.9em;
+  color: var(--c-fg-muted, #6b7280);
+  text-align: center;
+}
+.pkc-md-rendered .pkc-fig-ref {
+  text-decoration: none;
+  color: var(--c-link, #2563eb);
+}
+.pkc-md-rendered .pkc-fig-ref:hover {
+  text-decoration: underline;
+}
+
+/* L-1(2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`)
+ * `<hr class="pkc-section-break" data-pkc-role="...">` に展開、role 別 styling。
+ * Word/PPT/PDF export engine は data-pkc-role を消費して page break /
+ * slide separator にマップする。HTML preview では role に応じた装飾。 */
+.pkc-md-rendered .pkc-section-break {
+  border: none;
+  margin: 1.5em 0;
+  height: 1px;
+  background: var(--c-border, #d1d5db);
+}
+.pkc-md-rendered .pkc-section-break[data-pkc-role="cover"],
+.pkc-md-rendered .pkc-section-break[data-pkc-role="section"] {
+  /* 強い区切り — 二本線で視覚的に「次のセクション」を強調 */
+  height: 0;
+  border-top: 1px solid var(--c-border, #d1d5db);
+  border-bottom: 1px solid var(--c-border, #d1d5db);
+  padding-top: 0.4em;
+  margin: 2em 0;
+}
+.pkc-md-rendered .pkc-section-break[data-pkc-role="body"] {
+  /* 通常区切り、subtle */
+  background: transparent;
+  border-top: 1px dashed var(--c-fg-muted, #9ca3af);
+  height: 0;
+}
+
+/* L-8(2026-05-07、wave-10-2 Phase 1):空行マーカー(`_` / `_<N>`)
+ * `<div class="pkc-blank-line" data-pkc-blank-count="N">` を line-height × N
+ * の高さで描画。`--pkc-blank-line-h` を 1em に固定して em 相対で計算。 */
+.pkc-md-rendered .pkc-blank-line {
+  --pkc-blank-line-h: 1em;
+  height: calc(var(--pkc-blank-line-h) * 1);
+}
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="2"]  { height: calc(var(--pkc-blank-line-h) * 2);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="3"]  { height: calc(var(--pkc-blank-line-h) * 3);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="4"]  { height: calc(var(--pkc-blank-line-h) * 4);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="5"]  { height: calc(var(--pkc-blank-line-h) * 5);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="6"]  { height: calc(var(--pkc-blank-line-h) * 6);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="7"]  { height: calc(var(--pkc-blank-line-h) * 7);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="8"]  { height: calc(var(--pkc-blank-line-h) * 8);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="9"]  { height: calc(var(--pkc-blank-line-h) * 9);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="10"] { height: calc(var(--pkc-blank-line-h) * 10); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="11"] { height: calc(var(--pkc-blank-line-h) * 11); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="12"] { height: calc(var(--pkc-blank-line-h) * 12); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="13"] { height: calc(var(--pkc-blank-line-h) * 13); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="14"] { height: calc(var(--pkc-blank-line-h) * 14); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="15"] { height: calc(var(--pkc-blank-line-h) * 15); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="16"] { height: calc(var(--pkc-blank-line-h) * 16); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="17"] { height: calc(var(--pkc-blank-line-h) * 17); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="18"] { height: calc(var(--pkc-blank-line-h) * 18); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="19"] { height: calc(var(--pkc-blank-line-h) * 19); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="20"] { height: calc(var(--pkc-blank-line-h) * 20); }
+
 /* ── Markdown rendered body ── */
 .pkc-md-rendered {
   font-family: var(--font-body);

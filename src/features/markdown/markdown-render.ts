@@ -126,7 +126,11 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   // bypasses token.attrs entirely. Hoist the source-line attrs onto
   // the wrapper div so the active-block lookup can find the fence.
   const sourceLineAttrs = collectSourceLineAttrs(token);
-  const html = renderCsvFence(token.content, token.info);
+  // Pass inline renderer so CSV cells can carry markdown inline markup
+  // (`**bold**` / `==highlight==` / `:text:attrs:` L-6 simple-inline 等)。
+  // 2026-05-08 以前は plain-text escape しか効かず、user 報告で発覚。
+  const inlineRender = (text: string): string => md.renderInline(text, env);
+  const html = renderCsvFence(token.content, token.info, inlineRender);
   if (html !== null) return wrapWithCopyButton(html, 'code', sourceLineAttrs);
   const fenceHtml = defaultFence(tokens, idx, options, env, self);
   return wrapWithCopyButton(fenceHtml, 'code', sourceLineAttrs);
@@ -410,6 +414,269 @@ function escapeHtmlAttr(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+
+// ── L-2 (2026-05-07、wave-10-2 Phase 1):Inline 修飾 ──
+//
+// 3 つの新 inline syntax を markdown-it の inline ruler に登録:
+//   - `==text==` → <mark>text</mark>(highlight)
+//   - `==[red]text==` → <mark style="background-color:red">text</mark>
+//   - `[[ruby:base|reading]]` → <ruby>base<rt>reading</rt></ruby>
+//   - `[[em:text]]` → <em class="pkc-em-dot">text</em>(圏点)
+//
+// Code span / fence 内では markdown-it が code を先に tokenize するため、
+// 我々の inline rule は適用されない(自然な escape)。
+//
+// Inner content への inline markup は Phase 1 では非対応(plain text)、
+// 必要に応じて Phase 2 で再帰 tokenize 検討。
+
+const HIGHLIGHT_COLOR_RE = /^\[([a-zA-Z][a-zA-Z0-9-]*|#[0-9a-fA-F]{3,8}|rgb\([\d.,\s]+\)|rgba\([\d.,\s]+\))\]([\s\S]+)$/;
+
+md.inline.ruler.after('emphasis', 'pkc_highlight', function highlightRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  // == 開始判定
+  if (src.charCodeAt(start) !== 0x3D || src.charCodeAt(start + 1) !== 0x3D) return false;
+  // 前文字が = だと strikethrough や別パターンと衝突しうるので skip
+  if (start > 0 && src.charCodeAt(start - 1) === 0x3D) return false;
+  // 終端 == を探す
+  let closeIdx = -1;
+  for (let i = start + 2; i < state.posMax - 1; i++) {
+    if (src.charCodeAt(i) === 0x0A /* \n */) return false; // 改行を跨がない
+    if (src.charCodeAt(i) === 0x3D && src.charCodeAt(i + 1) === 0x3D) {
+      closeIdx = i;
+      break;
+    }
+  }
+  if (closeIdx < 0) return false;
+  let content = src.slice(start + 2, closeIdx);
+  if (!content || /^\s|\s$/.test(content)) return false;  // leading/trailing space NG
+  // Optional [color] prefix
+  let color: string | null = null;
+  const colorMatch = HIGHLIGHT_COLOR_RE.exec(content);
+  if (colorMatch) {
+    color = colorMatch[1]!;
+    content = colorMatch[2]!;
+  }
+  const tokenOpen = state.push('mark_open', 'mark', 1);
+  if (color) tokenOpen.attrSet('style', `background-color: ${color};`);
+  const tokenText = state.push('text', '', 0);
+  tokenText.content = content;
+  state.push('mark_close', 'mark', -1);
+  state.pos = closeIdx + 2;
+  return true;
+});
+
+md.inline.ruler.after('emphasis', 'pkc_ruby', function rubyRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  if (!src.startsWith('[[ruby:', start)) return false;
+  const closeIdx = src.indexOf(']]', start + 7);
+  if (closeIdx < 0) return false;
+  const content = src.slice(start + 7, closeIdx);
+  if (content.includes('\n')) return false;
+  const sepIdx = content.indexOf('|');
+  if (sepIdx <= 0 || sepIdx >= content.length - 1) return false;
+  const base = content.slice(0, sepIdx);
+  const reading = content.slice(sepIdx + 1);
+  if (!base || !reading) return false;
+  state.push('ruby_open', 'ruby', 1);
+  const tokenBase = state.push('text', '', 0);
+  tokenBase.content = base;
+  state.push('rt_open', 'rt', 1);
+  const tokenReading = state.push('text', '', 0);
+  tokenReading.content = reading;
+  state.push('rt_close', 'rt', -1);
+  state.push('ruby_close', 'ruby', -1);
+  state.pos = closeIdx + 2;
+  return true;
+});
+
+md.inline.ruler.after('emphasis', 'pkc_em_dot', function emDotRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  if (!src.startsWith('[[em:', start)) return false;
+  const closeIdx = src.indexOf(']]', start + 5);
+  if (closeIdx < 0) return false;
+  const content = src.slice(start + 5, closeIdx);
+  if (!content || content.includes('\n')) return false;
+  const tokenOpen = state.push('em_dot_open', 'em', 1);
+  tokenOpen.attrSet('class', 'pkc-em-dot');
+  const tokenText = state.push('text', '', 0);
+  tokenText.content = content;
+  state.push('em_dot_close', 'em', -1);
+  state.pos = closeIdx + 2;
+  return true;
+});
+
+// ── L-6 (2026-05-07、wave-10-2 Phase 1):簡易 inline `:text:attrs:` ──
+//
+// Spec §4.3:`:<内容>:<attrs カンマ区切り>:` で <span> に attrs 適用。
+//
+// 例:
+//   :太字かつ赤字:bold, red:        → <span style="font-weight:bold;color:red;">…</span>
+//   :背景黒文字白:bg-black, white:   → <span style="background-color:black;color:white;">…</span>
+//   :大きい:lg, italic:              → <span style="font-size:var(--fs-lg);font-style:italic;">…</span>
+//
+// vocabulary は §4.5 で統一(L-2 と整合):
+//   - 強調:bold / italic / underline / strikethrough / code
+//   - 色:CSS color name / `#hex` / `rgb(...)` / `rgba(...)`
+//   - 背景色:`bg-<color>`
+//   - サイズ:xs / sm / md / lg / xl(font-size 段階)
+//   - font-family:serif / sans / mono
+//
+// 順不同、未知 attr が混じると false で fall through。
+//
+// 衝突回避:
+//   - vocab 厳格化により `12:30:45` 等の非 attrs 文字列は誤発火しない
+//   - code span / fenced 内では markdown-it が code を先に tokenize、適用されない
+
+const SIMPLE_INLINE_VOCAB_KEYWORDS = new Set([
+  'bold', 'italic', 'underline', 'strikethrough', 'strike', 'code',
+  'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl',
+  'serif', 'sans', 'mono',
+]);
+
+// L-6 size token は body text に対する **相対 size**(em-based)。
+// `--fs-*` は chrome 用 fixed rem scale で body と差が出にくいため使わない。
+// markdown 本文での「ここだけ大きく / 小さく」を素直に表現するため em 比率で固定。
+const SIZE_KEYWORD_TO_EM: Record<string, string> = {
+  'xs':  '0.75em',
+  'sm':  '0.875em',
+  'md':  '1em',
+  'lg':  '1.25em',
+  'xl':  '1.5em',
+  '2xl': '1.875em',
+  '3xl': '2.5em',
+};
+
+// 自由値 size token: `120%` / `1.5em` / `0.5rem` / `12px` を許容。
+const SIZE_VALUE_RE = /^\d+(?:\.\d+)?(?:%|em|rem|px)$/;
+
+// Phase 1 で validate する CSS named color の curated list(~50 色)。
+// 他のレアな color name を使う場合は #hex / rgb() で指定する旨を spec 記載。
+const NAMED_COLORS = new Set([
+  'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'brown',
+  'black', 'white', 'gray', 'grey', 'silver', 'gold',
+  'cyan', 'magenta', 'lime', 'navy', 'teal', 'aqua', 'maroon', 'olive',
+  'transparent', 'crimson', 'salmon', 'tomato', 'coral', 'lavender', 'turquoise',
+  'indigo', 'violet', 'fuchsia',
+  'aliceblue', 'azure', 'beige', 'ivory', 'khaki',
+  'darkred', 'darkgreen', 'darkblue', 'darkgray', 'darkgrey',
+  'lightgray', 'lightgrey', 'lightblue', 'lightgreen', 'lightyellow', 'lightpink',
+  'currentcolor', 'inherit',
+]);
+
+const COLOR_VALUE_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s]+\))$/;
+// 先頭は a-z(keyword / 色名)、`#`(hex 色)、または digit(`120%` / `1.5em` 等の size 値、`2xl` の vocab keyword 形)。
+// `:120%:` のような size only attrs を許容するため digit + `%` を class に追加。
+// 時刻 `12:30:45` 等の誤発火は parseSimpleInlineAttrs 側で keyword / color / size value のいずれにも該当しないため reject される(数値だけは valid attr にならない)。
+const ATTRS_INNER_RE = /^[a-zA-Z0-9#][a-zA-Z0-9\-,#()\s.%]*$/;
+
+function isValidColor(c: string): boolean {
+  return NAMED_COLORS.has(c.toLowerCase()) || COLOR_VALUE_RE.test(c);
+}
+
+// attrs を top-level comma で split(parens 内 comma は保護)
+function splitAttrs(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ',' && depth === 0) {
+      out.push(s.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  out.push(s.slice(start).trim());
+  return out.filter(Boolean);
+}
+
+interface ParsedAttrs {
+  valid: boolean;
+  inlineStyle: string;
+}
+
+function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
+  const tokens = splitAttrs(attrsStr);
+  if (tokens.length === 0) return { valid: false, inlineStyle: '' };
+  const styles: Record<string, string> = {};
+  for (const t of tokens) {
+    if (SIMPLE_INLINE_VOCAB_KEYWORDS.has(t)) {
+      switch (t) {
+        case 'bold': styles['font-weight'] = 'bold'; break;
+        case 'italic': styles['font-style'] = 'italic'; break;
+        case 'underline': styles['text-decoration'] = 'underline'; break;
+        case 'strikethrough': case 'strike': styles['text-decoration'] = 'line-through'; break;
+        case 'code': styles['font-family'] = 'monospace'; break;
+        case 'xs': case 'sm': case 'md': case 'lg': case 'xl': case '2xl': case '3xl':
+          styles['font-size'] = SIZE_KEYWORD_TO_EM[t]!;
+          break;
+        case 'serif': styles['font-family'] = 'serif'; break;
+        case 'sans': styles['font-family'] = 'sans-serif'; break;
+        case 'mono': styles['font-family'] = 'monospace'; break;
+      }
+    } else if (SIZE_VALUE_RE.test(t)) {
+      // 自由値 size: `120%` / `1.5em` / `12px` / `0.75rem`
+      styles['font-size'] = t;
+    } else if (t.startsWith('bg-')) {
+      const c = t.slice(3);
+      if (!isValidColor(c)) return { valid: false, inlineStyle: '' };
+      styles['background-color'] = c;
+    } else if (isValidColor(t)) {
+      styles['color'] = t;
+    } else {
+      return { valid: false, inlineStyle: '' };
+    }
+  }
+  const inlineStyle = Object.entries(styles)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('; ');
+  return { valid: true, inlineStyle };
+}
+
+md.inline.ruler.after('emphasis', 'pkc_simple_inline', function simpleInlineRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  if (src.charCodeAt(start) !== 0x3A /* : */) return false;
+  // Scan forward to find a `:<attrs>:` boundary。
+  for (let i = start + 1; i < state.posMax; i++) {
+    const ch = src.charCodeAt(i);
+    if (ch === 0x0A /* newline */) return false;
+    if (ch !== 0x3A /* : */) continue;
+    // 候補境界。i から `:<attrs>:` を試行。
+    // `:` 以後 attrs 部分を抽出。
+    const restAfter = src.slice(i + 1);
+    const closeIdx = restAfter.indexOf(':');
+    if (closeIdx < 0) continue;
+    const attrsCandidate = restAfter.slice(0, closeIdx);
+    if (!attrsCandidate || !ATTRS_INNER_RE.test(attrsCandidate)) continue;
+    const parsed = parseSimpleInlineAttrs(attrsCandidate);
+    if (!parsed.valid) continue;
+    const content = src.slice(start + 1, i);
+    if (!content) continue;
+    // Match found:`<span style="...">content</span>` を出力。
+    // inner content は inline markup を保持したいので state.md.inline.parse で
+    // tokenize したいところだが、Phase 1 は plain text で。
+    const tokenOpen = state.push('simple_inline_open', 'span', 1);
+    tokenOpen.attrSet('class', 'pkc-inline-mark');
+    if (parsed.inlineStyle) tokenOpen.attrSet('style', parsed.inlineStyle);
+    const tokenText = state.push('text', '', 0);
+    tokenText.content = content;
+    state.push('simple_inline_close', 'span', -1);
+    state.pos = i + 1 + closeIdx + 1;  // skip past closing `:`
+    return true;
+  }
+  return false;
+
+});
+
 // ── Heading id injection ──────────────────────────────
 //
 // Stamp an `id` attribute on every h1/h2/h3 so the right-pane Table
@@ -645,22 +912,549 @@ const SOURCE_LINE_TOKEN_TYPES: ReadonlySet<string> = new Set([
   'html_block',
 ]);
 
-function tagSourceLines(tokens: Token[]): void {
+function tagSourceLines(tokens: Token[], lineMap?: number[]): void {
   for (const token of tokens) {
     if (token.map && SOURCE_LINE_TOKEN_TYPES.has(token.type)) {
-      // `token.map` = [startLine, endLineExclusive]. Store both so
-      // a preview block spanning many source lines can compute
-      // internal progress (PR #206 v12 design).
-      token.attrSet('data-pkc-source-line', String(token.map[0]));
-      token.attrSet(
-        'data-pkc-source-end',
-        String(Math.max(token.map[0], token.map[1] - 1)),
-      );
+      // `token.map` = [startLine, endLineExclusive] in the **stripped** source
+      // (output of all preprocess passes). 2026-05-08 user 報告で発覚した
+      // Split View 行ズレ修正:lineMap が渡されていれば output index を user
+      // の textarea(原文)行 index に逆引きする。lineMap[outIdx] = inputIdx。
+      const outStart = token.map[0];
+      const outEndIncl = Math.max(outStart, token.map[1] - 1);
+      const inStart = lineMap ? (lineMap[outStart] ?? outStart) : outStart;
+      const inEnd = lineMap ? (lineMap[outEndIncl] ?? outEndIncl) : outEndIncl;
+      token.attrSet('data-pkc-source-line', String(inStart));
+      token.attrSet('data-pkc-source-end', String(inEnd));
     }
     if (token.children && token.children.length > 0) {
-      tagSourceLines(token.children);
+      tagSourceLines(token.children, lineMap);
     }
   }
+}
+
+// ── L-7 (2026-05-07、wave-10-2 Phase 1):図 / 表 / 式 caption + 自動採番 ──
+//
+// Spec §3.5:
+//
+//   :::figure{#fig-flow}
+//   ![](asset:flowchart.png)
+//   ^^^ 全体フロー
+//   :::
+//
+//   本文 → 図 [@fig-flow] を参照
+//
+// `:::figure|table|equation{#id}` ... `^^^ caption` ... `:::` で図表番号を
+// 自動採番、`[@id]` で参照展開(template_kind 依存ラベル「図 N」「表 N」
+// 「式 N」)。
+//
+// 実装:pre-process で block を sentinel 置換 + registry 構築、md.render 後に
+// post-process で sentinel を <figure id=...><figcaption>...</figcaption></figure>
+// に展開、`[@id]` を <a href="#id">図 N</a> に展開。
+// markdown-it `html: false` を回避するため Unicode PUA(U+E110〜)を sentinel に。
+
+type FigKind = 'figure' | 'table' | 'equation';
+
+interface FigEntry {
+  kind: FigKind;
+  num: number;
+  caption: string;
+}
+
+const FIG_LABEL_PREFIX: Record<FigKind, string> = {
+  figure: '図',
+  table: '表',
+  equation: '式',
+};
+
+const FIG_SENTINEL_OPEN = '';
+const FIG_SENTINEL_SEP = '';
+const FIG_REF_OPEN = '';
+const FIG_REF_SEP = '';
+const FIG_REF_CLOSE = '';
+
+// ── Fenced code block の検出ヘルパ(2026-05-08 user 報告:fence 内で
+// preprocessor が誤発火、sentinel 漏れ → glyph 化する bug の根治)。
+//
+// CommonMark の fenced code block は ` ``` ` または ` ~~~ ` を行頭(0〜3 半角
+// SP のインデント許容)に置いた行で開閉する。同じ marker(``` or ~~~)で
+// 閉じる必要があるが、長さは開きと同等以上が必要。Phase 1 では「marker 種が
+// 一致したら閉じる」の単純ルールで処理(ほぼ実用上同等)。
+//
+// preprocessor が fence の中身行を「マーカー入り plain 段落」として処理すると
+// sentinel char が <code> 内に埋め込まれ、後段 markdown-it が <pre><code>...</code></pre>
+// で wrap、post-process regex(`<p[^>]*>SENT</p>`)が当たらず PUA glyph が
+// HTML に残る。fence 内は preprocessor 全件が **素通し** すべき。
+//
+// 各 preprocessor は同じ state machine を持つ:
+//   - inFence === false かつ line が fence 開き → 開きとして state 遷移、line は素通し
+//   - inFence === true かつ line が fence 閉じ(同 marker)→ 閉じとして state 遷移、line は素通し
+//   - inFence === true (中身)→ line は素通し
+//   - inFence === false (通常)→ marker 検出ロジック適用
+
+interface FenceState {
+  inFence: boolean;
+  marker: string;  // '```' or '~~~'(空 = 閉)
+}
+
+function fenceTransition(line: string, state: FenceState): { state: FenceState; isBoundary: boolean } {
+  const m = /^\s{0,3}(```+|~~~+)/.exec(line);
+  if (!m) return { state, isBoundary: false };
+  const lineMarker = m[1]!.startsWith('```') ? '```' : '~~~';
+  if (!state.inFence) {
+    return { state: { inFence: true, marker: lineMarker }, isBoundary: true };
+  }
+  if (lineMarker === state.marker) {
+    return { state: { inFence: false, marker: '' }, isBoundary: true };
+  }
+  return { state, isBoundary: false };
+}
+
+function processFigureBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<string, FigEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<string, FigEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  const counter: Record<FigKind, number> = { figure: 0, table: 0, equation: 0 };
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    // fence 内 / fence 境界行は figure marker 検出を skip(2026-05-08 hotfix)
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const m = /^:::(figure|table|equation)\{#([\w-]+)\}\s*$/.exec(line);
+    if (!m) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const kind = m[1] as FigKind;
+    const id = m[2]!;
+    counter[kind]++;
+    const num = counter[kind];
+    const content: string[] = [];
+    const contentInputIdx: number[] = [];
+    let caption = '';
+    let captionInputIdx = inputIdx;
+    const openInputIdx = inputIdx;
+    i++;
+    while (i < lines.length && lines[i]!.trim() !== ':::') {
+      const innerInputIdx = lineMapIn[i] ?? i;
+      const cm = /^\^\^\^\s*(.*)$/.exec(lines[i]!);
+      if (cm) {
+        caption = cm[1]!;
+        captionInputIdx = innerInputIdx;
+      } else {
+        content.push(lines[i]!);
+        contentInputIdx.push(innerInputIdx);
+      }
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++; // skip closing `:::`
+    registry.set(id, { kind, num, caption });
+    // Sentinel emission(各 sentinel は own-line で出力 → markdown-it が <p>...</p> wrap)。
+    // OPEN は figure 開き行に対応、CAPTION は ^^^ 行(なければ open 行 fallback)、
+    // CLOSE は閉じる ::: 行に対応。content は元の各行に対応。
+    out.push(`${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}${kind}${FIG_SENTINEL_SEP}${id}${FIG_SENTINEL_SEP}${num}${FIG_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    for (let k = 0; k < content.length; k++) {
+      out.push(content[k]!);
+      lineMapOut.push(contentInputIdx[k] ?? openInputIdx);
+    }
+    if (caption) {
+      out.push('');
+      lineMapOut.push(captionInputIdx);
+      out.push(`${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}${kind}${FIG_SENTINEL_SEP}${num}${FIG_SENTINEL_SEP}${caption}${FIG_SENTINEL_OPEN}`);
+      lineMapOut.push(captionInputIdx);
+    }
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${FIG_SENTINEL_OPEN}CLOSE${FIG_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+function processFigureRefs(source: string, registry: Map<string, FigEntry>): string {
+  return source.replace(/\[@([\w-]+)\]/g, (full, id) => {
+    const e = registry.get(id);
+    if (!e) return full;
+    const label = `${FIG_LABEL_PREFIX[e.kind]} ${e.num}`;
+    return `${FIG_REF_OPEN}${id}${FIG_REF_SEP}${label}${FIG_REF_CLOSE}`;
+  });
+}
+
+function postProcessFigureSentinels(html: string): string {
+  // <p>OPENkindidnum</p>
+  // 各 sentinel 行は <p attrs> を持ちうる(sourceLineAnchors path)。attrs を
+  // 保存して置換要素に転記、Split View block ↔ source line lookup を維持。
+  html = html.replace(
+    new RegExp(`<p([^>]*)>${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}([\\w-]+)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    (_match, attrs, kind, id, num) => `<figure id="${id}" class="pkc-fig pkc-fig-${kind}" data-pkc-fig-kind="${kind}" data-pkc-fig-num="${num}"${attrs}>`,
+  );
+  html = html.replace(
+    new RegExp(`<p([^>]*)>${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_SEP}([^${FIG_SENTINEL_OPEN}]+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    (_match, attrs, kind, num, captionRaw) => {
+      const prefix = FIG_LABEL_PREFIX[kind as FigKind];
+      // caption は markdown-it が既に inline markup(<strong>等)を render 済。
+      // 再 escape すると `&lt;strong&gt;` に化けるので raw のまま埋める。
+      // raw HTML は markdown-it `html: false` で source 由来の `<` は escape 済。
+      return `<figcaption class="pkc-fig-caption"${attrs}>${prefix} ${num}: ${captionRaw as string}</figcaption>`;
+    },
+  );
+  html = html.replace(
+    new RegExp(`<p[^>]*>${FIG_SENTINEL_OPEN}CLOSE${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    '</figure>',
+  );
+  // Inline references
+  html = html.replace(
+    new RegExp(`${FIG_REF_OPEN}([\\w-]+)${FIG_REF_SEP}([^${FIG_REF_CLOSE}]+)${FIG_REF_CLOSE}`, 'g'),
+    (_match, id, label) => `<a href="#${id}" class="pkc-fig-ref">${label}</a>`,
+  );
+  return html;
+}
+
+/**
+ * L-5 (2026-05-07、wave-10-2 Phase 1):行頭 align prefix。
+ * `||` / `|>` / `<|` を line 先頭に置くと、その行から空行までの paragraph
+ * 全体が center / right / left 寄せになる。継続行は prefix 省略可。
+ *
+ * Algorithm:
+ *  1. pre-process で line ごとに prefix 検出、strip + 行番号 → align map を記録
+ *  2. md.parse 後、token を walk して paragraph_open の map[0] が map に
+ *     あれば `data-pkc-align` 属性を付与
+ *  3. CSS が `[data-pkc-align="..."]` を読んで text-align を適用
+ */
+type AlignKind = 'center' | 'right' | 'left';
+
+function preprocessAlignPrefix(source: string, lineMapIn: number[]): {
+  stripped: string;
+  alignMap: Map<number, AlignKind>;
+  indentMap: Map<number, true>;
+  lineMap: number[];
+} {
+  const lines = source.split('\n');
+  const alignMap = new Map<number, AlignKind>();
+  // L-9(2026-05-08):行頭の `__`(半角 _ × 2)or `＿`(全角 _、U+FF3F)は
+  // 段落先頭 1 字下げマーカー。日本語文書の段落字下げ慣習を表現。indentMap は
+  // OUTPUT line index → true。alignMap と orthogonal、両方適用も可。
+  const indentMap = new Map<number, true>();
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let currentAlign: AlignKind | null = null;
+  // Detect prefix at line start. `||` `|>` `<|` followed by optional space.
+  // 行頭の空白系文字種は無視(2026-05-08 user 統一方針:行頭系シンプル記法は
+  // leading whitespace を全部 strip)。`   |>` / `\t<|` 等もマーカーとして拾う。
+  const prefixRe = /^\s*(\|\||\|>|<\|)(?:\s)?(.*)$/;
+  // L-9 indent prefix:`__` or `＿`(U+FF3F、全角アンダースコア)。`___`
+  // 以上の連続(markdown horizontal rule)は捕まえないため `(?!_)` で除外、
+  // また content 末尾が `__` で終わる場合は markdown bold 行と解釈して
+  // skip(`__bold__` を indent 化しない)。
+  const indentRe = /^\s*(?:__|＿)(?!_)\s?(.*)$/;
+  // alignMap は **OUTPUT line index** に対する map(2026-05-07 hotfix で
+  // input → output index へ移行)。prefix 行は前後で paragraph 分離されるため、
+  // `breaks: true` で連続行が 1 paragraph に merge される問題を回避する。
+
+  // fenced code block 内では align / indent prefix を marker と認識しない
+  // (2026-05-08 hotfix)。fence 中は素通し、currentAlign も reset。
+  let fence: FenceState = { inFence: false, marker: '' };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      currentAlign = null;
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    const trimmed = line.trim();
+    // Blank line ends the aligned paragraph.
+    if (trimmed === '') {
+      currentAlign = null;
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    // Structural breaks(heading / list / blockquote / fence / hr / table)
+    // also reset alignment — alignment applies to paragraphs only.
+    const isStructural =
+      /^#{1,6}\s/.test(line)
+      || /^[-*+]\s/.test(line)
+      || /^\d+\.\s/.test(line)
+      || /^>/.test(line)
+      || /^```/.test(line)
+      || /^---+\s*$/.test(line)
+      || /^\|/.test(line);  // table row(also catches `||` but prefix matches first)
+    // Detect L-5 align prefix
+    const m = prefixRe.exec(line);
+    if (m) {
+      const sym = m[1]!;
+      const rest = m[2] ?? '';
+      const align: AlignKind = sym === '||' ? 'center' : sym === '|>' ? 'right' : 'left';
+      // **重要**:prefix 行は前段落から切り離して新 paragraph にする。
+      // 挿入する空行も同じ inputIdx を指す(sync layer の lookup は閉じた区間で
+      // 動くので副作用なし)。
+      const prevOut = out.length > 0 ? out[out.length - 1]! : '';
+      if (prevOut.trim() !== '') {
+        out.push('');
+        lineMapOut.push(inputIdx);
+      }
+      const outIdx = out.length;
+      currentAlign = align;
+      alignMap.set(outIdx, align);
+      // L-9 indent も一緒に判定(align prefix 後の content が `__段落` の場合)
+      const im0 = indentRe.exec(rest);
+      if (im0 && !rest.endsWith('__')) {
+        indentMap.set(outIdx, true);
+        out.push(im0[1] ?? '');
+      } else {
+        out.push(rest);
+      }
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    // Detect L-9 indent prefix(align なしの行)
+    const im = indentRe.exec(line);
+    if (im && !line.endsWith('__')) {
+      const rest = im[1] ?? '';
+      // 同じく前段落と paragraph merge されないよう前後を空行で囲む。
+      const prevOut = out.length > 0 ? out[out.length - 1]! : '';
+      if (prevOut.trim() !== '') {
+        out.push('');
+        lineMapOut.push(inputIdx);
+      }
+      const outIdx = out.length;
+      indentMap.set(outIdx, true);
+      currentAlign = null;
+      out.push(rest);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    // Continuation line: inherit current alignment unless structural break.
+    if (isStructural) {
+      currentAlign = null;
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    if (currentAlign) {
+      const outIdx = out.length;
+      alignMap.set(outIdx, currentAlign);
+    }
+    out.push(line);
+    lineMapOut.push(inputIdx);
+  }
+  return { stripped: out.join('\n'), alignMap, indentMap, lineMap: lineMapOut };
+}
+
+function applyAlignAttrs(
+  tokens: Token[],
+  alignMap: Map<number, AlignKind>,
+  indentMap: Map<number, true>,
+): void {
+  if (alignMap.size === 0 && indentMap.size === 0) return;
+  for (const tok of tokens) {
+    if (tok.type === 'paragraph_open' && tok.map) {
+      const startLine = tok.map[0];
+      const align = alignMap.get(startLine);
+      if (align) {
+        tok.attrSet('data-pkc-align', align);
+      }
+      if (indentMap.get(startLine)) {
+        tok.attrSet('data-pkc-indent', '1');
+      }
+    }
+  }
+}
+
+/**
+ * L-4(2026-05-07、wave-10-2 Phase 1):Comments(`%%` inline / `%%%` block)。
+ * spec doc §3.4:本文中に隠しメモを書ける、render では完全に削除。
+ *
+ *   %% inline comment、export では完全削除 %%
+ *
+ *   %%%
+ *   block comment、複数行可
+ *   %%%
+ */
+function stripComments(source: string): string {
+  // fenced code block 内は touch しない(2026-05-08 hotfix:user 報告は
+  // 主に L-8 だが、`%%` も同根 bug。code 内に `%% comment %%` が書かれて
+  // いたら、それは code の一部なので残す)。fence 外の region だけを
+  // join して regex strip、その後 fence region と元の順序で再結合。
+  const lines = source.split('\n');
+  let fence: FenceState = { inFence: false, marker: '' };
+  // まず fence の中外を判定して block 化:[{ inFence, lines: string[] }, ...]
+  type Block = { inFence: boolean; lines: string[] };
+  const blocks: Block[] = [];
+  for (const line of lines) {
+    const t = fenceTransition(line, fence);
+    const wasIn = fence.inFence;
+    fence = t.state;
+    const isFenceContent = wasIn || t.isBoundary;
+    const last = blocks[blocks.length - 1];
+    if (last && last.inFence === isFenceContent) {
+      last.lines.push(line);
+    } else {
+      blocks.push({ inFence: isFenceContent, lines: [line] });
+    }
+  }
+  return blocks.map((b) => {
+    if (b.inFence) return b.lines.join('\n');
+    let out = b.lines.join('\n');
+    out = out.replace(/%%%[\s\S]*?%%%/g, '');
+    out = out.replace(/%%[^\n]*?%%/g, '');
+    return out;
+  }).join('\n');
+}
+
+// ── L-1 (2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`) ──
+//
+// Spec §2.3:`+++` line で page / slide break、`{role=...}` で role 指定。
+// Phase 1 で対応する role:`auto`(default)/ `cover` / `section` / `body`。
+// 他 role は spec §2.3 表参照(toc / landscape / appendix / bibliography /
+// index)。本実装は role 文字列を data-pkc-role 属性で素通し、format export
+// engine が消費する想定。
+//
+// HTML 出力:`<hr class="pkc-section-break" data-pkc-role="ROLE">`。
+// CSS は role 別に少し見た目を変える(cover は強い区切り、section は弱め)。
+//
+// 実装:pre-process で `+++` line を sentinel 化、post-process で <hr> に置換。
+
+const SECTION_OPEN = '\u{E120}';
+const SECTION_SEP = '\u{E121}';
+
+function processSectionBreaks(source: string): string {
+  // fenced code block 内では `+++` を marker と認識しない(2026-05-08 hotfix)。
+  let fence: FenceState = { inFence: false, marker: '' };
+  return source.split('\n').map((line) => {
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) return line;
+    // 行頭の空白系文字種(半角 / tab / 全角 U+3000 等)は無視(2026-05-08
+    // user 統一方針:行頭系シンプル記法は leading whitespace を全部 strip)。
+    const m = /^\s*\+\+\+\s*(?:\{([^}]*)\}\s*)?$/.exec(line);
+    if (!m) return line;
+    const attrs = m[1]?.trim() ?? '';
+    let role = 'auto';
+    if (attrs) {
+      // `role=X` を抽出。他 attr は無視(Phase 1)。
+      const rm = /role=(\w[\w-]*)/.exec(attrs);
+      if (rm) role = rm[1]!;
+    }
+    return `${SECTION_OPEN}${role}${SECTION_SEP}`;
+  }).join('\n');
+}
+
+function postProcessSectionBreaks(html: string): string {
+  // `<p>` の attrs(`tagSourceLines` が付ける `data-pkc-source-line-*` 等)
+  // を **保存** して置換要素に転記。Split View の source-preview-sync が
+  // block ↔ source line lookup に使うため、attrs を捨てると同期が崩れる
+  // (2026-05-08 user 報告)。`([^>]*)` で attrs 文字列を捕獲、置換後の
+  // <hr> にそのまま付ける。
+  return html.replace(
+    new RegExp(`<p([^>]*)>${SECTION_OPEN}(\\w[\\w-]*)${SECTION_SEP}</p>`, 'g'),
+    (_match, attrs, role) => `<hr class="pkc-section-break" data-pkc-role="${role}"${attrs}>`,
+  );
+}
+
+// ── L-8(2026-05-07、wave-10-2 Phase 1):空行マーカー(`_` / `_<N>`) ──
+//
+// Spec §3.10:行頭 `_` 単独 → 1 空行ぶん、`_<N>` → N 空行ぶん。
+// CommonMark は連続空行を 1 paragraph 区切りに collapse するため、本文中で
+// 「ここに 2 行ぶん余白を入れたい」を素朴に表現できない。明示マーカーで
+// vertical spacing 制御する。
+//
+// HTML 出力:`<div class="pkc-blank-line" data-pkc-blank-count="N" aria-hidden="true"></div>`。
+// CSS で `--pkc-blank-line-h` × N の高さを取る。
+//
+// 実装:processSectionBreaks と同じ pre-process / post-process pattern。
+//
+// N の上限:1〜20 で clip。誤入力で 9999 行余白等を作る事故を防ぐ。
+//
+// インデント付き `   _` はマーカーとして扱わない(段落継続 / コード扱い)。
+
+const BLANK_OPEN = '\u{E130}';
+const BLANK_SEP = '\u{E131}';
+const BLANK_LINE_MAX = 20;
+
+function processBlankLineMarkers(source: string, lineMapIn: number[]): {
+  transformed: string;
+  lineMap: number[];
+} {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  // fenced code block 内では `_` を marker と認識しない(2026-05-08 hotfix)。
+  let fence: FenceState = { inFence: false, marker: '' };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    // 行頭の空白系文字種(半角 / tab / 全角 U+3000 等)を許容(2026-05-08
+    // user 統一方針)。`   _` / `\t_` 等もマーカーとして拾う。
+    const m = /^\s*_(\d*)\s*$/.exec(line);
+    if (!m) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    let count = 1;
+    if (m[1]) {
+      const parsed = Number.parseInt(m[1], 10);
+      if (Number.isFinite(parsed) && parsed >= 1) {
+        count = Math.min(parsed, BLANK_LINE_MAX);
+      } else {
+        out.push(line);
+        lineMapOut.push(inputIdx);
+        continue;
+      }
+    }
+    // 前後を空行で囲んで標準形態の独立 paragraph にする(`breaks: true` 設定
+    // 下の前後行 merge 回避)。挿入される空行の lineMap entry も同 inputIdx
+    // を指しておく(sync layer は閉じた区間で lookup するので副作用なし)。
+    const prevOut = out.length > 0 ? out[out.length - 1]! : '';
+    if (prevOut.trim() !== '') {
+      out.push('');
+      lineMapOut.push(inputIdx);
+    }
+    out.push(`${BLANK_OPEN}${count}${BLANK_SEP}`);
+    lineMapOut.push(inputIdx);
+    out.push('');
+    lineMapOut.push(inputIdx);
+  }
+  return { transformed: out.join('\n'), lineMap: lineMapOut };
+}
+
+function postProcessBlankLineMarkers(html: string): string {
+  // attrs を保存して div に転記(Split View block ↔ source line lookup 維持)。
+  return html.replace(
+    new RegExp(`<p([^>]*)>${BLANK_OPEN}(\\d+)${BLANK_SEP}</p>`, 'g'),
+    (_match, attrs, count) => `<div class="pkc-blank-line" data-pkc-blank-count="${count}" aria-hidden="true"${attrs}></div>`,
+  );
 }
 
 /**
@@ -674,16 +1468,61 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
+  // 入力 line 数を覚えておき、initial lineMap = identity。preprocess 各 step
+  // が line を挿入 / 消費する度に lineMap を更新、最終 lineMap[outputIdx] は
+  // user の textarea source(原文)の line index を返す。Split View の
+  // source-preview-sync が caret line ↔ preview block lookup に使う
+  // (2026-05-08 user 報告:Split View 行ズレ修正)。
+  let lineMap: number[] = [];
+  const initialLines = text.split('\n').length;
+  for (let i = 0; i < initialLines; i++) lineMap.push(i);
+  // L-4:comment strip(block comment による line 削減は稀、現状 lineMap 不変
+  // として扱う。multi-line block comment 使用時に行ズレ可能性あり、TODO)
+  text = stripComments(text);
+  // L-1:section break を sentinel 化(1:1 line 変換、lineMap 不変)
+  text = processSectionBreaks(text);
+  // L-8:`_` / `_<N>` 空行マーカー(挿入あり、lineMap 更新)
+  const blankResult = processBlankLineMarkers(text, lineMap);
+  text = blankResult.transformed;
+  lineMap = blankResult.lineMap;
+  // L-7:figure/table/equation block(sentinel 化、挿入あり、lineMap 更新)
+  const figResult = processFigureBlocks(text, lineMap);
+  text = figResult.transformed;
+  lineMap = figResult.lineMap;
+  text = processFigureRefs(text, figResult.registry);
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
+  // L-5 align prefix + L-9 indent prefix を pre-process で strip(挿入あり)。
+  const alignResult = preprocessAlignPrefix(text, lineMap);
+  const stripped = alignResult.stripped;
+  const alignMap = alignResult.alignMap;
+  const indentMap = alignResult.indentMap;
+  lineMap = alignResult.lineMap;
+  let html: string;
   if (!opts.sourceLineAnchors) {
-    return md.render(text, env);
+    if (alignMap.size === 0 && indentMap.size === 0) {
+      html = md.render(stripped, env);
+    } else {
+      const tokens = md.parse(stripped, env);
+      applyAlignAttrs(tokens, alignMap, indentMap);
+      html = md.renderer.render(tokens, md.options, env);
+    }
+  } else {
+    // 領域 10-1 — opt-in source-line anchor stamping on block tokens。
+    // lineMap で stripped output index → 原文 input index へ逆引き。
+    const tokens = md.parse(stripped, env);
+    applyAlignAttrs(tokens, alignMap, indentMap);
+    tagSourceLines(tokens, lineMap);
+    html = md.renderer.render(tokens, md.options, env);
   }
-  // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
-  const tokens = md.parse(text, env);
-  tagSourceLines(tokens);
-  return md.renderer.render(tokens, md.options, env);
+  // L-7:figure/table/equation sentinel → <figure>
+  html = postProcessFigureSentinels(html);
+  // L-1:section break sentinel → <hr>
+  html = postProcessSectionBreaks(html);
+  // L-8:blank-line sentinel → <div class="pkc-blank-line">
+  html = postProcessBlankLineMarkers(html);
+  return html;
 }
 
 /**
@@ -698,6 +1537,17 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^#{1,6}\s|\*\*|__|\*[^*\s]|_[^_\s]|`[^`]+`|^\d+\.\s|^[-*+]\s|^>\s|^```|^---$|^[*]{3,}$|\[.+\]\(.+\)|^\|.+\||^[-*+]\s+\[[ xX]\]/m.test(text)) return true;
   // FI-08.x: bare URLs should flow through markdown-it linkify (D-FB1=B).
   if (/\b(?:https?|ftp):\/\/[^\s<>]/i.test(text)) return true;
+  // wave-10-2 Phase 1 dialect extensions: L-1 / L-2 / L-3 / L-4 / L-5 / L-7 を
+  // markdown render に通す。これがないと「`||` 等だけ」の body が plain-text 経路に
+  // 流れて L-5 の align prefix も applied されない(2026-05-07 user 報告)。
+  if (/^(?:\|\||\|>|<\|)/m.test(text)) return true;        // L-5 align prefix
+  if (/^\+\+\+\s*(?:\{[^}]*\})?\s*$/m.test(text)) return true; // L-1 section break
+  if (/==[^=]+==|\[\[(?:ruby|em):/.test(text)) return true;     // L-2 highlight / ruby / em-dot
+  if (/^:::figure(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure block
+  if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
+  if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
+  if (/^\s*_\d*\s*$/m.test(text)) return true;                  // L-8 blank-line marker
+  if (/^\s*(?:__|＿)(?!_)/m.test(text)) return true;            // L-9 indent prefix
   return false;
 }
 

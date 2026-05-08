@@ -160,10 +160,30 @@ function escapeHtml(s: string): string {
  *   length so the table layout stays rectangular even when source
  *   CSV has trailing-comma irregularity.
  */
-export function rowsToHtml(rows: string[][], withHeader: boolean): string {
+/**
+ * Build the table HTML from parsed rows.
+ *
+ * - Width-padding: short rows are extended with empty cells.
+ * - Header detection: when `withHeader` is true, the first row goes
+ *   into `<thead><tr><th>`, otherwise everything goes into
+ *   `<tbody><tr><td>`.
+ * - Cell rendering: when `inlineRender` is provided(typically the
+ *   markdown-it instance's `renderInline`), each cell text is parsed
+ *   as inline markdown so users can embed `**bold**` / `==highlight==`
+ *   / `:文字:bold,red:`(L-6 simple-inline) etc. inside cells. When
+ *   omitted, cells are HTML-escaped only(legacy plain-text behavior、
+ *   2026-05-08 以前)。
+ */
+export function rowsToHtml(
+  rows: string[][],
+  withHeader: boolean,
+  inlineRender?: (text: string) => string,
+): string {
   const width = rows.reduce((max, r) => Math.max(max, r.length), 0);
   const pad = (r: string[]): string[] =>
     r.length === width ? r : r.concat(Array(width - r.length).fill(''));
+  const renderCell = (cell: string): string =>
+    inlineRender ? inlineRender(cell) : escapeHtml(cell);
 
   const parts: string[] = [];
   parts.push('<table class="pkc-md-rendered-csv">');
@@ -171,7 +191,7 @@ export function rowsToHtml(rows: string[][], withHeader: boolean): string {
   if (withHeader && rows.length > 0) {
     parts.push('<thead><tr>');
     for (const cell of pad(rows[0]!)) {
-      parts.push(`<th>${escapeHtml(cell)}</th>`);
+      parts.push(`<th>${renderCell(cell)}</th>`);
     }
     parts.push('</tr></thead>');
     bodyStart = 1;
@@ -181,7 +201,7 @@ export function rowsToHtml(rows: string[][], withHeader: boolean): string {
     for (let i = bodyStart; i < rows.length; i++) {
       parts.push('<tr>');
       for (const cell of pad(rows[i]!)) {
-        parts.push(`<td>${escapeHtml(cell)}</td>`);
+        parts.push(`<td>${renderCell(cell)}</td>`);
       }
       parts.push('</tr>');
     }
@@ -196,11 +216,15 @@ export function rowsToHtml(rows: string[][], withHeader: boolean): string {
  * info string, return either the rendered `<table>` HTML or `null`
  * to signal "fall back to default fence rendering".
  */
-export function renderCsvFence(content: string, info: string | null | undefined): string | null {
+export function renderCsvFence(
+  content: string,
+  info: string | null | undefined,
+  inlineRender?: (text: string) => string,
+): string | null {
   const lang = detectCsvLang(info);
   if (!lang) return null;
   const rows = parseCsv(content, DELIMITER[lang]);
   if (!rows) return null;
   const withHeader = !isHeaderDisabled(info);
-  return rowsToHtml(rows, withHeader);
+  return rowsToHtml(rows, withHeader, inlineRender);
 }

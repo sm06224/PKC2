@@ -83,12 +83,18 @@ jobs:
         run: npm run check:docs
 
       - name: Test (with coverage gate)
-        # Bump V8 heap to 4GB. Node 20 default (~2GB) was insufficient
-        # for the cumulative test surface (4228 tests / 165 files):
-        # the threads pool shares one V8 isolate per worker and the
-        # accumulated happy-dom DOM across files trips OOM mid-run on
-        # the GitHub-hosted ubuntu runner. Raising the limit is the
-        # least-invasive fix; vitest pool tuning would change behavior.
+        # Bump V8 heap to 8GB (2026-05-08 update). Was 4GB but
+        # `Reached heap limit Allocation failed` on the wave-10-2
+        # Phase 1 PR (~6718 tests / 298 files / +5005 lines source)
+        # under coverage instrumentation. ubuntu-latest GitHub-hosted
+        # runners are 4-core / 16 GB RAM so 8 GB is safely within
+        # budget(残 8 GB は other processes 用)。Local repro:
+        # `NODE_OPTIONS=--max-old-space-size=4096 npm run test:coverage`
+        # → OOM、`--max-old-space-size=8192` → PASS(coverage 80.84% /
+        # threshold 80% も同時 verify、所要 4 分)。
+        # 旧値だった 4GB は cumulative test surface 4228 tests / 165 files
+        # 時点の選定で、本 PR 時点で 1.6 倍の test 量に倍増しているため
+        # 同等の倍増を heap にも適用。
         #
         # Coverage gate (2026-05-03 / reform-2026-05): the repo-wide
         # minimum thresholds in vitest.config.ts (80 stmt / 78 br /
@@ -98,7 +104,7 @@ jobs:
         # coverage-v8 instrumentation harness (~+30-60 sec).
         # Adoption rationale: docs/development/test-strategy-audit-2026-05.md §1.
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=8192
         run: npm run test:coverage
 
       - name: Build bundle

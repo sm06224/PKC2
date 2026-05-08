@@ -540,6 +540,8 @@ CSS architecture redesign wave(領域 9)着地後にドキュメンテーショ�
 
 §領域 6 で計画していた markdown 方言拡張を機能改修フェーズで継続。clickable image / table-of-numbers / etc. の拡張仕様を順次着地。
 
+**Status(2026-05-08)**: **Phase 1 完成**。integration branch `claude/wave-10-2-phase1-integration-2026-05-07`(27 commits)で全 9 markup(L-1〜L-9)+ 周辺機能 + AI 書き手向け規約書 v1 を着地。実装一覧:L-1 Section break / L-2 Highlight・Ruby・Em-dot / L-3 Blockquote / L-4 Comments / L-5 Align prefix / L-6 Simple inline(em-based size + 自由値) / L-7 Figure/Table/Equation 自動採番 / L-8 空行マーカー / L-9 段落字下げ。周辺機能:iPhone snippet toolbar(20 snippet)、Rich copy で PKC 拡張を inline style 化(ONLYOFFICE / Word 互換)、CSV cell に inline markdown 適用、favicon multi-format pipeline、行頭 leading whitespace 統一許容、Viewer popup CSS + DOM 経路 mirror、Split View source-line LineMap thread、fenced code 内 marker 発火 skip。docs 2-tier:human-oriented(設計議論)+ AI 規約書 v1(構文規約)。Phase 1 残:format mapping マトリクス(Word / PPT / PDF / LaTeX / ePub)着手前 = 10-3 IR wave 後の課題、Phase 2(track changes / variables / glossary / spreadsheet embed 等)は別 wave。
+
 サイズ: 大(wave、6-10 PR)。
 
 ### 10-3: 内部中間表現(IR)導入 — word / ppt 組版と HTML レンダリングを同一 IR から派生

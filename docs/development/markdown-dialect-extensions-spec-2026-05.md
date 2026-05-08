@@ -1,5 +1,8 @@
 # PKC2 Markdown 方言拡張 + IR 連動 spec(2026-05-07、wave-10-2 起点 draft)
 
+**Audience**: 人間(設計議論 / 実装者 / レビュアー)。background / trade-off / 業界事例 / 設計議論を含む。
+**AI authoring 向け規約書**: `../spec/markdown-dialect-for-ai-authors-v1.md` ── 本書から「設計議論」を取り除き、LLM 書き手が PKC2 entry を生成する際の構文規約だけを self-contained に提示。AI が markdown を生成する場面では本書ではなく **AI 規約書 v1 を直接参照** すること。
+
 **Status**: draft(user review 中、syntax 確定前)
 **Wave**: 10-2(markdown 方言拡張)
 **Vision link**: `pkc2-vision-modern-emacs-2026-05.md` §4 — 「org-mode-class モダン版」獲得の中核 wave
@@ -567,6 +570,111 @@ paragraph node に `align` attribute を付与:
 { type: 'paragraph', align: 'center', children: [...] }
 ```
 
+### 3.10 空行マーカー(`_` / `_<N>`、NEW、user 案 2026-05-07)
+
+CommonMark は連続する空行を 1 つの paragraph 区切りに collapse するため、本文中に「ここに余白を 2 行ぶん入れたい」を素朴に表現できない。明示マーカーで vertical spacing を制御する。
+
+#### 構文
+
+```markdown
+本文
+
+_
+
+本文(1 空行ぶん下)
+```
+
+```markdown
+本文
+
+_3
+
+本文(3 空行ぶん下)
+```
+
+- `_` 単独行 → **1 空行ぶん**(default)
+- `_<N>` 単独行(`<N>` は正の整数)→ **N 空行ぶん**
+- 行内の他の文字と混ざる場合(`_word` / `word_`)は通常 emphasis token として markdown-it に流す
+
+#### parse 規則
+
+- `^_(\d*)\s*$` にマッチする行のみ blank marker と認識
+- それ以外の `_` は通常 markdown(emphasis / 識別子)として処理
+- 行頭インデントがある `   _` はマーカーとして扱わない(段落継続 / コード扱い)
+- 数値 `<N>` は **1〜20** の範囲 clip(誤入力で 9999 行余白を作る事故を防ぐ、設計上限は実用域 + 余裕)
+
+#### IR / HTML 表現
+
+```ts
+{ type: 'blank-line-spacer', count: 3 }
+```
+
+HTML へは `<div class="pkc-blank-line" data-pkc-blank-count="N" aria-hidden="true">` を出力。CSS で `--pkc-blank-line-h` × N の高さを取る。
+
+#### Format mapping
+
+| Format | 出力 |
+|--------|------|
+| HTML   | `<div class="pkc-blank-line" data-pkc-blank-count="N">`(高さ N 行ぶん) |
+| Word   | N 個の `<w:p>` empty paragraph |
+| PPT    | placeholder の vertical offset を line-height × N 加算 |
+| PDF    | HTML 出力をそのまま print(同じ高さで blank space) |
+| Markdown export(canonical) | そのまま `_<N>` を残す(idempotent round-trip) |
+
+#### 例
+
+```markdown
+# 第 1 章
+
+_2
+
+導入 paragraph。
+
+# 第 2 章
+```
+
+→ chapter 間に「自然な段落区切り(空行)」+「2 行ぶんの追加余白」が入る。
+
+### 3.11 段落先頭 1 字下げ(`__` / `＿`、NEW、user 案 2026-05-08)
+
+日本語文書の段落字下げ慣習(段落の最初の 1 文字を 1 字ぶん右に押す)を表現する markup。
+
+#### 構文
+
+```markdown
+__段落本文(先頭 1 文字下がる)。
+__ 半角スペース挟みも OK。
+＿全角アンダースコア(U+FF3F)も等価。
+```
+
+- 行頭 `__`(半角 `_` × 2)or `＿`(全角 U+FF3F)→ 続く paragraph に 1 字下げ
+- 行頭スペース系文字(半角 SP / TAB / 全角 SP)は無視(行頭系シンプル記法統一方針、2026-05-08)
+- 後続の content に空白 0〜1 文字許容、それ以降が paragraph 本文
+
+#### parse 規則(衝突回避)
+
+- `___text` 等 `_` が 3 連続以上 → markdown horizontal rule / strong emphasis として通常処理
+- 行末が `__` で閉じる場合(`__bold__`)は markdown bold の単独行と解釈、indent 化しない
+- align prefix(L-5)と併用可:`|| __センター字下げ`(中央寄せ + 字下げ)
+
+#### IR / HTML 表現
+
+paragraph に `data-pkc-indent="1"` 属性を付与。CSS で `text-indent: 1em`(1 文字幅 = 現 font-size 1 文字)を適用。
+
+```ts
+{ type: 'paragraph', indent: 1, children: [...] }
+```
+
+#### Format mapping
+
+| Format | 出力 |
+|--------|------|
+| HTML   | `<p data-pkc-indent="1">` + `text-indent: 1em` |
+| Word   | `<w:p>` の `<w:pPr><w:ind w:firstLine="200"/>`(200 = 1 全角文字幅) |
+| PPT    | placeholder の text frame に first-line indent |
+| PDF    | HTML 出力をそのまま print(text-indent そのまま) |
+| Markdown export(canonical) | そのまま `__` を残す(idempotent round-trip) |
+
 ---
 
 ## 4. 構造拡張(Inline-level)
@@ -659,7 +767,7 @@ inline 修飾子 直後の改行は wrap 内に保持:
 | **強調** | `bold` / `italic` / `underline` / `strikethrough` / `code` | `bold, italic` |
 | **色** | CSS color name / `#hex` / `rgb(...)` | `red, #ff8800` |
 | **背景色** | `bg-<color>` / `background=...` | `bg-black, bg-#222` |
-| **サイズ** | `xs` / `sm` / `md` / `lg` / `xl` / `size=1.2em` | `lg, bold` |
+| **サイズ** | `xs` / `sm` / `md` / `lg` / `xl` / `2xl` / `3xl` / `<N>%` / `<N>em` | `lg, bold`、`120%`、`1.5em` |
 | **font-family** | `serif` / `sans` / `mono` / `font=Noto Sans JP` | `mono` |
 
 統一 vocabulary により autocomplete も簡単(spec 固定 list、~30 item)。

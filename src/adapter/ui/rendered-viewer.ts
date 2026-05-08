@@ -43,6 +43,8 @@ import {
 import { parseAttachmentBody } from './attachment-presenter';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
+import { expandTransclusions } from './transclusion';
+import { buildAssetMimeMap, buildAssetNameMap } from './renderer';
 
 /**
  * Build the standalone HTML document for a rendered viewer window.
@@ -290,6 +292,142 @@ export function buildRenderedViewerHtml(
     }
     .pkc-md-rendered li.pkc-task-item ul,
     .pkc-md-rendered li.pkc-task-item ol { color: #222; text-decoration: none; }
+    /* wave-10-2 Phase 1 dialect extensions(2026-05-07):main app の
+       base.css にしか入れていなかったため、Viewer / 専用 popup ではスタイル
+       無効化されて user に「反映されない」と見えていた。base.css §1787-1855
+       を export 専用 standalone HTML にも mirror。
+       色は theme var ではなく hard code(export HTML は runtime theme を持た
+       ないため、base.css と同じ fallback 値を採用)。 */
+    /* L-5 行頭 align prefix */
+    .pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
+    .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
+    .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+    /* L-9 段落先頭 1 字下げ(2026-05-08) */
+    .pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
+    /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
+       hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため
+       base.css pkc-transclusion 群を inline mirror)。 */
+    .pkc-transclusion {
+      border-left: 3px solid #4a90e2;
+      background: rgba(74, 144, 226, 0.04);
+      border-radius: 4px;
+      padding: 0.35rem 0.6rem;
+      margin: 0.5rem 0;
+    }
+    .pkc-transclusion-header {
+      font-size: 0.75rem;
+      color: #6b7280;
+      margin-bottom: 0.35rem;
+      padding-bottom: 0.2rem;
+      border-bottom: 1px dashed #d1d5db;
+    }
+    .pkc-transclusion-source { color: #6b7280; text-decoration: none; }
+    .pkc-transclusion-source::before { content: '↪ '; color: #6b7280; }
+    .pkc-transclusion-source:hover { color: #4a90e2; text-decoration: underline; }
+    .pkc-transclusion-body > :first-child { margin-top: 0; }
+    .pkc-transclusion-body > :last-child { margin-bottom: 0; }
+    .pkc-transclusion-fallback { color: #6b7280; font-style: italic; }
+    .pkc-embed-blocked {
+      display: inline-block;
+      color: #6b7280;
+      background: rgba(0, 0, 0, 0.04);
+      border: 1px dashed rgba(0, 0, 0, 0.18);
+      border-radius: 4px;
+      padding: 0 0.35em;
+      font-size: 0.9em;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-style: normal;
+    }
+    .pkc-todo-embed-meta {
+      display: flex;
+      gap: 0.6em;
+      align-items: baseline;
+      font-size: 0.9em;
+      color: #6b7280;
+    }
+    .pkc-todo-embed-status { font-family: "SFMono-Regular", Consolas, monospace; }
+    .pkc-todo-embed-status[data-pkc-todo-status="done"] { color: #4a90e2; }
+    /* L-2 inline 修飾(highlight / ruby / em-dot) */
+    .pkc-md-rendered mark {
+      background: #fff59d;
+      color: inherit;
+      padding: 0 0.15em;
+      border-radius: 2px;
+    }
+    .pkc-md-rendered ruby rt {
+      font-size: 0.6em;
+      color: #6b7280;
+    }
+    .pkc-md-rendered em.pkc-em-dot {
+      font-style: normal;
+      -webkit-text-emphasis: dot;
+      text-emphasis: dot;
+      -webkit-text-emphasis-position: over right;
+      text-emphasis-position: over right;
+    }
+    /* L-7 figure caption + ref */
+    .pkc-md-rendered .pkc-fig {
+      margin: 1em 0;
+      padding: 0;
+      border: none;
+    }
+    .pkc-md-rendered .pkc-fig-caption {
+      margin-top: 0.4em;
+      font-size: 0.9em;
+      color: #6b7280;
+      text-align: center;
+    }
+    .pkc-md-rendered .pkc-fig-ref {
+      text-decoration: none;
+      color: #2563eb;
+    }
+    .pkc-md-rendered .pkc-fig-ref:hover {
+      text-decoration: underline;
+    }
+    /* L-1 section break — role 別装飾 */
+    .pkc-md-rendered .pkc-section-break {
+      border: none;
+      margin: 1.5em 0;
+      height: 1px;
+      background: #d1d5db;
+    }
+    .pkc-md-rendered .pkc-section-break[data-pkc-role="cover"],
+    .pkc-md-rendered .pkc-section-break[data-pkc-role="section"] {
+      height: 0;
+      border-top: 1px solid #d1d5db;
+      border-bottom: 1px solid #d1d5db;
+      padding-top: 0.4em;
+      margin: 2em 0;
+    }
+    .pkc-md-rendered .pkc-section-break[data-pkc-role="body"] {
+      background: transparent;
+      border-top: 1px dashed #9ca3af;
+      height: 0;
+    }
+    /* L-8 blank-line marker (underscore-only line / underscore + digit) — 1em x N の余白 */
+    .pkc-md-rendered .pkc-blank-line {
+      --pkc-blank-line-h: 1em;
+      height: calc(var(--pkc-blank-line-h) * 1);
+    }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="2"]  { height: calc(var(--pkc-blank-line-h) * 2);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="3"]  { height: calc(var(--pkc-blank-line-h) * 3);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="4"]  { height: calc(var(--pkc-blank-line-h) * 4);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="5"]  { height: calc(var(--pkc-blank-line-h) * 5);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="6"]  { height: calc(var(--pkc-blank-line-h) * 6);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="7"]  { height: calc(var(--pkc-blank-line-h) * 7);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="8"]  { height: calc(var(--pkc-blank-line-h) * 8);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="9"]  { height: calc(var(--pkc-blank-line-h) * 9);  }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="10"] { height: calc(var(--pkc-blank-line-h) * 10); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="11"] { height: calc(var(--pkc-blank-line-h) * 11); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="12"] { height: calc(var(--pkc-blank-line-h) * 12); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="13"] { height: calc(var(--pkc-blank-line-h) * 13); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="14"] { height: calc(var(--pkc-blank-line-h) * 14); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="15"] { height: calc(var(--pkc-blank-line-h) * 15); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="16"] { height: calc(var(--pkc-blank-line-h) * 16); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="17"] { height: calc(var(--pkc-blank-line-h) * 17); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="18"] { height: calc(var(--pkc-blank-line-h) * 18); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="19"] { height: calc(var(--pkc-blank-line-h) * 19); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="20"] { height: calc(var(--pkc-blank-line-h) * 20); }
     /* Two-column layout with a sticky TOC sidebar.
        The sidebar pins to the top of the viewport so the outline
        stays visible while the reader scrolls through long bodies.
@@ -542,7 +680,25 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
     return buildTextlogBodyHtml(entry, container);
   }
   const resolved = resolveAssetSource(entry.body ?? '', container);
-  return renderMarkdown(resolved);
+  const html = renderMarkdown(resolved);
+  // 2026-05-08 user 報告:`![label](entry:LID)` の transclusion が center
+  // pane(detail-presenter)では expand されるが Viewer popup では placeholder
+  // のまま表示されない。Viewer は detail-presenter と同じ expandTransclusions
+  // 経路を通すべき。HTML 文字列を一旦 detached DOM に流して expand、
+  // serialize し直す。current document の DOM を借りて済ませる(popup 起動前
+  // のため popup document はまだ存在しない、main app の document を transient
+  // 利用)。
+  if (!container || typeof document === 'undefined') return html;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  expandTransclusions(tmp, {
+    entries: container.entries,
+    assets: container.assets,
+    mimeByKey: buildAssetMimeMap(container),
+    nameByKey: buildAssetNameMap(container),
+    hostLid: entry.lid,
+  });
+  return tmp.innerHTML;
 }
 
 /**

@@ -585,8 +585,11 @@ describe('B-1 / S-16 — CSV / TSV fenced block → <table>', () => {
     expect(html).toContain('<td>Smith, Jr.</td>');
     expect(html).toContain('line1');
     expect(html).toContain('line2');
-    // `"` is HTML-escaped to `&quot;` per the rowsToHtml safety contract.
-    expect(html).toContain('<td>He said &quot;hi&quot;</td>');
+    // CSV cell は markdown inline parser を通る(2026-05-08〜)。typographer:
+    // true で `"hi"` は smart quotes 「"hi"」に変換される(通常 paragraph
+    // body と同 contract)。XSS は markdown-it 自体が html: false で escape
+    // するため安全性は維持。
+    expect(html).toMatch(/<td>He said [“"]hi[”"]<\/td>/);
   });
 
   it('falls back to default fence behaviour for empty csv block', () => {
