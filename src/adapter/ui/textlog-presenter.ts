@@ -10,6 +10,7 @@ import type { TextlogFlag } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import type { LogArticle } from '../../features/textlog/textlog-doc';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
@@ -440,11 +441,17 @@ function renderLogArticle(
   const textEl = document.createElement('div');
   textEl.className = 'pkc-textlog-text';
   let source = log.bodySource;
+  // M-7 wave-10-2 Phase 2(2026-05-08 hotfix):log の bodySource 先頭に
+  // `---` fenced frontmatter を書けば、その vars を `{{vars.x}}` で展開可能。
+  // TEXT entry と同 contract(per-log の独立 vars)。frontmatter は preview に
+  // 出さず strip。fence なしの YAML 風テキストは通常 markdown として残る。
+  const logVars = extractVars(source);
+  source = parseFrontmatter(source).body;
   if (assets && mimeByKey && hasAssetReferences(source)) {
     source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
   }
   if (hasMarkdownSyntax(source)) {
-    textEl.innerHTML = renderMarkdown(source, { currentContainerId });
+    textEl.innerHTML = renderMarkdown(source, { currentContainerId, vars: logVars });
     textEl.classList.add('pkc-md-rendered');
     // Slice 5-B: expand `![](entry:...)` transclusion placeholders.
     // Guarded by `entries` so the presenter is safe to call without

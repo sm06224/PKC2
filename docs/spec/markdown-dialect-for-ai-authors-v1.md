@@ -272,6 +272,10 @@ vars:
 
 として、赤点線下線の visible warning が paragraph 内に残る。Author / AI が気付いて修正できるための fail-safe。
 
+#### TEXTLOG での適用範囲(2026-05-08 hotfix-2)
+
+TEXTLOG の各 log でも `---` fenced frontmatter から **per-log で** vars を抽出 + 展開可能。TEXT entry と同 contract、log 単位で独立した variants を作れる。frontmatter 自体は preview に出ない(strip 済)。
+
 #### AI 書き手の活用パターン
 
 ```markdown

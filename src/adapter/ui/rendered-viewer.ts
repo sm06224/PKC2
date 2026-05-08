@@ -32,7 +32,7 @@
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
-import { extractVars } from '../../features/markdown/frontmatter';
+import { extractVars, parseFrontmatter } from '../../features/markdown/frontmatter';
 import {
   extractTocFromEntry,
   renderStaticTocHtml,
@@ -746,8 +746,12 @@ function buildTextlogBodyHtml(entry: Entry, container: Container | null): string
       const importantAttr = log.flags.includes('important')
         ? ' data-pkc-log-important="true"'
         : '';
-      const resolved = resolveAssetSource(log.bodySource ?? '', container);
-      const logHtml = renderMarkdown(resolved) || '';
+      // M-7 wave-10-2 Phase 2:Viewer popup の TEXTLOG path でも per-log
+      // frontmatter から vars を抽出 + 展開(detail center pane と同 contract)。
+      const logVars = extractVars(log.bodySource ?? '');
+      const logBody = parseFrontmatter(log.bodySource ?? '').body;
+      const resolved = resolveAssetSource(logBody, container);
+      const logHtml = renderMarkdown(resolved, { vars: logVars }) || '';
       const flagMark = log.flags.includes('important')
         ? '<span class="pkc-textlog-log-flag" aria-label="important">★</span>'
         : '';
