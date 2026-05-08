@@ -219,4 +219,24 @@ describe('renderCsvFence', () => {
     expect(renderCsvFence('', 'csv')).toBeNull();
     expect(renderCsvFence('  \n  ', 'csv')).toBeNull();
   });
+
+  it('passes inlineRender callback so cells parse markdown inline (2026-05-08 user 報告)', () => {
+    // user 入力で `:text:bold,red:` 等の L-6 simple-inline が CSV cell 内で
+    // render されない bug を fix。callback を渡せば cell 単位で markdown-it
+    // の renderInline を通せる。
+    const fakeInline = (text: string): string =>
+      text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    const html = renderCsvFence(
+      'name,note\napple,**fresh**',
+      'csv',
+      fakeInline,
+    );
+    expect(html).toContain('<strong>fresh</strong>');
+    expect(html).toContain('<th>name</th>');
+  });
+
+  it('falls back to escapeHtml when inlineRender is omitted (legacy plain-text)', () => {
+    const html = renderCsvFence('name\n<b>x</b>', 'csv');
+    expect(html).toContain('<td>&lt;b&gt;x&lt;/b&gt;</td>');
+  });
 });

@@ -126,7 +126,11 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   // bypasses token.attrs entirely. Hoist the source-line attrs onto
   // the wrapper div so the active-block lookup can find the fence.
   const sourceLineAttrs = collectSourceLineAttrs(token);
-  const html = renderCsvFence(token.content, token.info);
+  // Pass inline renderer so CSV cells can carry markdown inline markup
+  // (`**bold**` / `==highlight==` / `:text:attrs:` L-6 simple-inline 等)。
+  // 2026-05-08 以前は plain-text escape しか効かず、user 報告で発覚。
+  const inlineRender = (text: string): string => md.renderInline(text, env);
+  const html = renderCsvFence(token.content, token.info, inlineRender);
   if (html !== null) return wrapWithCopyButton(html, 'code', sourceLineAttrs);
   const fenceHtml = defaultFence(tokens, idx, options, env, self);
   return wrapWithCopyButton(fenceHtml, 'code', sourceLineAttrs);
@@ -1215,20 +1219,34 @@ const BLANK_SEP = '\u{E131}';
 const BLANK_LINE_MAX = 20;
 
 function processBlankLineMarkers(source: string): string {
-  return source.split('\n').map((line) => {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  for (const line of lines) {
     const m = /^_(\d*)\s*$/.exec(line);
-    if (!m) return line;
+    if (!m) {
+      out.push(line);
+      continue;
+    }
     let count = 1;
     if (m[1]) {
       const parsed = Number.parseInt(m[1], 10);
       if (Number.isFinite(parsed) && parsed >= 1) {
         count = Math.min(parsed, BLANK_LINE_MAX);
       } else {
-        return line;  // 不正数値はマーカーとして処理しない(`_0` は素通し)
+        out.push(line);  // 不正数値はマーカーとして処理しない(`_0` は素通し)
+        continue;
       }
     }
-    return `${BLANK_OPEN}${count}${BLANK_SEP}`;
-  }).join('\n');
+    // 前後を空行で囲んで標準形態の独立 paragraph にする。`breaks: true` 設定
+    // 下では空行を挟まないと前後行と merge されて `<br>` 連結 → post-process
+    // regex `<p>SENT</p>` が当たらず PUA glyph が剥がれない bug が起こる
+    // (2026-05-08 user 報告で発覚、L-5 prefix line と同じ trick で修正)。
+    const prevOut = out.length > 0 ? out[out.length - 1]! : '';
+    if (prevOut.trim() !== '') out.push('');
+    out.push(`${BLANK_OPEN}${count}${BLANK_SEP}`);
+    out.push('');
+  }
+  return out.join('\n');
 }
 
 function postProcessBlankLineMarkers(html: string): string {

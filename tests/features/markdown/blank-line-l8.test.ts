@@ -67,6 +67,25 @@ describe('L-8: 空行マーカー `_` / `_<N>`', () => {
     expect(html).toMatch(/data-pkc-blank-count="3"/);
   });
 
+  it('連続 prefix 行 + `_` 混在(2026-05-08 user 報告ケース、PUA glyph 漏れ防止)', () => {
+    const src = [
+      '|> 2026年5月8日 発信',
+      '<| To:どこどこのほにゃららへ',
+      '|> From:へのへののモニャモニャから',
+      '_',
+      '|| ほにゃららのシステムについて、制約事項と対策予定の通知',
+      '_',
+      '|| 記',
+    ].join('\n');
+    const html = renderMarkdown(src);
+    // sentinel char(U+E130 / U+E131)が HTML に残っていない
+    expect(html).not.toContain('\u{E130}');
+    expect(html).not.toContain('\u{E131}');
+    // blank-line div が 2 個出ている
+    const blankCount = (html.match(/pkc-blank-line/g) ?? []).length;
+    expect(blankCount).toBe(2);
+  });
+
   it('全 13 ケース matrix:数値範囲 / 構造 / 境界値', () => {
     const cases: { input: string; expectCount?: string; describe: string }[] = [
       { input: '_', expectCount: '1', describe: 'default 1 行' },
