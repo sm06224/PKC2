@@ -191,4 +191,4 @@ reform 後の sync feature では:
 
 - 既存 PoC: PR #206 v13 の `?pkc-sync-debug=1`(`localStorage.pkc2.sync-debug`)+ `pkc-sync-debug-line` 要素
 - 関連: `docs/development/visual-state-parity-testing.md`(本 protocol を test 観点で活用)
-- 関連: `docs/development/pr-206-paused.md`(なぜ仕切り直しか)
+- 関連: `docs/development/archived/pr-findings/pr-206-paused.md`(なぜ仕切り直しか、quarterly archive で移動済)

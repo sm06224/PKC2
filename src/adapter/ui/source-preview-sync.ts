@@ -34,7 +34,7 @@
  * **Background**:
  *
  *   PR #206(2026-04 v17 まで実装後 user 判断で paused、
- *   `docs/development/pr-206-paused.md`)。当時の保留理由:
+ *   `docs/development/archived/pr-findings/pr-206-paused.md`)。当時の保留理由:
  *   - 描画と生成を同じものとして検証していた
  *   - ユーザー側 debug 報告導線が無かった
  *   - Playwright `locator.click()` が OS event を経ていない

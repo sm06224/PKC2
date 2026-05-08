@@ -72,7 +72,7 @@ PR 上の commit に残っているもの。**これが「動く」とは私か�
 
 - `docs/development/debug-via-url-flag-protocol.md` — GET パラメータ方式の debug overlay / signaling 規約。ユーザーが実機で「動かない」と思った瞬間に、URL に `?pkc-debug=<feature>` を足して再操作 → 自動で AppState / 最近 dispatch / DOM / 環境情報を吐き出して clipboard にコピー、という導線を全 feature に適用する protocol。
 - `docs/development/visual-state-parity-testing.md` — 「state を作る → 描画する → 実 viewport で `elementFromPoint` 確認 → 実 click → state 観察」という流れを feature ごとに必須にする methodology。programmatic click の test pass を「動く」とみなさない。
-- `docs/development/pr-206-paused.md`(本 doc)。
+- `docs/development/archived/pr-findings/pr-206-paused.md`(本 doc、quarterly archive で移動済)。
 
 reform docs が landing したら、本 PR の機能は新方針に従って red-first で書き直す(コードは現状を参考にしてよいが、検証は完全にやり直し)。
 

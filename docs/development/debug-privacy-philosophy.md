@@ -265,7 +265,7 @@ PR #211 finalize(2026-05-02)で確立した **field 採否基準**:
 
 - `docs/development/debug-via-url-flag-protocol.md` — URL flag / Report dump の具体仕様
 - `docs/development/visual-state-parity-testing.md` — debug overlay を test 観点でどう活用するか
-- `docs/development/pr-206-paused.md` — 仕切り直し起点
+- `docs/development/archived/pr-findings/pr-206-paused.md` — 仕切り直し起点(quarterly archive で移動済)
 - `docs/development/handover-2026-05-01.md` — reform-2026-05 全体経緯
 - `CLAUDE.md` — 「描画と生成は別物 ─ test pass = ship 禁止」「Specification Documents」index
 
