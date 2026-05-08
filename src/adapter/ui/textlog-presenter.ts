@@ -474,7 +474,12 @@ function renderLogArticle(
       });
     }
   } else {
-    textEl.textContent = log.bodySource;
+    // Plain-text fallback — use frontmatter-stripped `source` (not raw
+    // `log.bodySource`) so the `---\n…\n---` block does not leak into
+    // the visible textContent (M-7 follow-up, 2026-05-08). Without this,
+    // a log whose body is just frontmatter + plain text shows the raw
+    // YAML-looking lines as the preview.
+    textEl.textContent = source;
   }
   article.appendChild(textEl);
 

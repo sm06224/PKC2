@@ -467,6 +467,8 @@ E = mc^2
 
 **Status(2026-05-08)**: **Phase 2 第 1 弾として `{{vars.x}}` 着地**。frontmatter `vars:` block(YAML object)or `vars.<key>:`(flat dot)から render 時に展開、未定義は `<span class="pkc-variable-undefined">` で visible warning。`{{macros.x}}` の block 展開は **Phase 2 で defer**(spec §11 既決定)。詳細仕様 / when-to-use は AI 規約書 v1 §2.12 / Manual 章 12 §12.6 を参照。OQ-6(展開 timing)は本実装で render 時に確定。
 
+**Status(2026-05-08 follow-up)**: M-7 第 1 弾着地後の user 報告「embed した TEXTLOG エントリで frontmatter が露出する(プレビュー表示もされていない)」を hotfix。embed 経路(`transclusion.ts` の `renderEmbeddedLog` / `renderEntryEmbed`)、Viewer popup TEXT path(`rendered-viewer.ts` の `buildBodyHtml`)、平文 fallback(`detail-presenter.ts` / `textlog-presenter.ts` の non-markdown 経路)で `parseFrontmatter(...).body` が抜けていた 5 経路を contract 化。embed 経路では vars 展開も同時に有効化。視覚 parity smoke 1 件追加(`wave-10-2-phase2-m7-embed-frontmatter-parity.spec.ts`)。これで center / Split View / Viewer / embed / 平文 fallback の **6 surface すべて**で frontmatter strip + vars 展開が一致。
+
 
 frontmatter:
 

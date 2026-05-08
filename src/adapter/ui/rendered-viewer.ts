@@ -687,10 +687,15 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
   if (entry.archetype === 'textlog') {
     return buildTextlogBodyHtml(entry, container);
   }
-  const resolved = resolveAssetSource(entry.body ?? '', container);
   // M-7 wave-10-2 Phase 2:Viewer popup でも frontmatter vars を展開して
   // center pane と同等の見た目を保つ(3 surface dual-render path 規約)。
-  const vars = extractVars(entry.body ?? '');
+  // 2026-05-08 follow-up:vars 抽出と同時に body から frontmatter を strip
+  // しないと M-7 第 1 弾は frontmatter が `<hr>+text+<hr>` として表示される。
+  // detail-presenter / textlog-presenter / transclusion 全 surface と一致させる。
+  const rawBody = entry.body ?? '';
+  const vars = extractVars(rawBody);
+  const stripped = parseFrontmatter(rawBody).body;
+  const resolved = resolveAssetSource(stripped, container);
   const html = renderMarkdown(resolved, { vars });
   // 2026-05-08 user 報告:`![label](entry:LID)` の transclusion が center
   // pane(detail-presenter)では expand されるが Viewer popup では placeholder

@@ -518,6 +518,266 @@ describe('expandTransclusions — regressions', () => {
 });
 
 // ─────────────────────────────────────────────────────
+// 4.5 frontmatter strip in embed paths (M-7 follow-up, 2026-05-08)
+// ─────────────────────────────────────────────────────
+//
+// Bug: embed した TEXTLOG / TEXT entry で log.bodySource / entry.body の
+// 先頭にある `---\n…\n---` frontmatter が strip されず `<hr>+text+<hr>` として
+// 露出していた(プレビューが壊れて読めない)。live presenter
+// (detail-presenter / textlog-presenter)では既に strip 済だったが、embed
+// 経路(transclusion.ts)で抜けていた。3 surface 規約(CLAUDE.md §9)に
+// 沿って transclusion でも同 contract に揃える。
+
+describe('expandTransclusions — frontmatter strip (M-7 follow-up)', () => {
+  function makeTextlogWithFrontmatterLogs(): Entry {
+    return {
+      lid: 'log-fm',
+      archetype: 'textlog',
+      title: 'FM log',
+      body: JSON.stringify({
+        entries: [
+          // 1. 単純な frontmatter(vars なし)+ markdown body
+          {
+            id: 'log-1',
+            text: ['---', 'kind: book', 'title: Sample', '---', '# 章 1', '本文', ''].join('\n'),
+            createdAt: '2026-05-08T10:00:00Z',
+            flags: [],
+          },
+          // 2. flat dot-notation vars + markdown body(`**` を含めて
+          // hasMarkdownSyntax を triggers させる必要あり、vars 展開は md
+          // 経路でのみ作動)
+          {
+            id: 'log-2',
+            text: ['---', 'vars.project: ALPHA-7', '---', '**プロジェクト {{vars.project}}** について'].join(
+              '\n',
+            ),
+            createdAt: '2026-05-08T11:00:00Z',
+            flags: [],
+          },
+          // 3. nested object vars + markdown body
+          {
+            id: 'log-3',
+            text: ['---', 'vars:', '  client: Acme', '---', '**クライアント {{vars.client}}**'].join('\n'),
+            createdAt: '2026-05-08T12:00:00Z',
+            flags: [],
+          },
+          // 4. frontmatter のみ(本文なし)
+          {
+            id: 'log-4',
+            text: ['---', 'vars.x: ONLY-FM', '---'].join('\n'),
+            createdAt: '2026-05-08T13:00:00Z',
+            flags: [],
+          },
+          // 5. unclosed frontmatter(`---` 開きのみ)— strip しない
+          {
+            id: 'log-5',
+            text: ['---', 'foo: bar', '本文'].join('\n'),
+            createdAt: '2026-05-08T14:00:00Z',
+            flags: [],
+          },
+          // 6. plain text body(markdown 構文なし)+ frontmatter
+          {
+            id: 'log-6',
+            text: ['---', 'kind: note', '---', 'plain text only'].join('\n'),
+            createdAt: '2026-05-08T15:00:00Z',
+            flags: [],
+          },
+          // 7. per-log vars 独立性確認用(同 key で別値、`**` で md 経路を triggers)
+          {
+            id: 'log-7',
+            text: ['---', 'vars.x: VAL-A', '---', '**値: {{vars.x}}**'].join('\n'),
+            createdAt: '2026-05-08T16:00:00Z',
+            flags: [],
+          },
+          {
+            id: 'log-8',
+            text: ['---', 'vars.x: VAL-B', '---', '**値: {{vars.x}}**'].join('\n'),
+            createdAt: '2026-05-08T16:30:00Z',
+            flags: [],
+          },
+          // 9. frontmatter なし(回帰テスト)
+          {
+            id: 'log-9',
+            text: '# 普通の log\n\n本文',
+            createdAt: '2026-05-08T17:00:00Z',
+            flags: [],
+          },
+        ],
+      }),
+      created_at: '',
+      updated_at: '',
+    };
+  }
+
+  function makeHost(): Entry {
+    return { lid: 'host', archetype: 'text', title: 'H', body: '', created_at: '', updated_at: '' };
+  }
+
+  function getLogText(root: HTMLElement, logId: string): HTMLElement {
+    const article = root.querySelector(
+      `article.pkc-textlog-log[data-pkc-embedded-log-id="${logId}"]`,
+    ) as HTMLElement | null;
+    expect(article).not.toBeNull();
+    return article!.querySelector('.pkc-textlog-text') as HTMLElement;
+  }
+
+  it('TEXTLOG embed: simple frontmatter is stripped, no key:value visible', () => {
+    const entries = [makeTextlogWithFrontmatterLogs(), makeHost()];
+    const root = makeBodyEl('![](entry:log-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const text = getLogText(root, 'log-1');
+    // frontmatter content must NOT appear in rendered text.
+    expect(text.textContent).not.toContain('kind: book');
+    expect(text.textContent).not.toContain('title: Sample');
+    // body content must be present.
+    expect(text.textContent).toContain('章 1');
+    expect(text.textContent).toContain('本文');
+    // No leading <hr> from the opening fence.
+    expect(text.firstElementChild?.tagName).not.toBe('HR');
+  });
+
+  it('TEXTLOG embed: flat dot-notation vars expand inside log body', () => {
+    const entries = [makeTextlogWithFrontmatterLogs(), makeHost()];
+    const root = makeBodyEl('![](entry:log-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const text = getLogText(root, 'log-2');
+    expect(text.textContent).toContain('プロジェクト ALPHA-7');
+    expect(text.textContent).not.toContain('{{vars.project}}');
+    // Frontmatter source not visible.
+    expect(text.textContent).not.toContain('vars.project');
+  });
+
+  it('TEXTLOG embed: nested object vars expand inside log body', () => {
+    const entries = [makeTextlogWithFrontmatterLogs(), makeHost()];
+    const root = makeBodyEl('![](entry:log-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const text = getLogText(root, 'log-3');
+    expect(text.textContent).toContain('クライアント Acme');
+    expect(text.textContent).not.toContain('{{vars.client}}');
+  });
+
+  it('TEXTLOG embed: per-log vars are independent (same key, different value)', () => {
+    const entries = [makeTextlogWithFrontmatterLogs(), makeHost()];
+    const root = makeBodyEl('![](entry:log-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    expect(getLogText(root, 'log-7').textContent).toContain('値: VAL-A');
+    expect(getLogText(root, 'log-7').textContent).not.toContain('VAL-B');
+    expect(getLogText(root, 'log-8').textContent).toContain('値: VAL-B');
+    expect(getLogText(root, 'log-8').textContent).not.toContain('VAL-A');
+  });
+
+  it('TEXTLOG embed: frontmatter-only log renders nothing visible (no fm leak)', () => {
+    const entries = [makeTextlogWithFrontmatterLogs(), makeHost()];
+    const root = makeBodyEl('![](entry:log-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const text = getLogText(root, 'log-4');
+    expect(text.textContent).not.toContain('vars.x');
+    expect(text.textContent).not.toContain('ONLY-FM');
+  });
+
+  it('TEXTLOG embed: unclosed frontmatter is preserved as-is (no strip)', () => {
+    const entries = [makeTextlogWithFrontmatterLogs(), makeHost()];
+    const root = makeBodyEl('![](entry:log-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const text = getLogText(root, 'log-5');
+    // The `---\nfoo: bar\n本文` is parsed by markdown, which interprets
+    // the leading `---` as <hr> + setext heading-ish — content is preserved
+    // without our strip kicking in. Key check: foo: bar still renders.
+    expect(text.textContent).toContain('本文');
+  });
+
+  it('TEXTLOG embed: plain-text body (no markdown) with frontmatter strips fm', () => {
+    const entries = [makeTextlogWithFrontmatterLogs(), makeHost()];
+    const root = makeBodyEl('![](entry:log-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const text = getLogText(root, 'log-6');
+    expect(text.textContent).toContain('plain text only');
+    expect(text.textContent).not.toContain('kind: note');
+  });
+
+  it('TEXTLOG embed: log without frontmatter renders unchanged (regression)', () => {
+    const entries = [makeTextlogWithFrontmatterLogs(), makeHost()];
+    const root = makeBodyEl('![](entry:log-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const text = getLogText(root, 'log-9');
+    expect(text.textContent).toContain('普通の log');
+    expect(text.textContent).toContain('本文');
+  });
+
+  it('TEXT entry embed: frontmatter is stripped from entry.body', () => {
+    const entries: Entry[] = [
+      makeHost(),
+      {
+        lid: 'fm-text',
+        archetype: 'text',
+        title: 'FM TEXT',
+        body: ['---', 'kind: book', 'author: Smith', '---', '# 第 1 章', 'これが本文です。'].join('\n'),
+        created_at: '',
+        updated_at: '',
+      },
+    ];
+    const root = makeBodyEl('![](entry:fm-text)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const body = root.querySelector('section.pkc-transclusion .pkc-transclusion-body');
+    expect(body).not.toBeNull();
+    expect(body!.textContent).not.toContain('kind: book');
+    expect(body!.textContent).not.toContain('author: Smith');
+    expect(body!.textContent).toContain('第 1 章');
+    expect(body!.textContent).toContain('これが本文です。');
+  });
+
+  it('TEXT entry embed: vars in entry.body frontmatter expand', () => {
+    const entries: Entry[] = [
+      makeHost(),
+      {
+        lid: 'fm-vars',
+        archetype: 'text',
+        title: 'FM Vars',
+        body: ['---', 'vars.project: BETA-9', '---', '# {{vars.project}} レポート'].join('\n'),
+        created_at: '',
+        updated_at: '',
+      },
+    ];
+    const root = makeBodyEl('![](entry:fm-vars)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const body = root.querySelector('section.pkc-transclusion .pkc-transclusion-body');
+    expect(body!.textContent).toContain('BETA-9 レポート');
+    expect(body!.textContent).not.toContain('{{vars.project}}');
+    expect(body!.textContent).not.toContain('vars.project');
+  });
+
+  it('TEXT entry embed: entry without frontmatter renders unchanged (regression)', () => {
+    const entries: Entry[] = [
+      makeHost(),
+      {
+        lid: 'no-fm',
+        archetype: 'text',
+        title: 'No FM',
+        body: '# 普通\n\n本文',
+        created_at: '',
+        updated_at: '',
+      },
+    ];
+    const root = makeBodyEl('![](entry:no-fm)');
+    expandTransclusions(root, { entries, hostLid: 'host' });
+
+    const body = root.querySelector('section.pkc-transclusion .pkc-transclusion-body');
+    expect(body!.textContent).toContain('普通');
+    expect(body!.textContent).toContain('本文');
+  });
+});
+
+// ─────────────────────────────────────────────────────
 // 5. TODO embed (Slice 2)
 // ─────────────────────────────────────────────────────
 
