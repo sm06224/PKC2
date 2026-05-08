@@ -3,7 +3,7 @@
 **Audience**: AI(LLM)が PKC2 entry の `body` を生成する際の規約書。
 **Reader**: 機械的に処理する LLM。可読性は保つが、構造化と非曖昧化を優先。
 **Companion(human-oriented)**: `docs/development/markdown-dialect-extensions-spec-2026-05.md`(§1.2 IR 連動 / 業界事例 / 設計議論を含む)
-**Status**: stable for L-1〜L-9(2026-05-08 時点 Phase 1 全件着地済)
+**Status**: stable for L-1〜L-9(Phase 1 全件着地)+ M-7 Variables(Phase 2 着手分、2026-05-08)
 **Version**: v1
 **Last updated**: 2026-05-08
 
@@ -37,6 +37,7 @@
 | L-7-b | Figure ref | `[@id]` | 図 / 表 / 式の本文中参照 |
 | L-8 | Blank-line marker | 行頭 `_` または `_<N>`(N=1〜20) | 縦余白の明示 |
 | L-9 | Paragraph indent | 行頭 `__`(半角×2)or `＿`(全角 U+FF3F) | 段落先頭 1 字下げ |
+| M-7 | Variables(Phase 2) | frontmatter `vars.x` + 本文 `{{vars.x}}` | 文書内変数展開、宛先別 variant 生成 |
 
 **行頭マーカー共通規則**: 行頭の半角空白 / TAB / 全角空白(U+3000)はすべて strip して判定。`   |>` も `\t__段落` も `　_3` も有効。
 
@@ -223,6 +224,93 @@ __ 半角空白挟みも OK。
 - L-5 align と併用可:`|| __センター字下げ` → 中央寄せ + 字下げの両方適用。
 - HTML: `<p data-pkc-indent="1">`。
 
+### 2.12 M-7: Variables `{{vars.x}}`(Phase 2、2026-05-08 着地)
+
+**frontmatter で定義した変数を本文中で展開** する markup。同じ文書を複数の宛先 / 用途で再利用できる(=「一資料から宛先別の variant 生成」が AI prompting の延長で可能)。
+
+```markdown
+---
+vars:
+  project: ALPHA-7
+  client: Acme Corp
+  date: 2026-05-08
+  signature: 田中
+---
+
+# 案件 {{vars.project}} 進捗
+
+本通知は {{vars.client}} 様向け、提出予定 {{vars.date}}。
+
+|> 担当: {{vars.signature}}
+```
+
+→ render 時に展開される。
+
+#### 構文
+
+- frontmatter で `vars:` block(YAML object 形式)or `vars.<key>: <value>`(flat dot 形式)で定義
+- 本文で `{{vars.<key>}}` で参照、`<key>` は `[A-Za-z_][\w-]*`(英字始まり、英数字 / `_` / `-`)
+- 展開 timing は **render 時**(parse 時でなく)、format 別 variant に対応可能な設計
+- `{{ vars.x }}`(内側空白)も許容
+- escape:`\{{vars.x}}` で literal `{{vars.x}}` を出力(展開しない)
+
+#### 衝突回避 / 制約
+
+- code span(\`...\`) / fenced code(\`\`\`...\`\`\`)内では展開しない(他 PKC 拡張と同 contract)
+- 改行を跨ぐ `{{vars.x\nname}}` は無効、literal で残置
+- `{{macros.x}}` `{{export.x}}` 等 **vars 以外の名前空間は Phase 2 では未対応** → literal で残る(将来対応)
+- 値内の HTML(`<script>` 等)は escape されて表示される(XSS 安全、markdown-it `html: false` で確保)
+
+#### 未定義変数の扱い(visible warning)
+
+`{{vars.unknown}}` のように **未定義 key を参照**すると、silent fail せず:
+
+```html
+<span class="pkc-variable-undefined" title="未定義変数: vars.unknown">{{vars.unknown}}</span>
+```
+
+として、赤点線下線の visible warning が paragraph 内に残る。Author / AI が気付いて修正できるための fail-safe。
+
+#### AI 書き手の活用パターン
+
+```markdown
+---
+vars:
+  audience: 経営層       # ← AI が自動 fill / user が変えるたびに variant 生成
+  tone: formal           # ← 文体プロンプト
+  project: ALPHA-7
+  date: 2026-05-08
+  signature: 田中
+---
+
+{{vars.audience}} 様向け {{vars.project}} 進捗報告({{vars.date}} 時点)
+
+...本文...
+
+|> 担当: {{vars.signature}}
+```
+
+AI に対する prompt 例:
+> 「以下の vars だけ書き換えて、同じ本文を `経営層 / formal` 用と `現場 / casual` 用の 2 variant に分岐させて」
+
+→ frontmatter の `vars` だけ書き換えて 2 つの entry 生成、本文は単一 source。
+
+#### Format mapping
+
+| Format | 出力 |
+|--------|------|
+| HTML | 値 text に inline 展開、未定義は warning span |
+| Word / PPT | (Phase 3 export engine で)同じ展開ルール |
+| Markdown export(canonical) | frontmatter + `{{vars.x}}` のまま round-trip(idempotent) |
+
+#### IR 表現
+
+```ts
+{ type: 'variable-ref', namespace: 'vars', key: 'project' }
+```
+
+render 時に env.vars[key] を読んで `text` ノードへ評価、未定義は `variable-undefined` ノードへ評価。
+
 ---
 
 ## 3. AI 向け執筆判断ガイド(when-to-use)
@@ -274,7 +362,24 @@ __ 半角空白挟みも OK。
 %%%
 ```
 
-### 3.5 「日本語文書として整える」とき(典型 pattern)
+### 3.5 「同じ文書を宛先 / 用途別の variant にしたい」とき(M-7 variables)
+
+frontmatter に `vars:` block を作り、本文の固有名詞 / 日付 / 担当者 / 文体トーン等を `{{vars.x}}` 経由で参照する:
+
+```markdown
+---
+vars:
+  audience: 経営層
+  tone: formal
+  project: ALPHA-7
+---
+
+{{vars.audience}} 様向け {{vars.project}} 進捗報告
+```
+
+→ vars だけ差し替えれば本文 1 つから複数の variant を生成できる。AI に「audience を `経営層 → 現場` に、tone を `formal → casual` に変えて再生成して」と指示すれば文体ごと作り直さずに済む。
+
+### 3.6 「日本語文書として整える」とき(典型 pattern)
 
 ```
 |> 2026年5月8日
@@ -324,6 +429,7 @@ _
 7. [ ] 全ての L-1 section break / L-5 align prefix / L-8 blank / L-9 indent が **行頭**(空白許容)から始まっているか
 8. [ ] 連続する別 align の L-5 行は意図通り段落分離されるか(`|| center` → `<| left` は別段落)
 9. [ ] 表は通常 markdown(`| col1 | col2 |` の pipe table)または fenced CSV(```csv ... ```)。`csv` fence 内 cell も markdown inline parser が走るので L-2 / L-6 が cell 内で有効。
+10. [ ] M-7 variables を使う場合、本文中の `{{vars.x}}` のすべての key が frontmatter の `vars:` で定義されているか(未定義 → 赤点線下線の警告として残る)。`{{macros.x}}` `{{export.x}}` 等 vars 以外の名前空間は Phase 2 では未対応 = literal で残るので本文に書かない。
 
 ---
 

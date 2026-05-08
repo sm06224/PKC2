@@ -1,6 +1,6 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
-import { parseFrontmatter } from '../../features/markdown/frontmatter';
+import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
@@ -83,12 +83,15 @@ const textPresenter: DetailPresenter = {
     if (assets && mimeByKey && hasAssetReferences(source)) {
       source = resolveAssetReferences(source, { assets, mimeByKey, nameByKey });
     }
+    // M-7 wave-10-2 Phase 2(2026-05-08):frontmatter `vars.*` を抽出して
+    // renderMarkdown へ渡し、本文中の `{{vars.x}}` を展開する。
+    const vars = extractVars(entry.body);
 
     // Render as markdown if the body contains markdown syntax
     if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
-      body.innerHTML = renderMarkdown(source, { currentContainerId });
+      body.innerHTML = renderMarkdown(source, { currentContainerId, vars });
       // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
       // markdown renderer. Guarded by `entries` being supplied so
       // tests / callers without container context still work.
@@ -185,7 +188,13 @@ const textPresenter: DetailPresenter = {
     // match preview blocks to editor source lines (and vice versa).
     const initialSource = entry.body;
     if (initialSource && hasMarkdownSyntax(initialSource)) {
-      preview.innerHTML = renderMarkdown(initialSource, { sourceLineAnchors: true });
+      // M-7 wave-10-2 Phase 2:Split View preview でも frontmatter vars を
+      // 展開して center pane と同等の見た目を保つ。
+      const previewVars = extractVars(initialSource);
+      preview.innerHTML = renderMarkdown(initialSource, {
+        sourceLineAnchors: true,
+        vars: previewVars,
+      });
     } else if (initialSource) {
       const pre = document.createElement('pre');
       pre.className = 'pkc-view-body';

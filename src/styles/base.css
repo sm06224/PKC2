@@ -1794,6 +1794,16 @@
  * 1 文字ぶん右に押す(text-indent: 1em)。1 字 = body の現 font-size 1 文字幅。 */
 .pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
 
+/* M-7(2026-05-08、wave-10-2 Phase 2):未定義 variable warning。
+ * `{{vars.x}}` で `x` が frontmatter の vars に未定義な場合、本文 literal を
+ * 残しつつ赤点線下線で author に気付かせる(silent fail を防ぐ)。 */
+.pkc-md-rendered .pkc-variable-undefined {
+  color: var(--c-warn, #b91c1c);
+  text-decoration: underline dotted;
+  text-decoration-color: var(--c-warn, #b91c1c);
+  cursor: help;
+}
+
 /* L-2(2026-05-07):Inline 修飾 */
 .pkc-md-rendered mark {
   background: var(--c-mark-bg, #fff59d);

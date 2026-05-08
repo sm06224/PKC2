@@ -195,3 +195,92 @@ export function getFrontmatterKind(body: string): string | null {
   const kind = meta['kind'];
   return typeof kind === 'string' && kind.length > 0 ? kind : null;
 }
+
+/**
+ * L-? M-7(2026-05-08、wave-10-2 Phase 2):frontmatter から `vars.*` を
+ * 抽出して flat `Record<string, string>` に正規化する helper。本文の
+ * `{{vars.name}}` 展開で使う(`renderMarkdown(text, { vars })` 経由)。
+ *
+ * 受理する 2 形式:
+ *
+ *   1. ネスト object 形式(spec §3.6 例):
+ *        vars:
+ *          project: ALPHA-7
+ *          client: Acme Corp
+ *
+ *   2. flat dot-notation 形式(YAML 平 parse の延長):
+ *        vars.project: ALPHA-7
+ *        vars.client: Acme Corp
+ *
+ * 両形式を併用しても OK(後者が優先される、上書き)。
+ *
+ * 既存 `parseFrontmatter` は flat 1 階のみ対応で nested object を
+ * 解釈しないため、本 helper は raw frontmatter 領域を独自に scan する。
+ *
+ * 値は string 化して返す(boolean / number は `String()`、null は除外)。
+ *
+ * frontmatter 不在 / vars 不在 / parse 失敗 → `{}` を返す(safe default)。
+ */
+export function extractVars(body: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!body || !OPEN_FENCE.test(body)) return out;
+  const afterOpen = body.replace(OPEN_FENCE, '');
+  const lines = afterOpen.split(/\r?\n/);
+  let closeIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (CLOSE_FENCE_LINE.test(lines[i] ?? '')) {
+      closeIdx = i;
+      break;
+    }
+  }
+  if (closeIdx === -1) return out;
+  const frontLines = lines.slice(0, closeIdx);
+
+  // 1. nested object 形式:`vars:` 単独行 + 後続の indented `<key>: <value>` 群
+  for (let i = 0; i < frontLines.length; i++) {
+    const line = frontLines[i] ?? '';
+    if (!/^vars\s*:\s*$/.test(line)) continue;
+    // 子行を読み込む。1 文字以上のインデント(SP / TAB)+ key: value 形式。
+    let j = i + 1;
+    while (j < frontLines.length) {
+      const child = frontLines[j] ?? '';
+      // 空行は break(ネストブロック終了)
+      if (child.trim() === '') break;
+      const m = /^(\s+)([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(child);
+      if (!m) break;  // 非インデント or 不正形式 = nested 終了
+      const key = m[2]!;
+      const rawVal = m[3]!.trim();
+      out[key] = parseVarValue(rawVal);
+      j++;
+    }
+    break;  // vars: ブロックは 1 回だけ
+  }
+
+  // 2. flat dot-notation 形式:`vars.X: value`
+  for (const line of frontLines) {
+    const m = /^vars\.([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const key = m[1]!;
+    const rawVal = m[2]!.trim();
+    out[key] = parseVarValue(rawVal);
+  }
+
+  return out;
+}
+
+/** quoted string / scalar を string 化して返す。null は空文字。 */
+function parseVarValue(raw: string): string {
+  if (raw === '' || raw === '~' || /^null$/i.test(raw)) return '';
+  if (raw.length >= 2) {
+    const f = raw[0];
+    const l = raw[raw.length - 1];
+    if (f === '"' && l === '"') {
+      return raw.slice(1, -1).replace(/\\(["\\nt])/gu, (_m, ch: string) =>
+        ch === 'n' ? '\n' : ch === 't' ? '\t' : ch,
+      );
+    }
+    if (f === "'" && l === "'") return raw.slice(1, -1).replace(/''/gu, "'");
+  }
+  // trailing # comment を strip(YAML 慣例)
+  return raw.replace(/\s+#.*$/u, '').trim();
+}

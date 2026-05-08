@@ -677,6 +677,69 @@ md.inline.ruler.after('emphasis', 'pkc_simple_inline', function simpleInlineRule
 
 });
 
+// ── M-7 Variables `{{vars.x}}`(2026-05-08、wave-10-2 Phase 2)──
+//
+// Spec §3.6 + OQ-6:frontmatter `vars.x` の値を本文中 `{{vars.x}}` で展開、
+// 展開 timing は render 時(parse 時ではない、env.vars 経由で値受領)。
+//
+// 構文:
+//   `{{vars.<key>}}` で展開、`<key>` は `[A-Za-z_][\w-]*`
+//   `\{{vars.x}}` で literal 出力(escape)
+//   `{{macros.x}}` 等 vars 以外は Phase 2 では未対応 = literal で残置
+//   code span / fenced 内では markdown-it が code 化、本 rule は走らない
+//
+// 未定義変数(env.vars が無い / key が無い)は visible warning として
+// `<span class="pkc-variable-undefined" title="未定義変数: vars.x">{{vars.x}}</span>`
+// で残す(silent fail せず author に気付かせる)。
+//
+// rule 登録は `pkc_simple_inline` の後、`emphasis` の後段で OK
+// (`{{` `}}` は他構文と衝突しない unique token)。
+
+const VAR_KEY_RE = /^[A-Za-z_][\w-]*$/;
+
+md.inline.ruler.after('emphasis', 'pkc_variable', function variableRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  // escape: `\{{` で literal `{{`、advance 1 char(backslash 消費)+ `{{` は通常 text
+  if (src.charCodeAt(start) === 0x5C /* \ */ && src.charCodeAt(start + 1) === 0x7B /* { */ && src.charCodeAt(start + 2) === 0x7B /* { */) {
+    // backslash を skip して `{{` を literal text として通す
+    state.pos = start + 1;
+    return false;  // 後段 rule(text)が `{{` を処理
+  }
+  // `{{` で開始?
+  if (src.charCodeAt(start) !== 0x7B /* { */ || src.charCodeAt(start + 1) !== 0x7B) return false;
+  // 改行を跨がない、`}}` を探す
+  const closeIdx = src.indexOf('}}', start + 2);
+  if (closeIdx < 0) return false;
+  const inner = src.slice(start + 2, closeIdx);
+  if (inner.includes('\n')) return false;
+  // `vars.<key>` 形式のみ受理(Phase 2 範囲)。`macros.x` 等は素通し。
+  const m = /^vars\.([A-Za-z_][\w-]*)$/.exec(inner.trim());
+  if (!m) return false;
+  const key = m[1]!;
+  if (!VAR_KEY_RE.test(key)) return false;
+
+  const vars = (state.env as { vars?: Record<string, string> } | undefined)?.vars;
+  const value = vars && Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : undefined;
+
+  if (typeof value === 'string') {
+    // 値で展開(plain text、HTML escape は markdown-it の text renderer が処理)
+    const tok = state.push('text', '', 0);
+    tok.content = value;
+  } else {
+    // 未定義変数:visible warning として `{{vars.x}}` 自体を span で wrap
+    const tokOpen = state.push('variable_undefined_open', 'span', 1);
+    tokOpen.attrSet('class', 'pkc-variable-undefined');
+    tokOpen.attrSet('title', `未定義変数: vars.${key}`);
+    const tokText = state.push('text', '', 0);
+    tokText.content = `{{vars.${key}}}`;
+    state.push('variable_undefined_close', 'span', -1);
+  }
+  state.pos = closeIdx + 2;
+  return true;
+});
+
 // ── Heading id injection ──────────────────────────────
 //
 // Stamp an `id` attribute on every h1/h2/h3 so the right-pane Table
@@ -869,6 +932,14 @@ md.core.ruler.after('inline', 'pkc-task-list', function (state) {
  */
 export interface RenderMarkdownOptions {
   readonly currentContainerId?: string;
+  /**
+   * M-7(wave-10-2 Phase 2、2026-05-08):本文中の `{{vars.name}}` 展開に
+   * 使う変数 map。caller(presenter)は `extractVars(entry.body)` で
+   * frontmatter から抽出して渡す。spec doc §3.6 + OQ-6(展開 timing は
+   * render 時)。未定義変数は `<span class="pkc-variable-undefined">` で
+   * visible warning として残す。
+   */
+  readonly vars?: Record<string, string>;
   /**
    * 領域 10-1 Split View 同期スクロール(2026-05-05、PR #206 reform 後再実装)
    * — stamp `data-pkc-source-line="<n>"` on every block-level token's
@@ -1492,6 +1563,10 @@ export function renderMarkdown(
   text = processFigureRefs(text, figResult.registry);
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
+    // M-7 variables(2026-05-08):inline rule `pkc_variable` が
+    // `{{vars.<key>}}` を見たときに env.vars[key] を読んで展開する。
+    // 未定義は visible warning として残す。
+    vars: opts.vars ?? {},
   };
   // L-5 align prefix + L-9 indent prefix を pre-process で strip(挿入あり)。
   const alignResult = preprocessAlignPrefix(text, lineMap);
