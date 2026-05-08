@@ -912,20 +912,22 @@ const SOURCE_LINE_TOKEN_TYPES: ReadonlySet<string> = new Set([
   'html_block',
 ]);
 
-function tagSourceLines(tokens: Token[]): void {
+function tagSourceLines(tokens: Token[], lineMap?: number[]): void {
   for (const token of tokens) {
     if (token.map && SOURCE_LINE_TOKEN_TYPES.has(token.type)) {
-      // `token.map` = [startLine, endLineExclusive]. Store both so
-      // a preview block spanning many source lines can compute
-      // internal progress (PR #206 v12 design).
-      token.attrSet('data-pkc-source-line', String(token.map[0]));
-      token.attrSet(
-        'data-pkc-source-end',
-        String(Math.max(token.map[0], token.map[1] - 1)),
-      );
+      // `token.map` = [startLine, endLineExclusive] in the **stripped** source
+      // (output of all preprocess passes). 2026-05-08 user 報告で発覚した
+      // Split View 行ズレ修正:lineMap が渡されていれば output index を user
+      // の textarea(原文)行 index に逆引きする。lineMap[outIdx] = inputIdx。
+      const outStart = token.map[0];
+      const outEndIncl = Math.max(outStart, token.map[1] - 1);
+      const inStart = lineMap ? (lineMap[outStart] ?? outStart) : outStart;
+      const inEnd = lineMap ? (lineMap[outEndIncl] ?? outEndIncl) : outEndIncl;
+      token.attrSet('data-pkc-source-line', String(inStart));
+      token.attrSet('data-pkc-source-end', String(inEnd));
     }
     if (token.children && token.children.length > 0) {
-      tagSourceLines(token.children);
+      tagSourceLines(token.children, lineMap);
     }
   }
 }
@@ -970,17 +972,24 @@ const FIG_REF_OPEN = '';
 const FIG_REF_SEP = '';
 const FIG_REF_CLOSE = '';
 
-function processFigureBlocks(source: string): { transformed: string; registry: Map<string, FigEntry> } {
+function processFigureBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<string, FigEntry>;
+  lineMap: number[];
+} {
   const registry = new Map<string, FigEntry>();
   const lines = source.split('\n');
   const out: string[] = [];
+  const lineMapOut: number[] = [];
   const counter: Record<FigKind, number> = { figure: 0, table: 0, equation: 0 };
   let i = 0;
   while (i < lines.length) {
     const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
     const m = /^:::(figure|table|equation)\{#([\w-]+)\}\s*$/.exec(line);
     if (!m) {
       out.push(line);
+      lineMapOut.push(inputIdx);
       i++;
       continue;
     }
@@ -989,28 +998,49 @@ function processFigureBlocks(source: string): { transformed: string; registry: M
     counter[kind]++;
     const num = counter[kind];
     const content: string[] = [];
+    const contentInputIdx: number[] = [];
     let caption = '';
+    let captionInputIdx = inputIdx;
+    const openInputIdx = inputIdx;
     i++;
     while (i < lines.length && lines[i]!.trim() !== ':::') {
+      const innerInputIdx = lineMapIn[i] ?? i;
       const cm = /^\^\^\^\s*(.*)$/.exec(lines[i]!);
-      if (cm) caption = cm[1]!;
-      else content.push(lines[i]!);
+      if (cm) {
+        caption = cm[1]!;
+        captionInputIdx = innerInputIdx;
+      } else {
+        content.push(lines[i]!);
+        contentInputIdx.push(innerInputIdx);
+      }
       i++;
     }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
     if (i < lines.length) i++; // skip closing `:::`
     registry.set(id, { kind, num, caption });
-    // Sentinel emission(各 sentinel は own-line で出力 → markdown-it が <p>...</p> wrap)
+    // Sentinel emission(各 sentinel は own-line で出力 → markdown-it が <p>...</p> wrap)。
+    // OPEN は figure 開き行に対応、CAPTION は ^^^ 行(なければ open 行 fallback)、
+    // CLOSE は閉じる ::: 行に対応。content は元の各行に対応。
     out.push(`${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}${kind}${FIG_SENTINEL_SEP}${id}${FIG_SENTINEL_SEP}${num}${FIG_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
     out.push('');
-    out.push(...content);
+    lineMapOut.push(openInputIdx);
+    for (let k = 0; k < content.length; k++) {
+      out.push(content[k]!);
+      lineMapOut.push(contentInputIdx[k] ?? openInputIdx);
+    }
     if (caption) {
       out.push('');
+      lineMapOut.push(captionInputIdx);
       out.push(`${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}${kind}${FIG_SENTINEL_SEP}${num}${FIG_SENTINEL_SEP}${caption}${FIG_SENTINEL_OPEN}`);
+      lineMapOut.push(captionInputIdx);
     }
     out.push('');
+    lineMapOut.push(closeInputIdx);
     out.push(`${FIG_SENTINEL_OPEN}CLOSE${FIG_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
   }
-  return { transformed: out.join('\n'), registry };
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
 }
 
 function processFigureRefs(source: string, registry: Map<string, FigEntry>): string {
@@ -1065,10 +1095,11 @@ function postProcessFigureSentinels(html: string): string {
  */
 type AlignKind = 'center' | 'right' | 'left';
 
-function preprocessAlignPrefix(source: string): {
+function preprocessAlignPrefix(source: string, lineMapIn: number[]): {
   stripped: string;
   alignMap: Map<number, AlignKind>;
   indentMap: Map<number, true>;
+  lineMap: number[];
 } {
   const lines = source.split('\n');
   const alignMap = new Map<number, AlignKind>();
@@ -1077,6 +1108,7 @@ function preprocessAlignPrefix(source: string): {
   // OUTPUT line index → true。alignMap と orthogonal、両方適用も可。
   const indentMap = new Map<number, true>();
   const out: string[] = [];
+  const lineMapOut: number[] = [];
   let currentAlign: AlignKind | null = null;
   // Detect prefix at line start. `||` `|>` `<|` followed by optional space.
   // 行頭の空白系文字種は無視(2026-05-08 user 統一方針:行頭系シンプル記法は
@@ -1093,11 +1125,13 @@ function preprocessAlignPrefix(source: string): {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
     const trimmed = line.trim();
     // Blank line ends the aligned paragraph.
     if (trimmed === '') {
       currentAlign = null;
       out.push(line);
+      lineMapOut.push(inputIdx);
       continue;
     }
     // Structural breaks(heading / list / blockquote / fence / hr / table)
@@ -1117,12 +1151,12 @@ function preprocessAlignPrefix(source: string): {
       const rest = m[2] ?? '';
       const align: AlignKind = sym === '||' ? 'center' : sym === '|>' ? 'right' : 'left';
       // **重要**:prefix 行は前段落から切り離して新 paragraph にする。
-      // `breaks: true` で `\n` が `<br>` になるため、前行が非空だと markdown-it
-      // が同 paragraph に merge してしまい、前行の align だけが効く bug が発生
-      // していた(2026-05-07、user 報告)。空行を挿入して強制的に別段落化。
+      // 挿入する空行も同じ inputIdx を指す(sync layer の lookup は閉じた区間で
+      // 動くので副作用なし)。
       const prevOut = out.length > 0 ? out[out.length - 1]! : '';
       if (prevOut.trim() !== '') {
         out.push('');
+        lineMapOut.push(inputIdx);
       }
       const outIdx = out.length;
       currentAlign = align;
@@ -1135,6 +1169,7 @@ function preprocessAlignPrefix(source: string): {
       } else {
         out.push(rest);
       }
+      lineMapOut.push(inputIdx);
       continue;
     }
     // Detect L-9 indent prefix(align なしの行)
@@ -1145,17 +1180,20 @@ function preprocessAlignPrefix(source: string): {
       const prevOut = out.length > 0 ? out[out.length - 1]! : '';
       if (prevOut.trim() !== '') {
         out.push('');
+        lineMapOut.push(inputIdx);
       }
       const outIdx = out.length;
       indentMap.set(outIdx, true);
       currentAlign = null;
       out.push(rest);
+      lineMapOut.push(inputIdx);
       continue;
     }
     // Continuation line: inherit current alignment unless structural break.
     if (isStructural) {
       currentAlign = null;
       out.push(line);
+      lineMapOut.push(inputIdx);
       continue;
     }
     if (currentAlign) {
@@ -1163,8 +1201,9 @@ function preprocessAlignPrefix(source: string): {
       alignMap.set(outIdx, currentAlign);
     }
     out.push(line);
+    lineMapOut.push(inputIdx);
   }
-  return { stripped: out.join('\n'), alignMap, indentMap };
+  return { stripped: out.join('\n'), alignMap, indentMap, lineMap: lineMapOut };
 }
 
 function applyAlignAttrs(
@@ -1268,15 +1307,22 @@ const BLANK_OPEN = '\u{E130}';
 const BLANK_SEP = '\u{E131}';
 const BLANK_LINE_MAX = 20;
 
-function processBlankLineMarkers(source: string): string {
+function processBlankLineMarkers(source: string, lineMapIn: number[]): {
+  transformed: string;
+  lineMap: number[];
+} {
   const lines = source.split('\n');
   const out: string[] = [];
-  for (const line of lines) {
+  const lineMapOut: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
     // 行頭の空白系文字種(半角 / tab / 全角 U+3000 等)を許容(2026-05-08
     // user 統一方針)。`   _` / `\t_` 等もマーカーとして拾う。
     const m = /^\s*_(\d*)\s*$/.exec(line);
     if (!m) {
       out.push(line);
+      lineMapOut.push(inputIdx);
       continue;
     }
     let count = 1;
@@ -1285,20 +1331,25 @@ function processBlankLineMarkers(source: string): string {
       if (Number.isFinite(parsed) && parsed >= 1) {
         count = Math.min(parsed, BLANK_LINE_MAX);
       } else {
-        out.push(line);  // 不正数値はマーカーとして処理しない(`_0` は素通し)
+        out.push(line);
+        lineMapOut.push(inputIdx);
         continue;
       }
     }
-    // 前後を空行で囲んで標準形態の独立 paragraph にする。`breaks: true` 設定
-    // 下では空行を挟まないと前後行と merge されて `<br>` 連結 → post-process
-    // regex `<p>SENT</p>` が当たらず PUA glyph が剥がれない bug が起こる
-    // (2026-05-08 user 報告で発覚、L-5 prefix line と同じ trick で修正)。
+    // 前後を空行で囲んで標準形態の独立 paragraph にする(`breaks: true` 設定
+    // 下の前後行 merge 回避)。挿入される空行の lineMap entry も同 inputIdx
+    // を指しておく(sync layer は閉じた区間で lookup するので副作用なし)。
     const prevOut = out.length > 0 ? out[out.length - 1]! : '';
-    if (prevOut.trim() !== '') out.push('');
+    if (prevOut.trim() !== '') {
+      out.push('');
+      lineMapOut.push(inputIdx);
+    }
     out.push(`${BLANK_OPEN}${count}${BLANK_SEP}`);
+    lineMapOut.push(inputIdx);
     out.push('');
+    lineMapOut.push(inputIdx);
   }
-  return out.join('\n');
+  return { transformed: out.join('\n'), lineMap: lineMapOut };
 }
 
 function postProcessBlankLineMarkers(html: string): string {
@@ -1320,21 +1371,37 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
-  // L-4:comment strip
+  // 入力 line 数を覚えておき、initial lineMap = identity。preprocess 各 step
+  // が line を挿入 / 消費する度に lineMap を更新、最終 lineMap[outputIdx] は
+  // user の textarea source(原文)の line index を返す。Split View の
+  // source-preview-sync が caret line ↔ preview block lookup に使う
+  // (2026-05-08 user 報告:Split View 行ズレ修正)。
+  let lineMap: number[] = [];
+  const initialLines = text.split('\n').length;
+  for (let i = 0; i < initialLines; i++) lineMap.push(i);
+  // L-4:comment strip(block comment による line 削減は稀、現状 lineMap 不変
+  // として扱う。multi-line block comment 使用時に行ズレ可能性あり、TODO)
   text = stripComments(text);
-  // L-1:section break を sentinel 化(post-process で <hr> に展開)
+  // L-1:section break を sentinel 化(1:1 line 変換、lineMap 不変)
   text = processSectionBreaks(text);
-  // L-8:`_` / `_<N>` 空行マーカーを sentinel 化(post-process で <div> に展開)
-  text = processBlankLineMarkers(text);
-  // L-7:figure/table/equation block + [@id] reference を sentinel 化
-  const { transformed: t1, registry: figRegistry } = processFigureBlocks(text);
-  text = processFigureRefs(t1, figRegistry);
+  // L-8:`_` / `_<N>` 空行マーカー(挿入あり、lineMap 更新)
+  const blankResult = processBlankLineMarkers(text, lineMap);
+  text = blankResult.transformed;
+  lineMap = blankResult.lineMap;
+  // L-7:figure/table/equation block(sentinel 化、挿入あり、lineMap 更新)
+  const figResult = processFigureBlocks(text, lineMap);
+  text = figResult.transformed;
+  lineMap = figResult.lineMap;
+  text = processFigureRefs(text, figResult.registry);
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
-  // L-5 align prefix + L-9 indent prefix を pre-process で strip。両者を
-  // 同 pass でまとめて処理し、output line index に対する 2 種の map を取得。
-  const { stripped, alignMap, indentMap } = preprocessAlignPrefix(text);
+  // L-5 align prefix + L-9 indent prefix を pre-process で strip(挿入あり)。
+  const alignResult = preprocessAlignPrefix(text, lineMap);
+  const stripped = alignResult.stripped;
+  const alignMap = alignResult.alignMap;
+  const indentMap = alignResult.indentMap;
+  lineMap = alignResult.lineMap;
   let html: string;
   if (!opts.sourceLineAnchors) {
     if (alignMap.size === 0 && indentMap.size === 0) {
@@ -1345,10 +1412,11 @@ export function renderMarkdown(
       html = md.renderer.render(tokens, md.options, env);
     }
   } else {
-    // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
+    // 領域 10-1 — opt-in source-line anchor stamping on block tokens。
+    // lineMap で stripped output index → 原文 input index へ逆引き。
     const tokens = md.parse(stripped, env);
     applyAlignAttrs(tokens, alignMap, indentMap);
-    tagSourceLines(tokens);
+    tagSourceLines(tokens, lineMap);
     html = md.renderer.render(tokens, md.options, env);
   }
   // L-7:figure/table/equation sentinel → <figure>
