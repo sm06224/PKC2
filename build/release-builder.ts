@@ -21,7 +21,18 @@ import { buildAboutEntry } from './about-entry-builder';
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const DIST = resolve(ROOT, 'dist');
 const SHELL = resolve(ROOT, 'build', 'shell.html');
-const FAVICON = resolve(ROOT, 'build', 'favicon.ico');
+
+// Favicon 差し替えポイント:`build/favicon.{svg,png,ico}` のいずれかに置けば
+// release-builder が拾って data URI inline する。優先順は modern format 優先で
+// svg > png > ico(svg は最小サイズ + crisp、png は alpha 対応 + 互換、ico は
+// legacy / Windows 向け fallback)。iOS Safari ホーム画面アイコンは PNG 推奨
+// なので、別ファイル `build/apple-touch-icon.png` を任意で同伴可能。
+const FAVICON_CANDIDATES: { path: string; mime: string }[] = [
+  { path: resolve(ROOT, 'build', 'favicon.svg'), mime: 'image/svg+xml' },
+  { path: resolve(ROOT, 'build', 'favicon.png'), mime: 'image/png' },
+  { path: resolve(ROOT, 'build', 'favicon.ico'), mime: 'image/x-icon' },
+];
+const APPLE_TOUCH_ICON = resolve(ROOT, 'build', 'apple-touch-icon.png');
 
 // Source-side constants (mirrored from src/runtime/release-meta.ts)
 const APP_ID = 'pkc2';
@@ -95,16 +106,26 @@ function main(): void {
     assets: {},
   }});
 
-  // Build favicon <link> if file exists. Single-HTML deliverable は外部
-  // 参照ができないため必ず data URI で inline。`build/favicon.ico` を
-  // canonical 設置先とする(release-builder の入力 asset、shell.html と
-  // 同階層)。.ico は image/x-icon、ファイル不在時は空に置換(no link tag)。
-  let faviconLink = '';
-  if (existsSync(FAVICON)) {
-    const ico = readFileSync(FAVICON);
-    const b64 = ico.toString('base64');
-    faviconLink = `<link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,${b64}">`;
+  // Build favicon + apple-touch-icon <link> tags. Single-HTML deliverable は
+  // 外部参照不可のため必ず data URI inline。FAVICON_CANDIDATES の優先順で
+  // 1 件採用、不在なら link tag なし。apple-touch-icon は iOS ホーム画面用に
+  // 任意で別 PNG を embed(無ければ favicon の方を iOS が使うので必須ではない)。
+  const faviconLinks: string[] = [];
+  for (const cand of FAVICON_CANDIDATES) {
+    if (!existsSync(cand.path)) continue;
+    const buf = readFileSync(cand.path);
+    const b64 = buf.toString('base64');
+    faviconLinks.push(`<link rel="icon" type="${cand.mime}" href="data:${cand.mime};base64,${b64}">`);
+    console.log(`  favicon: ${cand.path.replace(ROOT + '/', '')} (${(buf.length / 1024).toFixed(1)} KB → +${((b64.length) / 1024).toFixed(1)} KB inlined)`);
+    break;  // 最優先 1 件のみ採用
   }
+  if (existsSync(APPLE_TOUCH_ICON)) {
+    const buf = readFileSync(APPLE_TOUCH_ICON);
+    const b64 = buf.toString('base64');
+    faviconLinks.push(`<link rel="apple-touch-icon" href="data:image/png;base64,${b64}">`);
+    console.log(`  apple-touch-icon: build/apple-touch-icon.png (${(buf.length / 1024).toFixed(1)} KB → +${((b64.length) / 1024).toFixed(1)} KB inlined)`);
+  }
+  const faviconLink = faviconLinks.join('\n  ');
 
   // Read shell template and replace placeholders
   let html = readFileSync(SHELL, 'utf8');
