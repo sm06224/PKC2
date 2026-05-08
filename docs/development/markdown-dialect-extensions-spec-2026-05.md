@@ -1,5 +1,8 @@
 # PKC2 Markdown 方言拡張 + IR 連動 spec(2026-05-07、wave-10-2 起点 draft)
 
+**Audience**: 人間(設計議論 / 実装者 / レビュアー)。background / trade-off / 業界事例 / 設計議論を含む。
+**AI authoring 向け規約書**: `../spec/markdown-dialect-for-ai-authors-v1.md` ── 本書から「設計議論」を取り除き、LLM 書き手が PKC2 entry を生成する際の構文規約だけを self-contained に提示。AI が markdown を生成する場面では本書ではなく **AI 規約書 v1 を直接参照** すること。
+
 **Status**: draft(user review 中、syntax 確定前)
 **Wave**: 10-2(markdown 方言拡張)
 **Vision link**: `pkc2-vision-modern-emacs-2026-05.md` §4 — 「org-mode-class モダン版」獲得の中核 wave
