@@ -972,6 +972,43 @@ const FIG_REF_OPEN = '';
 const FIG_REF_SEP = '';
 const FIG_REF_CLOSE = '';
 
+// ── Fenced code block の検出ヘルパ(2026-05-08 user 報告:fence 内で
+// preprocessor が誤発火、sentinel 漏れ → glyph 化する bug の根治)。
+//
+// CommonMark の fenced code block は ` ``` ` または ` ~~~ ` を行頭(0〜3 半角
+// SP のインデント許容)に置いた行で開閉する。同じ marker(``` or ~~~)で
+// 閉じる必要があるが、長さは開きと同等以上が必要。Phase 1 では「marker 種が
+// 一致したら閉じる」の単純ルールで処理(ほぼ実用上同等)。
+//
+// preprocessor が fence の中身行を「マーカー入り plain 段落」として処理すると
+// sentinel char が <code> 内に埋め込まれ、後段 markdown-it が <pre><code>...</code></pre>
+// で wrap、post-process regex(`<p[^>]*>SENT</p>`)が当たらず PUA glyph が
+// HTML に残る。fence 内は preprocessor 全件が **素通し** すべき。
+//
+// 各 preprocessor は同じ state machine を持つ:
+//   - inFence === false かつ line が fence 開き → 開きとして state 遷移、line は素通し
+//   - inFence === true かつ line が fence 閉じ(同 marker)→ 閉じとして state 遷移、line は素通し
+//   - inFence === true (中身)→ line は素通し
+//   - inFence === false (通常)→ marker 検出ロジック適用
+
+interface FenceState {
+  inFence: boolean;
+  marker: string;  // '```' or '~~~'(空 = 閉)
+}
+
+function fenceTransition(line: string, state: FenceState): { state: FenceState; isBoundary: boolean } {
+  const m = /^\s{0,3}(```+|~~~+)/.exec(line);
+  if (!m) return { state, isBoundary: false };
+  const lineMarker = m[1]!.startsWith('```') ? '```' : '~~~';
+  if (!state.inFence) {
+    return { state: { inFence: true, marker: lineMarker }, isBoundary: true };
+  }
+  if (lineMarker === state.marker) {
+    return { state: { inFence: false, marker: '' }, isBoundary: true };
+  }
+  return { state, isBoundary: false };
+}
+
 function processFigureBlocks(source: string, lineMapIn: number[]): {
   transformed: string;
   registry: Map<string, FigEntry>;
@@ -982,10 +1019,20 @@ function processFigureBlocks(source: string, lineMapIn: number[]): {
   const out: string[] = [];
   const lineMapOut: number[] = [];
   const counter: Record<FigKind, number> = { figure: 0, table: 0, equation: 0 };
+  let fence: FenceState = { inFence: false, marker: '' };
   let i = 0;
   while (i < lines.length) {
     const line = lines[i]!;
     const inputIdx = lineMapIn[i] ?? i;
+    // fence 内 / fence 境界行は figure marker 検出を skip(2026-05-08 hotfix)
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
     const m = /^:::(figure|table|equation)\{#([\w-]+)\}\s*$/.exec(line);
     if (!m) {
       out.push(line);
@@ -1123,9 +1170,20 @@ function preprocessAlignPrefix(source: string, lineMapIn: number[]): {
   // input → output index へ移行)。prefix 行は前後で paragraph 分離されるため、
   // `breaks: true` で連続行が 1 paragraph に merge される問題を回避する。
 
+  // fenced code block 内では align / indent prefix を marker と認識しない
+  // (2026-05-08 hotfix)。fence 中は素通し、currentAlign も reset。
+  let fence: FenceState = { inFence: false, marker: '' };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      currentAlign = null;
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
     const trimmed = line.trim();
     // Blank line ends the aligned paragraph.
     if (trimmed === '') {
@@ -1237,9 +1295,34 @@ function applyAlignAttrs(
  *   %%%
  */
 function stripComments(source: string): string {
-  let out = source.replace(/%%%[\s\S]*?%%%/g, '');
-  out = out.replace(/%%[^\n]*?%%/g, '');
-  return out;
+  // fenced code block 内は touch しない(2026-05-08 hotfix:user 報告は
+  // 主に L-8 だが、`%%` も同根 bug。code 内に `%% comment %%` が書かれて
+  // いたら、それは code の一部なので残す)。fence 外の region だけを
+  // join して regex strip、その後 fence region と元の順序で再結合。
+  const lines = source.split('\n');
+  let fence: FenceState = { inFence: false, marker: '' };
+  // まず fence の中外を判定して block 化:[{ inFence, lines: string[] }, ...]
+  type Block = { inFence: boolean; lines: string[] };
+  const blocks: Block[] = [];
+  for (const line of lines) {
+    const t = fenceTransition(line, fence);
+    const wasIn = fence.inFence;
+    fence = t.state;
+    const isFenceContent = wasIn || t.isBoundary;
+    const last = blocks[blocks.length - 1];
+    if (last && last.inFence === isFenceContent) {
+      last.lines.push(line);
+    } else {
+      blocks.push({ inFence: isFenceContent, lines: [line] });
+    }
+  }
+  return blocks.map((b) => {
+    if (b.inFence) return b.lines.join('\n');
+    let out = b.lines.join('\n');
+    out = out.replace(/%%%[\s\S]*?%%%/g, '');
+    out = out.replace(/%%[^\n]*?%%/g, '');
+    return out;
+  }).join('\n');
 }
 
 // ── L-1 (2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`) ──
@@ -1259,7 +1342,12 @@ const SECTION_OPEN = '\u{E120}';
 const SECTION_SEP = '\u{E121}';
 
 function processSectionBreaks(source: string): string {
+  // fenced code block 内では `+++` を marker と認識しない(2026-05-08 hotfix)。
+  let fence: FenceState = { inFence: false, marker: '' };
   return source.split('\n').map((line) => {
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) return line;
     // 行頭の空白系文字種(半角 / tab / 全角 U+3000 等)は無視(2026-05-08
     // user 統一方針:行頭系シンプル記法は leading whitespace を全部 strip)。
     const m = /^\s*\+\+\+\s*(?:\{([^}]*)\}\s*)?$/.exec(line);
@@ -1314,9 +1402,18 @@ function processBlankLineMarkers(source: string, lineMapIn: number[]): {
   const lines = source.split('\n');
   const out: string[] = [];
   const lineMapOut: number[] = [];
+  // fenced code block 内では `_` を marker と認識しない(2026-05-08 hotfix)。
+  let fence: FenceState = { inFence: false, marker: '' };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
     // 行頭の空白系文字種(半角 / tab / 全角 U+3000 等)を許容(2026-05-08
     // user 統一方針)。`   _` / `\t_` 等もマーカーとして拾う。
     const m = /^\s*_(\d*)\s*$/.exec(line);
