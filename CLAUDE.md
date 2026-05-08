@@ -226,3 +226,34 @@ wave 締めで急いで作った doc を `docs/development/INDEX.md` 登録忘�
 ### 8. user の疲弊は Claude の責任
 
 「鉄人レース」スタイル(納得まで叩き続ける)は user 側を疲弊させる。私が「疲れない」のを免罪符にせず、**叩かれる前に詰める精度** を上げるのが私の仕事。本 §1〜§7 を Claude が能動的に守り、user の叩き回数を減らす。叩かれてから直すのは妥協、叩かれる前に詰めるのが本筋。
+
+### 9. surface 別 dual-render path は CSS + DOM 両方を確認(2026-05-08 wave-10-2 教訓)
+
+PKC2 は markdown を 3 surface で render する独立経路を持つ:
+- **center pane(detail-presenter.ts)**:base.css 込みで完全機能
+- **Viewer popup(rendered-viewer.ts)**:独立 document、inline `<style>` のみ、外部 CSS 取り込まない
+- **Split View preview(detail-presenter.ts edit mode)**:base.css 込みだが `sourceLineAnchors: true` 経路
+
+新 markup / 新 features 層 DOM 操作を追加するときは **3 surface 全部で動作確認** が必須:
+1. base.css に rule 追加 → Viewer popup の inline `<style>` にも mirror
+2. detail-presenter で features 層 DOM 操作(`expandTransclusions` / `hydrateCardPlaceholders` 等)を呼ぶなら → rendered-viewer の `buildBodyHtml` でも同等に呼ぶ
+3. preprocessor が line を挿入 / 削除する場合 → Split View の sourceLineAnchors path で `data-pkc-source-line` がずれる、LineMap で原文 line index に逆引きする contract を保つ
+
+wave-10-2 で 3 surface の不整合を 5 件 hotfix(Viewer CSS / Viewer transclusion / Split View sentinel glyph 漏れ / Split View 行ズレ / fenced code marker 誤発火)。次回新 markup 追加時は **3 surface verify を default checklist** に。
+
+### 10. preprocessor pipeline で LineMap thread(2026-05-08 wave-10-2 教訓)
+
+`tagSourceLines` は markdown-it token.map[0] を `data-pkc-source-line` に書く。token.map は **md.parse 入力**(= preprocessor 全件適用後)の line index。preprocessor が空行 / sentinel を挿入すると output index と user textarea(原文)の line index が乖離 → Split View source-preview-sync が誤った block を highlight。
+
+回避規約:
+- preprocessor が line を挿入 / 削除する場合は `(text, lineMapIn) → { transformed, lineMap }` 形式に signature 拡張
+- 各 output 行が原文の何行に対応するか `lineMap[outIdx] = inputIdx` を track
+- `tagSourceLines(tokens, lineMap)` で逆引きして data-pkc-source-line に **原文 index** を書く
+
+wave-10-2 では processBlankLineMarkers / processFigureBlocks / preprocessAlignPrefix の 3 件で thread。stripComments の block comment 削除は未対応(known limitation、TODO)。
+
+### 11. fenced code block 内では preprocessor 全件 skip(2026-05-08 wave-10-2 教訓)
+
+行頭 marker(`+++` / `||` / `_` / `__` / `:::figure` 等)は **fenced code block(``` / ~~~)の中では発火させない**。markdown-it が code として扱う領域を preprocessor が触ると、sentinel が `<code>` 内に literal で残って glyph 漏れする。
+
+回避規約:`fenceTransition(line, state)` helper を共有、各 preprocessor が state machine で「fence 中身行 + fence 境界行は素通し」を保つ。stripComments の `%%` / `%%%` も同様に fence 外 region のみで動作。同種 marker(``` vs ~~~)で対応開閉。
