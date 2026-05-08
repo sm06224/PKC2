@@ -1789,6 +1789,11 @@
 .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
 .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
 
+/* L-9(2026-05-08):段落先頭 1 字下げ(行頭 `__` / `＿` プレフィックス、
+ * 日本語文書の段落字下げ慣習)。data-pkc-indent="1" は paragraph 起点を
+ * 1 文字ぶん右に押す(text-indent: 1em)。1 字 = body の現 font-size 1 文字幅。 */
+.pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
+
 /* L-2(2026-05-07):Inline 修飾 */
 .pkc-md-rendered mark {
   background: var(--c-mark-bg, #fff59d);

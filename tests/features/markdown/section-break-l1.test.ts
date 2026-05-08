@@ -46,9 +46,14 @@ describe('L-1: Section break(`+++ {role=...}`)', () => {
       expect(html).not.toContain('pkc-section-break');
     });
 
-    it('行頭に空白があると無効(行頭プレフィックス必須)', () => {
-      const html = renderMarkdown('  +++');
-      expect(html).not.toContain('pkc-section-break');
+    it('行頭の空白系文字は無視(2026-05-08 user 統一方針)', () => {
+      // 半角 SP / TAB / 全角 SP すべて strip して `+++` をマーカー認識
+      const html1 = renderMarkdown('  +++');
+      const html2 = renderMarkdown('\t+++');
+      const html3 = renderMarkdown('　+++');
+      expect(html1).toContain('pkc-section-break');
+      expect(html2).toContain('pkc-section-break');
+      expect(html3).toContain('pkc-section-break');
     });
 
     it('`++` だけ(2 つ)では無効', () => {

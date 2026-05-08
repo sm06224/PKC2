@@ -300,6 +300,8 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
     .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
     .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+    /* L-9 段落先頭 1 字下げ(2026-05-08) */
+    .pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
     /* L-2 inline 修飾(highlight / ruby / em-dot) */
     .pkc-md-rendered mark {
       background: #fff59d;

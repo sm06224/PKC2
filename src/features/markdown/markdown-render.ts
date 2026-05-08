@@ -1024,18 +1024,20 @@ function processFigureRefs(source: string, registry: Map<string, FigEntry>): str
 
 function postProcessFigureSentinels(html: string): string {
   // <p>OPENkindidnum</p>
+  // 各 sentinel 行は <p attrs> を持ちうる(sourceLineAnchors path)。attrs を
+  // 保存して置換要素に転記、Split View block ↔ source line lookup を維持。
   html = html.replace(
-    new RegExp(`<p[^>]*>${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}([\\w-]+)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
-    (_match, kind, id, num) => `<figure id="${id}" class="pkc-fig pkc-fig-${kind}" data-pkc-fig-kind="${kind}" data-pkc-fig-num="${num}">`,
+    new RegExp(`<p([^>]*)>${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}([\\w-]+)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    (_match, attrs, kind, id, num) => `<figure id="${id}" class="pkc-fig pkc-fig-${kind}" data-pkc-fig-kind="${kind}" data-pkc-fig-num="${num}"${attrs}>`,
   );
   html = html.replace(
-    new RegExp(`<p[^>]*>${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_SEP}([^${FIG_SENTINEL_OPEN}]+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
-    (_match, kind, num, captionRaw) => {
+    new RegExp(`<p([^>]*)>${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_SEP}([^${FIG_SENTINEL_OPEN}]+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    (_match, attrs, kind, num, captionRaw) => {
       const prefix = FIG_LABEL_PREFIX[kind as FigKind];
       // caption は markdown-it が既に inline markup(<strong>等)を render 済。
       // 再 escape すると `&lt;strong&gt;` に化けるので raw のまま埋める。
       // raw HTML は markdown-it `html: false` で source 由来の `<` は escape 済。
-      return `<figcaption class="pkc-fig-caption">${prefix} ${num}: ${captionRaw as string}</figcaption>`;
+      return `<figcaption class="pkc-fig-caption"${attrs}>${prefix} ${num}: ${captionRaw as string}</figcaption>`;
     },
   );
   html = html.replace(
@@ -1066,13 +1068,25 @@ type AlignKind = 'center' | 'right' | 'left';
 function preprocessAlignPrefix(source: string): {
   stripped: string;
   alignMap: Map<number, AlignKind>;
+  indentMap: Map<number, true>;
 } {
   const lines = source.split('\n');
   const alignMap = new Map<number, AlignKind>();
+  // L-9(2026-05-08):行頭の `__`(半角 _ × 2)or `＿`(全角 _、U+FF3F)は
+  // 段落先頭 1 字下げマーカー。日本語文書の段落字下げ慣習を表現。indentMap は
+  // OUTPUT line index → true。alignMap と orthogonal、両方適用も可。
+  const indentMap = new Map<number, true>();
   const out: string[] = [];
   let currentAlign: AlignKind | null = null;
   // Detect prefix at line start. `||` `|>` `<|` followed by optional space.
-  const prefixRe = /^(\|\||\|>|<\|)(?:\s)?(.*)$/;
+  // 行頭の空白系文字種は無視(2026-05-08 user 統一方針:行頭系シンプル記法は
+  // leading whitespace を全部 strip)。`   |>` / `\t<|` 等もマーカーとして拾う。
+  const prefixRe = /^\s*(\|\||\|>|<\|)(?:\s)?(.*)$/;
+  // L-9 indent prefix:`__` or `＿`(U+FF3F、全角アンダースコア)。`___`
+  // 以上の連続(markdown horizontal rule)は捕まえないため `(?!_)` で除外、
+  // また content 末尾が `__` で終わる場合は markdown bold 行と解釈して
+  // skip(`__bold__` を indent 化しない)。
+  const indentRe = /^\s*(?:__|＿)(?!_)\s?(.*)$/;
   // alignMap は **OUTPUT line index** に対する map(2026-05-07 hotfix で
   // input → output index へ移行)。prefix 行は前後で paragraph 分離されるため、
   // `breaks: true` で連続行が 1 paragraph に merge される問題を回避する。
@@ -1096,7 +1110,7 @@ function preprocessAlignPrefix(source: string): {
       || /^```/.test(line)
       || /^---+\s*$/.test(line)
       || /^\|/.test(line);  // table row(also catches `||` but prefix matches first)
-    // Detect prefix
+    // Detect L-5 align prefix
     const m = prefixRe.exec(line);
     if (m) {
       const sym = m[1]!;
@@ -1113,6 +1127,28 @@ function preprocessAlignPrefix(source: string): {
       const outIdx = out.length;
       currentAlign = align;
       alignMap.set(outIdx, align);
+      // L-9 indent も一緒に判定(align prefix 後の content が `__段落` の場合)
+      const im0 = indentRe.exec(rest);
+      if (im0 && !rest.endsWith('__')) {
+        indentMap.set(outIdx, true);
+        out.push(im0[1] ?? '');
+      } else {
+        out.push(rest);
+      }
+      continue;
+    }
+    // Detect L-9 indent prefix(align なしの行)
+    const im = indentRe.exec(line);
+    if (im && !line.endsWith('__')) {
+      const rest = im[1] ?? '';
+      // 同じく前段落と paragraph merge されないよう前後を空行で囲む。
+      const prevOut = out.length > 0 ? out[out.length - 1]! : '';
+      if (prevOut.trim() !== '') {
+        out.push('');
+      }
+      const outIdx = out.length;
+      indentMap.set(outIdx, true);
+      currentAlign = null;
       out.push(rest);
       continue;
     }
@@ -1128,17 +1164,24 @@ function preprocessAlignPrefix(source: string): {
     }
     out.push(line);
   }
-  return { stripped: out.join('\n'), alignMap };
+  return { stripped: out.join('\n'), alignMap, indentMap };
 }
 
-function applyAlignAttrs(tokens: Token[], alignMap: Map<number, AlignKind>): void {
-  if (alignMap.size === 0) return;
+function applyAlignAttrs(
+  tokens: Token[],
+  alignMap: Map<number, AlignKind>,
+  indentMap: Map<number, true>,
+): void {
+  if (alignMap.size === 0 && indentMap.size === 0) return;
   for (const tok of tokens) {
     if (tok.type === 'paragraph_open' && tok.map) {
       const startLine = tok.map[0];
       const align = alignMap.get(startLine);
       if (align) {
         tok.attrSet('data-pkc-align', align);
+      }
+      if (indentMap.get(startLine)) {
+        tok.attrSet('data-pkc-indent', '1');
       }
     }
   }
@@ -1178,7 +1221,9 @@ const SECTION_SEP = '\u{E121}';
 
 function processSectionBreaks(source: string): string {
   return source.split('\n').map((line) => {
-    const m = /^\+\+\+\s*(?:\{([^}]*)\}\s*)?$/.exec(line);
+    // 行頭の空白系文字種(半角 / tab / 全角 U+3000 等)は無視(2026-05-08
+    // user 統一方針:行頭系シンプル記法は leading whitespace を全部 strip)。
+    const m = /^\s*\+\+\+\s*(?:\{([^}]*)\}\s*)?$/.exec(line);
     if (!m) return line;
     const attrs = m[1]?.trim() ?? '';
     let role = 'auto';
@@ -1193,12 +1238,13 @@ function processSectionBreaks(source: string): string {
 
 function postProcessSectionBreaks(html: string): string {
   // `<p>` の attrs(`tagSourceLines` が付ける `data-pkc-source-line-*` 等)
-  // を許容するため `<p[^>]*>` で広く match。Split View(sourceLineAnchors:
-  // true)時に sentinel がそのまま残って glyph 漏れする bug を防ぐ
-  // (2026-05-08 user 報告)。
+  // を **保存** して置換要素に転記。Split View の source-preview-sync が
+  // block ↔ source line lookup に使うため、attrs を捨てると同期が崩れる
+  // (2026-05-08 user 報告)。`([^>]*)` で attrs 文字列を捕獲、置換後の
+  // <hr> にそのまま付ける。
   return html.replace(
-    new RegExp(`<p[^>]*>${SECTION_OPEN}(\\w[\\w-]*)${SECTION_SEP}</p>`, 'g'),
-    (_match, role) => `<hr class="pkc-section-break" data-pkc-role="${role}">`,
+    new RegExp(`<p([^>]*)>${SECTION_OPEN}(\\w[\\w-]*)${SECTION_SEP}</p>`, 'g'),
+    (_match, attrs, role) => `<hr class="pkc-section-break" data-pkc-role="${role}"${attrs}>`,
   );
 }
 
@@ -1226,7 +1272,9 @@ function processBlankLineMarkers(source: string): string {
   const lines = source.split('\n');
   const out: string[] = [];
   for (const line of lines) {
-    const m = /^_(\d*)\s*$/.exec(line);
+    // 行頭の空白系文字種(半角 / tab / 全角 U+3000 等)を許容(2026-05-08
+    // user 統一方針)。`   _` / `\t_` 等もマーカーとして拾う。
+    const m = /^\s*_(\d*)\s*$/.exec(line);
     if (!m) {
       out.push(line);
       continue;
@@ -1254,13 +1302,10 @@ function processBlankLineMarkers(source: string): string {
 }
 
 function postProcessBlankLineMarkers(html: string): string {
-  // sourceLineAnchors: true(Split View 等)で <p> に `data-pkc-source-line-*`
-  // 属性が付く path に対応するため `<p[^>]*>` で widen。bare `<p>` only の
-  // regex だと Split View で sentinel が残って glyph 漏れする(2026-05-08
-  // user 報告)。
+  // attrs を保存して div に転記(Split View block ↔ source line lookup 維持)。
   return html.replace(
-    new RegExp(`<p[^>]*>${BLANK_OPEN}(\\d+)${BLANK_SEP}</p>`, 'g'),
-    (_match, count) => `<div class="pkc-blank-line" data-pkc-blank-count="${count}" aria-hidden="true"></div>`,
+    new RegExp(`<p([^>]*)>${BLANK_OPEN}(\\d+)${BLANK_SEP}</p>`, 'g'),
+    (_match, attrs, count) => `<div class="pkc-blank-line" data-pkc-blank-count="${count}" aria-hidden="true"${attrs}></div>`,
   );
 }
 
@@ -1287,21 +1332,22 @@ export function renderMarkdown(
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
-  // L-5:line-prefix align(`||` / `|>` / `<|`)を pre-process で strip
-  const { stripped, alignMap } = preprocessAlignPrefix(text);
+  // L-5 align prefix + L-9 indent prefix を pre-process で strip。両者を
+  // 同 pass でまとめて処理し、output line index に対する 2 種の map を取得。
+  const { stripped, alignMap, indentMap } = preprocessAlignPrefix(text);
   let html: string;
   if (!opts.sourceLineAnchors) {
-    if (alignMap.size === 0) {
+    if (alignMap.size === 0 && indentMap.size === 0) {
       html = md.render(stripped, env);
     } else {
       const tokens = md.parse(stripped, env);
-      applyAlignAttrs(tokens, alignMap);
+      applyAlignAttrs(tokens, alignMap, indentMap);
       html = md.renderer.render(tokens, md.options, env);
     }
   } else {
     // 領域 10-1 — opt-in source-line anchor stamping on block tokens.
     const tokens = md.parse(stripped, env);
-    applyAlignAttrs(tokens, alignMap);
+    applyAlignAttrs(tokens, alignMap, indentMap);
     tagSourceLines(tokens);
     html = md.renderer.render(tokens, md.options, env);
   }
@@ -1335,7 +1381,8 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^:::figure(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure block
   if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
   if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
-  if (/^_\d*\s*$/m.test(text)) return true;                     // L-8 blank-line marker
+  if (/^\s*_\d*\s*$/m.test(text)) return true;                  // L-8 blank-line marker
+  if (/^\s*(?:__|＿)(?!_)/m.test(text)) return true;            // L-9 indent prefix
   return false;
 }
 

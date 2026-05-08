@@ -143,7 +143,7 @@ describe('L-5: 行頭 align prefix', () => {
       { input: '|| `code`', expectAlign: 'center', describe: 'inline code inside aligned' },
       { input: '||', expectAlign: null, describe: '空内容(prefix のみ → 空段落、<p>生成されず)' },
       { input: 'no prefix', expectAlign: null, describe: 'prefix なし' },
-      { input: '   || インデント前置', expectAlign: null, describe: 'leading whitespace は対象外' },
+      { input: '   || インデント前置', expectAlign: 'center', describe: 'leading whitespace 許容(2026-05-08 統一方針)' },
       { input: '|||| 4 連続', expectAlign: 'center', describe: '|| が 2 連続後に内容' },
       { input: '|| line1\n|| line2\n|| line3', expectAlign: 'center', describe: '全行に prefix(冗長)' },
       { input: 'normal\n|| then center', expectAlign: 'center', describe: '途中行の prefix は新 paragraph として center 化(2026-05-07 hotfix で前後を強制分離)' },

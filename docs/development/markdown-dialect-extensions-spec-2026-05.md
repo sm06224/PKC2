@@ -632,6 +632,46 @@ _2
 
 → chapter 間に「自然な段落区切り(空行)」+「2 行ぶんの追加余白」が入る。
 
+### 3.11 段落先頭 1 字下げ(`__` / `＿`、NEW、user 案 2026-05-08)
+
+日本語文書の段落字下げ慣習(段落の最初の 1 文字を 1 字ぶん右に押す)を表現する markup。
+
+#### 構文
+
+```markdown
+__段落本文(先頭 1 文字下がる)。
+__ 半角スペース挟みも OK。
+＿全角アンダースコア(U+FF3F)も等価。
+```
+
+- 行頭 `__`(半角 `_` × 2)or `＿`(全角 U+FF3F)→ 続く paragraph に 1 字下げ
+- 行頭スペース系文字(半角 SP / TAB / 全角 SP)は無視(行頭系シンプル記法統一方針、2026-05-08)
+- 後続の content に空白 0〜1 文字許容、それ以降が paragraph 本文
+
+#### parse 規則(衝突回避)
+
+- `___text` 等 `_` が 3 連続以上 → markdown horizontal rule / strong emphasis として通常処理
+- 行末が `__` で閉じる場合(`__bold__`)は markdown bold の単独行と解釈、indent 化しない
+- align prefix(L-5)と併用可:`|| __センター字下げ`(中央寄せ + 字下げ)
+
+#### IR / HTML 表現
+
+paragraph に `data-pkc-indent="1"` 属性を付与。CSS で `text-indent: 1em`(1 文字幅 = 現 font-size 1 文字)を適用。
+
+```ts
+{ type: 'paragraph', indent: 1, children: [...] }
+```
+
+#### Format mapping
+
+| Format | 出力 |
+|--------|------|
+| HTML   | `<p data-pkc-indent="1">` + `text-indent: 1em` |
+| Word   | `<w:p>` の `<w:pPr><w:ind w:firstLine="200"/>`(200 = 1 全角文字幅) |
+| PPT    | placeholder の text frame に first-line indent |
+| PDF    | HTML 出力をそのまま print(text-indent そのまま) |
+| Markdown export(canonical) | そのまま `__` を残す(idempotent round-trip) |
+
 ---
 
 ## 4. 構造拡張(Inline-level)

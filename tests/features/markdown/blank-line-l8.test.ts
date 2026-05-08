@@ -40,9 +40,14 @@ describe('L-8: 空行マーカー `_` / `_<N>`', () => {
     expect(html).not.toContain('pkc-blank-line');
   });
 
-  it('leading whitespace 付き `   _` はマーカー無効', () => {
-    const html = renderMarkdown('   _');
-    expect(html).not.toContain('pkc-blank-line');
+  it('leading whitespace 付き `   _` も有効(2026-05-08 user 統一方針)', () => {
+    // 半角 SP / TAB / 全角 SP すべて行頭で許容、`_` 単独としてマーカー認識。
+    const html1 = renderMarkdown('   _');
+    const html2 = renderMarkdown('\t_');
+    const html3 = renderMarkdown('　_');
+    expect(html1).toContain('pkc-blank-line');
+    expect(html2).toContain('pkc-blank-line');
+    expect(html3).toContain('pkc-blank-line');
   });
 
   it('行内に他の文字が混じる `_word` は無効', () => {
@@ -107,7 +112,7 @@ describe('L-8: 空行マーカー `_` / `_<N>`', () => {
       { input: '_21', expectCount: '20', describe: '上限超え clip' },
       { input: '_999', expectCount: '20', describe: '極大 clip' },
       { input: '_0', describe: 'ゼロ無効' },
-      { input: '   _', describe: 'インデント無効' },
+      { input: '   _', expectCount: '1', describe: 'インデント許容(2026-05-08 統一方針)' },
       { input: '_word', describe: '混在無効' },
       { input: 'word _', describe: '行頭以外無効' },
       { input: '__', describe: '`__` 単独はマーカー扱いせず markdown emphasis' },
