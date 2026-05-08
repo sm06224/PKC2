@@ -73,6 +73,7 @@ import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-c
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { htmlForRichCopy } from '../../features/markdown/rich-copy-transform';
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
@@ -2283,7 +2284,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!ent) break;
         const src = entryToMarkdownSource(ent);
         const resolvedSrc = resolveMarkdownSourceForCopy(src, st.container);
-        const html = renderMarkdown(resolvedSrc);
+        // PKC 拡張(L-1〜L-9)を Rich-paste 先(Word / ONLYOFFICE / Gmail 等)で
+        // 確実に再現するため、custom data 属性 / class-only style を inline
+        // `style="..."` に複製した HTML を生成して clipboard に流す。round-trip
+        // のため data-pkc-* / class は残置(再 import で PKC として再認識)。
+        const html = htmlForRichCopy(renderMarkdown(resolvedSrc));
         void copyMarkdownAndHtml(src, html);
         break;
       }
@@ -2299,7 +2304,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const inner = block.querySelector<HTMLElement>(':scope > pre, :scope > table');
         if (!inner) break;
         const plain = extractMdBlockPlainText(inner);
-        const html = inner.outerHTML;
+        const html = htmlForRichCopy(inner.outerHTML);
         void copyMarkdownAndHtml(plain, html).then((ok) => {
           if (ok) {
             target.setAttribute('data-pkc-flash', 'true');
