@@ -90,11 +90,16 @@ describe('M-7 Variables `{{vars.x}}` rendering', () => {
     expect(html).not.toContain('class="pkc-variable-undefined"');
   });
 
-  it('code span 内では展開しない', () => {
+  it('code span 内でも展開される(2026-05-08 hotfix で trade-off):escape は `\\{{vars.x}}`', () => {
+    // pre-process 段階で text 置換するため、inline backtick code span 内も
+    // 展開される(L-2/L-6 等の content 内でも展開させるための trade-off)。
+    // user が literal で残したい場合は `\{{vars.x}}` で escape。
     const html = renderMarkdown('`{{vars.x}}`', { vars: { x: 'EXPANDED' } });
-    expect(html).toContain('<code>');
-    expect(html).toContain('{{vars.x}}');
-    expect(html).not.toContain('EXPANDED');
+    expect(html).toContain('<code>EXPANDED</code>');
+    // escape 形式は literal で残る
+    const escaped = renderMarkdown('`\\{{vars.x}}`', { vars: { x: 'EXPANDED' } });
+    expect(escaped).toContain('{{vars.x}}');
+    expect(escaped).not.toContain('EXPANDED');
   });
 
   it('fenced code 内では展開しない', () => {
@@ -132,7 +137,10 @@ describe('M-7 Variables `{{vars.x}}` rendering', () => {
       { input: '{{ vars.x }}', vars: { x: 'V' }, expectContain: 'V', describe: '内側空白許容' },
       { input: '{{vars.}}', vars: {}, expectNotContain: 'pkc-variable-undefined', describe: '空 key は literal' },
       { input: '{{export.format}}', vars: {}, expectContain: '{{export.format}}', describe: 'vars 以外 literal' },
-      { input: '`{{vars.x}}`', vars: { x: 'V' }, expectContain: '{{vars.x}}', describe: 'code 内 literal' },
+      { input: '`{{vars.x}}`', vars: { x: 'V' }, expectContain: '<code>V</code>', describe: 'code span 内も展開(trade-off)' },
+      { input: '`\\{{vars.x}}`', vars: { x: 'V' }, expectContain: '{{vars.x}}', describe: 'escape で literal' },
+      { input: '==xxx {{vars.x}} xxx==', vars: { x: 'V' }, expectContain: '<mark>xxx V xxx</mark>', describe: 'highlight 内で展開' },
+      { input: '[[em:{{vars.x}}]]', vars: { x: 'V' }, expectContain: '<em class="pkc-em-dot">V</em>', describe: 'em-dot 内で展開' },
       { input: '{{vars.X-Y}}', vars: { 'X-Y': 'V' }, expectContain: 'V', describe: 'hyphen key' },
       { input: '{{vars.snake_case}}', vars: { snake_case: 'V' }, expectContain: 'V', describe: 'underscore key' },
       { input: '{{vars.unknown}}', vars: {}, expectContain: 'pkc-variable-undefined', describe: '未定義 warning' },

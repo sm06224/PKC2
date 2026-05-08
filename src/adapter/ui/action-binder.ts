@@ -74,7 +74,7 @@ import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { htmlForRichCopy } from '../../features/markdown/rich-copy-transform';
-import { extractVars } from '../../features/markdown/frontmatter';
+import { extractVars, parseFrontmatter as parseLivePreviewFrontmatter } from '../../features/markdown/frontmatter';
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
@@ -6971,10 +6971,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // 領域 10-1: opt-in source-line anchors so the caret-sync
       // layer (source-preview-sync.ts) can match preview blocks to
       // editor source lines (and vice versa).
-      // M-7: live preview でも frontmatter vars を 展開(textarea の現状を
-      // そのまま使用、user が vars 編集中も追従する)。
+      // M-7: live preview でも frontmatter vars を 展開、frontmatter 行自体
+      // は preview から strip(2026-05-08 hotfix:user 報告で frontmatter が
+      // raw text として preview に出ていた)。
       const livePreviewVars = extractVars(src);
-      preview.innerHTML = renderMarkdown(resolved, {
+      const livePreviewSource = parseLivePreviewFrontmatter(resolved).body;
+      preview.innerHTML = renderMarkdown(livePreviewSource, {
         sourceLineAnchors: true,
         vars: livePreviewVars,
       });

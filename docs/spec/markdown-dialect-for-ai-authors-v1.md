@@ -256,7 +256,8 @@ vars:
 
 #### 衝突回避 / 制約
 
-- code span(\`...\`) / fenced code(\`\`\`...\`\`\`)内では展開しない(他 PKC 拡張と同 contract)
+- fenced code block(``` / ~~~)の中では展開しない
+- inline backtick code span(`` ` `` ... `` ` ``)の中も **展開される**(2026-05-08 hotfix)。L-2 highlight(`==xxx==`) / L-2 em-dot(`[[em:xxx]]`)/ L-6 simple-inline(`:xxx:attrs:`)等の中で展開できるようにするための trade-off。code span 内で literal にしたい場合は `\{{vars.x}}` で escape
 - 改行を跨ぐ `{{vars.x\nname}}` は無効、literal で残置
 - `{{macros.x}}` `{{export.x}}` 等 **vars 以外の名前空間は Phase 2 では未対応** → literal で残る(将来対応)
 - 値内の HTML(`<script>` 等)は escape されて表示される(XSS 安全、markdown-it `html: false` で確保)

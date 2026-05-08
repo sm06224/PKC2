@@ -679,66 +679,65 @@ md.inline.ruler.after('emphasis', 'pkc_simple_inline', function simpleInlineRule
 
 // ── M-7 Variables `{{vars.x}}`(2026-05-08、wave-10-2 Phase 2)──
 //
-// Spec §3.6 + OQ-6:frontmatter `vars.x` の値を本文中 `{{vars.x}}` で展開、
-// 展開 timing は render 時(parse 時ではない、env.vars 経由で値受領)。
+// Spec §3.6 + OQ-6:frontmatter `vars.x` の値を本文中 `{{vars.x}}` で展開。
+//
+// 実装方針(2026-05-08 hotfix):**pre-process 段階の text 置換**で実装。
+// 当初 inline rule で実装していたが、L-2 highlight(`==xxx==`) / L-2 em-dot
+// (`[[em:xxx]]`) / L-2 ruby(`[[ruby:base|reading]]`) / L-6 simple-inline
+// (`:xxx:attrs:`)等の **content を text token として直接 push する系統**
+// の中では `{{vars.x}}` が展開されない(これらの content は inline parser
+// 経路を通らない)現象が user 報告で発覚。pre-process で source 文字列を
+// 置換 してしまえば、後段の inline rule は展開済 text を見るので必ず効く。
 //
 // 構文:
 //   `{{vars.<key>}}` で展開、`<key>` は `[A-Za-z_][\w-]*`
 //   `\{{vars.x}}` で literal 出力(escape)
 //   `{{macros.x}}` 等 vars 以外は Phase 2 では未対応 = literal で残置
-//   code span / fenced 内では markdown-it が code 化、本 rule は走らない
+//   fenced code block(``` / ~~~)の中身では展開しない(fence-aware)
 //
-// 未定義変数(env.vars が無い / key が無い)は visible warning として
-// `<span class="pkc-variable-undefined" title="未定義変数: vars.x">{{vars.x}}</span>`
-// で残す(silent fail せず author に気付かせる)。
+// trade-off:inline backtick code span(`` `{{vars.x}}` ``)の中も展開される。
+// spec doc / AI 規約書 / Manual に明記。Jinja2 / Handlebars 等の慣習に近い
+// 振る舞い、escape は `\{{vars.x}}` で対応可能。
 //
-// rule 登録は `pkc_simple_inline` の後、`emphasis` の後段で OK
-// (`{{` `}}` は他構文と衝突しない unique token)。
+// 未定義変数は post-process まで sentinel(U+E140 / U+E141)で残し、最終
+// 段で `<span class="pkc-variable-undefined">` に置換。
 
-const VAR_KEY_RE = /^[A-Za-z_][\w-]*$/;
+const VAR_OPEN = '\u{E140}';
+const VAR_SEP = '\u{E141}';
 
-md.inline.ruler.after('emphasis', 'pkc_variable', function variableRule(state, silent) {
-  if (silent) return false;
-  const src = state.src;
-  const start = state.pos;
-  // escape: `\{{` で literal `{{`、advance 1 char(backslash 消費)+ `{{` は通常 text
-  if (src.charCodeAt(start) === 0x5C /* \ */ && src.charCodeAt(start + 1) === 0x7B /* { */ && src.charCodeAt(start + 2) === 0x7B /* { */) {
-    // backslash を skip して `{{` を literal text として通す
-    state.pos = start + 1;
-    return false;  // 後段 rule(text)が `{{` を処理
-  }
-  // `{{` で開始?
-  if (src.charCodeAt(start) !== 0x7B /* { */ || src.charCodeAt(start + 1) !== 0x7B) return false;
-  // 改行を跨がない、`}}` を探す
-  const closeIdx = src.indexOf('}}', start + 2);
-  if (closeIdx < 0) return false;
-  const inner = src.slice(start + 2, closeIdx);
-  if (inner.includes('\n')) return false;
-  // `vars.<key>` 形式のみ受理(Phase 2 範囲)。`macros.x` 等は素通し。
-  const m = /^vars\.([A-Za-z_][\w-]*)$/.exec(inner.trim());
-  if (!m) return false;
-  const key = m[1]!;
-  if (!VAR_KEY_RE.test(key)) return false;
+function expandVarsInText(source: string, vars: Record<string, string>): string {
+  if (!source) return source;
+  const lines = source.split('\n');
+  let fence: FenceState = { inFence: false, marker: '' };
+  return lines.map((line) => {
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) return line;
+    // escape(`\{{vars.x}}`)優先。先に escape を sentinel(U+E142)で隠して
+    // 通常の置換を行い、最後に元に戻す。
+    let out = line.replace(/\\\{\{(vars\.[A-Za-z_][\w-]*)\}\}/g, '\u{E142}$1\u{E143}');
+    out = out.replace(/\{\{\s*vars\.([A-Za-z_][\w-]*)\s*\}\}/g, (_match, key: string) => {
+      if (Object.prototype.hasOwnProperty.call(vars, key)) {
+        const v = vars[key]!;
+        // escape sentinel char が値内にあれば剥がす(衝突対策)
+        return v.replace(new RegExp(`[${VAR_OPEN}${VAR_SEP}]`, 'g'), '');
+      }
+      return `${VAR_OPEN}${key}${VAR_SEP}`;
+    });
+    out = out.replace(/\u{E142}(vars\.[A-Za-z_][\w-]*)\u{E143}/gu, (_m, ref: string) => `{{${ref}}}`);
+    return out;
+  }).join('\n');
+}
 
-  const vars = (state.env as { vars?: Record<string, string> } | undefined)?.vars;
-  const value = vars && Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : undefined;
-
-  if (typeof value === 'string') {
-    // 値で展開(plain text、HTML escape は markdown-it の text renderer が処理)
-    const tok = state.push('text', '', 0);
-    tok.content = value;
-  } else {
-    // 未定義変数:visible warning として `{{vars.x}}` 自体を span で wrap
-    const tokOpen = state.push('variable_undefined_open', 'span', 1);
-    tokOpen.attrSet('class', 'pkc-variable-undefined');
-    tokOpen.attrSet('title', `未定義変数: vars.${key}`);
-    const tokText = state.push('text', '', 0);
-    tokText.content = `{{vars.${key}}}`;
-    state.push('variable_undefined_close', 'span', -1);
-  }
-  state.pos = closeIdx + 2;
-  return true;
-});
+function postProcessVariableUndefined(html: string): string {
+  // sentinel `U+E140 key U+E141` を `<span class="pkc-variable-undefined">` に変換。
+  // markdown-it が text を escape した後の状態で sentinel を含む HTML を扱う。
+  return html.replace(
+    new RegExp(`${VAR_OPEN}([A-Za-z_][\\w-]*)${VAR_SEP}`, 'g'),
+    (_match, key: string) =>
+      `<span class="pkc-variable-undefined" title="未定義変数: vars.${key}">{{vars.${key}}}</span>`,
+  );
+}
 
 // ── Heading id injection ──────────────────────────────
 //
@@ -1552,6 +1551,10 @@ export function renderMarkdown(
   text = stripComments(text);
   // L-1:section break を sentinel 化(1:1 line 変換、lineMap 不変)
   text = processSectionBreaks(text);
+  // M-7:variables `{{vars.x}}` を pre-process で text 置換(fence 外、
+  // 2026-05-08 hotfix で inline rule から切替、L-2/L-6 等の content 内も
+  // 展開されるようになる)。未定義は U+E140/E141 sentinel で post-process まで残す。
+  text = expandVarsInText(text, opts.vars ?? {});
   // L-8:`_` / `_<N>` 空行マーカー(挿入あり、lineMap 更新)
   const blankResult = processBlankLineMarkers(text, lineMap);
   text = blankResult.transformed;
@@ -1563,10 +1566,6 @@ export function renderMarkdown(
   text = processFigureRefs(text, figResult.registry);
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
-    // M-7 variables(2026-05-08):inline rule `pkc_variable` が
-    // `{{vars.<key>}}` を見たときに env.vars[key] を読んで展開する。
-    // 未定義は visible warning として残す。
-    vars: opts.vars ?? {},
   };
   // L-5 align prefix + L-9 indent prefix を pre-process で strip(挿入あり)。
   const alignResult = preprocessAlignPrefix(text, lineMap);
@@ -1597,6 +1596,8 @@ export function renderMarkdown(
   html = postProcessSectionBreaks(html);
   // L-8:blank-line sentinel → <div class="pkc-blank-line">
   html = postProcessBlankLineMarkers(html);
+  // M-7:undefined variable sentinel → <span class="pkc-variable-undefined">
+  html = postProcessVariableUndefined(html);
   return html;
 }
 

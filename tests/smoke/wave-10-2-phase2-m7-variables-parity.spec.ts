@@ -27,6 +27,8 @@ test('M-7 variables:`{{vars.x}}` が 3 surface で frontmatter 値に展開さ�
     '  project: ALPHA-7',
     '  client: Acme Corp',
     '  date: 2026-05-08',
+    '  env: 本番環境',
+    '  impact: 一部監視画面の更新遅延',
     '---',
     '',
     '# 案件 {{vars.project}} 進捗',
@@ -35,7 +37,10 @@ test('M-7 variables:`{{vars.x}}` が 3 surface で frontmatter 値に展開さ�
     '',
     '|> 担当: {{vars.signature}}(未定義 → 警告)',
     '',
-    '通常段落の中の `{{vars.project}}`(code は展開しない)。',
+    '通常段落の中の `{{vars.project}}`(code span でも展開、trade-off)。',
+    '',
+    '- 対象環境: =={{vars.env}}==(highlight 内で展開、user 報告 hotfix)',
+    '- 影響範囲: [[em:{{vars.impact}}]](em-dot 内で展開)',
   ].join('\n');
   await page.locator('textarea[data-pkc-field="body"]').first().fill(body);
 
@@ -52,8 +57,13 @@ test('M-7 variables:`{{vars.x}}` が 3 surface で frontmatter 値に展開さ�
   expect(previewText).toContain('Acme Corp');
   expect(previewText).toContain('2026-05-08');
   expect(previewText).toContain('{{vars.signature}}'); // 未定義 literal 残置
-  expect(previewText).toContain('{{vars.project}}'); // code 内 literal
+  // hotfix 2026-05-08:highlight / em-dot 内でも展開される
+  expect(previewText).toContain('本番環境');
+  expect(previewText).toContain('一部監視画面の更新遅延');
   await expect(preview.locator('.pkc-variable-undefined')).toHaveCount(1);
+  // hotfix:Split View でも frontmatter は preview から strip
+  expect(previewText).not.toContain('vars:');
+  expect(previewText).not.toContain('project: ALPHA-7');
   await preview.screenshot({
     path: 'test-results/wave-10-2-phase2/m7-variables-split-view.png',
   });

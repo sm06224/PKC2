@@ -189,9 +189,11 @@ const textPresenter: DetailPresenter = {
     const initialSource = entry.body;
     if (initialSource && hasMarkdownSyntax(initialSource)) {
       // M-7 wave-10-2 Phase 2:Split View preview でも frontmatter vars を
-      // 展開して center pane と同等の見た目を保つ。
+      // 展開して center pane と同等の見た目を保つ + frontmatter 自体は preview
+      // から strip(YAML lines が render に出ない、center pane と同 contract)。
       const previewVars = extractVars(initialSource);
-      preview.innerHTML = renderMarkdown(initialSource, {
+      const previewSource = parseFrontmatter(initialSource).body;
+      preview.innerHTML = renderMarkdown(previewSource, {
         sourceLineAnchors: true,
         vars: previewVars,
       });
