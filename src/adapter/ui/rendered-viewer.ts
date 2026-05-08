@@ -43,6 +43,8 @@ import {
 import { parseAttachmentBody } from './attachment-presenter';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
+import { expandTransclusions } from './transclusion';
+import { buildAssetMimeMap, buildAssetNameMap } from './renderer';
 
 /**
  * Build the standalone HTML document for a rendered viewer window.
@@ -302,6 +304,49 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
     /* L-9 段落先頭 1 字下げ(2026-05-08) */
     .pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
+    /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
+       hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため
+       base.css pkc-transclusion 群を inline mirror)。 */
+    .pkc-transclusion {
+      border-left: 3px solid #4a90e2;
+      background: rgba(74, 144, 226, 0.04);
+      border-radius: 4px;
+      padding: 0.35rem 0.6rem;
+      margin: 0.5rem 0;
+    }
+    .pkc-transclusion-header {
+      font-size: 0.75rem;
+      color: #6b7280;
+      margin-bottom: 0.35rem;
+      padding-bottom: 0.2rem;
+      border-bottom: 1px dashed #d1d5db;
+    }
+    .pkc-transclusion-source { color: #6b7280; text-decoration: none; }
+    .pkc-transclusion-source::before { content: '↪ '; color: #6b7280; }
+    .pkc-transclusion-source:hover { color: #4a90e2; text-decoration: underline; }
+    .pkc-transclusion-body > :first-child { margin-top: 0; }
+    .pkc-transclusion-body > :last-child { margin-bottom: 0; }
+    .pkc-transclusion-fallback { color: #6b7280; font-style: italic; }
+    .pkc-embed-blocked {
+      display: inline-block;
+      color: #6b7280;
+      background: rgba(0, 0, 0, 0.04);
+      border: 1px dashed rgba(0, 0, 0, 0.18);
+      border-radius: 4px;
+      padding: 0 0.35em;
+      font-size: 0.9em;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-style: normal;
+    }
+    .pkc-todo-embed-meta {
+      display: flex;
+      gap: 0.6em;
+      align-items: baseline;
+      font-size: 0.9em;
+      color: #6b7280;
+    }
+    .pkc-todo-embed-status { font-family: "SFMono-Regular", Consolas, monospace; }
+    .pkc-todo-embed-status[data-pkc-todo-status="done"] { color: #4a90e2; }
     /* L-2 inline 修飾(highlight / ruby / em-dot) */
     .pkc-md-rendered mark {
       background: #fff59d;
@@ -635,7 +680,25 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
     return buildTextlogBodyHtml(entry, container);
   }
   const resolved = resolveAssetSource(entry.body ?? '', container);
-  return renderMarkdown(resolved);
+  const html = renderMarkdown(resolved);
+  // 2026-05-08 user 報告:`![label](entry:LID)` の transclusion が center
+  // pane(detail-presenter)では expand されるが Viewer popup では placeholder
+  // のまま表示されない。Viewer は detail-presenter と同じ expandTransclusions
+  // 経路を通すべき。HTML 文字列を一旦 detached DOM に流して expand、
+  // serialize し直す。current document の DOM を借りて済ませる(popup 起動前
+  // のため popup document はまだ存在しない、main app の document を transient
+  // 利用)。
+  if (!container || typeof document === 'undefined') return html;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  expandTransclusions(tmp, {
+    entries: container.entries,
+    assets: container.assets,
+    mimeByKey: buildAssetMimeMap(container),
+    nameByKey: buildAssetNameMap(container),
+    hostLid: entry.lid,
+  });
+  return tmp.innerHTML;
 }
 
 /**
