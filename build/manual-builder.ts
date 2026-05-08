@@ -66,6 +66,9 @@ const CHAPTER_TO_FOLDER: Record<string, string | null> = {
   '07': 'manual-folder-export',
   '08': 'manual-folder-export',
   '09': 'manual-folder-appendix',
+  '10': 'manual-folder-basics',     // filer / graph / inventory(2026-04 領域 10-6 wave で着地)
+  '11': 'manual-folder-appendix',   // bookmarklet sample(PKC-Message v1 sender 入門)
+  '12': 'manual-folder-basics',     // markdown 拡張記法(2026-05 wave-10-2 Phase 1)
 };
 
 /**
