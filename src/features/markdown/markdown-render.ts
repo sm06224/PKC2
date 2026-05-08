@@ -1025,11 +1025,11 @@ function processFigureRefs(source: string, registry: Map<string, FigEntry>): str
 function postProcessFigureSentinels(html: string): string {
   // <p>OPENkindidnum</p>
   html = html.replace(
-    new RegExp(`<p>${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}([\\w-]+)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    new RegExp(`<p[^>]*>${FIG_SENTINEL_OPEN}OPEN${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}([\\w-]+)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
     (_match, kind, id, num) => `<figure id="${id}" class="pkc-fig pkc-fig-${kind}" data-pkc-fig-kind="${kind}" data-pkc-fig-num="${num}">`,
   );
   html = html.replace(
-    new RegExp(`<p>${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_SEP}([^${FIG_SENTINEL_OPEN}]+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    new RegExp(`<p[^>]*>${FIG_SENTINEL_OPEN}CAPTION${FIG_SENTINEL_SEP}(figure|table|equation)${FIG_SENTINEL_SEP}(\\d+)${FIG_SENTINEL_SEP}([^${FIG_SENTINEL_OPEN}]+)${FIG_SENTINEL_OPEN}</p>`, 'g'),
     (_match, kind, num, captionRaw) => {
       const prefix = FIG_LABEL_PREFIX[kind as FigKind];
       // caption は markdown-it が既に inline markup(<strong>等)を render 済。
@@ -1039,7 +1039,7 @@ function postProcessFigureSentinels(html: string): string {
     },
   );
   html = html.replace(
-    new RegExp(`<p>${FIG_SENTINEL_OPEN}CLOSE${FIG_SENTINEL_OPEN}</p>`, 'g'),
+    new RegExp(`<p[^>]*>${FIG_SENTINEL_OPEN}CLOSE${FIG_SENTINEL_OPEN}</p>`, 'g'),
     '</figure>',
   );
   // Inline references
@@ -1192,8 +1192,12 @@ function processSectionBreaks(source: string): string {
 }
 
 function postProcessSectionBreaks(html: string): string {
+  // `<p>` の attrs(`tagSourceLines` が付ける `data-pkc-source-line-*` 等)
+  // を許容するため `<p[^>]*>` で広く match。Split View(sourceLineAnchors:
+  // true)時に sentinel がそのまま残って glyph 漏れする bug を防ぐ
+  // (2026-05-08 user 報告)。
   return html.replace(
-    new RegExp(`<p>${SECTION_OPEN}(\\w[\\w-]*)${SECTION_SEP}</p>`, 'g'),
+    new RegExp(`<p[^>]*>${SECTION_OPEN}(\\w[\\w-]*)${SECTION_SEP}</p>`, 'g'),
     (_match, role) => `<hr class="pkc-section-break" data-pkc-role="${role}">`,
   );
 }
@@ -1250,8 +1254,12 @@ function processBlankLineMarkers(source: string): string {
 }
 
 function postProcessBlankLineMarkers(html: string): string {
+  // sourceLineAnchors: true(Split View 等)で <p> に `data-pkc-source-line-*`
+  // 属性が付く path に対応するため `<p[^>]*>` で widen。bare `<p>` only の
+  // regex だと Split View で sentinel が残って glyph 漏れする(2026-05-08
+  // user 報告)。
   return html.replace(
-    new RegExp(`<p>${BLANK_OPEN}(\\d+)${BLANK_SEP}</p>`, 'g'),
+    new RegExp(`<p[^>]*>${BLANK_OPEN}(\\d+)${BLANK_SEP}</p>`, 'g'),
     (_match, count) => `<div class="pkc-blank-line" data-pkc-blank-count="${count}" aria-hidden="true"></div>`,
   );
 }

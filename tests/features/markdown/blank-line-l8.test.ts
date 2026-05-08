@@ -67,6 +67,18 @@ describe('L-8: 空行マーカー `_` / `_<N>`', () => {
     expect(html).toMatch(/data-pkc-blank-count="3"/);
   });
 
+  it('sourceLineAnchors: true(Split View 経路)でも sentinel 漏れない(2026-05-08 user 報告)', () => {
+    // Split View の preview は `{ sourceLineAnchors: true }` で render する。
+    // tagSourceLines が <p> に `data-pkc-source-line-*` 属性を付与するため、
+    // post-process regex が `<p>SENT</p>` 期待だと当たらず PUA char が
+    // 残って glyph 漏れする bug の regression guard。
+    const src = ['本文 1', '', '_', '', '本文 2'].join('\n');
+    const html = renderMarkdown(src, { sourceLineAnchors: true });
+    expect(html).not.toContain('\u{E130}');
+    expect(html).not.toContain('\u{E131}');
+    expect(html).toContain('data-pkc-blank-count="1"');
+  });
+
   it('連続 prefix 行 + `_` 混在(2026-05-08 user 報告ケース、PUA glyph 漏れ防止)', () => {
     const src = [
       '|> 2026年5月8日 発信',
