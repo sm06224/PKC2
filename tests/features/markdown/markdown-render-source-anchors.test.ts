@@ -153,3 +153,69 @@ describe('makeSourceLineAttrs — token-agnostic helper(IR 経路への入口)',
     expect(makeSourceLineAttrs(2, undefined)).toBe(' data-pkc-source-line="2"');
   });
 });
+
+// 2026-05-08 follow-up:caller が frontmatter strip 等で原文 line を削った
+// 場合に offset 分だけ data-pkc-source-line を底上げする option。Split View
+// edit mode preview が frontmatter strip 後に renderMarkdown を呼ぶ際、
+// 残り body の出力行を textarea 原文 line index に揃えるために使う。
+describe('renderMarkdown — sourceLineOffset(M-7 follow-up Split View)', () => {
+  it('offset 0 では従来挙動と同じ(identity)', () => {
+    const html = renderMarkdown('# Title\n\nbody', {
+      sourceLineAnchors: true,
+      sourceLineOffset: 0,
+    });
+    expect(html).toMatch(/<h1[^>]*data-pkc-source-line="0"/);
+    expect(html).toMatch(/<p[^>]*data-pkc-source-line="2"/);
+  });
+
+  it('offset 4 で全 block の data-pkc-source-line が +4 される', () => {
+    const html = renderMarkdown('# Title\n\nbody', {
+      sourceLineAnchors: true,
+      sourceLineOffset: 4,
+    });
+    expect(html).toMatch(/<h1[^>]*data-pkc-source-line="4"/);
+    expect(html).toMatch(/<p[^>]*data-pkc-source-line="6"/);
+  });
+
+  it('frontmatter strip 後の body を offset 付きで render すると textarea 原文 line と一致する', () => {
+    // 原文(textarea):
+    //   line 0: ---
+    //   line 1: vars:
+    //   line 2:   title: Foo
+    //   line 3: ---
+    //   line 4: # Heading
+    //   line 5: body
+    // strip 後 body:
+    //   line 0: # Heading
+    //   line 1: body
+    // offset = 4 なので preview の `data-pkc-source-line` は 4, 5 となる
+    // (caret が textarea line 4 にあれば preview の h1 を highlight、
+    // line 5 にあれば paragraph を highlight)。
+    const original = '---\nvars:\n  title: Foo\n---\n# Heading\nbody';
+    const stripped = '# Heading\nbody';
+    const offset = original.split('\n').length - stripped.split('\n').length;
+    expect(offset).toBe(4);
+    const html = renderMarkdown(stripped, {
+      sourceLineAnchors: true,
+      sourceLineOffset: offset,
+    });
+    expect(html).toMatch(/<h1[^>]*data-pkc-source-line="4"/);
+    expect(html).toMatch(/<p[^>]*data-pkc-source-line="5"/);
+  });
+
+  it('offset 未指定は offset=0 と同等(後方互換)', () => {
+    const a = renderMarkdown('para', { sourceLineAnchors: true });
+    const b = renderMarkdown('para', { sourceLineAnchors: true, sourceLineOffset: 0 });
+    expect(a).toBe(b);
+  });
+
+  it('offset は data-pkc-source-end にも追加される(複数行 span)', () => {
+    const md = '```ts\nconst x = 1;\nconst y = 2;\n```\n';
+    const html = renderMarkdown(md, {
+      sourceLineAnchors: true,
+      sourceLineOffset: 10,
+    });
+    expect(html).toMatch(/data-pkc-source-line="10"/);
+    expect(html).toMatch(/data-pkc-source-end="13"/);
+  });
+});

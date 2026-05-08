@@ -90,7 +90,8 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
-import { parseFrontmatter } from '../../features/markdown/frontmatter';
+import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
+import { expandTransclusions } from './transclusion';
 import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
 import { extractThumbnailRef } from '../../features/auto-fill/thumbnail-frontmatter';
 import { seedSimulation, stepSimulation } from '../../features/graph/force-layout';
@@ -8338,14 +8339,45 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
   // Resolve asset references in the TEXT split editor's initial preview
   // so that `![alt](asset:key)` and `[label](asset:key)` render inline
   // from the moment the editor opens. Source body is never mutated.
-  if (entry.archetype === 'text' && container?.assets && entry.body) {
+  // 2026-05-08 follow-up:asset re-render path で `sourceLineAnchors` /
+  // `vars` / `sourceLineOffset` を渡し直さないと presenter 初回 render の
+  // anchor / vars が消える(Split View 同期スクロール / `{{vars.x}}` 展開
+  // が壊れる)。frontmatter strip も同経路で適用して 6 surface contract と
+  // 揃える。最後に `expandTransclusions` を必ず呼んで `![](entry:...)` を
+  // 展開する(asset 経路 / asset 無し経路の両方で必要)。
+  if (entry.archetype === 'text' && entry.body) {
     const preview = editorBody.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
-    if (preview && hasAssetReferences(entry.body)) {
-      const mimeByKey = buildAssetMimeMap(container);
-      const nameByKey = buildAssetNameMap(container);
-      const resolved = resolveAssetReferences(entry.body, { assets: container.assets, mimeByKey, nameByKey });
-      if (hasMarkdownSyntax(resolved)) {
-        preview.innerHTML = renderMarkdown(resolved);
+    if (preview) {
+      const fm = parseFrontmatter(entry.body);
+      const previewVars = extractVars(entry.body);
+      const stripped = fm.body;
+      const sourceLineOffset = fm.found
+        ? entry.body.split('\n').length - stripped.split('\n').length
+        : 0;
+      if (container?.assets && hasAssetReferences(entry.body)) {
+        const mimeByKey = buildAssetMimeMap(container);
+        const nameByKey = buildAssetNameMap(container);
+        const resolved = resolveAssetReferences(stripped, {
+          assets: container.assets,
+          mimeByKey,
+          nameByKey,
+        });
+        if (hasMarkdownSyntax(resolved)) {
+          preview.innerHTML = renderMarkdown(resolved, {
+            sourceLineAnchors: true,
+            vars: previewVars,
+            sourceLineOffset,
+          });
+        }
+      }
+      if (container) {
+        expandTransclusions(preview, {
+          entries: container.entries,
+          assets: container.assets,
+          mimeByKey: buildAssetMimeMap(container),
+          nameByKey: buildAssetNameMap(container),
+          hostLid: entry.lid,
+        });
       }
     }
   }

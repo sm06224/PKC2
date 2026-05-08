@@ -469,6 +469,8 @@ E = mc^2
 
 **Status(2026-05-08 follow-up)**: M-7 第 1 弾着地後の user 報告「embed した TEXTLOG エントリで frontmatter が露出する(プレビュー表示もされていない)」を hotfix。embed 経路(`transclusion.ts` の `renderEmbeddedLog` / `renderEntryEmbed`)、Viewer popup TEXT path(`rendered-viewer.ts` の `buildBodyHtml`)、平文 fallback(`detail-presenter.ts` / `textlog-presenter.ts` の non-markdown 経路)で `parseFrontmatter(...).body` が抜けていた 5 経路を contract 化。embed 経路では vars 展開も同時に有効化。視覚 parity smoke 1 件追加(`wave-10-2-phase2-m7-embed-frontmatter-parity.spec.ts`)。これで center / Split View / Viewer / embed / 平文 fallback の **6 surface すべて**で frontmatter strip + vars 展開が一致。
 
+**Status(2026-05-08 Split View hotfix)**: 同 wave で user 実機テスト「Split View の表示がおかしい」報告から 2 件の bug 修正。(a) Split View edit mode preview で `![](entry:LID)` embed が preview に展開されていなかった(`detail-presenter.ts:renderEditorBody` 初回 render と `action-binder.ts:updateTextEditPreview` debounced の両経路で `expandTransclusions` 呼び出し抜け)。(b) frontmatter strip による line index ずれで、textarea 原文行と preview `data-pkc-source-line` が乖離、source-preview-sync が誤った block を highlight。**Fix**:`renderMarkdown` に `sourceLineOffset?: number` option を追加(internal lineMap 初期化を `[offset, offset+1, ...]` に変更、preprocessor lineMap thread と直交)、Split View preview の 2 経路で frontmatter strip 行数を計算 → `sourceLineOffset` で渡す + `expandTransclusions` を unconditional 呼出。視覚 parity smoke 1 件追加(`wave-10-2-phase2-m7-split-view-embed-frontmatter-parity.spec.ts`)で `data-pkc-source-line` が原文 line と一致 + transclusion section が preview に存在することを確認。
+
 
 frontmatter:
 

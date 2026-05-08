@@ -75,6 +75,7 @@ import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { htmlForRichCopy } from '../../features/markdown/rich-copy-transform';
 import { extractVars, parseFrontmatter as parseLivePreviewFrontmatter } from '../../features/markdown/frontmatter';
+import { expandTransclusions } from './transclusion';
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
@@ -6974,12 +6975,35 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // M-7: live preview でも frontmatter vars を 展開、frontmatter 行自体
       // は preview から strip(2026-05-08 hotfix:user 報告で frontmatter が
       // raw text として preview に出ていた)。
+      // 2026-05-08 follow-up:
+      //   (a) `sourceLineOffset` を渡して frontmatter strip 行数だけ
+      //       data-pkc-source-line を底上げ(textarea の原文 line と一致)。
+      //   (b) markdown render 後に `expandTransclusions` を呼んで
+      //       `![](entry:...)` を embed 展開する(asset 経路 / 無し経路の
+      //       両方で必要)。
       const livePreviewVars = extractVars(src);
-      const livePreviewSource = parseLivePreviewFrontmatter(resolved).body;
+      const liveFm = parseLivePreviewFrontmatter(resolved);
+      const livePreviewSource = liveFm.body;
+      const liveSourceLineOffset = liveFm.found
+        ? resolved.split('\n').length - livePreviewSource.split('\n').length
+        : 0;
       preview.innerHTML = renderMarkdown(livePreviewSource, {
         sourceLineAnchors: true,
         vars: livePreviewVars,
+        sourceLineOffset: liveSourceLineOffset,
       });
+      const state = dispatcher.getState();
+      const container = state.container;
+      if (container) {
+        const lid = textarea.closest<HTMLElement>('[data-pkc-lid]')?.getAttribute('data-pkc-lid');
+        expandTransclusions(preview, {
+          entries: container.entries,
+          assets: container.assets,
+          mimeByKey: buildAssetMimeMap(container),
+          nameByKey: buildAssetNameMap(container),
+          hostLid: lid ?? '',
+        });
+      }
     } else {
       preview.innerHTML = '';
       const pre = document.createElement('pre');

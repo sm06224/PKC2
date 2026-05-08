@@ -195,10 +195,19 @@ const textPresenter: DetailPresenter = {
       // 展開して center pane と同等の見た目を保つ + frontmatter 自体は preview
       // から strip(YAML lines が render に出ない、center pane と同 contract)。
       const previewVars = extractVars(initialSource);
-      const previewSource = parseFrontmatter(initialSource).body;
+      const fm = parseFrontmatter(initialSource);
+      const previewSource = fm.body;
+      // 2026-05-08 follow-up:frontmatter strip で削った line 数だけ
+      // `data-pkc-source-line` を offset させる(textarea の原文 line と
+      // 一致させて source-preview-sync の lookup を成立させる)。strip 無し
+      // ならそのまま identity。preprocessor 側の lineMap thread と直交。
+      const sourceLineOffset = fm.found
+        ? initialSource.split('\n').length - previewSource.split('\n').length
+        : 0;
       preview.innerHTML = renderMarkdown(previewSource, {
         sourceLineAnchors: true,
         vars: previewVars,
+        sourceLineOffset,
       });
     } else if (initialSource) {
       const pre = document.createElement('pre');

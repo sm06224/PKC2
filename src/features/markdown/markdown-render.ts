@@ -955,6 +955,19 @@ export interface RenderMarkdownOptions {
    * presenters) leave this off and emit clean HTML. Only the split
    * editor preview turns it on. */
   readonly sourceLineAnchors?: boolean;
+  /**
+   * 領域 10-1 follow-up(2026-05-08、M-7 follow-up wave):caller が
+   * frontmatter strip 等で原文 line を削った場合、`sourceLineAnchors` で
+   * stamp する `data-pkc-source-line` を **原文 textarea の line index** に
+   * 揃えるための offset。例:`---\nfoo: bar\n---\n` (3 行 + closing 改行
+   * 1 行 = 4 行)を strip して `parseFrontmatter(...).body` を渡す場合、
+   * 残り body の出力行は原文では line 4 から始まるため `sourceLineOffset: 4`
+   * を渡す。internal lineMap 初期化が `[offset, offset+1, ...]` に変わる
+   * ので、preprocessor が後で挿入する sentinel 行も正しく追従する。
+   *
+   * default 0(strip しない caller / view-only 経路はそのまま identity)。
+   */
+  readonly sourceLineOffset?: number;
 }
 
 /**
@@ -1545,7 +1558,8 @@ export function renderMarkdown(
   // (2026-05-08 user 報告:Split View 行ズレ修正)。
   let lineMap: number[] = [];
   const initialLines = text.split('\n').length;
-  for (let i = 0; i < initialLines; i++) lineMap.push(i);
+  const lineBase = opts.sourceLineOffset ?? 0;
+  for (let i = 0; i < initialLines; i++) lineMap.push(i + lineBase);
   // L-4:comment strip(block comment による line 削減は稀、現状 lineMap 不変
   // として扱う。multi-line block comment 使用時に行ズレ可能性あり、TODO)
   text = stripComments(text);
