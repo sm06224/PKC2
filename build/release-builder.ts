@@ -21,6 +21,7 @@ import { buildAboutEntry } from './about-entry-builder';
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const DIST = resolve(ROOT, 'dist');
 const SHELL = resolve(ROOT, 'build', 'shell.html');
+const FAVICON = resolve(ROOT, 'build', 'favicon.ico');
 
 // Source-side constants (mirrored from src/runtime/release-meta.ts)
 const APP_ID = 'pkc2';
@@ -94,6 +95,17 @@ function main(): void {
     assets: {},
   }});
 
+  // Build favicon <link> if file exists. Single-HTML deliverable は外部
+  // 参照ができないため必ず data URI で inline。`build/favicon.ico` を
+  // canonical 設置先とする(release-builder の入力 asset、shell.html と
+  // 同階層)。.ico は image/x-icon、ファイル不在時は空に置換(no link tag)。
+  let faviconLink = '';
+  if (existsSync(FAVICON)) {
+    const ico = readFileSync(FAVICON);
+    const b64 = ico.toString('base64');
+    faviconLink = `<link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,${b64}">`;
+  }
+
   // Read shell template and replace placeholders
   let html = readFileSync(SHELL, 'utf8');
   html = html.replace('{{APP}}', APP_ID);
@@ -101,6 +113,7 @@ function main(): void {
   html = html.replace('{{SCHEMA}}', String(SCHEMA_VERSION));
   html = html.replace('{{TIMESTAMP}}', timestamp);
   html = html.replace('{{KIND}}', kind);
+  html = html.replace('{{FAVICON_LINK}}', () => faviconLink);
   html = html.replace('{{PKC_DATA}}', () => pkcData);
   html = html.replace('{{STYLES}}', () => css);
   html = html.replace('{{META}}', () => metaJson);
