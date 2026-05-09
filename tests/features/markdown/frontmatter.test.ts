@@ -100,3 +100,36 @@ describe('getFrontmatterKind', () => {
     expect(getFrontmatterKind('---\nkind: ""\n---\n')).toBe(null);
   });
 });
+
+// ── reform-2026-05 PR-B 拡張(warnings + size cap)──
+
+describe('parseFrontmatter — reform PR-B 拡張', () => {
+  it('clean parse は warnings: []', () => {
+    const r = parseFrontmatter('---\nkind: book\nyear: 2026\n---\n');
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('frontmatter 不在は warnings: []', () => {
+    const r = parseFrontmatter('# no fm\n');
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('size cap(SOFT_DEFAULTS 16 KB)超過で size_limit warning + parse 中止', () => {
+    const huge = 'x'.repeat(17 * 1024);
+    const body = `---\nbig: "${huge}"\n---\nbody content\n`;
+    const r = parseFrontmatter(body);
+    expect(r.found).toBe(true);
+    expect(r.meta).toEqual({});
+    expect(r.warnings.length).toBeGreaterThanOrEqual(1);
+    expect(r.warnings[0]!.kind).toBe('size_limit');
+    expect(r.warnings[0]!.detail).toContain('frontmatter サイズ');
+    expect(r.body).toBe('body content\n');
+  });
+
+  it('cap 以下なら size_limit warning なし', () => {
+    const justUnder = 'x'.repeat(15 * 1024);
+    const body = `---\nbig: "${justUnder}"\n---\n`;
+    const r = parseFrontmatter(body);
+    expect(r.warnings.filter((w) => w.kind === 'size_limit').length).toBe(0);
+  });
+});
