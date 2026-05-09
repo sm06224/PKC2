@@ -542,6 +542,8 @@ CSS architecture redesign wave(領域 9)着地後にドキュメンテーショ�
 
 **Status(2026-05-08 後追い)**: **Phase 2 第 1 弾 M-7 Variables 着地**(branch `claude/wave-10-2-phase2-m7-variables-2026-05-08`)。frontmatter `vars:` block + `{{vars.x}}` 本文展開、未定義 → 赤点線下線 warning、3 surface(center / Split View / Viewer)+ Rich copy 全て対応。AI 規約書 v1 §2.12 + Manual 章 12 §12.6 も update。User direction「文体プロンプト + 宛先別 variant 生成」の延長で AI 連携の倍率が上がる効果を想定。
 
+**Status(2026-05-08 hotfix)**: M-7 着地直後の user 報告「embed した TEXTLOG エントリで frontmatter が露出する(プレビュー表示もされていない)」を fix。embed 経路(transclusion)/ Viewer popup TEXT path / 平文 fallback の計 5 経路で `parseFrontmatter(...).body` 適用が抜けていた 3 surface 規約の取り残しを補完(branch `claude/continue-previous-session-bvaFS`)。視覚 parity smoke 1 件追加で 6 surface(center / Split View / Viewer / embed / 平文 fallback)contract 一致確認。spec doc §3.6 + Manual の status row も更新。
+
 **Status(2026-05-08)**: **Phase 1 完成**。integration branch `claude/wave-10-2-phase1-integration-2026-05-07`(27 commits)で全 9 markup(L-1〜L-9)+ 周辺機能 + AI 書き手向け規約書 v1 を着地。実装一覧:L-1 Section break / L-2 Highlight・Ruby・Em-dot / L-3 Blockquote / L-4 Comments / L-5 Align prefix / L-6 Simple inline(em-based size + 自由値) / L-7 Figure/Table/Equation 自動採番 / L-8 空行マーカー / L-9 段落字下げ。周辺機能:iPhone snippet toolbar(20 snippet)、Rich copy で PKC 拡張を inline style 化(ONLYOFFICE / Word 互換)、CSV cell に inline markdown 適用、favicon multi-format pipeline、行頭 leading whitespace 統一許容、Viewer popup CSS + DOM 経路 mirror、Split View source-line LineMap thread、fenced code 内 marker 発火 skip。docs 2-tier:human-oriented(設計議論)+ AI 規約書 v1(構文規約)。Phase 1 残:format mapping マトリクス(Word / PPT / PDF / LaTeX / ePub)着手前 = 10-3 IR wave 後の課題、Phase 2(track changes / variables / glossary / spreadsheet embed 等)は別 wave。
 
 サイズ: 大(wave、6-10 PR)。

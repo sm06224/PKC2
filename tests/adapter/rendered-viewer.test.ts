@@ -119,6 +119,54 @@ describe('buildRenderedViewerHtml — TEXT archetype', () => {
   });
 });
 
+// M-7 wave-10-2 Phase 2 follow-up(2026-05-08):Viewer popup の TEXT entry
+// path で frontmatter を strip しないと M-7 第 1 弾は frontmatter が
+// `<hr>+text+<hr>` として表示される(detail-presenter / textlog-presenter /
+// transclusion 全 surface と一致させるための補完)。
+describe('buildRenderedViewerHtml — TEXT frontmatter strip (M-7 follow-up)', () => {
+  it('strips simple frontmatter from the rendered body', () => {
+    const entry = textEntry(
+      ['---', 'kind: book', 'title: Sample', '---', '# 第 1 章', '本文'].join('\n'),
+      'FM Test',
+    );
+    const html = buildRenderedViewerHtml(entry, baseContainer());
+    // Frontmatter content must NOT appear in the rendered body.
+    expect(html).not.toContain('kind: book');
+    expect(html).not.toContain('title: Sample');
+    // Body must be present.
+    expect(html).toContain('第 1 章');
+    expect(html).toContain('本文');
+  });
+
+  it('expands flat dot-notation vars from frontmatter', () => {
+    const entry = textEntry(
+      ['---', 'vars.project: GAMMA-3', '---', 'プロジェクト {{vars.project}}'].join('\n'),
+      'Vars Test',
+    );
+    const html = buildRenderedViewerHtml(entry, baseContainer());
+    expect(html).toContain('プロジェクト GAMMA-3');
+    expect(html).not.toContain('{{vars.project}}');
+    expect(html).not.toContain('vars.project:');
+  });
+
+  it('expands nested object vars from frontmatter', () => {
+    const entry = textEntry(
+      ['---', 'vars:', '  client: Beta', '---', 'クライアント {{vars.client}}'].join('\n'),
+      'Vars Nested',
+    );
+    const html = buildRenderedViewerHtml(entry, baseContainer());
+    expect(html).toContain('クライアント Beta');
+    expect(html).not.toContain('{{vars.client}}');
+  });
+
+  it('renders a TEXT entry without frontmatter unchanged (regression)', () => {
+    const entry = textEntry('# 普通\n\n本文', 'No FM');
+    const html = buildRenderedViewerHtml(entry, baseContainer());
+    expect(html).toMatch(/<h1[^>]*>普通<\/h1>/);
+    expect(html).toContain('<p>本文</p>');
+  });
+});
+
 describe('buildRenderedViewerHtml — TEXTLOG archetype', () => {
   it('emits day-grouped structure via buildTextlogDoc (Slice 4-B)', () => {
     // Slice 4-B: the viewer drives off `buildTextlogDoc`, producing

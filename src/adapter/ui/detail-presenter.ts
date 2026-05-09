@@ -114,10 +114,13 @@ const textPresenter: DetailPresenter = {
       return body;
     }
 
-    // Fallback to plain text
+    // Fallback to plain text — use the frontmatter-stripped `source` so
+    // the leading `---\n…\n---` block does not leak into the visible
+    // textContent when the body has no markdown syntax (M-7 follow-up,
+    // 2026-05-08). Otherwise users see raw frontmatter as the preview.
     const body = document.createElement('pre');
     body.className = 'pkc-view-body';
-    body.textContent = entry.body;
+    body.textContent = source;
     return body;
   },
   renderEditorBody(entry: Entry): HTMLElement {

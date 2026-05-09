@@ -59,6 +59,7 @@ import {
   resolveAssetReferences,
   hasAssetReferences,
 } from '../../features/markdown/asset-resolver';
+import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import { parseTodoBody, formatTodoDate } from '../../features/todo/todo-body';
 import { getFormatLocale, getFormatTimeZone } from './format-context';
 
@@ -288,11 +289,16 @@ function renderEntryEmbed(
   // TEXT / generic / other markdown-body archetypes: render the body
   // as markdown with assets resolved, then recurse for nested embeds
   // under the `embedded: true` flag so they become link fallbacks.
-  let source = target.body ?? '';
-  if (!source) {
+  // wave-10-2 Phase 2 follow-up(2026-05-08):detail-presenter の live
+  // 経路と同じく frontmatter を strip + vars を展開して embed 表示する。
+  // 抜けていると frontmatter が `<hr>+text+<hr>` として露出して preview が壊れる。
+  const rawSource = target.body ?? '';
+  if (!rawSource) {
     appendFallbackMessage(body, '(empty)');
     return;
   }
+  const targetVars = extractVars(rawSource);
+  let source = parseFrontmatter(rawSource).body;
   if (ctx.assets && ctx.mimeByKey && hasAssetReferences(source)) {
     source = resolveAssetReferences(source, {
       assets: ctx.assets,
@@ -302,7 +308,7 @@ function renderEntryEmbed(
   }
   if (hasMarkdownSyntax(source)) {
     body.classList.add('pkc-md-rendered');
-    body.innerHTML = renderMarkdown(source);
+    body.innerHTML = renderMarkdown(source, { vars: targetVars });
     stripSubtreeIds(body);
     disableSubtreeTaskCheckboxes(body);
     expandTransclusions(body, {
@@ -540,7 +546,13 @@ function renderEmbeddedLog(
   const textEl = document.createElement('div');
   textEl.className = 'pkc-textlog-text';
 
-  let source = log.bodySource ?? '';
+  // wave-10-2 Phase 2 follow-up(2026-05-08):log の bodySource 先頭に
+  // `---` fenced frontmatter があれば strip してから render。textlog-presenter
+  // の live viewer 経路と同じ contract(per-log の独立 vars)で揃える。
+  // 抜けていると frontmatter が `<hr>+text+<hr>` として露出して preview が壊れる。
+  const rawSource = log.bodySource ?? '';
+  const logVars = extractVars(rawSource);
+  let source = parseFrontmatter(rawSource).body;
   if (ctx.assets && ctx.mimeByKey && hasAssetReferences(source)) {
     source = resolveAssetReferences(source, {
       assets: ctx.assets,
@@ -550,7 +562,7 @@ function renderEmbeddedLog(
   }
   if (hasMarkdownSyntax(source)) {
     textEl.classList.add('pkc-md-rendered');
-    textEl.innerHTML = renderMarkdown(source);
+    textEl.innerHTML = renderMarkdown(source, { vars: logVars });
     stripSubtreeIds(textEl);
     disableSubtreeTaskCheckboxes(textEl);
     // Recurse with embedded=true: any `entry:` images inside this log
@@ -564,7 +576,7 @@ function renderEmbeddedLog(
       embedChain: extendEmbedChain(ctx.embedChain, ctx.hostLid, lid),
     });
   } else {
-    textEl.textContent = log.bodySource;
+    textEl.textContent = source;
   }
   article.appendChild(textEl);
 
