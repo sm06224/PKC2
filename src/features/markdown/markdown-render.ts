@@ -1200,17 +1200,29 @@ function postProcessFigureSentinels(html: string): string {
 }
 
 /**
- * L-5 (2026-05-07、wave-10-2 Phase 1):行頭 align prefix。
- * `||` / `|>` / `<|` を line 先頭に置くと、その行から空行までの paragraph
- * 全体が center / right / left 寄せになる。継続行は prefix 省略可。
+ * L-5 (2026-05-07、wave-10-2 Phase 1)+ reform-2026-05 PR-C(typo 寛容化):
+ * 行頭 align prefix。
+ *
+ * **reform 後の semantics**(本 PR で変更):
+ *
+ *   - `||`                          → center(物理中央、書字方向 不変)
+ *   - `|>` `<|` `|<` `>|`(全 4 形)→ **end**(logical、default flow の反対側)
+ *                                       LTR + horizontal なら右、RTL なら左、
+ *                                       vertical なら下。
+ *
+ * **breaking change**:reform 前は `<|text` が "left explicit" だったが、
+ * 本 PR で end(LTR では右)に変わる。default flow の反対側を表す論理的
+ * 概念に統一、物理強制が必要な場合は formal `:::paragraph{align=left}` 等
+ * を使う。Postel's law(受信寛容)で typo の 4 形を全部受理。
  *
  * Algorithm:
  *  1. pre-process で line ごとに prefix 検出、strip + 行番号 → align map を記録
  *  2. md.parse 後、token を walk して paragraph_open の map[0] が map に
  *     あれば `data-pkc-align` 属性を付与
  *  3. CSS が `[data-pkc-align="..."]` を読んで text-align を適用
+ *     (`end` / `start` は CSS logical value、`direction: rtl` で自動 flip)
  */
-type AlignKind = 'center' | 'right' | 'left';
+type AlignKind = 'center' | 'end' | 'start' | 'right' | 'left';
 
 function preprocessAlignPrefix(source: string, lineMapIn: number[]): {
   stripped: string;
@@ -1227,10 +1239,11 @@ function preprocessAlignPrefix(source: string, lineMapIn: number[]): {
   const out: string[] = [];
   const lineMapOut: number[] = [];
   let currentAlign: AlignKind | null = null;
-  // Detect prefix at line start. `||` `|>` `<|` followed by optional space.
+  // Detect prefix at line start. reform-2026-05 PR-C で 4 形の typo 寛容化:
+  // `||` (center) + `|>` / `<|` / `|<` / `>|` (全 4 形 end) followed by optional space.
   // 行頭の空白系文字種は無視(2026-05-08 user 統一方針:行頭系シンプル記法は
-  // leading whitespace を全部 strip)。`   |>` / `\t<|` 等もマーカーとして拾う。
-  const prefixRe = /^\s*(\|\||\|>|<\|)(?:\s)?(.*)$/;
+  // leading whitespace を全部 strip)。`   |>` / `\t|<` 等もマーカーとして拾う。
+  const prefixRe = /^\s*(\|\||\|>|<\||\|<|>\|)(?:\s)?(.*)$/;
   // L-9 indent prefix:`__` or `＿`(U+FF3F、全角アンダースコア)。`___`
   // 以上の連続(markdown horizontal rule)は捕まえないため `(?!_)` で除外、
   // また content 末尾が `__` で終わる場合は markdown bold 行と解釈して
@@ -1277,7 +1290,10 @@ function preprocessAlignPrefix(source: string, lineMapIn: number[]): {
     if (m) {
       const sym = m[1]!;
       const rest = m[2] ?? '';
-      const align: AlignKind = sym === '||' ? 'center' : sym === '|>' ? 'right' : 'left';
+      // reform-2026-05 PR-C:logical alignment へ移行。
+      //   `||`            → center(物理中央)
+      //   `|>` `<|` `|<` `>|`(全 4 形、typo 寛容化)→ end(logical、default flow の反対)
+      const align: AlignKind = sym === '||' ? 'center' : 'end';
       // **重要**:prefix 行は前段落から切り離して新 paragraph にする。
       // 挿入する空行も同じ inputIdx を指す(sync layer の lookup は閉じた区間で
       // 動くので副作用なし)。
@@ -1616,7 +1632,7 @@ export function hasMarkdownSyntax(text: string): boolean {
   // wave-10-2 Phase 1 dialect extensions: L-1 / L-2 / L-3 / L-4 / L-5 / L-7 を
   // markdown render に通す。これがないと「`||` 等だけ」の body が plain-text 経路に
   // 流れて L-5 の align prefix も applied されない(2026-05-07 user 報告)。
-  if (/^(?:\|\||\|>|<\|)/m.test(text)) return true;        // L-5 align prefix
+  if (/^(?:\|\||\|>|<\||\|<|>\|)/m.test(text)) return true; // L-5 align prefix(reform-2026-05 PR-C で 4 形受理)
   if (/^\+\+\+\s*(?:\{[^}]*\})?\s*$/m.test(text)) return true; // L-1 section break
   if (/==[^=]+==|\[\[(?:ruby|em):/.test(text)) return true;     // L-2 highlight / ruby / em-dot
   if (/^:::figure(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure block
