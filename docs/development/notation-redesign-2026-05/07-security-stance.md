@@ -49,9 +49,133 @@ PKC2 markdown parser は `markdown-it` ベース、初期化時 `html: false` �
 
 reject 時は link が無効化(plain text 化)+ inspector で warning。
 
-## 7.2 全記法に hard cap
+## 7.2 cap 管理:2 層構造(HARD_CEILINGS + SOFT_DEFAULTS)
 
-### 7.2.1 frontmatter(既実装、wave-10-2 YAML reform)
+### 7.2.0 設計原則:override 可能 + security guarantee 維持
+
+reform 議論で確定した cap 設計は **2 層構造**:
+
+```
+HARD_CEILINGS  ── spec 固定値、絶対超えられない(security guarantee)
+       ↑ 超えられない
+SOFT_DEFAULTS  ── spec 推奨値、user / Flags / frontmatter で override 可能(HARD 以下に clamp)
+       ↑
+runtime override(Flags inspector / frontmatter `limits:` block / `notation_overrides` 等)
+       ↑
+parser / renderer が `resolveCap()` で effective 値を取得
+```
+
+**effective cap = min(requested_override, HARD_CEILINGS)**
+
+これにより:
+
+- **普通 user**:何もしなくても SOFT_DEFAULTS で動く、cap 触る必要なし(default = reform 仕様の推奨形)
+- **Pro user**:Flags inspector / frontmatter で「`limits.frontmatter_bytes = 32768`」のように runtime 上書き(SOFT 値を上書き、HARD 以下まで)
+- **Power user**:`src/runtime/caps.ts`(reference implementation)を fork 編集 + rebuild、HARD 値も書き換え可能(self-build territory)
+- **inspector overlay**:`?pkc-debug=caps` で current effective values を一覧表示、source の出所(default / Flags / frontmatter / build)を badge 表示
+
+### 7.2.1 spec 層と implementation 層の分離
+
+cap 値は **2 layer で管理**:
+
+| layer | 場所 | 内容 |
+|------|------|------|
+| **spec 層** | 本 doc set(notation-redesign-2026-05/) | 推奨 cap 値(SOFT_DEFAULTS)+ 絶対上限(HARD_CEILINGS)、各 implementation が参照する |
+| **implementation 層** | reference impl では `src/runtime/caps.ts`(PKC2)| spec 推奨値を **その implementation の制約 / 環境特性** に合わせて固定 |
+
+他 implementation(将来の `@pkc/markdown` 独立パッケージ等)は同じ spec 推奨値を ground truth にしつつ、各々の caps file を持つ形。
+
+### 7.2.2 src/runtime/caps.ts(PKC2 reference implementation)
+
+```typescript
+/**
+ * PKC2 capacity 管理。spec 推奨値 を fixed として hardcode、
+ * Power user は本 file を fork 編集 + rebuild で HARD_CEILINGS 書き換え可。
+ */
+
+export const HARD_CEILINGS = {
+  frontmatter: {
+    bytes: 1 * 1024 * 1024,
+    keys: 10_000,
+    depth: 16,
+    arrayItems: 1_000_000,
+    stringValueBytes: 1 * 1024 * 1024,
+  },
+  body: { bytes: 100 * 1024 * 1024 },
+  list: { items: 1_000_000, depth: 32 },
+  table: { rows: 100_000, cols: 1000 },
+  codeFence: { bytes: 10 * 1024 * 1024, lines: 1_000_000 },
+  inlineNest: { depth: 32 },
+  vars: { expansionsPerRender: 1_000_000 },
+  math: { srcBytes: 64 * 1024, perDoc: 100_000 },
+  embed: { depth: 4 },
+  renderers: {
+    tree: { lines: 100_000, nodes: 1_000_000 },
+    dbschema: { tables: 1000, fieldsPerTable: 1000 },
+    objectViewer: { nodes: 100_000, depth: 32 },
+    query: { resultRows: 100_000, parseSteps: 1_000_000 },
+    cards: { lids: 10_000 },
+    mindmap: { nodes: 10_000 },
+  },
+} as const;
+
+export const SOFT_DEFAULTS = {
+  frontmatter: { bytes: 16 * 1024, keys: 100, depth: 4, arrayItems: 500, stringValueBytes: 4 * 1024 },
+  body: { bytes: 10 * 1024 * 1024 },
+  list: { items: 1000, depth: 8 },
+  table: { rows: 1000, cols: 50 },
+  codeFence: { bytes: 64 * 1024, lines: 1000 },
+  inlineNest: { depth: 8 },
+  vars: { expansionsPerRender: 1000 },
+  math: { srcBytes: 4 * 1024, perDoc: 1000 },
+  embed: { depth: 1 },
+  renderers: {
+    tree: { lines: 1000, nodes: 5000 },
+    dbschema: { tables: 50, fieldsPerTable: 100 },
+    objectViewer: { nodes: 5000, depth: 8 },
+    query: { resultRows: 1000, parseSteps: 10000 },
+    cards: { lids: 100 },
+    mindmap: { nodes: 500 },
+  },
+} as const;
+
+export function resolveCap(
+  category: keyof typeof HARD_CEILINGS,
+  name: string,
+  override?: number,
+): number {
+  const ceiling = (HARD_CEILINGS as any)[category][name];
+  const dflt = (SOFT_DEFAULTS as any)[category][name];
+  const requested = override ?? dflt;
+  return Math.min(requested, ceiling);
+}
+```
+
+### 7.2.3 build asserter
+
+新 renderer を追加した時の漏れ検知:
+
+```typescript
+// scripts/build-asserter.cjs
+function assertCapsComplete() {
+  for (const renderer of BUILTIN_RENDERERS) {
+    if (!HARD_CEILINGS.renderers[renderer.name]) {
+      throw new Error(`renderer ${renderer.name} missing HARD_CEILINGS entry`);
+    }
+    if (!SOFT_DEFAULTS.renderers[renderer.name]) {
+      throw new Error(`renderer ${renderer.name} missing SOFT_DEFAULTS entry`);
+    }
+  }
+}
+```
+
+新 renderer 追加時に caps.ts の 2 entry を必ず追加する規律を build で強制。
+
+### 7.2.4 spec 推奨値(全 categories)
+
+以下の表は **spec として推奨**、implementation は適宜環境特性で調整可:
+
+#### frontmatter(既実装、wave-10-2 YAML reform)
 
 | cap | default | 超過時 |
 |-----|---------|--------|
@@ -62,7 +186,7 @@ reject 時は link が無効化(plain text 化)+ inspector で warning。
 | 単一 string 値の byte 数 | 4 KB | 切り詰め + warning |
 | 禁止 key | `__proto__` / `constructor` / `prototype` | reject + warning |
 
-### 7.2.2 markdown 全体
+#### markdown 全体
 
 | cap | default | 超過時 |
 |-----|---------|--------|
@@ -78,7 +202,7 @@ reject 時は link が無効化(plain text 化)+ inspector で warning。
 | transclusion(embed)depth | 1(self / cycle そもそも block) | block placeholder |
 | variables expansion 回数 / render | 1000 | 1000 超は literal 残置 + warning(無限 recursion 防御) |
 
-### 7.2.3 Renderer Registry(`06-code-block-ecosystem.md`)
+#### Renderer Registry(`06-code-block-ecosystem.md`)
 
 各 renderer に固有 cap:
 
@@ -98,7 +222,7 @@ reject 時は link が無効化(plain text 化)+ inspector で warning。
 | hexdump | 64 KB | bytes ≤ 65536 | — | XXD-style 表示 |
 | diff | 32 KB | lines ≤ 5000 | — | 線形 diff |
 
-### 7.2.4 math(KaTeX、§05)
+#### math(KaTeX、§05)
 
 | cap | default | 超過時 |
 |-----|---------|--------|

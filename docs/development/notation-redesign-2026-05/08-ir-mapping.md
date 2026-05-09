@@ -1,12 +1,24 @@
 # 08. IR Mapping(AST 形 + format 別射影)
 
+## 8.0 status:本 reform では「spec 定義のみ、implementation deferred」
+
+reform 議論で確定した方針:
+
+- **本章は spec の一部** ── PKC Markdown 1.0 の AST 形(IR shape)+ format 別射影 matrix を定義
+- **implementation は本 reform 範囲外** ── reference impl(PKC2)では Phase 1〜9 で source-based architecture を実装、IR の persist / consume は **後追い別 wave**(10-3 IR audit と並走)
+- **cross-PKC データ交換**(profile mismatch import 等):本 reform 期は **source-based + profile metadata + warning** で対応、IR-based lossless 交換は **PKC Markdown が着地した後の wave**
+
+つまり本章は「将来こうなる(IR 経由 format 変換)」の **設計図**、**今 reform で実装する code は source-based** で進行。
+
 ## 8.1 motivation
 
-PKC2 IR(Intermediate Representation)は **format 横断 export の起点 + 編集 UX(autocomplete / hover / lint)の正規 source**。
+PKC Markdown IR(Intermediate Representation)は **format 横断 export の起点 + 編集 UX(autocomplete / hover / lint)の正規 source**。
 
 本記法整理は IR への lossless 変換が成立することを設計条件とする。各 markup(simple / formal どちらの形でも)が同じ canonical IR ノードに正規化、IR から各 format(HTML / Word / PPT / PDF / LaTeX / Org / Pandoc / Anki / etc.)へ射影される。
 
 IR 自体の確定は別 wave(`docs/development/intermediate-representation-audit.md`、10-3)で進む予定。本章は IR の暫定形を提示、本記法整理との整合を示す。
+
+「他 implementation」(将来の `@pkc/markdown` 等)が登場した場合、IR 形は spec として共有される primitive。同じ IR を生成 / 消費できれば lossless 交換が成立する。
 
 ## 8.2 IR AST type 定義(暫定)
 

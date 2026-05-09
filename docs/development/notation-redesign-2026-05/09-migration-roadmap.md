@@ -35,20 +35,23 @@ migration 不要、既存 entry に影響しない:
 
 各 Phase は **non-breaking** か **部分破壊** か明示。順序は依存関係 + リスク minimization で確定。
 
-### Phase 1:formal 記法導入 + 共通基盤(non-breaking)
+### Phase 1:formal 記法導入 + 共通基盤 + cap 管理 + profile system(non-breaking)
 
 **期間**:2-3 週、5-8 PR
 
 **scope**:
 
+- **`src/runtime/caps.ts` 新規**:HARD_CEILINGS + SOFT_DEFAULTS + `resolveCap()` 共通 helper(§07.2.2)
+- **`src/runtime/notation-profiles.ts` 新規**:profile 定義(`pkc-markdown-1.0` 等)
+- 既存 cap 散在を `caps.ts` に集約(frontmatter / markdown / embed 等)
 - `:::name{attrs}` block directive parser を強化(既存 `:::figure` `:::if` を含めて統一)
 - `:role:[content]{attrs}` inline role parser 新規実装
 - attribute syntax `{key=v key2=v2}` parser(Pandoc-style)
-- IR AST type 定義の確定(§08)
-- IR validator の最初の version
+- frontmatter `notation` / `notation_overrides` field 認識(default = `pkc-markdown-1.0`)
+- frontmatter `writing` / `align` / `direction` の predefined keys 認識
 - 既存 simple 記法は不変、formal を追加で受理(可換性確保)
 - typo 寛容化(`|>` `<|` `|<` `>|` 全 4 形)を align prefix で実装
-- frontmatter `writing` / `align` / `direction` の predefined keys 認識(動作はまだ default のみ)
+- IR は **spec のみ**(§08)、persist / consume は本 reform 範囲外(post-reform 別 wave)
 
 **non-breaking 確認**:既存 entry 全部が unchanged、test test 全 green
 
@@ -167,6 +170,17 @@ migration 不要、既存 entry に影響しない:
 - Phase G renderer(palette / quiz / regex / etc.)
 - 編集 UX 連動(autocomplete engine)
 - format 別 export(Word / PPT / LaTeX 等)、IR confluence(10-3 wave 連携)
+
+### Phase Z(post-reform、別 wave)
+
+reform Phase 1〜9 の **後** に検討する次フェーズ:
+
+- **IR persist / consume 実装**(本 reform は spec のみ、code は post-reform):container.entry に IR を attach、cross-PKC import を IR-based lossless で
+- **parser library 化**:`src/features/markdown/` を `@pkc/markdown` 独立 npm パッケージに extract、PKC2 が dependency として消費する形へ
+- **3rd party tool 互換**:Pandoc filter / Obsidian plugin / VS Code extension 等が `@pkc/markdown` を使って PKC Markdown 互換を持てるよう開放
+- **PKC ecosystem 横展開**:mobile / CLI / server stack の他 implementation
+
+これらは PKC Markdown spec 1.0 着地後の発展形、reform Phase 1〜9 ではここまで進めない。
 
 ## 9.4 累計影響(全 Phase 実装後)
 

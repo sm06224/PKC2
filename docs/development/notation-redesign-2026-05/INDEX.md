@@ -1,8 +1,15 @@
-# PKC2 記法整理 v2 設計書(2026-05-09 ドラフト)
+# PKC Markdown 1.0 設計書(2026-05-09 ドラフト)
 
-**status**: draft、技術的レビュー / 運用的レビュー 待ち
-**audience**: 他 AI(技術的 / 運用的レビュアー)+ User(意思決定)
-**目的**: PKC2 全記法を simple-first 二層化(simple ↔ formal 可換、IR 経由)で再設計、その背景・理由・代替案を網羅的に提示する。
+**status**: draft、技術的レビュー / 運用的レビュー 経て user 議論で revise 中
+**audience**: 他 AI(技術的 / 運用的レビュアー)+ User(意思決定)+ 将来 implementer
+**目的**: PKC Markdown(notation / spec)を simple-first 二層化(simple ↔ formal 可換、IR 経由)で再設計、その背景・理由・代替案を網羅的に提示する。
+
+## 用語の前提
+
+- **PKC Markdown** ── notation / spec(言語仕様、portable な記法)。本 doc set の主題
+- **PKC2** ── 単一 HTML offline 実装(本 repo の reference implementation)
+- **PKC Markdown 1.0** ── spec の現行 version(profile 名 `pkc-markdown-1.0`)
+- 将来 PKC Markdown は別 repo(`@pkc/markdown` 等)で他 implementation を持つ可能性あり、本 spec はそれを念頭に置いて portable に書く
 
 ---
 
@@ -39,15 +46,20 @@
 
 | 用語 | 定義 |
 |------|------|
+| **PKC Markdown** | notation / spec(言語仕様、portable な記法)。本 doc set が定義 |
+| **PKC2** | 単一 HTML offline の reference implementation(本 repo) |
+| **profile** | spec の version + 機能集合の宣言(例:`pkc-markdown-1.0`) |
 | **simple 記法** | 人間が日常文書作成で使う、短い prefix / wrapping / 行頭 marker 主体の記法 |
 | **formal 記法** | 機械(AI)が emit する、属性付き厳密形式 — `:::name{attrs}` block / `:role:[content]{attrs}` inline |
 | **可換性 (commutativity)** | simple ↔ formal が同じ IR ノードに正規化される性質 |
-| **IR (intermediate representation)** | PKC2 内部 AST、format export / 編集 UX / 検索の正規 source(10-3 wave で確定予定) |
+| **IR (intermediate representation)** | spec の正規 AST、format export / 編集 UX / 検索の起点(spec 定義あり、本 reform では implementation deferred) |
 | **canonical form** | IR 上の正規形 |
 | **階層** | 記法の入力負荷ヒエラルキー: prefix/suffix > wrapping > indent block > wrapping block(左ほど低負荷) |
 | **dual-render path** | 同じ source を center pane / Split View preview / Viewer popup / embed 等の複数 surface で render する経路 |
 | **Renderer Registry** | code block 拡張のための plugin-like な architecture(本提案で導入) |
 | **system asset bundle** | binary asset(KaTeX font 等)を base64 inline で単一 HTML に内包する仕組み |
+| **HARD_CEILINGS** | spec で固定された絶対上限(security guarantee) |
+| **SOFT_DEFAULTS** | spec 推奨値、user / Flags / frontmatter で override 可能(HARD 以下に clamp) |
 
 ## レビュー依頼事項
 

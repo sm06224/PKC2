@@ -92,26 +92,42 @@
 - Phase 並列性、依存関係厳密化
 - release strategy、v2 release timing(Phase 4 / 7 / etc.)
 
-## 10.2 user 確認待ち事項
+## 10.2 reform 議論で resolved な事項
+
+Gemini / ChatGPT / Claude review + user 議論で確定した方針:
+
+| # | 領域 | 結論 |
+|---|------|------|
+| R1 | profile system | **採用**(user 提案、`notation: pkc-markdown-1.0` 等を frontmatter で declare、Flags 上書き可)|
+| R2 | profile default | **`pkc-markdown-1.0`**(普通 user は frontmatter 触らない前提、最新 spec が default)|
+| R3 | hard cap | **2 層構造**(HARD_CEILINGS + SOFT_DEFAULTS、`src/runtime/caps.ts` で集中管理、Power user は source 書き換え可)|
+| R4 | IR 早期実装 | **defer**、本 reform は source-based、IR は spec のみ、persist / consume 実装は post-reform 別 wave |
+| R5 | cross-PKC 交換 | **profile metadata + warning + 再 parse**(IR-based lossless 交換は post-reform)|
+| R6 | 廃止記法 | `[[ruby:..]]` `[[em:..]]` `<\|` `^x^` `~x~` 全廃止確定 |
+| R7 | embed default | seamless 確定(major breaking、`{quote}` で chrome 取り戻し可)|
+| R8 | superscript / subscript | native 削除、math `$x^2$` `$H_2O$` に集約確定 |
+| R9 | comment + footnote | unified 確定(可視性 attribute で differentiate)|
+| R10 | iframe sandbox | 不採用確定 |
+| R11 | KaTeX bundle | 完全 bundle、CDN 不可、初の system asset bundle 確定 |
+| R12 | naming | **PKC Markdown** = spec、**PKC2** = reference implementation、用語分離 |
+| R13 | 他 repo implementation | 将来あり得る前提、spec を portable に書く |
+| R14 | parser library 化 | post-reform 別 wave、`@pkc/markdown` 独立パッケージ候補 |
+
+## 10.3 user 確認待ち事項(残)
 
 最終確認を要する判断:
 
 | # | 領域 | 質問 | 私の推奨 |
 |---|------|------|---------|
-| Q1 | 廃止記法 | `[[ruby:..]]` `[[em:..]]` `<\|` `^x^` `~x~` を本当に廃止するか? | 全廃止推奨 |
-| Q2 | embed default | `![](entry:LID)` を default seamless に変更するか? | seamless 推奨(user 同意済)|
-| Q3 | superscript | math `$x^2$` で十分か、`:sup:[]` formal も提供すべき? | math のみで OK(user 確認済)|
-| Q4 | KaTeX bundle | font 5 family subset で十分か、完全 18 family を採用? | 5 family subset 推奨、full 必要なら flag |
-| Q5 | comment + footnote | unified 化 vs 分離 | unified 推奨(user 同意済) |
-| Q6 | code block Phase 順序 | A → B → C → D vs D 先行 | A → B → C → D(基盤先)|
-| Q7 | 教材系(quiz / flashcard) | 採用 / 不採用 | defer、user 需要明示後 |
-| Q8 | iframe sandbox | 採用 / 不採用 | 不採用(security philosophy 整合)|
-| Q9 | 既存 PR #382 / #383 | reform-aligned 再 design vs close + 新 PR | reform 確定後に判断 |
-| Q10 | release timing | v2 release を Phase 4 / 7 / 9 のどこに? | Phase 7 完了時(killer feature 揃う)|
+| Q1 | KaTeX font subset | 5 family で十分か、完全 18 family を採用? | 5 family subset 推奨、完全版は flag |
+| Q2 | code block Phase 順序 | A → B → C → D vs D 先行 | A → B → C → D(基盤先)|
+| Q3 | 教材系(quiz / flashcard) | 採用 / 不採用 | defer、user 需要明示後 |
+| Q4 | 既存 PR #382 / #383 | reform-aligned 再 design vs close + 新 PR | reform 確定後に判断 |
+| Q5 | release timing | v2 release を Phase 4 / 7 / 9 のどこに? | Phase 7 完了時(killer feature 揃う)|
 
-## 10.3 AI レビュアーへのチェックリスト
+## 10.4 AI レビュアーへのチェックリスト
 
-### 10.3.1 技術的妥当性
+### 10.4.1 技術的妥当性
 
 - [ ] 各記法の simple / formal 形が parser 衝突なく区別可能か?
 - [ ] IR AST type で表現できない markup はないか?
@@ -122,7 +138,7 @@
 - [ ] Renderer Registry architecture が Pandoc / MyST 等の prior art より明確に良いか?
 - [ ] format 別射影(HTML / Word / LaTeX / Org / Anki)の lossless / lossy が現実的か?
 
-### 10.3.2 運用的妥当性
+### 10.4.2 運用的妥当性
 
 - [ ] migration tool で既存 entry を機械変換できるか(廃止記法系)?
 - [ ] breaking change の影響範囲が user に伝わる UI(inspector warning 等)があるか?
@@ -132,7 +148,7 @@
 - [ ] AI emit の experience が改善するか(現状 vs reform 後)?
 - [ ] 廃止記法の deprecation period が短すぎ / 長すぎないか?
 
-### 10.3.3 PKC2 哲学整合
+### 10.4.3 PKC2 哲学整合
 
 - [ ] simplicity:50+ 記法は多すぎでないか?primitive 統合(comment + footnote 等)以外に削減余地は?
 - [ ] single HTML offline:KaTeX bundle ~480 KB が完全 offline 維持に整合?
@@ -140,7 +156,7 @@
 - [ ] IR-native:全記法が IR への lossless mapping を持つか?
 - [ ] 破壊的変更を厭わない:変更が simplicity / 整合性のために真に必要か?
 
-### 10.3.4 代替案検討
+### 10.4.4 代替案検討
 
 各章の major 判断について「他案がないか」確認:
 
@@ -151,7 +167,7 @@
 - code block ecosystem: Renderer Registry vs plugin system vs 別 architecture
 - comment + footnote unified vs 分離
 
-### 10.3.5 欠落 / 未議論
+### 10.4.5 欠落 / 未議論
 
 - 編集 UX(autocomplete / hover / lint)の実装方針
 - mobile 特化(IME 連動、tap-friendly)の考慮
@@ -161,7 +177,7 @@
 - 多言語(中文 / 韓国語 / 印欧諸語の typography 細部)対応の網羅
 - バックエンド連携(extension protocol、AI provider 連携)の影響
 
-## 10.4 レビュー終了条件
+## 10.5 レビュー終了条件
 
 レビュアーが以下を満たした報告を user に返したら、本 doc set 確定 → 実装 wave 開始:
 
@@ -172,7 +188,7 @@
 5. 重大な欠落 / 未議論 領域の指摘(§10.3.5 補完)
 6. Phase 計画の現実性評価
 
-## 10.5 レビュー後 action
+## 10.6 レビュー後 action
 
 レビュー結果に応じて:
 
@@ -183,7 +199,7 @@
 - `docs/spec/markdown-dialect-for-ai-authors-v2.md` 起こし(AI 向け規約書 v2)
 - Phase 1 着手(formal 記法導入 + 共通基盤)
 
-## 10.6 レビュアーへの最終 note
+## 10.7 レビュアーへの最終 note
 
 本 doc set は PKC2 全 markup の **設計仕様(spec)** であり、user 議論で段階的に確定した結果を反映しています。各判断点には複数の代替案があり、別の AI(reviewer)による独立評価で:
 

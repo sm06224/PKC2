@@ -9,15 +9,76 @@ PKC2 の frontmatter は以下の axes をカバー:
 | 領域 | 例 | 詳細 |
 |------|-----|------|
 | **identity** | `kind: book`(filer 振り分け)、`title: 案件報告` | filer base 識別、見出し |
-| **document globals** | `writing` `align` `direction` | 本章主題 |
+| **notation profile** | `notation: pkc-markdown-1.0` | spec version 宣言、§2.2 |
+| **document globals** | `writing` `align` `direction` | §2.3 主題 |
 | **vars(変数定義)** | `vars: { project: ALPHA-7 }` | 本文 `{{vars.x}}` 展開 |
 | **per-archetype metadata** | book: `author / year / publisher` 等 | filer / card display で表示 |
 | **export hints** | `template_kind: report / slide` | 将来の format export 用 |
 | **future expansion** | backmatter / property drawer / shadow_references etc. | spec 予約 |
 
-## 2.2 文書 globals(本章 focus)
+## 2.2 notation profile
 
 ### 2.2.1 spec
+
+```yaml
+---
+notation: pkc-markdown-1.0       # 省略時 default
+notation_overrides:               # 省略可
+  embed_default: seamless         # 個別 feature の上書き
+  ruby: enabled
+---
+```
+
+### 2.2.2 default 動作(普通の user は frontmatter 触らない前提)
+
+frontmatter を **完全省略 = `notation: pkc-markdown-1.0` 適用**。本 spec の最新形が default、user は notation について何も書かなくても reform 仕様で動く。
+
+### 2.2.3 profile 一覧
+
+| profile | 動作 |
+|---------|------|
+| `commonmark` | 基本 markdown のみ、PKC Markdown 拡張全部 off(他 tool 互換重視) |
+| `gfm` | + tables / task list / strikethrough / autolink |
+| `pandoc` | + attribute syntax / footnote / definition list |
+| `obsidian` | + wikilink / callout |
+| **`pkc-markdown-1.0`** | **本 spec native(default)** |
+| `pkc-markdown-experimental` | + Phase 後段 / 実験的 feature |
+
+profile は **versioning 必須**:`pkc-markdown-1.0` は本 reform 着地時 spec、後続 reform で `pkc-markdown-1.1` `pkc-markdown-2.0` 等が登場、forward compat は profile-version で確保。
+
+### 2.2.4 notation_overrides
+
+profile 内の特定 feature を上書き:
+
+```yaml
+notation: pkc-markdown-1.0
+notation_overrides:
+  embed_default: quote        # default を seamless → quote に
+  ruby: disabled              # ruby 記法を無効
+  em_dot: enabled
+  math: enabled
+```
+
+profile = preset、overrides = fine control。両方ある:
+
+- 大半 user は `notation` 省略 で済む(default 適用)
+- 少し調整したい user は `notation_overrides` で個別変更
+- AI emit する時は profile 指定 1 行で「このプロフィールで書く」と宣言可能
+
+### 2.2.5 cross-PKC import 時の挙動
+
+profile が異なる container / entry を import する時:
+
+- **profile 一致** → そのまま受理、parser を該当 profile で起動
+- **profile 不一致 + host が知らない profile** → host profile で再 parse + 警告(rendering 結果は近似)
+- **profile 不一致 + host が知っている profile** → user に「変換するか / そのまま保持するか」UI 提示
+- **将来 IR 形式** → IR から host profile 再 serialize で lossless 変換可能(IR 実装は本 reform 範囲外、§08 参照)
+
+
+
+## 2.3 文書 globals(本章 focus)
+
+### 2.3.1 spec
 
 ```yaml
 ---
@@ -31,7 +92,7 @@ direction: ltr            # ltr | rtl
 ---
 ```
 
-### 2.2.2 設計判断:writing と align を分離(orthogonal)
+### 2.3.2 設計判断:writing と align を分離(orthogonal)
 
 **1 設定にまとめる案**(却下):
 
@@ -55,7 +116,7 @@ align:   left
 - ✅ 拡張容易(`align: justify`、`direction: rtl` 独立追加可)
 - ✅ AI 生成時に部分上書き(writing 省略 + align 指定 等)が自然
 
-### 2.2.3 writing × align 組み合わせ matrix
+### 2.3.3 writing × align 組み合わせ matrix
 
 | writing | 有効な align | default align | 不正組み合わせ時の挙動 |
 |---------|------------|---------------|--------------------|
@@ -64,7 +125,7 @@ align:   left
 
 不正組み合わせは `pkc-frontmatter-warning` banner で可視 warning(`07-security-stance.md` で実装機構と統合)。
 
-### 2.2.4 direction(LTR / RTL)
+### 2.3.4 direction(LTR / RTL)
 
 ```yaml
 direction: ltr          # default
@@ -77,7 +138,7 @@ direction: rtl
 - `direction: ltr` + `writing: vertical`:縦書き左起こし(Mongolian)
 - `direction: rtl` + `writing: vertical`:縦書き右起こし(Japanese / Chinese 伝統)
 
-### 2.2.5 inclusive design rationale
+### 2.3.5 inclusive design rationale
 
 user 提示「あとから追加するのは差別的な気がする」に基づき、**direction は最初から recognize**。Anglo-centric design の anti-pattern を避ける:
 
@@ -106,7 +167,7 @@ CSS native への mapping(実装一貫性):
 }
 ```
 
-### 2.2.6 simple 記法側との対応
+### 2.3.6 simple 記法側との対応
 
 frontmatter `align` が「default flow direction」を確定 → 本文の simple 記法 `||` `|>` はそれに対する logical:
 
@@ -122,7 +183,7 @@ frontmatter `align` が「default flow direction」を確定 → 本文の simpl
 
 **`<|` simple は廃止確定**(default は frontmatter で declare、本文で再宣言不要)。物理強制必要時のみ formal `:::paragraph{align=left|right|top|bottom}` で。
 
-### 2.2.7 typo 寛容(user 提示)
+### 2.3.7 typo 寛容(user 提示)
 
 `|>` の typo を 4 形受理(canonical = `|>`):
 
@@ -132,9 +193,9 @@ frontmatter `align` が「default flow direction」を確定 → 本文の simpl
 
 `||` center は対称形なので typo パターン少、追加なし。
 
-## 2.3 vars(変数定義)
+## 2.4 vars(変数定義)
 
-### 2.3.1 spec(既実装、wave-10-2 M-7)
+### 2.4.1 spec(既実装、wave-10-2 M-7)
 
 ```yaml
 ---
@@ -152,7 +213,7 @@ vars.client:  "Acme Corp"
 
 両形式併用可能、後者(flat)が優先(後勝ち)。
 
-### 2.3.2 設計判断 :nested object 形式採用
+### 2.4.2 設計判断 :nested object 形式採用
 
 flat dot-notation は markdown における先行例なし、独自記法。一方 YAML standard は nested mapping。両方受理することで:
 
@@ -161,13 +222,13 @@ flat dot-notation は markdown における先行例なし、独自記法。一�
 
 可換性が成立。
 
-### 2.3.3 限界 / out of scope
+### 2.4.3 限界 / out of scope
 
 - macros(複雑な template)は `{{macros.x}}` 記法予約のみ、未実装。block 展開は将来 Phase
 - 入れ子 var(`{{vars.a.b}}`)未対応、現状 1 階のみ
 - conditional 展開(`{{vars.x if env=prod}}`)未対応
 
-## 2.4 limits(buffer 攻撃防御、既実装 wave-10-2)
+## 2.5 limits(buffer 攻撃防御、既実装 wave-10-2)
 
 frontmatter parser は以下 cap を spec 固定値で持つ。超過は parse 中止 + 可視 warning(`pkc-frontmatter-warning`):
 
@@ -189,7 +250,7 @@ frontmatter parser は以下 cap を spec 固定値で持つ。超過は parse �
 
 JavaScript の prototype chain を pollute する攻撃パターン。`Object.create(null)` ではなく filter で reject(downstream `String(meta)` 等で `[object Object]` のような吸収不能エラーが起きないため)。
 
-## 2.5 frontmatter parse の既実装機能(参考)
+## 2.6 frontmatter parse の既実装機能(参考)
 
 wave-10-2 + YAML reform で landed:
 
@@ -218,7 +279,7 @@ wave-10-2 + YAML reform で landed:
 | inline comment | `kind: book  # 蔵書` | comment 部分 strip |
 | full-line comment | `# top comment\nkind: book` | line 全体 skip |
 
-## 2.6 future expansion(spec 予約のみ)
+## 2.7 future expansion(spec 予約のみ)
 
 ### 2.6.1 backmatter
 
@@ -265,7 +326,7 @@ shadow_references:
 
 未実装、Phase 後段。
 
-## 2.7 設計まとめ
+## 2.8 設計まとめ
 
 | 設定 | values | default | inclusive design 配慮 |
 |------|--------|---------|---------------------|
@@ -274,7 +335,7 @@ shadow_references:
 | `direction` | ltr / rtl | ltr | RTL を最初から recognize |
 | `vars` | nested object or flat dot-notation | (空) | 人間 / AI 双方 friendly |
 
-## 2.8 レビュー観点
+## 2.9 レビュー観点
 
 1. **inclusive design 妥当性**:`direction` を初期 spec 化する判断は十分か?未対応で起きうる将来コストとどう trade-off するか?
 2. **writing × align orthogonal 設計**:単一 enum でなく分離する利点は本当に大きいか?他の design pattern(CSS の `writing-mode` / `text-align` / `direction` という 3 軸独立)は適切に映されているか?

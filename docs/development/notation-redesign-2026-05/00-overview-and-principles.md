@@ -4,6 +4,19 @@
 
 PKC2 は「**modern emacs / org-mode** + **AI 第一級市民** + **single HTML offline**」を 3 軸とする知識コンテナ。本記法整理は、この vision を支える「**人間と AI が同じ source を読み書きできる、ブルーオーシャンな markdown 方言**」を確立することを目的とする。
 
+### 0.1.1 PKC Markdown と PKC2 の関係
+
+本 doc set は **PKC Markdown(notation / spec)** を定義する。**PKC2** は PKC Markdown の reference implementation で、単一 HTML offline 形態を提供する。
+
+将来的には:
+
+- **`@pkc/markdown` 独立 npm パッケージ**(parser / renderer のみ、PKC2 内部依存なし)
+- **PKC ecosystem 横展開**(mobile / CLI / server stack 等)
+- **3rd party tooling**(Pandoc filter、Obsidian / VS Code plugin 等)
+- **AI tools の native PKC Markdown 対応**
+
+これらが他 repo で実装される可能性があり、本 spec は **portable な形** で書く(implementation 詳細を spec に混入させない)。
+
 具体的には:
 
 - **人間**は普段の文書作成(議事録 / 計画 / 思考 logging / 学術 note / 設計 doc)で短くて読みやすい記法で書ける
