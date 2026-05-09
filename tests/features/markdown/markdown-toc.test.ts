@@ -152,6 +152,44 @@ describe('extractTocFromEntry — TEXT', () => {
     expect(out[0]).toMatchObject({ kind: 'heading' });
     expect((out[0] as { logId?: string }).logId).toBeUndefined();
   });
+
+  // 2026-05-09 YAML reform follow-up:user 報告「右ペインと Viewer 表示
+  // の TOC がアンカー文字列のまま」(`{{vars.title}}` が literal 表示)。
+  it('expands `{{vars.x}}` in heading text using nested vars block', () => {
+    const body = ['---', 'vars:', '  title: 親', '---', '', '# {{vars.title}}'].join('\n');
+    const out = extractTocFromEntry(makeEntry('text', body));
+    expect(out).toHaveLength(1);
+    expect((out[0] as { text: string }).text).toBe('親');
+    expect((out[0] as { text: string }).text).not.toContain('{{vars.title}}');
+  });
+
+  it('expands `{{vars.x}}` in heading text using flat dot-notation vars', () => {
+    const body = ['---', 'vars.title: 飛び番', '---', '', '# {{vars.title}} 章'].join('\n');
+    const out = extractTocFromEntry(makeEntry('text', body));
+    expect((out[0] as { text: string }).text).toBe('飛び番 章');
+  });
+
+  it('leaves `{{vars.unknown}}` as literal when key is undefined', () => {
+    const body = ['---', 'vars:', '  defined: ok', '---', '', '# {{vars.unknown}}'].join('\n');
+    const out = extractTocFromEntry(makeEntry('text', body));
+    expect((out[0] as { text: string }).text).toBe('{{vars.unknown}}');
+  });
+
+  it('strips frontmatter before extracting headings(no `---` confusion)', () => {
+    // Without strip, `---` line (closing fence) doesn't cause issue
+    // (it's not `^# ` pattern), but inside frontmatter we shouldn't pick
+    // up something like `# inside-fm` as a heading. Verify clean separation.
+    const body = ['---', 'kind: book', '# this-is-yaml-comment-not-heading', '---', '', '# Real heading'].join('\n');
+    const out = extractTocFromEntry(makeEntry('text', body));
+    expect(out).toHaveLength(1);
+    expect((out[0] as { text: string }).text).toBe('Real heading');
+  });
+
+  it('regression:no frontmatter → existing behavior preserved', () => {
+    const out = extractTocFromEntry(makeEntry('text', '# A\n## B'));
+    expect(out).toHaveLength(2);
+    expect(out.map((n) => (n as { text: string }).text)).toEqual(['A', 'B']);
+  });
 });
 
 describe('extractTocFromEntry — TEXTLOG (time-driven)', () => {

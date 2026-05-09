@@ -7981,6 +7981,17 @@ function formatFrontmatterValue(v: unknown): string {
   if (typeof v === 'number') return String(v);
   if (typeof v === 'string') return v;
   if (Array.isArray(v)) return v.map((item) => formatFrontmatterValue(item)).join(', ');
+  // 2026-05-09 YAML reform follow-up:nested object(parseFrontmatter
+  // が新たに返すようになった `{ child: value }` 形式)を `[object Object]`
+  // ではなく `{ child: value, … }` の compact 表現で表示する。深い階層は
+  // `frontmatter.ts` の `maxDepth=4` cap で抑えられているので JSON 化で
+  // 過大にならない(user 報告 2026-05-09)。
+  if (typeof v === 'object' && v !== null) {
+    const entries = Object.entries(v as Record<string, unknown>);
+    if (entries.length === 0) return '{}';
+    const parts = entries.map(([k, val]) => `${k}: ${formatFrontmatterValue(val)}`);
+    return `{ ${parts.join(', ')} }`;
+  }
   return String(v);
 }
 

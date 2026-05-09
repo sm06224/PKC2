@@ -25,6 +25,7 @@
  */
 import type { Entry } from '../../core/model/record';
 import { buildTextlogDoc, type TextlogOrder } from '../textlog/textlog-doc';
+import { parseFrontmatter, extractVars } from './frontmatter';
 
 export type TocLevel = 1 | 2 | 3;
 
@@ -171,11 +172,18 @@ export function extractTocFromEntry(
   options: { order?: TextlogOrder } = {},
 ): TocNode[] {
   if (entry.archetype === 'text' || entry.archetype === 'generic') {
-    const headings = extractHeadingsFromMarkdown(entry.body);
+    // 2026-05-09 YAML reform follow-up:frontmatter を strip + vars 展開
+    // して headings の `{{vars.x}}` を rendered 値で表示。strip しないと
+    // frontmatter の `kind: book` 等が `^# ` パターンでなくとも、本文の
+    // line index が body 表示と乖離する。vars 展開しないと TOC が
+    // `{{vars.title}}` の literal 表示で読めない(user 報告 2026-05-09)。
+    const fm = parseFrontmatter(entry.body ?? '');
+    const vars = extractVars(entry.body ?? '');
+    const headings = extractHeadingsFromMarkdown(fm.body);
     return headings.map((h) => ({
       kind: 'heading',
       level: h.level,
-      text: h.text,
+      text: expandVarsInTocText(h.text, vars),
       slug: h.slug,
     }));
   }
@@ -197,15 +205,21 @@ export function extractTocFromEntry(
         targetId: section.dateKey === '' ? 'day-undated' : `day-${section.dateKey}`,
       });
       for (const log of section.logs) {
+        // 2026-05-09:per-log frontmatter strip + vars 展開(同 contract)
+        const logFm = parseFrontmatter(log.bodySource);
+        const logVars = extractVars(log.bodySource);
         out.push({
           kind: 'log',
           logId: log.id,
-          text: makeLogLabel(log.createdAt, log.bodySource),
+          text: expandVarsInTocText(
+            makeLogLabel(log.createdAt, logFm.body),
+            logVars,
+          ),
           level: 2,
           targetId: `log-${log.id}`,
           dateKey: section.dateKey,
         });
-        const headings = extractHeadingsFromMarkdown(log.bodySource);
+        const headings = extractHeadingsFromMarkdown(logFm.body);
         for (const h of headings) {
           out.push({
             kind: 'heading',
@@ -213,7 +227,7 @@ export function extractTocFromEntry(
             // log (2). An `<h1>` inside a log becomes depth 3; deeper
             // headings follow. The max produced value is 5 (h3 + 2).
             level: (h.level + 2) as TocDepth,
-            text: h.text,
+            text: expandVarsInTocText(h.text, logVars),
             slug: h.slug,
             logId: log.id,
           });
@@ -305,4 +319,32 @@ function formatLocalTime(iso: string): string {
   if (isNaN(d.getTime())) return iso;
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * Expand `{{vars.<key>}}` in TOC heading / log label text using the
+ * frontmatter-extracted vars map. Mirrors the runtime renderer's
+ * `expandVarsInText` semantics but operates on a single-line label
+ * (no fence handling). Undefined keys are left as the literal
+ * `{{vars.<key>}}` so the TOC mirrors the body's visible warning span
+ * shape (just a literal here — the body shows the warning span).
+ *
+ * Added 2026-05-09 to fix user-reported bug where the right-pane TOC
+ * and Viewer popup TOC showed `{{vars.title}}` instead of the expanded
+ * value, even after M-7 made body rendering expand them.
+ */
+function expandVarsInTocText(
+  text: string,
+  vars: Record<string, string>,
+): string {
+  if (!text || Object.keys(vars).length === 0) return text;
+  return text.replace(
+    /\{\{\s*vars\.([A-Za-z_][\w-]*)\s*\}\}/g,
+    (_match, key: string) => {
+      if (Object.prototype.hasOwnProperty.call(vars, key)) {
+        return vars[key]!;
+      }
+      return _match;
+    },
+  );
 }
