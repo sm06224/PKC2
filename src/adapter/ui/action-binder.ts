@@ -1484,6 +1484,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode, mutability });
         break;
       }
+      case 'force-reload':
+      case 'apply-update': {
+        // iOS Safari Add to Home Screen mode のキャッシュを bypass する強制再読み込み。
+        // `?_r=<timestamp>` を付けて location.replace で遷移。About entry の
+        // 「最新版を取得」ボタン + version-check toast の「タップで適用」両方からトリガーされる。
+        // 動的 import で起動時依存を増やさない。
+        void import('../platform/version-check').then((mod) => mod.forceReload());
+        break;
+      }
       case 'export-system-only': {
         // PR-PP (2026-05-06):"New PKC" export — strip user content,
         // keep only `__settings__` / `__flags__` / `__about__`. Bypasses
