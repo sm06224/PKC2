@@ -91,7 +91,34 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 | `:::toc` `:::frontmatter` `:::body` 等 | ❌ 未実装 | structural directive は markdown heading(`#` `##` `###`)で十分 |
 | `:strong:` `:emphasis:` 等 が parser fall-through すると?| `:strong:` は **literal text** として残る | parser は形式合致しない `:role:` を inline role として認識せず、L-6 simple-inline `:text:attrs:` パスへ fall-through する |
 
-**現時点で AI が **生成して安全** な formal 形は §1.2 の 5 形 + 既存 simple 形(§1.1)のみ**。それ以外は simple 形へ正規化する。
+### 1.6.x multi-line `[content]` 受理(2026-05-10、PR-2J)
+
+ChatGPT 等 AI は inline role の content を **複数行に展開** する習慣があり、reform PR-2J で受理されるようになった:
+
+```markdown
+:emphasis:[
+本作業中、一時的に監視系通信が停止する可能性があります
+]
+
+:strong:[
+運転監視側への事前周知をお願いします
+]
+
+:::figure{id="topology-overview"}
+![](image.png)
+:caption:[
+更新対象ネットワーク構成
+]
+:::
+```
+
+- `[content]` 内の改行(`\n`)は受理、blank line(`\n\n`)で reject(paragraph 境界)
+- content は trim 済(先頭末尾 whitespace 削除)→ 単行と等価出力
+- `:caption:[\n…\n]` も `:::figure` 内で multi-line 受理(複数行 caption は space で join)
+
+**ただし以下の hallucination 形は引き続き未実装**(§1.6 deny list 参照、AI には引き続き使わないよう指示推奨)。
+
+**現時点で AI が **生成して安全** な formal 形は §1.2 の allowlist + 既存 simple 形(§1.1)のみ**。それ以外は simple 形へ正規化する。
 
 ### 1.7 future Phase 候補(spec / 実装どちらも未確定)
 

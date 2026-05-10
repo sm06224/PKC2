@@ -606,7 +606,9 @@ function pushInlineRoleTokens(
 ): boolean {
   const role = match.role;
   if (!INLINE_ROLE_KNOWN.has(role)) return false;
-  const content = match.content ?? '';
+  // reform-2026-05 Phase 2 PR-2J:multi-line `[content]` の場合、先頭末尾の
+  // 改行 / whitespace を trim(`:emphasis:[\n本文\n]` を `:emphasis:[本文]` 等価に正規化)。
+  const content = (match.content ?? '').replace(/^[\s\n]+|[\s\n]+$/g, '');
 
   if (role === 'sup' || role === 'sub') {
     const tag = role; // 'sup' or 'sub'
@@ -1330,15 +1332,35 @@ function processFigureBlocks(source: string, lineMapIn: number[]): {
       // reform-2026-05 Phase 2 PR-2C(2026-05-10):`:caption:[…]` formal marker
       // も `^^^` 等価で受理。AI / serializer が IR-driven で emit する形。
       // 行頭 `:caption:[content]` or `:caption:[content]{attrs}` の content を
-      // 抽出して caption として扱う。多行 content / attrs は今のところ無視
-      // (caption は単行の inline text として扱う既存 contract)。
+      // 抽出して caption として扱う。
       const cm2 = /^:caption:\[([^\]\n]*)\](?:\{[^}]*\})?\s*$/.exec(lines[i]!);
+      // PR-2J(2026-05-10):multi-line :caption:[\n…\n] も受理(ChatGPT 等が
+      // 改行を含む caption を出力するパターン)。`:caption:[` で始まり、後続行で
+      // `]` で閉じる形を scan、content は trim 済 caption text に。
+      const isCaptionMultiOpen = /^:caption:\[\s*$/.test(lines[i]!);
       if (cm) {
         caption = cm[1]!;
         captionInputIdx = innerInputIdx;
       } else if (cm2) {
         caption = cm2[1]!;
         captionInputIdx = innerInputIdx;
+      } else if (isCaptionMultiOpen) {
+        // multi-line caption: 後続行から `]` 行(or `]{attrs}`)を探す
+        const captionLines: string[] = [];
+        i++;
+        while (i < lines.length && !/^\]\s*(?:\{[^}]*\})?\s*$/.test(lines[i]!) && lines[i]!.trim() !== ':::') {
+          captionLines.push(lines[i]!);
+          i++;
+        }
+        caption = captionLines.map((l) => l.trim()).filter(Boolean).join(' ');
+        captionInputIdx = innerInputIdx;
+        // `]` 行を consume(あれば)。`:::` 行なら consume せず外側 while に委ねる。
+        if (i < lines.length && /^\]\s*(?:\{[^}]*\})?\s*$/.test(lines[i]!)) {
+          // skip the `]` line
+        } else {
+          // `:::` に到達した場合は外側 while の終了条件で抜ける、i を戻す必要なし
+          continue;
+        }
       } else {
         content.push(lines[i]!);
         contentInputIdx.push(innerInputIdx);
