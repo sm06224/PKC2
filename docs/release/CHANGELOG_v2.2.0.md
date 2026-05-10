@@ -62,6 +62,15 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2E `:::paragraph{align=physical}` block directive**(2026-05-10):L-5 行頭
+  prefix の物理 align(left / right / top / bottom / center)を formal 強制する
+  block directive。simple は logical(`|>` end / `||` center)、formal は物理 align
+  を保存する serializer 用。AlignKind type に `top` / `bottom` を追加、
+  `processParagraphAlignDirective` preprocessor を pipeline で processQuoteBlocks
+  後 / preprocessAlignPrefix 前に追加、alignMap merge で applyAlignAttrs に流す。
+  fenced code 内は marker 扱いせず、orthogonal な L-5 行頭 prefix と共存。13 unit
+  cases pass、bundle.js +0.7 KB。
+
 - **PR-2D `:autoref:{id="…"}` self-closing formal**(2026-05-10):`[@id]` simple 形の formal 等価。
   AI / serializer が IR-driven で emit する formal 形として spec 完全網羅。`{id="fig1"}` /
   `{id='fig1'}` / `{id=fig1}` (unquoted) / smart quote (`{id=“fig1”}` 等)全形受理
