@@ -579,9 +579,26 @@ md.inline.ruler.after('pkc_em_dot', 'pkc_em_dot_caret', function emDotCaretRule(
 //   - data-* ── 任意の data attribute、value は HTML escape
 //   - その他 ── 既知ホワイトリスト外は無視(XSS 対策、style / on* は受理しない)
 
-const INLINE_ROLE_KNOWN = new Set(['sup', 'sub', 'span']);
+// reform-2026-05 Phase 2 PR-2B(2026-05-10):commonmark inline 修飾の formal 等価
+// (`:strong:[]` ↔ `**`、`:emphasis:[]` ↔ `*`、`:code:[]` ↔ `` ` ``、
+// `:strike:[]` ↔ `~~`)を inline role として実装。AI / serializer が IR-driven
+// emit する時の formal 形として spec 完全実装。content は nested inline parse
+// で commonmark equivalent との完全互換(`:strong:[**bold**]` も nested 効く)。
+const INLINE_ROLE_KNOWN = new Set([
+  'sup', 'sub', 'span',
+  // PR-2B formal commonmark 等価
+  'strong', 'emphasis', 'code', 'strike',
+]);
 // span に許容する HTML attribute(id / class / data-* 以外)
 const SPAN_SAFE_ATTRS = new Set(['title', 'lang', 'dir']);
+
+// commonmark 等価 role → 出力 HTML tag
+const COMMONMARK_ROLE_TAG: Record<string, string> = {
+  strong: 'strong',
+  emphasis: 'em',
+  code: 'code',
+  strike: 's',
+};
 
 function pushInlineRoleTokens(
   state: Parameters<Parameters<typeof md.inline.ruler.before>[2]>[0],
@@ -597,6 +614,24 @@ function pushInlineRoleTokens(
     const t = state.push('text', '', 0);
     t.content = content;
     state.push(`pkc_${role}_close`, tag, -1);
+    return true;
+  }
+
+  // PR-2B:commonmark 等価 role(strong / emphasis / code / strike)
+  if (role in COMMONMARK_ROLE_TAG) {
+    const tag = COMMONMARK_ROLE_TAG[role]!;
+    if (role === 'code') {
+      // code は内容を nested parse しない(`<code>` content は plain text)
+      state.push(`pkc_role_${role}_open`, tag, 1);
+      const t = state.push('text', '', 0);
+      t.content = content;
+      state.push(`pkc_role_${role}_close`, tag, -1);
+      return true;
+    }
+    // strong / emphasis / strike は content を nested inline parse(commonmark 等価)
+    state.push(`pkc_role_${role}_open`, tag, 1);
+    pushNestedInlineContent(state, content);
+    state.push(`pkc_role_${role}_close`, tag, -1);
     return true;
   }
 
@@ -624,6 +659,33 @@ function pushInlineRoleTokens(
   t.content = content;
   state.push('pkc_inline_role_span_close', 'span', -1);
   return true;
+}
+
+/**
+ * Nested inline content を完全 parse(tokenize + postprocess emphasis pairing)
+ * して state.tokens に push。`**bold**` 等の delimiter が role 内で正しく
+ * <strong> に解決される。
+ */
+function pushNestedInlineContent(
+  state: Parameters<Parameters<typeof md.inline.ruler.before>[2]>[0],
+  content: string,
+): void {
+  if (!content) return;
+  const innerTokens: typeof state.tokens = [];
+  // markdown-it の inline.parse(src, md, env, outTokens)で完全 parse
+  // (tokenize + emphasis pairing 解決 + postProcess 全部走る)
+  state.md.inline.parse(content, state.md, state.env, innerTokens);
+  // inline.parse は inline 'token' を 1 個 push、その children に実 inline tokens
+  // が入っている。children を bare で展開して state.tokens に追加する。
+  for (const tok of innerTokens) {
+    if (tok.type === 'inline' && Array.isArray(tok.children)) {
+      for (const child of tok.children) {
+        state.tokens.push(child);
+      }
+    } else {
+      state.tokens.push(tok);
+    }
+  }
 }
 
 md.inline.ruler.before('emphasis', 'pkc_inline_role', function inlineRoleRule(state, silent) {
