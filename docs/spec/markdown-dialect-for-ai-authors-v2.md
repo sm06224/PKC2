@@ -80,7 +80,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 | `:quote:{attribution="…"}`(inline self-closing)| ❌ 未実装 | block `:::quote{author="…"} content :::`(R-D)を使う |
 | `:align:{position=end}` | ❌ 未実装 | 行頭 prefix `\|>`(R-C)を使う |
 | `:spacing:{size=2}` | ❌ 未実装 | `_2`(L-8 blank-line marker、`_<N>` で N 空行) |
-| `:autoref:{id="fig1"}` | ❌ 未実装 | `[@fig1]`(L-7-b)を使う |
+| ~~`:autoref:{id="fig1"}`~~ | ✅ **実装済(Phase 2 PR-2D、2026-05-10)** | `[@fig1]` 等価、ASCII / smart quote / unquoted 全形受理 |
 | `:::toc` `:::frontmatter` `:::body` 等 | ❌ 未実装 | structural directive は markdown heading(`#` `##` `###`)で十分 |
 | `:strong:` `:emphasis:` 等 が parser fall-through すると?| `:strong:` は **literal text** として残る | parser は形式合致しない `:role:` を inline role として認識せず、L-6 simple-inline `:text:attrs:` パスへ fall-through する |
 
@@ -93,7 +93,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 - `:::section{role=...}`(semantic sectioning)
 - `:::aside{type=note|warning|tip}`(callout、Pandoc 互換)
 - ~~`:strong:` / `:emphasis:` / `:code:` / `:strike:`~~ ✅ **実装済(Phase 2 PR-2B)**:simple 形と完全等価、AI / serializer の formal emit 用
-- `:autoref:{id=...}`(`[@id]` の formal 形)
+- ~~`:autoref:{id=...}`~~ ✅ **実装済(Phase 2 PR-2D)**:`[@id]` 等価、ASCII / smart quote / unquoted 全形受理
 - ~~`:caption:[...]`~~ ✅ **実装済(Phase 2 PR-2C)**:`:::figure` 内で `^^^ caption` 等価
 - inline `:quote:{attribution=...}`(`<q cite="…">`)
 
