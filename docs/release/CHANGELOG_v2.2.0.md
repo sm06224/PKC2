@@ -62,6 +62,14 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2J multi-line `[content]` 受理(user バグレポ hotfix)**(2026-05-10):ChatGPT 等 AI が
+  `:emphasis:[\n本文\n]` のように `[content]` を複数行に展開する習慣に対応。`scanBracketBalanced`
+  で newline reject を blank line(`\n\n`)reject に変更、content は trim 済(先頭末尾
+  whitespace 削除)で単行と等価出力。`:caption:[\n本文\n]` も `:::figure` 内 multi-line 受理
+  (複数行 caption は space で join)。AI spec v2 §1.6.x に multi-line 受理を明示追記、
+  `:lead:` `:spacing:` `:align:` inline `:quote:` 等の hallucination は引き続き deny list
+  維持(workaround 併記)。15 unit cases + 2 smoke pass、bundle.js +0.3 KB。
+
 - **PR-2I ChatGPT 9 提案 Phase 2 受容分**(2026-05-10):reform-2026-05 Phase 1 着地後の
   ChatGPT 9 提案を私が evaluate し、6 件受容と判断したものを 1 PR に統合実装:
   (1)**Canonicalization spec**(`notation-redesign-2026-05/11-canonicalization-spec.md`

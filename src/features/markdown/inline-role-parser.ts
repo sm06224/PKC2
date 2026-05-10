@@ -86,6 +86,10 @@ export function parseInlineRoleAt(src: string, start: number): InlineRoleMatch |
 }
 
 function scanBracketBalanced(src: string, start: number, open: string, close: string): number {
+  // reform-2026-05 Phase 2 PR-2J(2026-05-10、user バグレポ反映):
+  // ChatGPT 等 AI は `[content]` を複数行に渡って書く(:::section 内 :emphasis:[\n…\n])。
+  // 旧実装は newline で reject していたが、blank line(連続 \n\n)以外は受理に変更。
+  // blank line で reject(paragraph 境界、inline rule の責任範囲外)。
   let depth = 0;
   for (let i = start; i < src.length; i++) {
     const c = src[i];
@@ -93,7 +97,8 @@ function scanBracketBalanced(src: string, start: number, open: string, close: st
       i++;
       continue;
     }
-    if (c === '\n') return -1;
+    // blank line(連続 \n\n)で reject(paragraph break)
+    if (c === '\n' && src[i + 1] === '\n') return -1;
     if (c === open) depth++;
     else if (c === close) {
       depth--;
