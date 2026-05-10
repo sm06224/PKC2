@@ -1784,6 +1784,31 @@
   object-fit: contain;
 }
 
+/* reform-2026-05 PR-D:`:::quote{author=...}` block citation。
+ * 学術 / 法律 / 報道で複数 embed を 1 引用 block + 共通 attribution として
+ * 纏める用途。markdown 標準 blockquote(`>`)とは別 class、視覚的に区別する。 */
+.pkc-md-rendered blockquote.pkc-quote-citation {
+  background: var(--c-quote-citation-bg, rgba(0, 0, 0, 0.03));
+  border-left: 4px solid var(--c-accent, #4a90e2);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-3) 0;
+  border-radius: var(--radius);
+  position: relative;
+}
+.pkc-md-rendered blockquote.pkc-quote-citation::after {
+  content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
+  display: block;
+  text-align: end;
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--c-fg-muted, #6b7280);
+  margin-top: var(--space-2);
+  font-style: italic;
+}
+.pkc-md-rendered blockquote.pkc-quote-citation:not([data-pkc-quote-author])::after {
+  content: "";
+  display: none;
+}
+
 /* L-5(2026-05-07)+ reform-2026-05 PR-C(logical alignment + 4 形 typo 寛容):
  * - center は物理中央(書字方向 不変)
  * - end / start は CSS logical value、`writing-mode` / `direction` で自動 flip

@@ -305,6 +305,27 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
     .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
     .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+    /* reform-2026-05 PR-D: :::quote block citation */
+    .pkc-md-rendered blockquote.pkc-quote-citation {
+      background: rgba(0, 0, 0, 0.03);
+      border-left: 4px solid #4a90e2;
+      padding: 0.5rem 0.75rem;
+      margin: 0.5rem 0;
+      border-radius: 4px;
+    }
+    .pkc-md-rendered blockquote.pkc-quote-citation::after {
+      content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
+      display: block;
+      text-align: end;
+      font-size: 0.875rem;
+      color: #6b7280;
+      margin-top: 0.25rem;
+      font-style: italic;
+    }
+    .pkc-md-rendered blockquote.pkc-quote-citation:not([data-pkc-quote-author])::after {
+      content: "";
+      display: none;
+    }
     /* L-9 段落先頭 1 字下げ(2026-05-08) */
     .pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
     /* M-7 未定義 variable 警告(2026-05-08、wave-10-2 Phase 2) */
