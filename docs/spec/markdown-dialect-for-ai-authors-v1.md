@@ -1,11 +1,14 @@
 # PKC2 Markdown 方言:AI 書き手向け規約書 v1
 
+> **⚠ SUPERSEDED**: 本 v1 は **`markdown-dialect-for-ai-authors-v2.md`** に置き換えられました(2026-05-09、reform-2026-05 Phase 1 反映)。新規生成では v2 を使ってください。本 v1 は historical reference として残置。
+
 **Audience**: AI(LLM)が PKC2 entry の `body` を生成する際の規約書。
 **Reader**: 機械的に処理する LLM。可読性は保つが、構造化と非曖昧化を優先。
 **Companion(human-oriented)**: `docs/development/markdown-dialect-extensions-spec-2026-05.md`(§1.2 IR 連動 / 業界事例 / 設計議論を含む)
-**Status**: stable for L-1〜L-9(Phase 1 全件着地)+ M-7 Variables(Phase 2 着手分、2026-05-08)
+**Status**: superseded(reform-2026-05 Phase 1 着地で v2 へ移行)
 **Version**: v1
 **Last updated**: 2026-05-08
+**Superseded**: 2026-05-09 by v2
 
 ---
 
