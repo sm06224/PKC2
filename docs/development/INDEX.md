@@ -174,6 +174,25 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`../spec/markdown-dialect-for-ai-authors-v1.md`](../spec/markdown-dialect-for-ai-authors-v1.md) | **AI 書き手向け規約書 v1**(2026-05-08、wave-10-2 Phase 1 stable 着地時点で起草)。LLM が PKC2 entry の body markdown を生成する際の self-contained reference。L-1〜L-9 全 markup の構文表 + 各 markup の精密規約 + when-to-use 判断ガイド + やってはいけない一覧 + 出力前 checklist + 複合例。設計議論は含まず、構文規約のみを extracted。設計議論を読みたい場合は上記 human-oriented spec を参照。version policy(マイナー追補は backward compat 必須、メジャー破壊変更は v2 別ファイル)。Audience 区分(human spec vs AI spec)は user direction(2026-05-08「AI 向けの規約書に認めて欲しい」)に応えた 2-tier docs strategy。**superseded by v2**(2026-05-09、reform-2026-05 Phase 1 反映) |
 | [`../spec/markdown-dialect-for-ai-authors-v2.md`](../spec/markdown-dialect-for-ai-authors-v2.md) | **AI 書き手向け規約書 v2**(2026-05-09、reform-2026-05 Phase 1 着地後の更新)。v1 supersede。reform-2026-05 で確定した formal 記法(`:::quote{author}` / `:role:[content]{attrs}` / `:::if{format=X}`)+ R-C align 4 形 typo 寛容化 + frontmatter `notation` profile を追加。simple 形 first / formal 形 = 機械 emit serializer の 2 階層化を明示。テストデータ生成用途を主眼に、§7「AI レシピ集」に全 archetype 網羅 + reform 全機能 fixture + edge case パターン集を新設。複合 fixture 例(短文 / 中規模 / 長大 / plain text / textlog)を §6 に集約 |
 
+### Notation redesign 2026-05(`notation-redesign-2026-05/`、12 章 doc set、AI レビュー用)
+
+PKC Markdown 1.0 の設計書。simple-first 二層化 + 4 設計原則 + Renderer Registry + 全記法 / IR / security / migration を網羅、Gemini / ChatGPT / Claude 各 AI レビュー前提の章割。
+
+| File | Topic |
+|---|---|
+| [`notation-redesign-2026-05/INDEX.md`](./notation-redesign-2026-05/INDEX.md) | reading guide + 用語定義 + status + glossary |
+| [`notation-redesign-2026-05/00-overview-and-principles.md`](./notation-redesign-2026-05/00-overview-and-principles.md) | vision + 4 設計原則(simple-first / 階層 / security / IR)+ 過去議論 |
+| [`notation-redesign-2026-05/01-notation-catalog.md`](./notation-redesign-2026-05/01-notation-catalog.md) | 全 50+ 記法 一覧表(simple / formal / IR / 頻度 / status) |
+| [`notation-redesign-2026-05/02-frontmatter-and-globals.md`](./notation-redesign-2026-05/02-frontmatter-and-globals.md) | frontmatter spec(notation profile / writing / align / direction / vars / limits) |
+| [`notation-redesign-2026-05/03-link-embed-card.md`](./notation-redesign-2026-05/03-link-embed-card.md) | link / card / embed seamless / embed quote の 4 段階 spectrum |
+| [`notation-redesign-2026-05/04-comment-footnote-family.md`](./notation-redesign-2026-05/04-comment-footnote-family.md) | comment 系 unified、可視性 attribute、label、inline-attached |
+| [`notation-redesign-2026-05/05-math-and-system-bundle.md`](./notation-redesign-2026-05/05-math-and-system-bundle.md) | KaTeX 完全 bundle + system asset bundle architecture |
+| [`notation-redesign-2026-05/06-code-block-ecosystem.md`](./notation-redesign-2026-05/06-code-block-ecosystem.md) | Renderer Registry + 全 renderer spec(Phase A〜G) |
+| [`notation-redesign-2026-05/07-security-stance.md`](./notation-redesign-2026-05/07-security-stance.md) | HTML 完全 off + 2 層 cap(HARD/SOFT)+ URL allow-list + parser hardening |
+| [`notation-redesign-2026-05/08-ir-mapping.md`](./notation-redesign-2026-05/08-ir-mapping.md) | IR AST type + simple/formal → IR 写像 + format 別射影 matrix(spec のみ、impl deferred) |
+| [`notation-redesign-2026-05/09-migration-roadmap.md`](./notation-redesign-2026-05/09-migration-roadmap.md) | breaking changes + Phase 1〜9 計画(20-30 週) |
+| [`notation-redesign-2026-05/10-open-questions.md`](./notation-redesign-2026-05/10-open-questions.md) | 未決定事項 + reform 議論 resolved + AI レビュアー チェックリスト |
+
 ## CLOSED (42 docs)
 
 All 42 historical docs passed strict close audit (2026-04-11).
