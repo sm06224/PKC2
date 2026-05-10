@@ -62,6 +62,14 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2G `:::comment{block=true}` formal block comment**(2026-05-10):`%%%`
+  block comment の formal 等価。AI / serializer が IR-driven で emit する formal
+  形を spec 完全網羅。`stripComments` の fence 外 strip pass で `:::comment(?:\{…\})?\n…\n:::`
+  regex match で完全削除、attrs(`block=true` / `visibility=hidden` / `fn=src1` 等)
+  は今のところ無視(将来 footnote promote 等の拡張余地)。fenced code 内 marker
+  無効、leading whitespace 許容、閉じ `:::` 無しは parser tolerance で literal 残置。
+  11 unit cases pass、bundle 不変。
+
 - **PR-2F `:::section{role=…}` semantic / callout block**(2026-05-10):MkDocs / Material /
   GitHub flavor 風の callout を formal で提供。8 known role(summary / warning / note /
   tip / caution / important / info / danger)が `<section class="pkc-section-callout

@@ -70,7 +70,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 | AI が生成する形 | 状態 | 推奨 simple 形(workaround)|
 |----------------|-----|-------------------------|
 | ~~`:::section{role=summary\|warning\|…}`~~ | ✅ **実装済(Phase 2 PR-2F、2026-05-10)** | 8 known role(summary / warning / note / tip / caution / important / info / danger)で callout、CSS で role 別 color scheme |
-| `:::comment\n…\n:::` | ❌ 未実装 | `%%%\n…\n%%%`(L-4 block comment) |
+| ~~`:::comment\n…\n:::`~~ | ✅ **実装済(Phase 2 PR-2G、2026-05-10)** | `%%%` block comment 等価、attrs(`block=true` / `visibility=hidden` 等)は今のところ無視、render 完全削除 |
 | `:lead:[text]` | ❌ 未実装 | 1 行 paragraph で先頭 + 適宜 `==hl==` などで装飾 |
 | ~~`:strong:[text]`~~ | ✅ **実装済(Phase 2 PR-2B、2026-05-10)** | `**text**` 等価、AI emit 用に formal 形提供 |
 | ~~`:emphasis:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `*text*` 等価 |
