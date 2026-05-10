@@ -1528,6 +1528,137 @@ function processIfBlocks(source: string, lineMapIn: number[], targetFormat: stri
   return { transformed: out.join('\n'), lineMap: lineMapOut };
 }
 
+// reform-2026-05 Phase 2 PR-2F:`:::section{role=…}` semantic / callout block。
+//
+// 仕様(01-notation-catalog.md §1.4):
+//   `:::section{role=summary|warning|note|tip|caution|important|info|danger}`
+//   semantic な区切り + callout 表現を formal で提供。AI / 機械生成 doc で
+//   構造化 callout を出力する formal vocabulary、user は既存 simple(`> note`
+//   blockquote 等)で十分。
+//
+// HTML 出力:
+//   <section class="pkc-section-callout pkc-section-<role>" data-pkc-role="<role>">
+//     ...content (markdown rendered)...
+//   </section>
+//
+// PUA sentinel pattern(:::quote と同じ)で markdown-it html:false 制約を回避。
+const SECTION_SENTINEL_OPEN = '\u{E160}';
+const SECTION_SENTINEL_SEP = '\u{E161}';
+
+const SECTION_KNOWN_ROLES: ReadonlySet<string> = new Set([
+  'summary', 'warning', 'note', 'tip', 'caution', 'important', 'info', 'danger',
+  // 'cover' / 'body' / 'appendix' などの structural role も将来追加余地、
+  // 現時点では callout 系 8 個に絞る(unknown は generic に attr stamp のみ)。
+]);
+
+interface SectionEntry {
+  role: string;
+  attrs: _BlockDirectiveAttrs;
+}
+
+function processSectionBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<number, SectionEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<number, SectionEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let counter = 0;
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || open.name !== 'section') {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const role = typeof open.attrs.kvs.role === 'string' ? open.attrs.kvs.role : 'generic';
+    counter++;
+    const id = counter;
+    registry.set(id, { role, attrs: open.attrs });
+    const openInputIdx = inputIdx;
+    i++;
+    out.push(`${SECTION_SENTINEL_OPEN}${id}${SECTION_SENTINEL_SEP}OPEN${SECTION_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      out.push(lines[i]!);
+      lineMapOut.push(lineMapIn[i] ?? i);
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++;
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${SECTION_SENTINEL_OPEN}${id}${SECTION_SENTINEL_SEP}CLOSE${SECTION_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+function postProcessSectionSentinels(
+  html: string,
+  registry: Map<number, SectionEntry>,
+): string {
+  // OPEN sentinel → <section data-pkc-role="…" class="pkc-section-callout pkc-section-<role>">
+  html = html.replace(
+    new RegExp(
+      `<p([^>]*)>${SECTION_SENTINEL_OPEN}(\\d+)${SECTION_SENTINEL_SEP}OPEN${SECTION_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, pAttrs: string, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      const role = entry.role;
+      const safeRole = /^[A-Za-z][\w-]*$/.test(role) ? role : 'generic';
+      const knownClass = SECTION_KNOWN_ROLES.has(safeRole)
+        ? ` pkc-section-${safeRole}`
+        : '';
+      const attrs = entry.attrs;
+      const classes = ['pkc-section-callout' + knownClass, ...attrs.classes].join(' ');
+      const idAttr = attrs.id ? ` id="${escapeAttrForHtml(attrs.id)}"` : '';
+      // section の他 kv attrs を data-pkc-section-* に展開
+      const dataAttrs: string[] = [];
+      for (const [k, v] of Object.entries(attrs.kvs)) {
+        if (k === 'role') continue; // role は class + data-pkc-role で扱い済
+        if (!/^[A-Za-z_][\w-]*$/.test(k)) continue;
+        if (typeof v === 'boolean') {
+          if (v) dataAttrs.push(`data-pkc-section-${k}="true"`);
+        } else if (typeof v === 'string') {
+          dataAttrs.push(`data-pkc-section-${k}="${escapeAttrForHtml(v)}"`);
+        }
+      }
+      const dataStr = dataAttrs.length > 0 ? ' ' + dataAttrs.join(' ') : '';
+      return `<section${idAttr} class="${classes}" data-pkc-role="${escapeAttrForHtml(safeRole)}"${dataStr}${pAttrs}>`;
+    },
+  );
+  // CLOSE sentinel → </section>
+  html = html.replace(
+    new RegExp(
+      `<p[^>]*>${SECTION_SENTINEL_OPEN}\\d+${SECTION_SENTINEL_SEP}CLOSE${SECTION_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    '</section>',
+  );
+  return html;
+}
+
 function processQuoteBlocks(source: string, lineMapIn: number[]): {
   transformed: string;
   registry: Map<number, QuoteEntry>;
@@ -2163,6 +2294,12 @@ export function renderMarkdown(
   const quoteResult = processQuoteBlocks(text, lineMap);
   text = quoteResult.transformed;
   lineMap = quoteResult.lineMap;
+  // reform-2026-05 Phase 2 PR-2F:`:::section{role=…}` semantic / callout block。
+  // PUA sentinel pattern で <section data-pkc-role="…" class="pkc-section-callout
+  // pkc-section-<role>"> に変換。:::quote 後に処理(両者は orthogonal)。
+  const sectionResult = processSectionBlocks(text, lineMap);
+  text = sectionResult.transformed;
+  lineMap = sectionResult.lineMap;
   // reform-2026-05 Phase 2 PR-2E:`:::paragraph{align=physical}` block directive
   // を preprocessAlignPrefix の前に処理。content 行に物理 align(left/right/
   // top/bottom/center)を register、後段の applyAlignAttrs で `<p data-pkc-align>`
@@ -2205,6 +2342,7 @@ export function renderMarkdown(
   html = postProcessFigureSentinels(html);
   // reform-2026-05 PR-D:`:::quote{author=...}` sentinel → <blockquote class="pkc-quote-citation">
   html = postProcessQuoteSentinels(html, quoteResult.registry);
+  html = postProcessSectionSentinels(html, sectionResult.registry);
   // L-1:section break sentinel → <hr>
   html = postProcessSectionBreaks(html);
   // L-8:blank-line sentinel → <div class="pkc-blank-line">

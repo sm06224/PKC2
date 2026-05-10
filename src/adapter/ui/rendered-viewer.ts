@@ -333,6 +333,24 @@ export function buildRenderedViewerHtml(
       margin: 0.5rem 0;
       border-radius: 4px;
     }
+    /* reform-2026-05 Phase 2 PR-2F:section callout(base.css mirror) */
+    .pkc-md-rendered .pkc-section-callout {
+      padding: 0.5rem 0.75rem;
+      margin: 0.5rem 0;
+      border-radius: 4px;
+      border-left: 4px solid #6b7280;
+      background: rgba(0, 0, 0, 0.02);
+    }
+    .pkc-md-rendered .pkc-section-callout > :first-child { margin-top: 0; }
+    .pkc-md-rendered .pkc-section-callout > :last-child { margin-bottom: 0; }
+    .pkc-md-rendered .pkc-section-summary  { border-left-color: #6b7280; background: rgba(107, 114, 128, 0.08); }
+    .pkc-md-rendered .pkc-section-info     { border-left-color: #2563eb; background: rgba(37, 99, 235, 0.08); }
+    .pkc-md-rendered .pkc-section-note     { border-left-color: #2563eb; background: rgba(37, 99, 235, 0.06); }
+    .pkc-md-rendered .pkc-section-tip      { border-left-color: #16a34a; background: rgba(22, 163, 74, 0.08); }
+    .pkc-md-rendered .pkc-section-important{ border-left-color: #9333ea; background: rgba(147, 51, 234, 0.08); }
+    .pkc-md-rendered .pkc-section-warning  { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.08); }
+    .pkc-md-rendered .pkc-section-caution  { border-left-color: #d97706; background: rgba(217, 119, 6, 0.08); }
+    .pkc-md-rendered .pkc-section-danger   { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
     .pkc-md-rendered blockquote.pkc-quote-citation::after {
       content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
       display: block;

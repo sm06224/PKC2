@@ -62,6 +62,17 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2F `:::section{role=…}` semantic / callout block**(2026-05-10):MkDocs / Material /
+  GitHub flavor 風の callout を formal で提供。8 known role(summary / warning / note /
+  tip / caution / important / info / danger)が `<section class="pkc-section-callout
+  pkc-section-<role>" data-pkc-role="<role>">` として render、CSS で role 別 color
+  scheme(border-left + bg)で視覚化。未知 role / 省略は generic fallback、`#id` /
+  `.class` / 追加 kv attr(`data-pkc-section-*`)も支援。PUA sentinel pattern で
+  markdown-it html:false 制約を回避、:::quote と orthogonal、nested 対応。XSS:不正 role
+  は allowlist regex で generic fallback、危険文字列は output に出ない。base.css + Viewer
+  popup CSS mirror(dual-render path 規律)。18 unit cases pass、bundle.js +1.6 KB
+  / bundle.css +1.0 KB。
+
 - **PR-2E `:::paragraph{align=physical}` block directive**(2026-05-10):L-5 行頭
   prefix の物理 align(left / right / top / bottom / center)を formal 強制する
   block directive。simple は logical(`|>` end / `||` center)、formal は物理 align

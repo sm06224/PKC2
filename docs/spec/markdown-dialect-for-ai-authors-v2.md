@@ -69,7 +69,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 
 | AI が生成する形 | 状態 | 推奨 simple 形(workaround)|
 |----------------|-----|-------------------------|
-| `:::section{role=summary\|warning\|…}` | ❌ 未実装 | `## 見出し` + 通常 markdown(role 区別が必要なら `:::if` で wrap) |
+| ~~`:::section{role=summary\|warning\|…}`~~ | ✅ **実装済(Phase 2 PR-2F、2026-05-10)** | 8 known role(summary / warning / note / tip / caution / important / info / danger)で callout、CSS で role 別 color scheme |
 | `:::comment\n…\n:::` | ❌ 未実装 | `%%%\n…\n%%%`(L-4 block comment) |
 | `:lead:[text]` | ❌ 未実装 | 1 行 paragraph で先頭 + 適宜 `==hl==` などで装飾 |
 | ~~`:strong:[text]`~~ | ✅ **実装済(Phase 2 PR-2B、2026-05-10)** | `**text**` 等価、AI emit 用に formal 形提供 |
@@ -90,7 +90,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 
 以下は Phase 2 以降で議論される候補。AI は **生成しないこと**:
 
-- `:::section{role=...}`(semantic sectioning)
+- ~~`:::section{role=...}`~~ ✅ **実装済(Phase 2 PR-2F)**:8 known role の callout
 - `:::aside{type=note|warning|tip}`(callout、Pandoc 互換)
 - ~~`:strong:` / `:emphasis:` / `:code:` / `:strike:`~~ ✅ **実装済(Phase 2 PR-2B)**:simple 形と完全等価、AI / serializer の formal emit 用
 - ~~`:autoref:{id=...}`~~ ✅ **実装済(Phase 2 PR-2D)**:`[@id]` 等価、ASCII / smart quote / unquoted 全形受理
