@@ -19,6 +19,7 @@ export type NotationProfileName =
   | 'pandoc'
   | 'obsidian'
   | 'pkc-markdown-1.0'
+  | 'pkc-markdown-1.0-ai-safe'
   | 'pkc-markdown-experimental';
 
 /**
@@ -213,6 +214,17 @@ const PKC_MARKDOWN_EXPERIMENTAL: NotationFeatures = {
   // rendererPalette, rendererQuiz, etc.
 };
 
+// reform-2026-05 Phase 2 PR-2I(2026-05-10、ChatGPT 提案 #5 受容):
+// AI-safe profile — LLM 出力安定化用。pkc-markdown-1.0 を base に、AI が
+// 壊しがちな部分(short-notation / implicit block end / non-canonical attrs)
+// を制約。constraints は parser 側 strict mode で別途実装、profile では
+// 概念タグとして expose。
+const PKC_MARKDOWN_1_0_AI_SAFE: NotationFeatures = {
+  ...PKC_MARKDOWN_1_0,
+  // 現時点の差異は:profile name で identification できれば十分(将来の strict
+  // parser mode が profile name を消費して短縮形 / implicit close を reject)
+};
+
 // ── Public registry ─────────────────────────────────────
 
 const PROFILES: Record<NotationProfileName, NotationFeatures> = {
@@ -221,6 +233,7 @@ const PROFILES: Record<NotationProfileName, NotationFeatures> = {
   'pandoc': PANDOC,
   'obsidian': OBSIDIAN,
   'pkc-markdown-1.0': PKC_MARKDOWN_1_0,
+  'pkc-markdown-1.0-ai-safe': PKC_MARKDOWN_1_0_AI_SAFE,
   'pkc-markdown-experimental': PKC_MARKDOWN_EXPERIMENTAL,
 };
 

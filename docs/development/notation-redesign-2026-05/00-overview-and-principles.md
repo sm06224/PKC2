@@ -80,6 +80,19 @@ PKC2 IR は将来の `intermediate-representation-audit.md` (10-3 wave) で確�
 
 詳細は `08-ir-mapping.md`。
 
+### 原則 5:Diff friendliness(reform-2026-05 Phase 2 追加、ChatGPT 提案 #9 受容)
+
+PKC2 の formal canonicalization / attrs normalization / stable block structure は **Git semantic diff が安定する** 性質を持つ。これを設計目標として明示:
+
+- canonical formal representation は token 順序 / attrs 順序 / whitespace を厳密化 → 同 entry を re-canonicalize しても diff = 0
+- attrs は alphabetical order(`{author="X" id="Y" year=2020}` で一定)、normalize 不能なら warning
+- block structure は意味単位ごとに行を分離(merge 結果が意味的に明示できる diff になる)
+- AI 編集時の partial update / merge / repair が **意味単位で正しく解決される**
+
+これは **AI 編集前提の知識構造フォーマット** としての PKC2 の重要な強み。Phase 2 以降の記法追加 / canonicalize 処理 / IR persist は、この原則を設計判断基準として参照する。
+
+詳細は `11-canonicalization-spec.md`(Phase 2 PR-2I で起こす予定の章)。
+
 ## 0.3 PKC2 哲学との整合
 
 | 哲学 | 本記法整理での具体化 |

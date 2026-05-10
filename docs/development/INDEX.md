@@ -192,6 +192,8 @@ PKC Markdown 1.0 の設計書。simple-first 二層化 + 4 設計原則 + Render
 | [`notation-redesign-2026-05/08-ir-mapping.md`](./notation-redesign-2026-05/08-ir-mapping.md) | IR AST type + simple/formal → IR 写像 + format 別射影 matrix(spec のみ、impl deferred) |
 | [`notation-redesign-2026-05/09-migration-roadmap.md`](./notation-redesign-2026-05/09-migration-roadmap.md) | breaking changes + Phase 1〜9 計画(20-30 週) |
 | [`notation-redesign-2026-05/10-open-questions.md`](./notation-redesign-2026-05/10-open-questions.md) | 未決定事項 + reform 議論 resolved + AI レビュアー チェックリスト |
+| [`notation-redesign-2026-05/11-canonicalization-spec.md`](./notation-redesign-2026-05/11-canonicalization-spec.md) | **reform Phase 2 PR-2I 起草**(2026-05-10、ChatGPT 提案 #1 受容):simple → canonical formal 1:1 写像表 + canonicalize rules(attrs alphabetical / quote normalize / whitespace / line break)+ idempotent contract + lossless round-trip 定義(semantic 優先、ChatGPT 提案 #3)。Canonicalize 関数自体は post-reform Phase Z で IR persist 同期 |
+| [`parser-recovery-spec.md`](./parser-recovery-spec.md) | **reform Phase 2 PR-2I 起草**(2026-05-10、ChatGPT 提案 #8 受容):既存 parser tolerance(20+ ケース)を集約、fence-aware preprocessor pipeline 規律 doctrinize、warning code 連動表、future enhancement roadmap(fence 未閉鎖 / nested directive depth / table 行欠損 / YAML invalid)|
 
 ## CLOSED (42 docs)
 
