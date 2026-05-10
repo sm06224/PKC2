@@ -2094,6 +2094,15 @@ function stripComments(source: string): string {
     let out = b.lines.join('\n');
     out = out.replace(/%%%[\s\S]*?%%%/g, '');
     out = out.replace(/%%[^\n]*?%%/g, '');
+    // reform-2026-05 Phase 2 PR-2G(2026-05-10):`:::comment{…}` formal も
+    // strip(`%%%` block 等価)。AI / serializer が emit する formal 形。
+    // `:::comment` open 行から `:::` close 行までを完全除去。block-only。
+    // attrs は無視(将来 hidden=false / fn=src1 等で footnote promote 等の
+    // 拡張余地、現時点では全 strip)。
+    out = out.replace(
+      /^[ \t]*:::comment(?:\{[^}]*\})?[ \t]*\n[\s\S]*?\n[ \t]*:::[ \t]*$/gm,
+      '',
+    );
     return out;
   }).join('\n');
 }
