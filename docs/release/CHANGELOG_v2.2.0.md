@@ -56,6 +56,26 @@ v2.2.0 の主題は **Flags Protocol v1 wave 完了** です。const ハード�
 
 ---
 
+## reform-2026-05 Phase 2 — formal vocabulary 拡張 + document globals(2026-05-10〜)
+
+Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatter document
+globals(writing / direction / align)** + **formal inline / block vocabulary
+完全網羅** を順次着地させる。
+
+- **PR-2A document globals**(2026-05-10):frontmatter `writing` / `direction`
+  / `align` の predefined keys を抽出して render container に `data-pkc-writing`
+  / `dir` / `data-pkc-doc-align` attribute で反映。CSS で `writing-mode` /
+  `direction` / `text-align` を切替、縦書き / 横書き / RTL / LTR の writing
+  matrix を実装。`extractDocumentGlobals(body): DocumentGlobals` helper +
+  `globalsToDataAttrs()` 変換 helper を `src/features/markdown/document-globals.ts`
+  に新設。不正値 / 不正組み合わせ(horizontal × top 等)は構造化 warning で
+  silent fail 防止。center pane / Viewer popup の 2 surface で CSS mirror、
+  Playwright visual parity 6 cases(horizontal/RTL/right + vertical-rl + vertical-lr
+  + center + frontmatter 不在 + Viewer popup mirror)で検証。bundle.js +0.7 KB
+  / bundle.css +0.3 KB、budget 内。
+
+---
+
 ## reform-2026-05 Phase 1 — Markdown notation reform(2026-05-09〜10、PR #385〜#393 + #394)
 
 PKC2 全 markdown notation を **simple-first / formal-as-serializer** の 2 階層で再設計、AI / 機械が emit する厳密形 + 人間 typing 用の simple 形を共存させる reform wave。設計 doc(12 章 / ~3,340 行)+ 実装 9 PR + AI 規約書 v2 + visual parity smoke 全部入り。

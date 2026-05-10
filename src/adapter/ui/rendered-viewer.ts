@@ -33,6 +33,7 @@ import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { extractVars, parseFrontmatter } from '../../features/markdown/frontmatter';
+import { extractDocumentGlobals, globalsToDataAttrs } from '../../features/markdown/document-globals';
 import {
   extractTocFromEntry,
   renderStaticTocHtml,
@@ -65,6 +66,18 @@ export function buildRenderedViewerHtml(
   const title = escapeForHtml(entry.title || '(untitled)');
   const archetypeLabel = entry.archetype === 'textlog' ? 'Textlog' : 'Text';
   const bodyHtml = buildBodyHtml(entry, container);
+  // reform-2026-05 Phase 2 PR-2A:Viewer popup でも document globals を反映
+  const docGlobals = extractDocumentGlobals(entry.body || '');
+  const docGlobalAttrs = (() => {
+    const attrs: string[] = [];
+    for (const [k, v] of Object.entries(globalsToDataAttrs(docGlobals))) {
+      attrs.push(`${k}="${escapeForHtml(v)}"`);
+    }
+    if (docGlobals.direction) {
+      attrs.push(`dir="${docGlobals.direction}"`);
+    }
+    return attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+  })();
   // Static TOC HTML for TEXT / TEXTLOG. Empty string for other
   // archetypes. Native-anchor navigation — no JS needed.
   // 2026-05-03: TEXTLOG content below uses `order: 'asc'` (chronological
@@ -108,6 +121,13 @@ export function buildRenderedViewerHtml(
     /* Explicitly pin the rendered markdown density so it cannot drift
        from the main-app .pkc-md-rendered baseline if body changes. */
     article.pkc-viewer-body { line-height: 1.35; }
+    /* reform-2026-05 Phase 2 PR-2A:document globals(writing / direction / align)
+       Viewer popup CSS mirror。base.css と同等の挙動。 */
+    article.pkc-viewer-body[data-pkc-writing="vertical"] { writing-mode: vertical-rl; }
+    article.pkc-viewer-body[data-pkc-writing="vertical"][dir="ltr"] { writing-mode: vertical-lr; }
+    article.pkc-viewer-body[data-pkc-doc-align="left"]   { text-align: left; }
+    article.pkc-viewer-body[data-pkc-doc-align="right"]  { text-align: right; }
+    article.pkc-viewer-body[data-pkc-doc-align="center"] { text-align: center; }
     main { max-width: clamp(40rem, 90vw, 72rem); margin: 0 auto; }
     header.pkc-viewer-header {
       border-bottom: 1px solid #ddd;
@@ -675,12 +695,12 @@ export function buildRenderedViewerHtml(
       ? '<div class="pkc-viewer-layout">'
         + `<aside class="pkc-toc-sidebar" data-pkc-region="toc-sidebar">${tocHtml}</aside>`
         + '<div class="pkc-viewer-main">'
-        + '<article class="pkc-viewer-body pkc-md-rendered">'
+        + `<article class="pkc-viewer-body pkc-md-rendered"${docGlobalAttrs}>`
         + bodyHtml
         + '</article>'
         + '</div>'
         + '</div>'
-      : '<article class="pkc-viewer-body pkc-md-rendered">'
+      : `<article class="pkc-viewer-body pkc-md-rendered"${docGlobalAttrs}>`
         + bodyHtml
         + '</article>',
     '</main>',

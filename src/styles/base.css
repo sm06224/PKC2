@@ -1968,6 +1968,24 @@
   line-height: 1.35;
 }
 
+/* reform-2026-05 Phase 2 PR-2A:frontmatter document globals
+   (writing / direction / align)を render root に反映する CSS。
+   data-pkc-writing / dir(HTML 標準)/ data-pkc-doc-align を消費。 */
+.pkc-md-rendered[data-pkc-writing="vertical"] {
+  writing-mode: vertical-rl;
+}
+/* direction=ltr + vertical → vertical-lr(蒙古文等) */
+.pkc-md-rendered[data-pkc-writing="vertical"][dir="ltr"] {
+  writing-mode: vertical-lr;
+}
+/* horizontal × align text-align 既定切替 */
+.pkc-md-rendered[data-pkc-doc-align="left"]   { text-align: left; }
+.pkc-md-rendered[data-pkc-doc-align="right"]  { text-align: right; }
+.pkc-md-rendered[data-pkc-doc-align="center"] { text-align: center; }
+/* vertical × align は text-align で表現できない(縦書きでの top/bottom は
+   block 軸位置)→ vertical-align 系 + flex で実装する場合は別途。現状は
+   data-* attr を残して将来の export(Word vertical layout 等)で消費可能。 */
+
 /* PR #196: copy button overlay for code fences and tables.
  * The renderer wraps every <pre>…</pre> and <table>…</table> in a
  * `.pkc-md-block` host. The button sits top-right; hover (desktop)
