@@ -301,6 +301,8 @@ export function buildRenderedViewerHtml(
        ないため、base.css と同じ fallback 値を採用)。 */
     /* L-5 行頭 align prefix */
     .pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
+    .pkc-md-rendered p[data-pkc-align="end"]    { text-align: end;    }
+    .pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
     .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
     .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
     /* L-9 段落先頭 1 字下げ(2026-05-08) */

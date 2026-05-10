@@ -1784,8 +1784,13 @@
   object-fit: contain;
 }
 
-/* L-5(2026-05-07):行頭 align prefix */
+/* L-5(2026-05-07)+ reform-2026-05 PR-C(logical alignment + 4 形 typo 寛容):
+ * - center は物理中央(書字方向 不変)
+ * - end / start は CSS logical value、`writing-mode` / `direction` で自動 flip
+ * - right / left は formal `:::paragraph{align=right|left}` 経由の物理強制 */
 .pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
+.pkc-md-rendered p[data-pkc-align="end"]    { text-align: end;    }
+.pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
 .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
 .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
 

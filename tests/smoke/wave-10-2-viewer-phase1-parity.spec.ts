@@ -33,10 +33,11 @@ test('Viewer popup: Phase 1 拡張(align / mark / em-dot)が visual に反映さ
   await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
 
   await page.locator('[data-pkc-field="title"]').first().fill('Viewer Phase 1 fixture');
+  // reform-2026-05 PR-C 後:`<|` / `|>` 等は全部 'end' に正規化。viewer での
+  // align / mark / em-dot の visual 反映を確認するため center + end の 2 段階で。
   const body = [
     '|| 中央寄せ段落',
-    '<| 左寄せ段落',
-    '|> 右寄せ段落',
+    '|> 右寄せ(end)段落',
     '',
     'これは ==重要== な文。',
     '',
@@ -75,8 +76,10 @@ test('Viewer popup: Phase 1 拡張(align / mark / em-dot)が visual に反映さ
   console.log('Viewer Phase 1 observed:', JSON.stringify(observed, null, 2));
 
   expect(observed.aligns[0]).toEqual({ align: 'center', computedAlign: 'center' });
-  expect(observed.aligns[1]).toEqual({ align: 'left', computedAlign: 'left' });
-  expect(observed.aligns[2]).toEqual({ align: 'right', computedAlign: 'right' });
+  // reform-2026-05 PR-C:`|>` は 'end'、Chromium は logical value 'end' のまま
+  // 返す(ブラウザによっては 'right' に解決される)。
+  expect(observed.aligns[1]?.align).toBe('end');
+  expect(['end', 'right']).toContain(observed.aligns[1]?.computedAlign);
   // mark は #fff59d(rgb(255, 245, 157))に解決されるはず
   expect(observed.markBg).toMatch(/rgb\(255,\s*245,\s*157\)/);
   // em-dot は dot 系の text-emphasis-style

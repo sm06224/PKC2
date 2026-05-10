@@ -59,7 +59,8 @@ test('L-9 indent + leading whitespace + Split View source-line preservation', as
   const previewObs = await preview.evaluate((root) => ({
     indent1Count: root.querySelectorAll('p[data-pkc-indent="1"]').length,
     alignCenterCount: root.querySelectorAll('p[data-pkc-align="center"]').length,
-    alignRightCount: root.querySelectorAll('p[data-pkc-align="right"]').length,
+    // reform-2026-05 PR-C 後:`|>` 等は 'end' に正規化(物理 'right' は formal-only)
+    alignEndCount: root.querySelectorAll('p[data-pkc-align="end"]').length,
     blankLineCount: root.querySelectorAll('.pkc-blank-line').length,
     sectionBreakCount: root.querySelectorAll('hr.pkc-section-break').length,
     blankWithSourceLine: root.querySelectorAll('.pkc-blank-line[data-pkc-source-line]').length,
@@ -74,9 +75,9 @@ test('L-9 indent + leading whitespace + Split View source-line preservation', as
 
   // L-9 indent paragraph が 4 つ(普通 / 全角 / SP 付き / center 併用)
   expect(previewObs.indent1Count).toBeGreaterThanOrEqual(3);
-  // align center / right も leading whitespace 越えで認識
+  // align center / end(reform-2026-05 PR-C 後)も leading whitespace 越えで認識
   expect(previewObs.alignCenterCount).toBeGreaterThanOrEqual(1);
-  expect(previewObs.alignRightCount).toBeGreaterThanOrEqual(1);
+  expect(previewObs.alignEndCount).toBeGreaterThanOrEqual(1);
   // section break / blank line も SP / TAB 越えで認識
   expect(previewObs.sectionBreakCount).toBeGreaterThanOrEqual(1);
   expect(previewObs.blankLineCount).toBeGreaterThanOrEqual(1);
