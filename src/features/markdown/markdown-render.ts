@@ -1275,6 +1275,116 @@ interface QuoteEntry {
   attrs: _BlockDirectiveAttrs;
 }
 
+// ── PR-F (reform-2026-05、Phase 1):`:::if{format=X}` conditional block ──
+//
+// Spec §1.4 #23:`:::if{format=html} content :::` で、format が render target と
+// 一致する時のみ content を render、一致しない時は content を strip(空行で line
+// count 維持、Split View source-preview-sync を保つ)。
+//
+// 受理 attrs:
+//   - `format=html|markdown|docx|pdf|...` — target format に match する時のみ render
+//   - 省略時は always match(plain wrapper として効く)
+//
+// PKC2 の renderer は HTML 専用なので target='html' で固定。export 系で別 format
+// (docx / pdf 等)に dispatch する時は caller が target を指定して呼ぶ拡張余地。
+//
+// nested directive 対応:`:::if` 内に `:::quote` 等の他 directive がネスト可能。
+// directive-aware depth tracking で対応(open で depth++、close で depth--)。
+//
+// 例:
+//   :::if{format=html}          ← html target で match → content 出力
+//   ![](entry:A)
+//   :::
+//
+//   :::if{format=docx}          ← html target で不一致 → content 全部 empty 化
+//   docx 専用本文
+//   :::
+
+function processIfBlocks(source: string, lineMapIn: number[], targetFormat: string): {
+  transformed: string;
+  lineMap: number[];
+} {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || open.name !== 'if') {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    // match 判定:format kv が target と一致するか、format 省略時は always match
+    const formatVal = open.attrs.kvs.format;
+    const match = typeof formatVal === 'string' ? formatVal === targetFormat : true;
+
+    // open 行は consume(出力しない)
+    i++;
+    // content scan with directive-aware depth tracking
+    let depth = 1;
+    let innerFence: FenceState = { inFence: false, marker: '' };
+    while (i < lines.length && depth > 0) {
+      const inner = lines[i]!;
+      const innerInputIdx = lineMapIn[i] ?? i;
+      const it = fenceTransition(inner, innerFence);
+      innerFence = it.state;
+      if (innerFence.inFence || it.isBoundary) {
+        // fence 中身は depth tracking しない、ただし match に応じて emit
+        if (match) {
+          out.push(inner);
+        } else {
+          out.push('');
+        }
+        lineMapOut.push(innerInputIdx);
+        i++;
+        continue;
+      }
+      if (isBlockDirectiveClose(inner)) {
+        depth--;
+        if (depth === 0) {
+          // closing ::: は consume(出力しない)
+          i++;
+          break;
+        }
+        // nested close は emit
+        if (match) {
+          out.push(inner);
+        } else {
+          out.push('');
+        }
+        lineMapOut.push(innerInputIdx);
+        i++;
+        continue;
+      }
+      if (parseBlockDirectiveOpen(inner)) {
+        depth++;
+      }
+      if (match) {
+        out.push(inner);
+      } else {
+        out.push('');
+      }
+      lineMapOut.push(innerInputIdx);
+      i++;
+    }
+    // depth > 0 のまま EOF 到達 → 閉じ ::: 無し(parser tolerance、content は出力済)
+  }
+  return { transformed: out.join('\n'), lineMap: lineMapOut };
+}
+
 function processQuoteBlocks(source: string, lineMapIn: number[]): {
   transformed: string;
   registry: Map<number, QuoteEntry>;
@@ -1783,6 +1893,12 @@ export function renderMarkdown(
   // 2026-05-08 hotfix で inline rule から切替、L-2/L-6 等の content 内も
   // 展開されるようになる)。未定義は U+E140/E141 sentinel で post-process まで残す。
   text = expandVarsInText(text, opts.vars ?? {});
+  // reform-2026-05 PR-F:`:::if{format=X}` conditional block(format mismatch
+  // 時に content を strip、line count は空行で維持。directive-aware nested 対応)。
+  // figure / quote 等の他 directive より先に走らせる(:::if が outermost wrapper)。
+  const ifResult = processIfBlocks(text, lineMap, 'html');
+  text = ifResult.transformed;
+  lineMap = ifResult.lineMap;
   // L-8:`_` / `_<N>` 空行マーカー(挿入あり、lineMap 更新)
   const blankResult = processBlankLineMarkers(text, lineMap);
   text = blankResult.transformed;
@@ -1855,6 +1971,7 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^\+\+\+\s*(?:\{[^}]*\})?\s*$/m.test(text)) return true; // L-1 section break
   if (/==[^=]+==|\[\[(?:ruby|em):/.test(text)) return true;     // L-2 highlight / ruby / em-dot
   if (/^:::figure(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure block
+  if (/^:::(?:quote|if)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // reform-2026-05 PR-D/F :::quote / :::if
   if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
   if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
   if (/^\s*_\d*\s*$/m.test(text)) return true;                  // L-8 blank-line marker
