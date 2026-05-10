@@ -2,11 +2,12 @@
  * L-5(2026-05-07、wave-10-2 Phase 1)+ reform-2026-05 PR-C(typo 寛容化):
  * 行頭 align prefix の unit test。
  *
- * **reform 後の仕様**(本 PR で変更):
+ * **reform 後の仕様**(本 PR + 2026-05-09 hotfix で変更):
  *   - `||` line-prefix → text-align: center(物理中央、書字方向 不変)
  *   - `|>` `<|` `|<` `>|`(全 4 形)→ text-align: end(logical、default flow の反対)
- *   - 段落全体に適用(空行 / 構造区切りまで継続行に伝播)
- *   - 継続行の prefix 省略可
+ *   - **line scope**(2026-05-09 user バグレポ反映):各 prefix 行は単独 paragraph、
+ *     継続行(prefix なし)は default 段落として分離される
+ *   - 複数行を同 align にしたい時は各行に prefix を付ける
  *   - heading / list / blockquote / table / fence 等の構造要素には適用不可
  *
  * **breaking change**(reform-2026-05):
@@ -64,13 +65,44 @@ describe('L-5: 行頭 align prefix(reform-2026-05 PR-C: typo 寛容化 + logical
     }
   });
 
-  it('継続行は prefix 省略可、paragraph 全体に align が適用される', () => {
+  it('reform-2026-05 hotfix:prefix 行は line scope、継続行は default 段落として分離される', () => {
+    // 2026-05-09 user バグレポ:`|>` 制定行直後の「対象:...」が右寄せに巻き込まれた。
+    // reform 仕様変更:prefix は **line-scope**(`breaks: true` 慣行に整合)。
+    // 継続行を同 align にしたい場合は **各行に prefix を付ける** 必要がある。
     const src = `|| センターの 1 行目
-継続行も同じ align`;
+prefix なしの 2 行目`;
     const html = renderMarkdown(src);
-    expect(html).toContain('data-pkc-align="center"');
-    expect(html).toContain('センターの 1 行目');
-    expect(html).toContain('継続行も同じ align');
+    // 1 行目は center
+    expect(html).toMatch(/<p[^>]*data-pkc-align="center"[^>]*>センターの 1 行目<\/p>/);
+    // 2 行目は default(align attr なし)、別 paragraph に分離
+    expect(html).toMatch(/<p>prefix なしの 2 行目<\/p>/);
+  });
+
+  it('reform-2026-05 hotfix:user 報告 fixture(障害対応マニュアル)を再現テスト', () => {
+    const src = `|> 2026年5月8日 制定
+|> 2026年5月8日 第1版
+対象：ほにゃららシステム 運用保守担当者
+|> 作成：へのへの情報システム部 モニャモニャ運用担当`;
+    const html = renderMarkdown(src);
+    // 制定 / 第1版 / 作成 は end(右寄せ)
+    expect(html).toMatch(/<p[^>]*data-pkc-align="end"[^>]*>2026年5月8日 制定<\/p>/);
+    expect(html).toMatch(/<p[^>]*data-pkc-align="end"[^>]*>2026年5月8日 第1版<\/p>/);
+    expect(html).toMatch(/<p[^>]*data-pkc-align="end"[^>]*>作成：/);
+    // 「対象:」は default(align なし)、独立 paragraph
+    expect(html).toMatch(/<p>対象：ほにゃららシステム/);
+    // 「対象:」が end paragraph に巻き込まれていないこと
+    expect(html).not.toMatch(/data-pkc-align="end"[^>]*>[^<]*対象：/);
+  });
+
+  it('reform-2026-05 hotfix:複数行を end にしたい時は各行 prefix(line scope contract)', () => {
+    // 「prefix line は line scope」contract により、複数行 end にしたい場合は各行に prefix
+    const src = `|> end 1 行目
+|> end 2 行目
+|> end 3 行目`;
+    const html = renderMarkdown(src);
+    // 3 paragraph 全部 end
+    const matches = html.match(/<p[^>]*data-pkc-align="end"[^>]*>/g);
+    expect(matches?.length ?? 0).toBe(3);
   });
 
   it('空行で align が解除される', () => {

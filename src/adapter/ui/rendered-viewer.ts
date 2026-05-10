@@ -459,6 +459,26 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="18"] { height: calc(var(--pkc-blank-line-h) * 18); }
     .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="19"] { height: calc(var(--pkc-blank-line-h) * 19); }
     .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="20"] { height: calc(var(--pkc-blank-line-h) * 20); }
+    /* reform-2026-05 hotfix:cap 20→50 raise + cap 警告 visible style(base.css mirror) */
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="21"] { height: calc(var(--pkc-blank-line-h) * 21); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="22"] { height: calc(var(--pkc-blank-line-h) * 22); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="23"] { height: calc(var(--pkc-blank-line-h) * 23); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="24"] { height: calc(var(--pkc-blank-line-h) * 24); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="25"] { height: calc(var(--pkc-blank-line-h) * 25); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="30"] { height: calc(var(--pkc-blank-line-h) * 30); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="40"] { height: calc(var(--pkc-blank-line-h) * 40); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="50"] { height: calc(var(--pkc-blank-line-h) * 50); }
+    .pkc-md-rendered .pkc-blank-line[data-pkc-blank-capped]::before {
+      content: '⚠ _' attr(data-pkc-blank-capped) ' (上限 cap)';
+      display: block;
+      font-size: 0.75em;
+      color: var(--c-fg-muted, #8b6f47);
+      background: rgba(255, 200, 0, 0.08);
+      padding: 0.15em 0.5em;
+      border-left: 2px solid rgba(180, 130, 0, 0.4);
+      margin-bottom: 0.3em;
+      font-family: monospace;
+    }
     /* Two-column layout with a sticky TOC sidebar.
        The sidebar pins to the top of the viewport so the outline
        stays visible while the reader scrolls through long bodies.

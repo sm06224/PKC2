@@ -112,6 +112,93 @@ describe('extractHeadingsFromMarkdown', () => {
     expect(extractHeadingsFromMarkdown(md).map((h) => h.text)).toEqual(['A', 'B']);
   });
 
+  it('reform-2026-05 hotfix:frontmatter は heading 抽出から除外', () => {
+    const md = `---
+title: My Document
+---
+
+# Heading 1
+## Heading 2`;
+    expect(extractHeadingsFromMarkdown(md).map((h) => h.text)).toEqual([
+      'Heading 1',
+      'Heading 2',
+    ]);
+  });
+
+  it('reform-2026-05 hotfix(user バグレポ):heading 内の {{vars.x}} を展開してから抽出', () => {
+    const md = `---
+vars:
+  site: 石狩変電所
+  phase: Phase-2
+---
+
+# {{vars.site}} {{vars.phase}} 計画
+
+## 詳細`;
+    const headings = extractHeadingsFromMarkdown(md);
+    expect(headings[0]!.text).toBe('石狩変電所 Phase-2 計画');
+    expect(headings[1]!.text).toBe('詳細');
+  });
+
+  it('reform-2026-05 hotfix:未定義 {{vars.x}} は literal 残置', () => {
+    const md = `# {{vars.unknown}} title`;
+    expect(extractHeadingsFromMarkdown(md)[0]!.text).toBe('{{vars.unknown}} title');
+  });
+
+  it('reform-2026-05 hotfix(user バグレポ):`:::if{format=pdf}` 内 heading は html target で除外', () => {
+    const md = `# 共通
+
+:::if{format=html}
+## HTML 限定
+:::
+
+:::if{format=pdf}
+## PDF 限定
+:::
+
+## 共通 2`;
+    const headings = extractHeadingsFromMarkdown(md).map((h) => h.text);
+    expect(headings).toEqual(['共通', 'HTML 限定', '共通 2']);
+    expect(headings).not.toContain('PDF 限定');
+  });
+
+  it('reform-2026-05 hotfix:`:::if` 省略は always match(plain wrapper)', () => {
+    const md = `:::if
+## 常時表示
+:::`;
+    expect(extractHeadingsFromMarkdown(md)[0]?.text).toBe('常時表示');
+  });
+
+  it('reform-2026-05 hotfix:`:::if` 内 nested directive 対応', () => {
+    const md = `:::if{format=html}
+:::quote{author=A}
+## nested heading 1
+:::
+:::
+
+:::if{format=pdf}
+:::quote{author=B}
+## nested heading 2
+:::
+:::`;
+    const headings = extractHeadingsFromMarkdown(md).map((h) => h.text);
+    expect(headings).toEqual(['nested heading 1']);
+  });
+
+  it('reform-2026-05 hotfix:fenced code 内の `:::if` は marker 扱いしない', () => {
+    const md = `# 本文 1
+
+\`\`\`
+:::if{format=pdf}
+## これは code 内
+:::
+\`\`\`
+
+## 本文 2`;
+    const headings = extractHeadingsFromMarkdown(md).map((h) => h.text);
+    expect(headings).toEqual(['本文 1', '本文 2']);
+  });
+
   it('does not match lines starting with # that are not headings', () => {
     // Missing space after # → not an ATX heading.
     expect(extractHeadingsFromMarkdown('#foo')).toEqual([]);

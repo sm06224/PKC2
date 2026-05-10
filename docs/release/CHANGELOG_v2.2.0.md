@@ -10,6 +10,7 @@ v2.2.0 の主題は **Flags Protocol v1 wave 完了** です。const ハード�
 
 ## Highlights
 
+- **reform-2026-05 Phase 1 — Markdown notation reform**(2026-05-09〜10、PR #385〜#393):**simple-first / formal-as-serializer** の 2 階層 notation 再設計。`:::quote{author=...}` block citation + `:role:[content]{attrs}` formal inline(`:sup:` / `:sub:` / `:span:`)+ `:::if{format=...}` conditional + 4 形 align typo 寛容化(`|>` `<|` `|<` `>|` → all 'end' logical)+ AI 規約書 v2 + iOS Safari hard reload(#394)+ user バグレポ 7 件 hotfix。`docs/development/notation-redesign-2026-05/` 12 章設計書。**non-breaking**(schema 不変、既存 entry 完全互換)
 - **Flags Protocol v1**:`defineFlag(key, default, options?)` API + `__flags__` system entry + inspector overlay。Chrome `about:flags` 風の動的フラグ機構で、既存 7 件の Tier 0 const(recent.default_limit / textlog.staged_render.* / persistence.debounce_ms / image config / search.max_results_per_entry)を runtime 切替可能化
 - **3 layer resolution**:URL `?pkc-flag=KEY=VALUE` > `__flags__` Container entry > defineFlag default。debug / PoC / 実機 A/B が rebuild 不要で可能
 - **Flags inspector overlay**:shell-menu「⚑ Flags」link(常時可視)+ URL `?pkc-flag=*` で起動。category 別 grouping、Tier 別 editor、source badge、reset / Save URL→Container ボタン、Build Features (read-only) section
@@ -55,11 +56,69 @@ v2.2.0 の主題は **Flags Protocol v1 wave 完了** です。const ハード�
 
 ---
 
+## reform-2026-05 Phase 1 — Markdown notation reform(2026-05-09〜10、PR #385〜#393 + #394)
+
+PKC2 全 markdown notation を **simple-first / formal-as-serializer** の 2 階層で再設計、AI / 機械が emit する厳密形 + 人間 typing 用の simple 形を共存させる reform wave。設計 doc(12 章 / ~3,340 行)+ 実装 9 PR + AI 規約書 v2 + visual parity smoke 全部入り。
+
+### 設計 + 基盤(PR-A〜B、#385-#386)
+
+- **PR-A `caps.ts` + `notation-profiles.ts` 基盤**(#385):2 layer cap 構造(HARD_CEILINGS + SOFT_DEFAULTS)を `src/features/notation/caps.ts` に集約、9 top-level + 12 renderer 別 cap。`resolveCap(category, name, override?)` で `min(override ?? SOFT, HARD)` を effective cap として返す。**6 profile 定義**(commonmark / gfm / pandoc / obsidian / pkc-markdown-1.0 / pkc-markdown-experimental)+ 36 feature flag、`DEFAULT_PROFILE = 'pkc-markdown-1.0'`(普通 user は frontmatter 触らない、最新 spec が default)。foundation のみで他 module から consume 無し → tree-shake で bundle 影響ゼロ。33 unit ケース pass。
+- **PR-B frontmatter cap + warnings + notation extractor**(#386):frontmatter parser に `FrontmatterWarning` interface(kind: `size_limit` / `malformed` / `forbidden_key` / `duplicate_key`)+ `warnings` field 追加、`resolveCap('frontmatter', 'bytes')` で SOFT 16 KB / HARD 1 MB 適用、超過時 parse 中止 + warning。`extractNotationProfile(body)` / `extractNotationOverridesFlat(body)` helper 新規。32 unit ケース pass。
+
+### 形式拡張(PR-C〜F、#387-#390)
+
+- **PR-C 行頭 align prefix typo 寛容化 + logical alignment**(#387):`||` (center) + `|>` `<|` `|<` `>|`(全 4 形 typo 寛容)→ all `'end'`(logical、default flow の反対)に正規化。CSS は `text-align: end` / `text-align: start` を新規追加(logical value、`writing-mode` / `direction` 切替で自動 flip、RTL / 縦書き inclusive)。Postel's law 受信寛容。Pre-reform `<|` 物理左寄せは Phase 2 で formal `:::paragraph{align=left}` で対応予定。
+- **PR-D `:::quote{author=...}` block citation + Pandoc-style attribute parser**(#388):`src/features/markdown/block-directive-attrs.ts` 新規(`parseBlockDirectiveAttrs` / `parseBlockDirectiveOpen` / `isBlockDirectiveClose`)、`:::quote{author="…" year=…}` で `<blockquote class="pkc-quote-citation" data-pkc-quote-author="…" data-pkc-quote-year="…">`、attrs 全 kv が data-* 属性に展開、author 値は `<` `>` `&` `"` HTML escape、`#id` / `.class` / boolean flag 全部受理。PUA Unicode sentinel(U+E150 / U+E151)で markdown-it html:false 制約を回避。20 + 12 unit ケース pass。
+- **PR-E `:role:[content]{attrs}` formal inline role**(#389):`src/features/markdown/inline-role-parser.ts` 新規、`:sup:[2]` `:sub:[n]` `:span:[text]{class=warn #id data-key=val}` 3 role 対応。`SPAN_SAFE_ATTRS` allowlist(`title` / `lang` / `dir` + `data-*`)、`style` / `onclick` 等 unknown attrs は silent skip(XSS 対策)。L-6 simple-inline `:text:attrs:` との衝突は bracket(`[` or `{`)有無で disambiguate。21 + 19 unit ケース pass。
+- **PR-F `:::if{format=html|markdown|docx}` conditional block**(#390):directive-aware nested 対応(`:::if` 内 `:::quote` の depth tracking)、format mismatch 時 content 完全 strip(空行で line count 維持、Split View 行ズレ回避)。fenced code 内 `:::if` は marker 扱いしない。target='html' 固定(export 系で別 target dispatch 拡張余地)。15 unit ケース pass。
+
+### 検証 + 文書化(PR-G〜H、#391-#392)
+
+- **PR-G comprehensive visual parity smoke**(#391):reform 全機能 + 既存(highlight / em-dot / ruby / figure / quote)を **center pane / Viewer popup / Split View preview の 3 surface** で end-to-end 視覚検証(6 cases)。長大 / 短文 / plain text の 3 fixture × random scroll 20 回で scroll lock なし確認。pre-reform smoke 3 件(wave-10-2-l5-multiline-align / l9-indent / viewer-phase1)を `<|`→end 仕様に update。
+- **PR-H AI 書き手向け規約書 v2**(#392):reform-2026-05 Phase 1 着地後の self-contained reference(~690 行)。**§1.6 hallucination 一覧** で AI が生成しがちだが未実装の formal 構文 11 件(`:::section{role=…}` / `:::comment` / `:lead:[]` / `:strong:[]` / `:emphasis:[]` / `:caption:[]` / inline `:quote:{…}` / `:align:{position=…}` / `:spacing:{size=…}` / `:autoref:{…}` / `:::toc` 等)を deny list 化、各 simple 形 workaround を併記。§7「AI レシピ集」で全 archetype 網羅 + reform 全機能 fixture + edge case 9 件。v1(2026-05-08)を supersede。
+
+### user バグレポ hotfix batch(#393)
+
+reform Phase 1 着地直後に user 4 名(本人 + ChatGPT + Gemini + 別 review)から検出されたバグを 1 PR に集約 hotfix:
+
+- **`|>` line-scope contract**(障害対応マニュアル fixture):`|>` prefix 行直後の prefix なし通常行が end paragraph に巻き込まれる現象を `preprocessAlignPrefix` で fix。prefix→非prefix transition 時に blank 行挿入 + `currentAlign` reset。`|> A\nB\n|> C` が 3 paragraph(A=end / B=default / C=end)に正しく分離。`breaks: true` 慣行(line scope)に整合。
+- **`^^text^^` em-dot 新形 実装**:v2 spec で promise していたが未実装だった圏点新形を `pkc_em_dot_caret` inline rule で実装、`^^^` figure caption marker と曖昧化回避(直後 `^` あれば reject)。`[[em:..]]` 旧形と共存。
+- **TOC で `{{vars.x}}` 展開**(石狩変電所 fixture):`extractHeadingsFromMarkdown` が raw `entry.body` を見ていたため `# {{vars.site}} …` が placeholder のまま TOC に出ていた。frontmatter strip + vars resolve を heading 抽出前に inline 実行(markdown-render.ts への循環 import 回避)。
+- **TOC で `:::if{format=mismatch}` 内 heading 除外**:`stripMismatchedIfBlocks(targetFormat='html')` 軽量版を inline 実装、nested directive depth tracking + fenced code skip 込み。`:::if{format=pdf}` 内の見出しが本文に出ないのに TOC に出る現象を解消。
+- **`_<N>` cap 20→50 raise + 超過時 visible 警告**(Gemini バグレポ):AI 生成文書 / 印刷組版での page 余白実用範囲に整合。N>cap 時に `data-pkc-blank-capped="N→M"` + `::before` content「⚠ _N (上限 cap)」visible 警告 banner を表示(silent fail 撲滅)。
+- **`==[color]**bold**==` nested inline parse**(2 通り):highlight content を nested tokenize して `**bold**` `*italic*` `` `code` `` 等 commonmark inline markup を効かせる。`==[red]**126,853**==` → `<mark style="background-color:red"><strong>126,853</strong></mark>`、逆順 `**==[red]…==**` も自然 nesting で動作、三重 `**==[red]*all*==**` も OK。
+- **`:::figure{id="…"}` Pandoc kv quoted 形 + smart quote 受理**:既存 regex は `:::figure{#id}` (hash 形)のみ受理、ChatGPT が頻繁に生成する `{id="…"}` (kv quoted)を漏らしていた漏れバグ。`parseBlockDirectiveOpen` 経由に統合、ASCII `"`/`'` + smart quote(U+201C/D / U+2018/9)両形受理(textarea autocorrect / typographer 経由 smart quote 化されても parse できる)。
+- **AI spec v2 §1.6 hallucination warning 拡充**:ChatGPT が実機検証で render されない formal 構文 9 件を追加、deny list + workaround 併記。
+
+### 並走 PR
+
+- **#384 notation-redesign 12 章 doc set**:reform-2026-05 設計議論を AI レビュー用に整理、`docs/development/notation-redesign-2026-05/` 配下 12 ファイル(00-overview〜10-open-questions)~3,340 行。code 変更ゼロ、doc-only。
+- **#394 iOS Safari hard reload + 起動時 version-check**:Add to Home Screen mode キャッシュ問題対応。`src/adapter/platform/version-check.ts` 新規(`forceReload()` + `checkForUpdate()` toast 通知)、About entry に「最新版を取得(キャッシュ bypass)」ボタン追加。Service Worker は PKC2 「Single HTML product」invariant 違反のため不採用、案 1(force reload button)+ 案 3(起動時 version-check)の組み合わせ。9 unit ケース pass。
+
+### bundle 影響
+
+- bundle.js: 968 KB → **979 KB**(+11 KB、Phase 1 reform 全機能 + hotfix 込み、budget 1536 KB の 64%)
+- bundle.css: 149 KB → **152 KB**(+2.4 KB、em-dot caret + blank-line cap rules + cap warning banner + quote citation styling)
+
+### 検証
+
+- `npm test`: **6912 / 6912 pass**(+165 新規:caps 18 / profiles 15 / frontmatter 4 / extractor 14 / align 18 / block-directive 20 / quote 12 / inline-role 21 / role-render 19 / if 15 / em-dot 6 / TOC 7 / blank-line 1 / nested-mark 4 / version-check 9)
+- `npm run typecheck` / `lint` / `check:docs`: clean(orphan 0 / deadlink 0)
+- `npm run test:smoke`: 167+ pass(reform-2026-05 系 4 spec 新規)
+- visual parity test screenshot 証憑:`test-results/blank-hr-visual/` + `test-results/reform-phase1-hotfix/` 等
+
+### 互換性 / 移行
+
+- **non-breaking**:既存 entry / container / API いずれも変更なし、schema / version 不変
+- 既存 `data-pkc-align="left"` / `"right"` CSS rule は formal 経路用に維持(physical alignment 強制を Phase 2 で formal `:::paragraph{align=left}` で復活させる準備)
+- Phase 1 で追加した contract attribute(`data-pkc-quote-*` / `data-pkc-blank-capped` / `data-pkc-source-line` 等)は spec doc 記載済、breaking 無し
+- AI hallucination(`:lead:` `:::section` 等)は parser fall-through で literal 残置、AI prompt に v2 spec §1.6 deny list を含めれば回避可能
+
+---
+
 ## Flags Protocol v1
 
 `docs/spec/flags-protocol-v1-minimum-scope.md` を canonical spec に、6 PR(#228 OQ → #234 parity)で着地。
-
-### 起動 / 永続層
 
 - **Container 永続**:`__flags__` reserved lid、archetype `system-flags`、body JSON `{ format, version: 1, values: Record<string, primitive> }`(`__settings__` / `__about__` と同 system-entry pattern を完全流用)
 - **3 layer resolution**(高優先 → 低優先):

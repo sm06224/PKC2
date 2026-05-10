@@ -48,6 +48,29 @@ describe('L-2: Inline 修飾(highlight / ruby / em-dot)', () => {
       const html = renderMarkdown('==open without close');
       expect(html).not.toMatch(/<mark/);
     });
+
+    it('reform-2026-05 hotfix:==**bold**== nested で `<mark><strong>` に展開', () => {
+      const html = renderMarkdown('==**bold**==');
+      expect(html).toMatch(/<mark><strong>bold<\/strong><\/mark>/);
+    });
+
+    it('reform-2026-05 hotfix:==[red]**bold**== は color + bold 共存', () => {
+      const html = renderMarkdown('==[red]**126,853**==');
+      expect(html).toMatch(/<mark style="background-color: red;"><strong>126,853<\/strong><\/mark>/);
+    });
+
+    it('reform-2026-05 hotfix:==**bold** *italic* `code`== 複数 inline 共存', () => {
+      const html = renderMarkdown('==**bold** *italic* `code`==');
+      expect(html).toContain('<strong>bold</strong>');
+      expect(html).toContain('<em>italic</em>');
+      expect(html).toContain('<code>code</code>');
+      expect(html).toContain('<mark>');
+    });
+
+    it('reform-2026-05 hotfix:plain content は引き続き plain text(regression)', () => {
+      const html = renderMarkdown('==普通の hl==');
+      expect(html).toMatch(/<mark>普通の hl<\/mark>/);
+    });
   });
 
   describe('[[ruby:base|reading]]', () => {
@@ -77,6 +100,42 @@ describe('L-2: Inline 修飾(highlight / ruby / em-dot)', () => {
       const html = renderMarkdown('これが [[em:本質]] です');
       expect(html).toContain('class="pkc-em-dot"');
       expect(html).toContain('本質');
+    });
+  });
+
+  describe('reform-2026-05 hotfix:`^^text^^` em-dot 新形(deprecated [[em:..]] の後継)', () => {
+    it('シンプルな ^^...^^', () => {
+      const html = renderMarkdown('^^重要^^');
+      expect(html).toMatch(/<em class="pkc-em-dot">重要<\/em>/);
+    });
+
+    it('文中で ^^', () => {
+      const html = renderMarkdown('これが ^^本質^^ です');
+      expect(html).toContain('class="pkc-em-dot"');
+      expect(html).toContain('本質');
+    });
+
+    it('^^^^(空 content)は em-dot 化しない', () => {
+      const html = renderMarkdown('^^^^');
+      expect(html).not.toContain('pkc-em-dot');
+    });
+
+    it('`^^^ caption`(figure caption marker)とは衝突しない', () => {
+      const html = renderMarkdown('^^^ caption');
+      expect(html).not.toContain('pkc-em-dot');
+    });
+
+    it('^^.. と [[em:..]] が共存', () => {
+      const html = renderMarkdown('^^新形^^ と [[em:旧形]] 共存');
+      const matches = html.match(/<em class="pkc-em-dot">/g);
+      expect(matches?.length ?? 0).toBe(2);
+      expect(html).toContain('新形');
+      expect(html).toContain('旧形');
+    });
+
+    it('改行を跨ぐ ^^ は em-dot 化しない(inline 制約)', () => {
+      const html = renderMarkdown('^^改行\n含む^^');
+      expect(html).not.toContain('pkc-em-dot');
     });
   });
 

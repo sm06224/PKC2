@@ -1925,6 +1925,34 @@
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="18"] { height: calc(var(--pkc-blank-line-h) * 18); }
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="19"] { height: calc(var(--pkc-blank-line-h) * 19); }
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="20"] { height: calc(var(--pkc-blank-line-h) * 20); }
+/* reform-2026-05 hotfix:cap を 20→50 に raise(AI 生成文書 / 印刷組版での page 余白用途) */
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="21"] { height: calc(var(--pkc-blank-line-h) * 21); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="22"] { height: calc(var(--pkc-blank-line-h) * 22); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="23"] { height: calc(var(--pkc-blank-line-h) * 23); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="24"] { height: calc(var(--pkc-blank-line-h) * 24); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="25"] { height: calc(var(--pkc-blank-line-h) * 25); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="26"] { height: calc(var(--pkc-blank-line-h) * 26); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="27"] { height: calc(var(--pkc-blank-line-h) * 27); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="28"] { height: calc(var(--pkc-blank-line-h) * 28); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="29"] { height: calc(var(--pkc-blank-line-h) * 29); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="30"] { height: calc(var(--pkc-blank-line-h) * 30); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="35"] { height: calc(var(--pkc-blank-line-h) * 35); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="40"] { height: calc(var(--pkc-blank-line-h) * 40); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="45"] { height: calc(var(--pkc-blank-line-h) * 45); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="50"] { height: calc(var(--pkc-blank-line-h) * 50); }
+/* cap 超過時 visible 警告:user に「上限に達した」を伝える(silent fail 防止) */
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-capped]::before {
+  content: '⚠ _' attr(data-pkc-blank-capped) ' (上限 cap)';
+  display: block;
+  font-size: 0.75em;
+  color: var(--c-fg-muted, #8b6f47);
+  background: rgba(255, 200, 0, 0.08);
+  padding: 0.15em 0.5em;
+  border-left: 2px solid rgba(180, 130, 0, 0.4);
+  margin-bottom: 0.3em;
+  font-family: monospace;
+  letter-spacing: 0.02em;
+}
 
 /* ── Markdown rendered body ── */
 .pkc-md-rendered {

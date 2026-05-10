@@ -459,15 +459,29 @@ md.inline.ruler.after('emphasis', 'pkc_highlight', function highlightRule(state,
   if (!content || /^\s|\s$/.test(content)) return false;  // leading/trailing space NG
   // Optional [color] prefix
   let color: string | null = null;
+  let prefixLen = 0;
   const colorMatch = HIGHLIGHT_COLOR_RE.exec(content);
   if (colorMatch) {
     color = colorMatch[1]!;
-    content = colorMatch[2]!;
+    const matchedAll = colorMatch[0]!;
+    const matchedRest = colorMatch[2]!;
+    prefixLen = matchedAll.length - matchedRest.length;
+    content = matchedRest;
   }
   const tokenOpen = state.push('mark_open', 'mark', 1);
   if (color) tokenOpen.attrSet('style', `background-color: ${color};`);
-  const tokenText = state.push('text', '', 0);
-  tokenText.content = content;
+  // reform-2026-05 hotfix(2026-05-10、user 報告):content を **nested inline
+  // parse** で tokenize し、`==[red]**126,853**==` の中で `**bold**` 等 commonmark
+  // markup を効かせる。Phase 1 plain-text 制約を highlight だけ先行解除。
+  // 仕組み:state.pos / posMax を一時的に content 範囲に切り替えて
+  // state.md.inline.tokenize で再帰的に inline rule 全部を走らせる。
+  const oldPos = state.pos;
+  const oldPosMax = state.posMax;
+  state.pos = start + 2 + prefixLen;
+  state.posMax = closeIdx;
+  state.md.inline.tokenize(state);
+  state.pos = oldPos;
+  state.posMax = oldPosMax;
   state.push('mark_close', 'mark', -1);
   state.pos = closeIdx + 2;
   return true;
@@ -508,6 +522,32 @@ md.inline.ruler.after('emphasis', 'pkc_em_dot', function emDotRule(state, silent
   if (closeIdx < 0) return false;
   const content = src.slice(start + 5, closeIdx);
   if (!content || content.includes('\n')) return false;
+  const tokenOpen = state.push('em_dot_open', 'em', 1);
+  tokenOpen.attrSet('class', 'pkc-em-dot');
+  const tokenText = state.push('text', '', 0);
+  tokenText.content = content;
+  state.push('em_dot_close', 'em', -1);
+  state.pos = closeIdx + 2;
+  return true;
+});
+
+// reform-2026-05 hotfix(2026-05-09):em-dot の **新形** `^^text^^`。
+// v2 AI spec で promise した形(simple 記法、`[[em:..]]` の短縮 deprecated 後継)。
+// `^^` 連続を delimiter として、内部に改行 / `^` を含まないこと。
+// 空 content は reject(literal `^^^^` を圏点扱いしない)。
+md.inline.ruler.after('pkc_em_dot', 'pkc_em_dot_caret', function emDotCaretRule(state, silent) {
+  if (silent) return false;
+  const src = state.src;
+  const start = state.pos;
+  if (src.charCodeAt(start) !== 0x5e /* ^ */) return false;
+  if (src.charCodeAt(start + 1) !== 0x5e /* ^ */) return false;
+  // 直後が ^(`^^^` 形)なら figure caption marker と曖昧、reject
+  if (src.charCodeAt(start + 2) === 0x5e /* ^ */) return false;
+  const closeIdx = src.indexOf('^^', start + 2);
+  if (closeIdx < 0) return false;
+  const content = src.slice(start + 2, closeIdx);
+  if (!content || content.includes('\n')) return false;
+  // content 内に `^^` が複数あれば最初の close で取る(non-greedy)
   const tokenOpen = state.push('em_dot_open', 'em', 1);
   tokenOpen.attrSet('class', 'pkc-em-dot');
   const tokenText = state.push('text', '', 0);
@@ -1191,15 +1231,29 @@ function processFigureBlocks(source: string, lineMapIn: number[]): {
       i++;
       continue;
     }
-    const m = /^:::(figure|table|equation)\{#([\w-]+)\}\s*$/.exec(line);
-    if (!m) {
+    // reform-2026-05 hotfix(2026-05-10):`:::figure{#id}` Pandoc hash 形 +
+    // `:::figure{id="..."}` Pandoc kv quoted 形の **両形** を受理する。後者は
+    // ChatGPT 等 AI が頻繁に生成するため、parseBlockDirectiveOpen 経由で統合。
+    // table / equation も同様。
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || (open.name !== 'figure' && open.name !== 'table' && open.name !== 'equation')) {
       out.push(line);
       lineMapOut.push(inputIdx);
       i++;
       continue;
     }
-    const kind = m[1] as FigKind;
-    const id = m[2]!;
+    const kind = open.name as FigKind;
+    // id は Pandoc `#id` 形(open.attrs.id)or `id=...` kv 形(open.attrs.kvs.id)から取る
+    const idFromHash = open.attrs.id;
+    const idFromKv = typeof open.attrs.kvs.id === 'string' ? open.attrs.kvs.id : undefined;
+    const id = idFromHash ?? idFromKv;
+    if (!id || !/^[\w-]+$/.test(id)) {
+      // id 不正は figure として扱わない、literal として残す
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
     counter[kind]++;
     const num = counter[kind];
     const content: string[] = [];
@@ -1663,8 +1717,16 @@ function preprocessAlignPrefix(source: string, lineMapIn: number[]): {
       continue;
     }
     if (currentAlign) {
-      const outIdx = out.length;
-      alignMap.set(outIdx, currentAlign);
+      // 2026-05-09 user バグレポ:`|>` prefix 行の直後に **prefix なし通常行** が
+      // 来た場合、user 期待は「prefix 行 = 単独段落、次行 = default 段落」。
+      // 直前 prefix 行と段落 merge されないよう blank 行を挿入して paragraph を
+      // 分離し、currentAlign を reset。これで `|> A\nB\n|> C` が 3 paragraph
+      // (A=end / B=default / C=end)に正しく分離される。
+      // commonmark 的には A\nB\n は 1 段落だが、PKC2 は `breaks: true`(`\n`→`<br>`)
+      // 設定下で「prefix は line scope」を user contract として採用する。
+      out.push('');
+      lineMapOut.push(inputIdx);
+      currentAlign = null;
     }
     out.push(line);
     lineMapOut.push(inputIdx);
@@ -1795,13 +1857,17 @@ function postProcessSectionBreaks(html: string): string {
 //
 // 実装:processSectionBreaks と同じ pre-process / post-process pattern。
 //
-// N の上限:1〜20 で clip。誤入力で 9999 行余白等を作る事故を防ぐ。
+// N の上限:1〜50 で clip(reform-2026-05 hotfix で 20→50 に raise、AI 生成
+// 文書での実用例 / 印刷組版での page break 用途を考慮)。誤入力で 9999 行
+// 余白等を作る事故を防ぐ。**clip された場合は visible warning を出す**
+// (silent fail を避ける:`_100` 入力 → 50 行 + `data-pkc-blank-capped="100→50"`
+// + title 属性で user に通知)。
 //
 // インデント付き `   _` はマーカーとして扱わない(段落継続 / コード扱い)。
 
 const BLANK_OPEN = '\u{E130}';
 const BLANK_SEP = '\u{E131}';
-const BLANK_LINE_MAX = 20;
+const BLANK_LINE_MAX = 50;
 
 function processBlankLineMarkers(source: string, lineMapIn: number[]): {
   transformed: string;
@@ -1831,9 +1897,11 @@ function processBlankLineMarkers(source: string, lineMapIn: number[]): {
       continue;
     }
     let count = 1;
+    let requested = 1;
     if (m[1]) {
       const parsed = Number.parseInt(m[1], 10);
       if (Number.isFinite(parsed) && parsed >= 1) {
+        requested = parsed;
         count = Math.min(parsed, BLANK_LINE_MAX);
       } else {
         out.push(line);
@@ -1849,7 +1917,9 @@ function processBlankLineMarkers(source: string, lineMapIn: number[]): {
       out.push('');
       lineMapOut.push(inputIdx);
     }
-    out.push(`${BLANK_OPEN}${count}${BLANK_SEP}`);
+    // sentinel 形式:`<OPEN>count<SEP>requested<SEP>` で、cap 適用前後の値を埋め込む。
+    // post-process で `data-pkc-blank-count` + cap 超過時 `data-pkc-blank-capped` 出力。
+    out.push(`${BLANK_OPEN}${count}${BLANK_SEP}${requested}${BLANK_SEP}`);
     lineMapOut.push(inputIdx);
     out.push('');
     lineMapOut.push(inputIdx);
@@ -1859,9 +1929,17 @@ function processBlankLineMarkers(source: string, lineMapIn: number[]): {
 
 function postProcessBlankLineMarkers(html: string): string {
   // attrs を保存して div に転記(Split View block ↔ source line lookup 維持)。
+  // sentinel 形式 `<OPEN>count<SEP>requested<SEP>` を parse、cap 超過時は
+  // `data-pkc-blank-capped="requested→count"` + title attr で visible 警告。
   return html.replace(
-    new RegExp(`<p([^>]*)>${BLANK_OPEN}(\\d+)${BLANK_SEP}</p>`, 'g'),
-    (_match, attrs, count) => `<div class="pkc-blank-line" data-pkc-blank-count="${count}" aria-hidden="true"${attrs}></div>`,
+    new RegExp(`<p([^>]*)>${BLANK_OPEN}(\\d+)${BLANK_SEP}(\\d+)${BLANK_SEP}</p>`, 'g'),
+    (_match, attrs, count, requested) => {
+      const capped = parseInt(requested, 10) > parseInt(count, 10);
+      const cappedAttr = capped
+        ? ` data-pkc-blank-capped="${requested}→${count}" title="_${requested} 指定は上限 ${count} 行に cap されました(N≦${count} で再指定可能)"`
+        : '';
+      return `<div class="pkc-blank-line" data-pkc-blank-count="${count}" aria-hidden="true"${cappedAttr}${attrs}></div>`;
+    },
   );
 }
 
@@ -1970,7 +2048,7 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^(?:\|\||\|>|<\||\|<|>\|)/m.test(text)) return true; // L-5 align prefix(reform-2026-05 PR-C で 4 形受理)
   if (/^\+\+\+\s*(?:\{[^}]*\})?\s*$/m.test(text)) return true; // L-1 section break
   if (/==[^=]+==|\[\[(?:ruby|em):/.test(text)) return true;     // L-2 highlight / ruby / em-dot
-  if (/^:::figure(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure block
+  if (/^:::(?:figure|table|equation)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure / table / equation block(reform-2026-05 で kv quoted 形も受理)
   if (/^:::(?:quote|if)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // reform-2026-05 PR-D/F :::quote / :::if
   if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
   if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
