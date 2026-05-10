@@ -9334,6 +9334,21 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
     metaRows.push(['Active flags', summary]);
   }
 
+  // iOS Safari hard reload(2026-05-10、user 報告対応):Add to Home Screen
+  // mode のキャッシュを bypass する「最新版を取得」ボタン。`?_r=<timestamp>`
+  // 付きで location.replace するだけのシンプルな実装。
+  {
+    const reload = createElement('button', 'pkc-about-force-reload pkc-btn-link');
+    reload.setAttribute('type', 'button');
+    reload.setAttribute('data-pkc-action', 'force-reload');
+    reload.setAttribute(
+      'title',
+      'iOS Safari Home Screen mode 等のキャッシュを bypass して最新ファイルを取得',
+    );
+    reload.textContent = '最新版を取得(キャッシュ bypass)';
+    metaRows.push(['Hard reload', reload]);
+  }
+
   for (const [label, value] of metaRows) {
     const dt = document.createElement('dt');
     dt.textContent = label;

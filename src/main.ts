@@ -18,6 +18,7 @@ import {
   restoreRenderContinuity,
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
+import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
 import { isSnapshot } from './features/snapshot/types';
 import {
@@ -349,6 +350,13 @@ async function boot(): Promise<void> {
   // log row inputs, …). 2026-05-05 user direction:「caret 位置の
   // 視覚効果は PKC 全体で入力中部分で適用してください」.
   installCaretIndicator();
+
+  // 3a-bis. iOS Safari hard reload(2026-05-10、user 報告対応):
+  // Add to Home Screen mode で Safari がアグレッシブにキャッシュするため、
+  // 起動時に 1 回 HEAD リクエストで Last-Modified を取得 → 前回値と異なれば
+  // toast 通知 → タップで `?_r=<timestamp>` 付きで location.replace。
+  // file:// / offline / fetch 失敗は silent skip(critical path に乗せない)。
+  void checkForUpdate();
 
   // 3b. Debug-via-URL-flag report button has moved into the renderer
   // header (next to the ⚙ shell menu) as of stage β follow-up
