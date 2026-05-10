@@ -2123,6 +2123,39 @@ function stripComments(source: string): string {
 const SECTION_OPEN = '\u{E120}';
 const SECTION_SEP = '\u{E121}';
 
+/**
+ * reform-2026-05 Phase 2 PR-2H:`:::break{kind=page|rule role=…}` formal block。
+ *
+ * `+++` / `---` simple の formal 等価。AI / serializer が IR-driven で emit する
+ * formal 形を spec 完全網羅。
+ *
+ *   :::break                       → +++(default kind=page)
+ *   :::break{kind=page}            → +++
+ *   :::break{kind=page role=cover} → +++ {role=cover}
+ *   :::break{kind=rule}            → ---(commonmark hr)
+ *
+ * fenced code 内 marker は無視(下流の processSectionBreaks と同期)。
+ * `:::break{...}` 行を simple 形に変換し、処理は既存 `+++` / `---` パイプに委譲。
+ */
+function processBreakDirective(source: string): string {
+  let fence: FenceState = { inFence: false, marker: '' };
+  return source.split('\n').map((line) => {
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) return line;
+    const m = /^[ \t]*:::break(?:\{([^}]*)\})?[ \t]*$/.exec(line);
+    if (!m) return line;
+    const attrs = m[1] ?? '';
+    const km = /kind\s*=\s*"?(\w+)"?/.exec(attrs);
+    const kind = km?.[1] ?? 'page';
+    const rm = /role\s*=\s*"?(\w[\w-]*)"?/.exec(attrs);
+    const role = rm?.[1];
+    if (kind === 'rule') return '---';
+    // page (default) → `+++` simple へ変換、processSectionBreaks に委譲
+    return role ? `+++ {role=${role}}` : '+++';
+  }).join('\n');
+}
+
 function processSectionBreaks(source: string): string {
   // fenced code block 内では `+++` を marker と認識しない(2026-05-08 hotfix)。
   let fence: FenceState = { inFence: false, marker: '' };
@@ -2278,6 +2311,9 @@ export function renderMarkdown(
   // として扱う。multi-line block comment 使用時に行ズレ可能性あり、TODO)
   text = stripComments(text);
   // L-1:section break を sentinel 化(1:1 line 変換、lineMap 不変)
+  // reform-2026-05 Phase 2 PR-2H:`:::break{kind=…}` formal を `+++` / `---`
+  // simple に変換、processSectionBreaks に委譲。
+  text = processBreakDirective(text);
   text = processSectionBreaks(text);
   // M-7:variables `{{vars.x}}` を pre-process で text 置換(fence 外、
   // 2026-05-08 hotfix で inline rule から切替、L-2/L-6 等の content 内も
