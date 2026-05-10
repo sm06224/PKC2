@@ -29,6 +29,11 @@ import { highlightCode, isHighlightable } from './code-highlight';
 import { renderCsvFence } from './csv-table';
 import { parsePortablePkcReference } from '../link/permalink';
 import {
+  parseBlockDirectiveOpen,
+  isBlockDirectiveClose,
+  type BlockDirectiveAttrs as _BlockDirectiveAttrs,
+} from './block-directive-attrs';
+import {
   isCardPresentationLabel,
   parseCardPresentation,
 } from '../link/card-presentation';
@@ -1169,6 +1174,130 @@ function processFigureRefs(source: string, registry: Map<string, FigEntry>): str
   });
 }
 
+// ── reform-2026-05 PR-D:`:::quote{author=…}` block directive ──
+//
+// Pandoc-style attribute syntax で複数 embed を 1 つの引用 block に纏める形。
+// 学術 / 法律 / 報道で「同じ著者の複数文献を共通 attribution でまとめて引用」
+// 用途を想定。設計詳細は
+// `docs/development/notation-redesign-2026-05/03-link-embed-card.md` §3.5.2。
+//
+// 実装:figure と同じ sentinel pattern。U+E150 / U+E151 を sentinel に使用、
+// markdown-it `html: false` を回避。registry に attrs を保存、post-process で
+// `<blockquote class="pkc-quote-citation" data-pkc-quote-*="...">` に展開。
+
+const QUOTE_SENTINEL_OPEN = '\u{E150}';
+const QUOTE_SENTINEL_SEP = '\u{E151}';
+
+interface QuoteEntry {
+  attrs: _BlockDirectiveAttrs;
+}
+
+function processQuoteBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<number, QuoteEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<number, QuoteEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let counter = 0;
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || open.name !== 'quote') {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    counter++;
+    const id = counter;
+    registry.set(id, { attrs: open.attrs });
+    const openInputIdx = inputIdx;
+    i++;
+    out.push(`${QUOTE_SENTINEL_OPEN}${id}${QUOTE_SENTINEL_SEP}OPEN${QUOTE_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      out.push(lines[i]!);
+      lineMapOut.push(lineMapIn[i] ?? i);
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++;  // skip closing :::
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${QUOTE_SENTINEL_OPEN}${id}${QUOTE_SENTINEL_SEP}CLOSE${QUOTE_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+/** HTML attribute value に安全に埋め込む(`"` `<` `>` `&` を escape)。 */
+function escapeAttrForHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function postProcessQuoteSentinels(
+  html: string,
+  registry: Map<number, QuoteEntry>,
+): string {
+  // OPEN sentinel → <blockquote class="pkc-quote-citation" data-pkc-quote-*="...">
+  html = html.replace(
+    new RegExp(
+      `<p([^>]*)>${QUOTE_SENTINEL_OPEN}(\\d+)${QUOTE_SENTINEL_SEP}OPEN${QUOTE_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, pAttrs: string, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      const attrs = entry.attrs;
+      const dataAttrs: string[] = [];
+      // kvs を data-pkc-quote-<key>="<value>" に展開
+      for (const [k, v] of Object.entries(attrs.kvs)) {
+        if (!/^[A-Za-z_][\w-]*$/.test(k)) continue;
+        if (typeof v === 'boolean') {
+          if (v) dataAttrs.push(`data-pkc-quote-${k}="true"`);
+        } else if (typeof v === 'string') {
+          dataAttrs.push(`data-pkc-quote-${k}="${escapeAttrForHtml(v)}"`);
+        }
+      }
+      // class 追加
+      const classes = ['pkc-quote-citation', ...attrs.classes].join(' ');
+      const idAttr = attrs.id ? ` id="${escapeAttrForHtml(attrs.id)}"` : '';
+      const dataStr = dataAttrs.length > 0 ? ' ' + dataAttrs.join(' ') : '';
+      return `<blockquote${idAttr} class="${classes}"${dataStr}${pAttrs}>`;
+    },
+  );
+  // CLOSE sentinel → </blockquote>
+  html = html.replace(
+    new RegExp(
+      `<p[^>]*>${QUOTE_SENTINEL_OPEN}\\d+${QUOTE_SENTINEL_SEP}CLOSE${QUOTE_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    '</blockquote>',
+  );
+  return html;
+}
+
 function postProcessFigureSentinels(html: string): string {
   // <p>OPENkindidnum</p>
   // 各 sentinel 行は <p attrs> を持ちうる(sourceLineAnchors path)。attrs を
@@ -1580,6 +1709,11 @@ export function renderMarkdown(
   text = figResult.transformed;
   lineMap = figResult.lineMap;
   text = processFigureRefs(text, figResult.registry);
+  // reform-2026-05 PR-D:`:::quote{author=...}` block directive(sentinel 化、
+  // 挿入あり、lineMap 更新)。複数 embed を 1 引用 block + 共通 attribution に纏める。
+  const quoteResult = processQuoteBlocks(text, lineMap);
+  text = quoteResult.transformed;
+  lineMap = quoteResult.lineMap;
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
@@ -1608,6 +1742,8 @@ export function renderMarkdown(
   }
   // L-7:figure/table/equation sentinel → <figure>
   html = postProcessFigureSentinels(html);
+  // reform-2026-05 PR-D:`:::quote{author=...}` sentinel → <blockquote class="pkc-quote-citation">
+  html = postProcessQuoteSentinels(html, quoteResult.registry);
   // L-1:section break sentinel → <hr>
   html = postProcessSectionBreaks(html);
   // L-8:blank-line sentinel → <div class="pkc-blank-line">
