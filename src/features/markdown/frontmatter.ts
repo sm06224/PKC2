@@ -1,5 +1,5 @@
 /**
- * YAML mini frontmatter parser (領域 10-6 ζ'' Phase 2a).
+ * YAML mini frontmatter parser (領域 10-6 ζ'' Phase 2a + reform-2026-05 Phase 1 PR-B 拡張).
  *
  * Pure TypeScript, dep-zero. Supports the subset that book / youtube /
  * album / paper / film entries actually need:
@@ -16,8 +16,18 @@
  *   - Complex multiline scalars (`|`, `>`)
  *   - Type tags (`!!str`)
  *
+ * reform-2026-05 Phase 1 PR-B 追加:
+ *   - **size cap**:`features/notation/caps.ts` の `resolveCap('frontmatter', 'bytes')`
+ *     を使って input size 上限 enforcement(default 16 KB、HARD ceiling 1 MB)。
+ *     超過時は warnings に push、parse 中止して body だけ返す。
+ *   - **warnings field**:silent fail を避けるため、cap overflow 等を
+ *     `result.warnings` に貯める(spec §07.3 silent fail 禁止)。
+ *
  * Spec: docs/development/filer-view-and-folder-display-profile-audit-2026-05.md §2.4
+ *       docs/development/notation-redesign-2026-05/02-frontmatter-and-globals.md §2.5
  */
+
+import { resolveCap } from '../notation/caps';
 
 export type FrontmatterValue =
   | string
@@ -25,6 +35,13 @@ export type FrontmatterValue =
   | boolean
   | null
   | Array<string | number | boolean | null>;
+
+export interface FrontmatterWarning {
+  /** 警告の分類。CSS / display 振り分け用、reform spec §07.3 と整合。 */
+  kind: 'size_limit' | 'malformed' | 'forbidden_key' | 'duplicate_key';
+  /** Human-readable Japanese reason、可視 warning に流す。 */
+  detail: string;
+}
 
 export interface FrontmatterResult {
   /** Parsed key/value pairs. Empty object when no frontmatter detected. */
@@ -36,10 +53,30 @@ export interface FrontmatterResult {
    * was also found. `false` keeps `body` identical to the input.
    */
   found: boolean;
+  /**
+   * Soft warnings emitted during parse(reform-2026-05 PR-B 追加)。
+   * cap 超過 / forbidden key / 重複 key 等。空配列 = clean parse。
+   * caller は inspector / preview 先頭で `<div class="pkc-frontmatter-warning">`
+   * として表示する想定(spec §07.3、silent fail 禁止)。
+   */
+  warnings: FrontmatterWarning[];
 }
 
 const OPEN_FENCE = /^---\s*\r?\n/;
 const CLOSE_FENCE_LINE = /^---\s*$/;
+
+/** UTF-8 byte length。cap enforcement の size 計測に使う。 */
+function byteLength(s: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(s).length;
+  }
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    n += c < 0x80 ? 1 : c < 0x800 ? 2 : 3;
+  }
+  return n;
+}
 
 /**
  * Split a body into its frontmatter block and the markdown remainder.
@@ -47,8 +84,10 @@ const CLOSE_FENCE_LINE = /^---\s*$/;
  * and body is the original input.
  */
 export function parseFrontmatter(body: string): FrontmatterResult {
+  const warnings: FrontmatterWarning[] = [];
+  const emptyMeta: Record<string, FrontmatterValue> = {};
   if (!body || !OPEN_FENCE.test(body)) {
-    return { meta: {}, body, found: false };
+    return { meta: emptyMeta, body, found: false, warnings };
   }
   // Strip the opening `---\n`.
   const afterOpen = body.replace(OPEN_FENCE, '');
@@ -61,13 +100,38 @@ export function parseFrontmatter(body: string): FrontmatterResult {
     }
   }
   if (closeIdx === -1) {
-    return { meta: {}, body, found: false };
+    return { meta: emptyMeta, body, found: false, warnings };
   }
 
   const yamlLines = lines.slice(0, closeIdx);
+
+  // reform-2026-05 PR-B:size cap 適用(SOFT_DEFAULTS 16 KB、HARD 1 MB)。
+  // 超過時は parse 中止 + 可視 warning(spec §07.3 silent fail 禁止)。
+  const fmText = yamlLines.join('\n');
+  const fmBytes = byteLength(fmText);
+  const sizeCap = resolveCap('frontmatter', 'bytes');
+  if (fmBytes > sizeCap) {
+    warnings.push({
+      kind: 'size_limit',
+      detail: `frontmatter サイズが ${sizeCap} bytes を超過(${fmBytes} bytes)、parse 中止`,
+    });
+    const remainder = lines.slice(closeIdx + 1).join('\n');
+    return {
+      meta: emptyMeta,
+      body: remainder.startsWith('\n') ? remainder.slice(1) : remainder,
+      found: true,
+      warnings,
+    };
+  }
+
   const meta = parseFlatYaml(yamlLines);
   const remainder = lines.slice(closeIdx + 1).join('\n');
-  return { meta, body: remainder.startsWith('\n') ? remainder.slice(1) : remainder, found: true };
+  return {
+    meta,
+    body: remainder.startsWith('\n') ? remainder.slice(1) : remainder,
+    found: true,
+    warnings,
+  };
 }
 
 function parseFlatYaml(lines: readonly string[]): Record<string, FrontmatterValue> {

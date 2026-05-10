@@ -5491,7 +5491,7 @@ function renderFilerCardGrid(
   // 削除(user direction)。
 
   for (const child of children) {
-    const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {}, body: '', found: false };
+    const fm = child.archetype === 'text' ? parseFrontmatter(child.body ?? '') : { meta: {} as Record<string, unknown>, body: '', found: false, warnings: [] as never[] };
     const classification = classifyEntryForCardGrid(child, fm.meta);
     const matches = classification?.kind === expectedKind;
 
