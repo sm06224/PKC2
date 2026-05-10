@@ -1327,8 +1327,17 @@ function processFigureBlocks(source: string, lineMapIn: number[]): {
     while (i < lines.length && lines[i]!.trim() !== ':::') {
       const innerInputIdx = lineMapIn[i] ?? i;
       const cm = /^\^\^\^\s*(.*)$/.exec(lines[i]!);
+      // reform-2026-05 Phase 2 PR-2C(2026-05-10):`:caption:[…]` formal marker
+      // も `^^^` 等価で受理。AI / serializer が IR-driven で emit する形。
+      // 行頭 `:caption:[content]` or `:caption:[content]{attrs}` の content を
+      // 抽出して caption として扱う。多行 content / attrs は今のところ無視
+      // (caption は単行の inline text として扱う既存 contract)。
+      const cm2 = /^:caption:\[([^\]\n]*)\](?:\{[^}]*\})?\s*$/.exec(lines[i]!);
       if (cm) {
         caption = cm[1]!;
+        captionInputIdx = innerInputIdx;
+      } else if (cm2) {
+        caption = cm2[1]!;
         captionInputIdx = innerInputIdx;
       } else {
         content.push(lines[i]!);

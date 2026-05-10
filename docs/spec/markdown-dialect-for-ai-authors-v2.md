@@ -76,7 +76,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 | ~~`:emphasis:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `*text*` 等価 |
 | ~~`:code:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `` `text` `` 等価 |
 | ~~`:strike:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `~~text~~` 等価 |
-| `:caption:[text]` | ❌ 未実装 | `:::figure{#id}\n...\n^^^ caption\n:::` 内で `^^^` marker |
+| ~~`:caption:[text]`~~ | ✅ **実装済(Phase 2 PR-2C、2026-05-10)** | `:::figure` block 内で行頭 `:caption:[…]` が `^^^ caption` 等価 |
 | `:quote:{attribution="…"}`(inline self-closing)| ❌ 未実装 | block `:::quote{author="…"} content :::`(R-D)を使う |
 | `:align:{position=end}` | ❌ 未実装 | 行頭 prefix `\|>`(R-C)を使う |
 | `:spacing:{size=2}` | ❌ 未実装 | `_2`(L-8 blank-line marker、`_<N>` で N 空行) |
@@ -94,7 +94,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 - `:::aside{type=note|warning|tip}`(callout、Pandoc 互換)
 - ~~`:strong:` / `:emphasis:` / `:code:` / `:strike:`~~ ✅ **実装済(Phase 2 PR-2B)**:simple 形と完全等価、AI / serializer の formal emit 用
 - `:autoref:{id=...}`(`[@id]` の formal 形)
-- `:caption:[...]`(figure caption の formal 形)
+- ~~`:caption:[...]`~~ ✅ **実装済(Phase 2 PR-2C)**:`:::figure` 内で `^^^ caption` 等価
 - inline `:quote:{attribution=...}`(`<q cite="…">`)
 
 ### 1.3 行頭マーカー共通規則

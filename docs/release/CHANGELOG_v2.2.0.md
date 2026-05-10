@@ -62,6 +62,12 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2C `:caption:[…]` formal marker**(2026-05-10):`:::figure` / `:::table` /
+  `:::equation` block 内で行頭 `:caption:[caption text]` を `^^^ caption` 等価
+  marker として受理。AI / ChatGPT が IR-driven で emit する formal 形を spec
+  完全網羅。`:caption:[text]{attrs}` の attrs は今のところ ignore(将来 lang /
+  id 等で拡張余地)。8 unit cases pass、bundle 不変。
+
 - **PR-2B formal commonmark inline**(2026-05-10):`:strong:[text]` / `:emphasis:[text]` /
   `:code:[text]` / `:strike:[text]` を inline role parser に追加。simple 形(`**` / `*`
   / `` ` `` / `~~`)と完全 HTML 等価出力、AI / serializer が IR-driven で emit する
