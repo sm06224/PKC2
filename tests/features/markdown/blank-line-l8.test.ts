@@ -29,10 +29,18 @@ describe('L-8: 空行マーカー `_` / `_<N>`', () => {
     expect(html).toContain('data-pkc-blank-count="2"');
   });
 
-  it('上限 20 で clip(`_50` → count=20)', () => {
-    const html = renderMarkdown('_50');
-    expect(html).toContain('data-pkc-blank-count="20"');
-    expect(html).not.toContain('data-pkc-blank-count="50"');
+  it('reform-2026-05 hotfix:上限 50 で clip(`_50` → count=50、`_100` → count=50 + 警告)', () => {
+    // cap を 20 → 50 に raise(2026-05-09 user/Gemini バグレポ)
+    const html50 = renderMarkdown('_50');
+    expect(html50).toContain('data-pkc-blank-count="50"');
+    // _50 は cap 内なので警告なし
+    expect(html50).not.toContain('data-pkc-blank-capped');
+
+    // _100 は cap 超過、cap=50 + visible 警告
+    const html100 = renderMarkdown('_100');
+    expect(html100).toContain('data-pkc-blank-count="50"');
+    expect(html100).toContain('data-pkc-blank-capped="100→50"');
+    expect(html100).toContain('title="_100 指定は上限 50 行に cap されました');
   });
 
   it('`_0` はマーカー扱いされない(通常テキスト)', () => {
@@ -108,9 +116,10 @@ describe('L-8: 空行マーカー `_` / `_<N>`', () => {
       { input: '_', expectCount: '1', describe: 'default 1 行' },
       { input: '_1', expectCount: '1', describe: '明示 1' },
       { input: '_5', expectCount: '5', describe: '中間値 5' },
-      { input: '_20', expectCount: '20', describe: '上限ぴったり' },
-      { input: '_21', expectCount: '20', describe: '上限超え clip' },
-      { input: '_999', expectCount: '20', describe: '極大 clip' },
+      { input: '_20', expectCount: '20', describe: '中間値 20' },
+      { input: '_50', expectCount: '50', describe: '上限ぴったり(reform 後 cap=50)' },
+      { input: '_51', expectCount: '50', describe: '上限超え clip(reform 後 cap=50)' },
+      { input: '_999', expectCount: '50', describe: '極大 clip(reform 後 cap=50)' },
       { input: '_0', describe: 'ゼロ無効' },
       { input: '   _', expectCount: '1', describe: 'インデント許容(2026-05-08 統一方針)' },
       { input: '_word', describe: '混在無効' },

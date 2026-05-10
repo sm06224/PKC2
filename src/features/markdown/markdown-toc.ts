@@ -25,6 +25,7 @@
  */
 import type { Entry } from '../../core/model/record';
 import { buildTextlogDoc, type TextlogOrder } from '../textlog/textlog-doc';
+import { parseFrontmatter, extractVars } from './frontmatter';
 
 export type TocLevel = 1 | 2 | 3;
 
@@ -124,7 +125,25 @@ export function extractHeadingsFromMarkdown(markdown: string): TocHeading[] {
   if (!markdown) return [];
   const headings: TocHeading[] = [];
   const slugOf = makeSlugCounter();
-  const lines = markdown.split(/\r?\n/);
+  // 2026-05-09 hotfix(user バグレポ):TOC は **render と同じ前処理** を経たうえで
+  // heading を抽出する必要がある。具体的には:
+  //   1. frontmatter strip(YAML lines を heading として誤検出しない)
+  //   2. `{{vars.x}}` 展開(`# {{vars.site}} …` を resolved value で表示)
+  //   3. `:::if{format=X}` mismatch 時 content strip(html target で出ない見出しは TOC からも除く)
+  // markdown-render.ts は同等の preprocess を実行するが、循環 import を避けるため
+  // ここに最小実装を inline する(`processIfBlocks` の lineMap は不要、heading 抽出
+  // 用途では line index 不変)。
+  const fm = parseFrontmatter(markdown);
+  let body = fm.body;
+  const vars = extractVars(markdown);
+  if (vars) {
+    body = body.replace(/\{\{\s*vars\.([A-Za-z_][\w-]*)\s*\}\}/g, (_m, key: string) =>
+      Object.prototype.hasOwnProperty.call(vars, key) ? vars[key]! : `{{vars.${key}}}`,
+    );
+  }
+  body = stripMismatchedIfBlocks(body, 'html');
+
+  const lines = body.split(/\r?\n/);
   let inFence = false;
   for (const line of lines) {
     if (/^\s{0,3}(?:```|~~~)/.test(line)) {
@@ -140,6 +159,82 @@ export function extractHeadingsFromMarkdown(markdown: string): TocHeading[] {
     headings.push({ level: level as TocDepth, text, slug: slugOf(text) });
   }
   return headings;
+}
+
+/**
+ * `:::if{format=X}` で format が targetFormat と一致しない block の content を
+ * strip(空行で置換、line count は維持)。fenced code 内 marker は無視。nested
+ * directive は depth tracking で handle。markdown-render.ts processIfBlocks の
+ * 軽量版(TOC 抽出専用、lineMap 不要)。
+ */
+function stripMismatchedIfBlocks(source: string, targetFormat: string): string {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  let i = 0;
+  let inFence = false;
+  const fenceRe = /^\s{0,3}(?:```|~~~)/;
+  const ifOpenRe = /^:::if(?:\{([^}]*)\})?\s*$/;
+  const closeRe = /^\s*:::\s*$/;
+  const directiveOpenRe = /^:::([A-Za-z_][\w-]*)(?:\{[^}]*\})?\s*$/;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    if (fenceRe.test(line)) {
+      inFence = !inFence;
+      out.push(line);
+      i++;
+      continue;
+    }
+    if (inFence) {
+      out.push(line);
+      i++;
+      continue;
+    }
+    const m = ifOpenRe.exec(line);
+    if (!m) {
+      out.push(line);
+      i++;
+      continue;
+    }
+    const attrs = m[1] ?? '';
+    const fmtMatch = /\bformat\s*=\s*"?([\w-]+)"?/.exec(attrs);
+    const fmt = fmtMatch?.[1];
+    const match = fmt ? fmt === targetFormat : true;
+    i++;
+    let depth = 1;
+    let innerFence = false;
+    while (i < lines.length && depth > 0) {
+      const inner = lines[i]!;
+      if (fenceRe.test(inner)) {
+        innerFence = !innerFence;
+        if (match) out.push(inner);
+        else out.push('');
+        i++;
+        continue;
+      }
+      if (innerFence) {
+        if (match) out.push(inner);
+        else out.push('');
+        i++;
+        continue;
+      }
+      if (closeRe.test(inner)) {
+        depth--;
+        if (depth === 0) {
+          i++;
+          break;
+        }
+        if (match) out.push(inner);
+        else out.push('');
+        i++;
+        continue;
+      }
+      if (directiveOpenRe.test(inner)) depth++;
+      if (match) out.push(inner);
+      else out.push('');
+      i++;
+    }
+  }
+  return out.join('\n');
 }
 
 /**

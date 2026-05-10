@@ -41,11 +41,13 @@
 | L-6 | Simple inline | `:text:attrs:` | inline 装飾(色 / 太字 / size 等) |
 | L-7-a | Figure block | `:::figure{#id}\n...\n^^^ caption\n:::` | 図 + 自動採番 |
 | L-7-b | Figure ref | `[@id]` | 図 / 表 / 式の本文中参照 |
-| L-8 | Blank-line marker | 行頭 `_` または `_<N>`(N=1〜20) | 縦余白の明示 |
+| L-8 | Blank-line marker | 行頭 `_` または `_<N>`(N=1〜50、reform 後 cap raise)| 縦余白の明示。N>50 は cap される + 視認できる警告表示 |
 | L-9 | Paragraph indent | 行頭 `__`(半角×2)/ `＿`(全角)| 段落先頭 1 字下げ |
 | M-7 | Variables | frontmatter `vars.x` + 本文 `{{vars.x}}` | 文書内変数展開 |
 
-### 1.2 formal 形(reform-2026-05、機械 emit 用)
+### 1.2 formal 形(reform-2026-05 Phase 1 で実装済み allowlist)
+
+**重要**:formal vocabulary は **本表の 5 形のみ**。それ以外の `:::name{}` block / `:role:[]` inline は parser fall-through(literal text)、AI が hallucination で生成しがち(後述 §1.6)。
 
 | ID | 名称 | formal 構文 | 用途 |
 |----|-----|---------|------|
@@ -56,6 +58,39 @@
 | **R-F** | Conditional block | `:::if{format=html\|markdown\|docx} content :::` | format 別本文(format 不一致は完全 strip) |
 
 **設計原則**:reform 後は **simple 形を first**(人間が見たまま入力)、**formal 形は AI / 機械が emit する serializer**(round-trip 安全)。AI がテストデータを作る時は混在 OK。
+
+### 1.6 ⚠ AI が生成しがちだが **未実装 / 受理しない formal 構文**
+
+ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の知識から **PKC2 でサポートされていない formal 構文** を hallucination で生成することがある。本表は実機検証で **render されない** ことを確認済み。
+
+| AI が生成する形 | 状態 | 推奨 simple 形(workaround)|
+|----------------|-----|-------------------------|
+| `:::section{role=summary\|warning\|…}` | ❌ 未実装 | `## 見出し` + 通常 markdown(role 区別が必要なら `:::if` で wrap) |
+| `:::comment\n…\n:::` | ❌ 未実装 | `%%%\n…\n%%%`(L-4 block comment) |
+| `:lead:[text]` | ❌ 未実装 | 1 行 paragraph で先頭 + 適宜 `==hl==` などで装飾 |
+| `:strong:[text]` | ❌ 未実装 | `**text**`(commonmark) |
+| `:emphasis:[text]` | ❌ 未実装 | `*text*`(commonmark) |
+| `:code:[text]` | ❌ 未実装 | `` `text` ``(commonmark) |
+| `:caption:[text]` | ❌ 未実装 | `:::figure{#id}\n...\n^^^ caption\n:::` 内で `^^^` marker |
+| `:quote:{attribution="…"}`(inline self-closing)| ❌ 未実装 | block `:::quote{author="…"} content :::`(R-D)を使う |
+| `:align:{position=end}` | ❌ 未実装 | 行頭 prefix `\|>`(R-C)を使う |
+| `:spacing:{size=2}` | ❌ 未実装 | `_2`(L-8 blank-line marker、`_<N>` で N 空行) |
+| `:autoref:{id="fig1"}` | ❌ 未実装 | `[@fig1]`(L-7-b)を使う |
+| `:::toc` `:::frontmatter` `:::body` 等 | ❌ 未実装 | structural directive は markdown heading(`#` `##` `###`)で十分 |
+| `:strong:` `:emphasis:` 等 が parser fall-through すると?| `:strong:` は **literal text** として残る | parser は形式合致しない `:role:` を inline role として認識せず、L-6 simple-inline `:text:attrs:` パスへ fall-through する |
+
+**現時点で AI が **生成して安全** な formal 形は §1.2 の 5 形 + 既存 simple 形(§1.1)のみ**。それ以外は simple 形へ正規化する。
+
+### 1.7 future Phase 候補(spec / 実装どちらも未確定)
+
+以下は Phase 2 以降で議論される候補。AI は **生成しないこと**:
+
+- `:::section{role=...}`(semantic sectioning)
+- `:::aside{type=note|warning|tip}`(callout、Pandoc 互換)
+- `:strong:` / `:emphasis:` / `:code:` / `:strike:`(simple → formal serializer の 1:1 map、IR-driven 変換のみ用途)
+- `:autoref:{id=...}`(`[@id]` の formal 形)
+- `:caption:[...]`(figure caption の formal 形)
+- inline `:quote:{attribution=...}`(`<q cite="…">`)
 
 ### 1.3 行頭マーカー共通規則
 
@@ -174,7 +209,13 @@ block 隠しメモ
 - CSS: `text-align: center` / `text-align: end`(logical value、`writing-mode` / `direction` 切替で自動 flip)。
 - **reform 仕様**:`|>` 4 形(`|>` `<|` `|<` `>|`)は **全部 'end'** に正規化(typo 寛容、Postel's law)。
 - 物理 left / right を強制したい場合は formal `:::paragraph{align=left}` / `{align=right}`(後続 PR で実装予定)。
-- 各 prefix 行は **独立 `<p>` paragraph** に分離(連続行も 1 段落に merge しない)。
+- **line scope contract(2026-05-09 hotfix)**:各 prefix 行は **独立 `<p>` paragraph**。継続行(prefix なし)は **default 段落として分離**される(同 align は伝播しない)。複数行を同 align にしたい場合は **各行に prefix を付ける**:
+  ```
+  |> 1 行目 end
+  |> 2 行目 end(同 align、別 paragraph)
+  prefix なし行 → default 段落、独立
+  |> 4 行目 end
+  ```
 
 ### 2.8 L-6: Simple inline(`:text:attrs:`)
 
@@ -221,10 +262,17 @@ _
 段落 3
 _3
 段落 4(3 空行)
+
+_50
+最大 50 行(reform 後 cap raise、印刷組版 / page break 用途)
+
+_100
+↑ N>50 は cap=50 + 視認警告表示「⚠ _100 (上限 cap)」
 ```
 
-- 行頭 `_` / `_<N>`(N=1〜20)。
+- 行頭 `_` / `_<N>`(**N=1〜50**、reform-2026-05 で 20→50 に raise)
 - 連続テキストの間に意図した縦余白を持たせる。
+- N が 50 を超えた場合、cap=50 が適用され、blank line の上に **視認できる警告**(⚠ _N (上限 cap))が表示される(silent fail を avoid)。
 
 ### 2.11 L-9: Paragraph indent(段落先頭 1 字下げ)
 

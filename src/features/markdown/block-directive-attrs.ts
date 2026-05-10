@@ -56,14 +56,17 @@ export function parseBlockDirectiveAttrs(inner: string): BlockDirectiveAttrs {
       continue;
     }
     // `key="..."` or `key='...'` を 1 token として保持
-    // word(non-quote / non-space)を読む
+    // word(non-quote / non-space)を読む。
+    // reform-2026-05 hotfix(2026-05-10):smart quote(U+201C/D 双 + U+2018/9 単)
+    // も ASCII quote と同等に受理(textarea autocorrect / typographer 経由で
+    // smart quote 化された source も parse できるように)。
     let buf = '';
     while (i < inner.length) {
       const c = inner[i]!;
       if (c === ' ' || c === '\t' || c === '\n') break;
-      if ((c === '"' || c === "'") && buf.length > 0 && buf[buf.length - 1] === '=') {
+      if (isQuoteOpen(c) && buf.length > 0 && buf[buf.length - 1] === '=') {
         // start quoted value
-        const quote = c;
+        const closeQuote = matchingClose(c);
         buf += c;
         i++;
         while (i < inner.length) {
@@ -76,7 +79,7 @@ export function parseBlockDirectiveAttrs(inner: string): BlockDirectiveAttrs {
             i++;
             continue;
           }
-          if (cc === quote) break;
+          if (cc === closeQuote) break;
         }
         continue;
       }
@@ -112,13 +115,14 @@ export function parseBlockDirectiveAttrs(inner: string): BlockDirectiveAttrs {
     const key = tok.slice(0, eqIdx);
     let value = tok.slice(eqIdx + 1);
     if (!/^[A-Za-z_][\w-]*$/.test(key)) continue;
-    // unquote if quoted
+    // unquote if quoted(ASCII + smart quote 両方受理)
     if (value.length >= 2) {
-      const f = value[0];
-      const l = value[value.length - 1];
-      if ((f === '"' && l === '"') || (f === "'" && l === "'")) {
+      const f = value[0]!;
+      const l = value[value.length - 1]!;
+      const closeForOpen = matchingClose(f);
+      if (closeForOpen && l === closeForOpen) {
         value = value.slice(1, -1);
-        // unescape `\"` and `\'`
+        // unescape `\"` `\'` `\\`
         value = value.replace(/\\(["'\\])/g, '$1');
       }
     }
@@ -126,6 +130,31 @@ export function parseBlockDirectiveAttrs(inner: string): BlockDirectiveAttrs {
   }
 
   return out;
+}
+
+/** 開き quote(ASCII / smart 両形)判定 */
+function isQuoteOpen(c: string): boolean {
+  return c === '"' || c === "'" || c === '“' /* " */ || c === '‘' /* ' */
+    || c === '”' /* " */ || c === '’' /* ' */;
+}
+
+/** 開き quote → 対応する閉じ quote(同じ ASCII or smart pair の close) */
+function matchingClose(open: string): string | null {
+  switch (open) {
+    case '"':
+    case "'":
+      return open;
+    case '“':
+      return '”';
+    case '”':
+      return '”';
+    case '‘':
+      return '’';
+    case '’':
+      return '’';
+    default:
+      return null;
+  }
 }
 
 /**
