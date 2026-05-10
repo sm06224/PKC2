@@ -33,6 +33,7 @@ import {
   isBlockDirectiveClose,
   type BlockDirectiveAttrs as _BlockDirectiveAttrs,
 } from './block-directive-attrs';
+import { parseInlineRoleAt, type InlineRoleMatch } from './inline-role-parser';
 import {
   isCardPresentationLabel,
   parseCardPresentation,
@@ -513,6 +514,88 @@ md.inline.ruler.after('emphasis', 'pkc_em_dot', function emDotRule(state, silent
   tokenText.content = content;
   state.push('em_dot_close', 'em', -1);
   state.pos = closeIdx + 2;
+  return true;
+});
+
+// ── PR-E (reform-2026-05、Phase 1):formal inline role `:role:[content]{attrs}` ──
+//
+// Spec §1.3:AI / 機械が emit する厳密形 inline markup。
+//
+// 受理する形(parser 詳細は src/features/markdown/inline-role-parser.ts):
+//
+//   :sup:[2]                  → <sup>2</sup>
+//   :sub:[n]                  → <sub>n</sub>
+//   :span:[hi]{class=warn}    → <span class="warn">hi</span>
+//
+// 衝突回避:L-6 simple-inline `:text:attrs:` より先に試行する(`:role:` の後に
+// `[` または `{` がある場合のみ match、それ以外は L-6 へ fall-through)。
+//
+// Phase 1 で対応する role:`sup` / `sub` / `span` の 3 つ。content は plain
+// text として push(L-6 と同じ Phase 1 制約)、nested markdown は後続 PR で。
+//
+// `span` の attrs:
+//   - id    ── slug-safe な英字 / 数字 / `-` / `_`(parseBlockDirectiveAttrs で valid 化済)
+//   - class ── HTML 安全な class 名(同上)
+//   - data-* ── 任意の data attribute、value は HTML escape
+//   - その他 ── 既知ホワイトリスト外は無視(XSS 対策、style / on* は受理しない)
+
+const INLINE_ROLE_KNOWN = new Set(['sup', 'sub', 'span']);
+// span に許容する HTML attribute(id / class / data-* 以外)
+const SPAN_SAFE_ATTRS = new Set(['title', 'lang', 'dir']);
+
+function pushInlineRoleTokens(
+  state: Parameters<Parameters<typeof md.inline.ruler.before>[2]>[0],
+  match: InlineRoleMatch,
+): boolean {
+  const role = match.role;
+  if (!INLINE_ROLE_KNOWN.has(role)) return false;
+  const content = match.content ?? '';
+
+  if (role === 'sup' || role === 'sub') {
+    const tag = role; // 'sup' or 'sub'
+    state.push(`pkc_${role}_open`, tag, 1);
+    const t = state.push('text', '', 0);
+    t.content = content;
+    state.push(`pkc_${role}_close`, tag, -1);
+    return true;
+  }
+
+  // role === 'span'
+  const open = state.push('pkc_inline_role_span_open', 'span', 1);
+  if (match.attrs.id) open.attrSet('id', match.attrs.id);
+  if (match.attrs.classes.length > 0) {
+    open.attrSet('class', match.attrs.classes.join(' '));
+  } else if (typeof match.attrs.kvs.class === 'string') {
+    open.attrSet('class', match.attrs.kvs.class);
+  }
+  for (const [k, v] of Object.entries(match.attrs.kvs)) {
+    if (k === 'class') continue;
+    if (typeof v !== 'string') continue;
+    if (k.startsWith('data-')) {
+      open.attrSet(k, v);
+      continue;
+    }
+    if (SPAN_SAFE_ATTRS.has(k)) {
+      open.attrSet(k, v);
+    }
+    // unknown attrs(style / on* 等)は silent skip
+  }
+  const t = state.push('text', '', 0);
+  t.content = content;
+  state.push('pkc_inline_role_span_close', 'span', -1);
+  return true;
+}
+
+md.inline.ruler.before('emphasis', 'pkc_inline_role', function inlineRoleRule(state, silent) {
+  if (silent) return false;
+  if (state.src.charCodeAt(state.pos) !== 0x3A /* : */) return false;
+  const match = parseInlineRoleAt(state.src, state.pos);
+  if (!match) return false;
+  // `:role:` だけで `[` も `{` も来ない場合は parser 側で null、ここに来た時点で必ず form OK
+  if (!INLINE_ROLE_KNOWN.has(match.role)) return false;
+  const ok = pushInlineRoleTokens(state, match);
+  if (!ok) return false;
+  state.pos += match.length;
   return true;
 });
 
