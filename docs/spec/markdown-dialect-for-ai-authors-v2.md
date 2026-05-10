@@ -55,6 +55,10 @@
 | **R-E-1** | Superscript inline | `:sup:[2]` | 上付き(`x^2` 等)、math `$$` 不使用時に |
 | **R-E-2** | Subscript inline | `:sub:[n]` | 下付き(`a_n` 等) |
 | **R-E-3** | Span inline + attrs | `:span:[text]{class=… #id data-key=…}` | 一般 inline span |
+| **R-2B-1** | Strong formal | `:strong:[text]` | `**text**` 等価(Phase 2 PR-2B、2026-05-10) |
+| **R-2B-2** | Emphasis formal | `:emphasis:[text]` | `*text*` 等価 |
+| **R-2B-3** | Inline code formal | `:code:[text]` | `` `text` `` 等価 |
+| **R-2B-4** | Strike formal | `:strike:[text]` | `~~text~~` 等価 |
 | **R-F** | Conditional block | `:::if{format=html\|markdown\|docx} content :::` | format 別本文(format 不一致は完全 strip) |
 
 **設計原則**:reform 後は **simple 形を first**(人間が見たまま入力)、**formal 形は AI / 機械が emit する serializer**(round-trip 安全)。AI がテストデータを作る時は混在 OK。
@@ -68,9 +72,10 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 | `:::section{role=summary\|warning\|…}` | ❌ 未実装 | `## 見出し` + 通常 markdown(role 区別が必要なら `:::if` で wrap) |
 | `:::comment\n…\n:::` | ❌ 未実装 | `%%%\n…\n%%%`(L-4 block comment) |
 | `:lead:[text]` | ❌ 未実装 | 1 行 paragraph で先頭 + 適宜 `==hl==` などで装飾 |
-| `:strong:[text]` | ❌ 未実装 | `**text**`(commonmark) |
-| `:emphasis:[text]` | ❌ 未実装 | `*text*`(commonmark) |
-| `:code:[text]` | ❌ 未実装 | `` `text` ``(commonmark) |
+| ~~`:strong:[text]`~~ | ✅ **実装済(Phase 2 PR-2B、2026-05-10)** | `**text**` 等価、AI emit 用に formal 形提供 |
+| ~~`:emphasis:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `*text*` 等価 |
+| ~~`:code:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `` `text` `` 等価 |
+| ~~`:strike:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `~~text~~` 等価 |
 | `:caption:[text]` | ❌ 未実装 | `:::figure{#id}\n...\n^^^ caption\n:::` 内で `^^^` marker |
 | `:quote:{attribution="…"}`(inline self-closing)| ❌ 未実装 | block `:::quote{author="…"} content :::`(R-D)を使う |
 | `:align:{position=end}` | ❌ 未実装 | 行頭 prefix `\|>`(R-C)を使う |
@@ -87,7 +92,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 
 - `:::section{role=...}`(semantic sectioning)
 - `:::aside{type=note|warning|tip}`(callout、Pandoc 互換)
-- `:strong:` / `:emphasis:` / `:code:` / `:strike:`(simple → formal serializer の 1:1 map、IR-driven 変換のみ用途)
+- ~~`:strong:` / `:emphasis:` / `:code:` / `:strike:`~~ ✅ **実装済(Phase 2 PR-2B)**:simple 形と完全等価、AI / serializer の formal emit 用
 - `:autoref:{id=...}`(`[@id]` の formal 形)
 - `:caption:[...]`(figure caption の formal 形)
 - inline `:quote:{attribution=...}`(`<q cite="…">`)

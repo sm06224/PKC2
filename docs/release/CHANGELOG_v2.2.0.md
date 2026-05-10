@@ -62,6 +62,15 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2B formal commonmark inline**(2026-05-10):`:strong:[text]` / `:emphasis:[text]` /
+  `:code:[text]` / `:strike:[text]` を inline role parser に追加。simple 形(`**` / `*`
+  / `` ` `` / `~~`)と完全 HTML 等価出力、AI / serializer が IR-driven で emit する
+  formal 形として spec 完全網羅。content は `state.md.inline.parse` で完全 nested
+  parse(`:strong:[**nested bold**]` も pair 解決して `<strong><strong>...</strong></strong>`
+  に展開)、`:code:` のみ plain text(commonmark inline code 仕様準拠)。AI spec v2
+  §1.6 deny list から削除、§1.2 implemented allowlist に R-2B-1〜4 として追加。17
+  unit cases pass、bundle.js +0.5 KB / bundle.css 不変。
+
 - **PR-2A document globals**(2026-05-10):frontmatter `writing` / `direction`
   / `align` の predefined keys を抽出して render container に `data-pkc-writing`
   / `dir` / `data-pkc-doc-align` attribute で反映。CSS で `writing-mode` /
