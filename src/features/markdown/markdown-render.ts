@@ -1374,12 +1374,30 @@ function processFigureBlocks(source: string, lineMapIn: number[]): {
 }
 
 function processFigureRefs(source: string, registry: Map<string, FigEntry>): string {
-  return source.replace(/\[@([\w-]+)\]/g, (full, id) => {
+  // simple `[@id]` を sentinel に変換
+  let out = source.replace(/\[@([\w-]+)\]/g, (full, id) => {
     const e = registry.get(id);
     if (!e) return full;
     const label = `${FIG_LABEL_PREFIX[e.kind]} ${e.num}`;
     return `${FIG_REF_OPEN}${id}${FIG_REF_SEP}${label}${FIG_REF_CLOSE}`;
   });
+  // reform-2026-05 Phase 2 PR-2D(2026-05-10):`:autoref:{id="…"}` formal 等価。
+  // AI / serializer が IR-driven で emit する formal 形。`{id="fig1"}` /
+  // `{id=fig1}` / smart quote すべて受理(parseBlockDirectiveAttrs と同等の
+  // tolerance、ChatGPT typographer / textarea autocorrect 対策)。
+  // quote chars(ASCII + smart):" ' U+201C U+201D U+2018 U+2019
+  out = out.replace(
+    /:autoref:\{\s*id\s*=\s*(?:["'“”‘’]([^"'“”‘’]+)["'“”‘’]|([\w-]+))\s*\}/g,
+    (full: string, quoted: string | undefined, unquoted: string | undefined) => {
+      const id = quoted ?? unquoted;
+      if (!id) return full;
+      const e = registry.get(id);
+      if (!e) return full;
+      const label = `${FIG_LABEL_PREFIX[e.kind]} ${e.num}`;
+      return `${FIG_REF_OPEN}${id}${FIG_REF_SEP}${label}${FIG_REF_CLOSE}`;
+    },
+  );
+  return out;
 }
 
 // ── reform-2026-05 PR-D:`:::quote{author=…}` block directive ──

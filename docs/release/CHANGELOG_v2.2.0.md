@@ -62,6 +62,12 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2D `:autoref:{id="…"}` self-closing formal**(2026-05-10):`[@id]` simple 形の formal 等価。
+  AI / serializer が IR-driven で emit する formal 形として spec 完全網羅。`{id="fig1"}` /
+  `{id='fig1'}` / `{id=fig1}` (unquoted) / smart quote (`{id=“fig1”}` 等)全形受理
+  (typographer / textarea autocorrect 対策)。`processFigureRefs` regex に並列追加、
+  既存 `[@id]` と同じ `<a class="pkc-fig-ref">` を生成。12 unit cases pass、bundle.js +0.3 KB。
+
 - **PR-2C `:caption:[…]` formal marker**(2026-05-10):`:::figure` / `:::table` /
   `:::equation` block 内で行頭 `:caption:[caption text]` を `^^^ caption` 等価
   marker として受理。AI / ChatGPT が IR-driven で emit する formal 形を spec
