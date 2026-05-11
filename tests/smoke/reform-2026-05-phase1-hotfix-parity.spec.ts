@@ -196,10 +196,10 @@ test.describe('reform-2026-05 hotfix 5 件 + AI-formal/human-simple 複合 visua
       // hallucination 検出: 各 literal が body 内に残ること
       const bodyText = root.textContent ?? '';
       const hallucinationLiterals = [
-        ':::section{role=summary}',
+        // PR-2F(2026-05-10):`:::section{role=…}` は実装済(callout)→ literal で残らない
         ':lead:[未実装の lead inline]',
         // PR-2B(2026-05-10):`:strong:[…]` / `:emphasis:[…]` は実装済(formal commonmark)
-        // → literal で残らなくなった。`:caption:` `:::section` 等は別 PR で実装。
+        // → literal で残らなくなった。`:caption:` `:::comment` 等は別 PR で実装。
         ':caption:[未実装 caption]',
         ':quote:{attribution=',
         ':align:{position=end}',
