@@ -31,6 +31,8 @@ export const WARNING_CODES = {
   PARSER_GLOBAL_INVALID_COMBO:    { code: 'PKC1006', category: 'parser' as WarningCategory },
   PARSER_DIRECTIVE_UNCLOSED:      { code: 'PKC1007', category: 'parser' as WarningCategory },
   PARSER_DIRECTIVE_MALFORMED_ATTRS: { code: 'PKC1008', category: 'parser' as WarningCategory },
+  PARSER_HALLUCINATED_INLINE:     { code: 'PKC1009', category: 'parser' as WarningCategory },
+  PARSER_HALLUCINATED_BLOCK:      { code: 'PKC1010', category: 'parser' as WarningCategory },
   // ── PKC2xxx semantic ─────────────────────────────
   SEMANTIC_DEPRECATED_NOTATION:   { code: 'PKC2001', category: 'semantic' as WarningCategory },
   SEMANTIC_PROFILE_UNKNOWN:       { code: 'PKC2002', category: 'semantic' as WarningCategory },

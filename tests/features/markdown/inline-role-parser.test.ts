@@ -96,8 +96,15 @@ describe('parseInlineRoleAt — formal inline role parser', () => {
     expect(parseInlineRoleAt(':span:[x]{key=val', 0)).toBeNull();
   });
 
-  it('content 内 newline は parse 不能(inline 制約)', () => {
-    expect(parseInlineRoleAt(':span:[a\nb]', 0)).toBeNull();
+  it('content 内 single newline は受理(PR-2J、multi-line content)', () => {
+    // PR-2J(2026-05-10):scanBracketBalanced で blank line 以外は受理。
+    const r = parseInlineRoleAt(':span:[a\nb]', 0);
+    expect(r).not.toBeNull();
+    expect(r!.content).toBe('a\nb');
+  });
+
+  it('content 内 blank line(\\n\\n)は引き続き reject', () => {
+    expect(parseInlineRoleAt(':span:[a\n\nb]', 0)).toBeNull();
   });
 
   it('attrs 内 `}` を quoted value で透過', () => {

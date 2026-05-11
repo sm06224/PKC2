@@ -74,22 +74,48 @@
 
 ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の知識から **PKC2 でサポートされていない formal 構文** を hallucination で生成することがある。本表は実機検証で **render されない** ことを確認済み。
 
+**2026-05-10 PR-2K**:未実装 deny-list directive を検出すると **visible inline marker(`<span class="pkc-warning-hallucination">`)+ `console.warn`(PKC1009 inline / PKC1010 block)** で signaling するようになった。AI test runner / Playwright `page.on('console', …)` で code 拾える、screenshot からも黄色ハイライトで視認できる。
+
 | AI が生成する形 | 状態 | 推奨 simple 形(workaround)|
 |----------------|-----|-------------------------|
 | ~~`:::section{role=summary\|warning\|…}`~~ | ✅ **実装済(Phase 2 PR-2F、2026-05-10)** | 8 known role(summary / warning / note / tip / caution / important / info / danger)で callout、CSS で role 別 color scheme |
 | ~~`:::comment\n…\n:::`~~ | ✅ **実装済(Phase 2 PR-2G、2026-05-10)** | `%%%` block comment 等価、attrs(`block=true` / `visibility=hidden` 等)は今のところ無視、render 完全削除 |
-| `:lead:[text]` | ❌ 未実装 | 1 行 paragraph で先頭 + 適宜 `==hl==` などで装飾 |
+| `:lead:[text]` | ❌ 未実装 **+ PKC1009 signaling(PR-2K)** | 1 行 paragraph で先頭 + 適宜 `==hl==` などで装飾 |
 | ~~`:strong:[text]`~~ | ✅ **実装済(Phase 2 PR-2B、2026-05-10)** | `**text**` 等価、AI emit 用に formal 形提供 |
 | ~~`:emphasis:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `*text*` 等価 |
 | ~~`:code:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `` `text` `` 等価 |
 | ~~`:strike:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `~~text~~` 等価 |
 | ~~`:caption:[text]`~~ | ✅ **実装済(Phase 2 PR-2C、2026-05-10)** | `:::figure` block 内で行頭 `:caption:[…]` が `^^^ caption` 等価 |
-| `:quote:{attribution="…"}`(inline self-closing)| ❌ 未実装 | block `:::quote{author="…"} content :::`(R-D)を使う |
-| `:align:{position=end}` | ❌ 未実装 | 行頭 prefix `\|>`(R-C)を使う |
-| `:spacing:{size=2}` | ❌ 未実装 | `_2`(L-8 blank-line marker、`_<N>` で N 空行) |
+| `:quote:{attribution="…"}`(inline self-closing)| ❌ 未実装 **+ PKC1009 signaling(PR-2K)** | block `:::quote{author="…"} content :::`(R-D)を使う |
+| `:align:{position=end}` | ❌ 未実装 **+ PKC1009 signaling(PR-2K)** | 行頭 prefix `\|>`(R-C)を使う |
+| `:spacing:{size=2}` | ❌ 未実装 **+ PKC1009 signaling(PR-2K)** | `_2`(L-8 blank-line marker、`_<N>` で N 空行) |
 | ~~`:autoref:{id="fig1"}`~~ | ✅ **実装済(Phase 2 PR-2D、2026-05-10)** | `[@fig1]` 等価、ASCII / smart quote / unquoted 全形受理 |
-| `:::toc` `:::frontmatter` `:::body` 等 | ❌ 未実装 | structural directive は markdown heading(`#` `##` `###`)で十分 |
+| `:::toc` `:::frontmatter` `:::body` 等 | ❌ 未実装 **+ PKC1010 signaling(PR-2K)** | structural directive は markdown heading(`#` `##` `###`)で十分 |
 | `:strong:` `:emphasis:` 等 が parser fall-through すると?| `:strong:` は **literal text** として残る | parser は形式合致しない `:role:` を inline role として認識せず、L-6 simple-inline `:text:attrs:` パスへ fall-through する |
+
+#### 1.6.y hallucination signaling 詳細(PR-2K、2026-05-10)
+
+未実装 deny-list directive を AI が生成した場合:
+
+- **visible marker**:`<span class="pkc-warning-hallucination pkc-warning-hallucination-NAME" data-pkc-warn-code="PKC1009" data-pkc-warn-name="NAME" title="…推奨形…">literal</span>`(block は `<div class="pkc-warning-hallucination-block">` + `data-pkc-warn-code="PKC1010"`)
+- **console.warn**:`[PKC1009] hallucinated inline directive :NAME: detected. Use simple form per spec §1.6 (推奨形).`
+- **CSS**:橙背景(`#fef3c7` / `#92400e` text)+ 点線下線、tooltip で推奨形提示
+
+AI repair tool / test harness は以下で拾える:
+
+```ts
+// Playwright で console.warn を capture
+page.on('console', (msg) => {
+  if (msg.type() === 'warning' && msg.text().includes('[PKC1009]')) {
+    // hallucination 検出、AI に retry / 正規化 instruction
+  }
+});
+
+// または rendered HTML から DOM 走査
+document.querySelectorAll('[data-pkc-warn-code="PKC1009"]')
+```
+
+fenced code(`` ``` `` / `~~~`)内は signaling 対象外(documentation 用途を保護)。
 
 ### 1.6.x multi-line `[content]` 受理(2026-05-10、PR-2J)
 
