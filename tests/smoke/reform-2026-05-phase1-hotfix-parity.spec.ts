@@ -198,8 +198,8 @@ test.describe('reform-2026-05 hotfix 5 件 + AI-formal/human-simple 複合 visua
       const hallucinationLiterals = [
         ':::section{role=summary}',
         ':lead:[未実装の lead inline]',
-        ':strong:[未実装 strong]',
-        ':emphasis:[未実装 emphasis]',
+        // PR-2B(2026-05-10):`:strong:[…]` / `:emphasis:[…]` は実装済(formal commonmark)
+        // → literal で残らなくなった。`:caption:` `:::section` 等は別 PR で実装。
         ':caption:[未実装 caption]',
         ':quote:{attribution=',
         ':align:{position=end}',
