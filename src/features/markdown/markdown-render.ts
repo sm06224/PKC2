@@ -27,6 +27,7 @@ import type Token from 'markdown-it/lib/token.mjs';
 import { makeSlugCounter } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
 import { renderCsvFence } from './csv-table';
+import { buildHtmlSandboxIframe } from './html-sandbox';
 import { parsePortablePkcReference } from '../link/permalink';
 import {
   parseBlockDirectiveOpen,
@@ -132,6 +133,14 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   // bypasses token.attrs entirely. Hoist the source-line attrs onto
   // the wrapper div so the active-block lookup can find the fence.
   const sourceLineAttrs = collectSourceLineAttrs(token);
+  // reform-2026-05 Phase 2 PR-2M(2026-05-10):` ```html-render` fence は
+  // iframe sandbox 経由で HTML を直接 render。AI が複雑 layout(A4 2 段組
+  // レポート等)を HTML 生成で出した場合の seamless 埋め込み。
+  // sandbox="allow-scripts" のみ(allow-same-origin 無し)で cross-origin 隔離。
+  const info = (token.info ?? '').trim();
+  if (/^html-render(\s|$)/.test(info)) {
+    return buildHtmlSandboxIframe(token.content, sourceLineAttrs);
+  }
   // Pass inline renderer so CSV cells can carry markdown inline markup
   // (`**bold**` / `==highlight==` / `:text:attrs:` L-6 simple-inline 等)。
   // 2026-05-08 以前は plain-text escape しか効かず、user 報告で発覚。
