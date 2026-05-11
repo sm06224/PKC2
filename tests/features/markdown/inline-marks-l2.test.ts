@@ -137,6 +137,45 @@ describe('L-2: Inline 修飾(highlight / ruby / em-dot)', () => {
       const html = renderMarkdown('^^改行\n含む^^');
       expect(html).not.toContain('pkc-em-dot');
     });
+
+    // 2026-05-10 user バグレポ修正:^^...^^ 内 nested inline markup の処理
+    describe('nested inline markup 内部処理(2026-05-10 hotfix、user バグレポ)', () => {
+      it('^^**bold**^^ で内側 ** が <strong> として render', () => {
+        const html = renderMarkdown('^^**最重要**^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><strong>最重要<\/strong><\/em>/);
+      });
+
+      it('^^*emphasis*^^ で内側 * が <em> として render', () => {
+        const html = renderMarkdown('^^*斜体*^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><em>斜体<\/em><\/em>/);
+      });
+
+      it('^^==hl==^^ で内側 highlight も render', () => {
+        const html = renderMarkdown('^^==黄背景==^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><mark>黄背景<\/mark><\/em>/);
+      });
+
+      it('^^`code`^^ で内側 inline code も render', () => {
+        const html = renderMarkdown('^^`code`^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><code>code<\/code><\/em>/);
+      });
+
+      it('^^**bold** plain^^ 部分混在', () => {
+        const html = renderMarkdown('^^**強調** plain^^');
+        const m = html.match(/<em class="pkc-em-dot">(.*)<\/em>/);
+        expect(m).not.toBeNull();
+        expect(m![1]).toContain('<strong>強調</strong>');
+        expect(m![1]).toContain('plain');
+      });
+
+      it('^^*X**^^ asymmetric は markdown 規則通り(`*` open + `*` close + literal `*`)', () => {
+        // user typo case:single `*` open、`**` close は emphasis 1 個 + literal `*`
+        const html = renderMarkdown('^^*198,853**^^');
+        expect(html).toContain('class="pkc-em-dot"');
+        // 内側 <em> が 1 個 + literal `*` 残る
+        expect(html).toMatch(/<em class="pkc-em-dot"><em>198,853<\/em>\*<\/em>/);
+      });
+    });
   });
 
   describe('Code span / fence 内では作動しない', () => {

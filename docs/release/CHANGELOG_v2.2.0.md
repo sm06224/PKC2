@@ -62,6 +62,22 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2P em-dot `^^X^^` 内 nested inline parse**(2026-05-10、user バグレポ):
+  user 報告(2026-05-10 続報):`^^**X**^^` の bold が太字 render されない。
+  調査で原因確定:`^^...^^` em-dot 規則が inner content を `state.push('text', '', 0)`
+  で **plain text として push** していたため、内側の `**X**` / `*X*` / `==X==` /
+  `` `X` `` 等 inline markup が emphasis parser を通らず literal 残留した。
+  highlight `==X==`(別 plugin)は標準 nested inline parser を持つので動作、
+  em-dot だけ規則実装の漏れだった。修正:PR-2B で導入した `pushNestedInlineContent`
+  helper(`state.md.inline.parse(content, state.md, state.env, innerTokens)` で
+  emphasis pairing 含めて完全 parse、children を bare で展開)を em-dot rule に
+  も適用。結果:`^^**最重要**^^` → `<em class="pkc-em-dot"><strong>最重要</strong></em>`、
+  `^^==hl==^^` → `<em class="pkc-em-dot"><mark>hl</mark></em>` 等が正常 render。
+  `^^*X**^^` asymmetric(user typo)は markdown 規則通り `<em>X</em>*` + leftover
+  literal で残る(syntax error 側責任)。6 unit cases + 1 smoke(ANA SKY コイン
+  fixture で `^^**X**^^` `^^*X**^^` 等 5 variant の DOM dump + visual)pass。
+  bundle.css 156.5 KB / bundle.js 1005.3 KB(+0)。
+
 - **PR-2O hint chip default 非表示 + :align 実 適用**(2026-05-10、user バグレポ):
   PR-2L の visible hint marker(`<span class="pkc-align-hint">[align: end]</span>` の青
   chip、`.pkc-lead` の dotted underline)が user 視点で「画像みたいに render できない

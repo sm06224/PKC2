@@ -544,6 +544,11 @@ md.inline.ruler.after('emphasis', 'pkc_em_dot', function emDotRule(state, silent
 // v2 AI spec で promise した形(simple 記法、`[[em:..]]` の短縮 deprecated 後継)。
 // `^^` 連続を delimiter として、内部に改行 / `^` を含まないこと。
 // 空 content は reject(literal `^^^^` を圏点扱いしない)。
+//
+// 2026-05-10 hotfix(user バグレポ):従来 content を plain text として push して
+// いたため `^^**X**^^` の inner emphasis が処理されず literal `**X**` が残った。
+// pushNestedInlineContent で markdown-it inline parser に通すように変更、
+// `^^**bold**^^` `^^==hl==^^` 等 nested inline markup が正常 render。
 md.inline.ruler.after('pkc_em_dot', 'pkc_em_dot_caret', function emDotCaretRule(state, silent) {
   if (silent) return false;
   const src = state.src;
@@ -559,8 +564,9 @@ md.inline.ruler.after('pkc_em_dot', 'pkc_em_dot_caret', function emDotCaretRule(
   // content 内に `^^` が複数あれば最初の close で取る(non-greedy)
   const tokenOpen = state.push('em_dot_open', 'em', 1);
   tokenOpen.attrSet('class', 'pkc-em-dot');
-  const tokenText = state.push('text', '', 0);
-  tokenText.content = content;
+  // inner content を markdown-it inline parser に通す(nested **X** / *X* /
+  // ==X== / `X` 等が処理される。2026-05-10 user バグレポ修正)
+  pushNestedInlineContent(state, content);
   state.push('em_dot_close', 'em', -1);
   state.pos = closeIdx + 2;
   return true;
