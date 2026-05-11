@@ -1,20 +1,20 @@
 /**
- * reform-2026-05 Phase 2 user バグレポ(2026-05-10、2 件目)
+ * reform-2026-05 Phase 2 user バグレポ(2026-05-10、2 件目)+ PR-2K hallucination signaling。
  *
  * 提供 fixture(石狩変電所 ネットワーク更改計画 詳細版)で「レンダリング
  * されない項目が多々ある」と user 報告。
  *
- * 想定未実装 / 不整合:
- * - :lead:[content]                inline role(未実装)
- * - :spacing:{size=N}              inline directive(未実装)
- * - :align:{position=end}          inline directive(_text_ 形と乖離)
- * - :quote:{attribution=...}       inline directive(:::quote block のみ実装)
- * - :::comment block               実装済(PR-2G)
- * - :::if{format=html|pdf}         実装済(Phase 1 PR-F)
- * - vars 展開 {{vars.x}}            実装済(M-7)
+ * PR-2K(2026-05-10):AI hallucination 形 deny-list directive を visible inline
+ * marker(`<span class="pkc-warning-hallucination">`)+ console.warn で signaling。
  *
- * このテストは「render されないものを検出して報告する」目的。
- * 期待値は『何が render されたか / されなかったか』を全部 dump する。
+ * 検証項目:
+ * - :lead:[content]            → pkc-warning-hallucination-lead    + PKC1009
+ * - :spacing:{size=N}          → pkc-warning-hallucination-spacing + PKC1009
+ * - :align:{position=end}      → pkc-warning-hallucination-align   + PKC1009
+ * - :quote:{attribution=...}   → pkc-warning-hallucination-quote   + PKC1009
+ * - :::comment block           実装済(PR-2G、隠蔽)
+ * - :::if{format=html|pdf}     実装済(Phase 1 PR-F)
+ * - vars 展開 {{vars.x}}        実装済(M-7)
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -220,8 +220,12 @@ async function createTextEntry(page: Page, title: string, body: string) {
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
 }
 
-test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture v2)', () => {
-  test('center pane:全要素を観測して dump', async ({ page }) => {
+test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture v2)+ PR-2K signaling', () => {
+  test('center pane:hallucination 4 件全部 signaling + console.warn', async ({ page }) => {
+    const consoleWarnings: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'warning') consoleWarnings.push(msg.text());
+    });
     await bootApp(page);
     await createTextEntry(page, 'ishikari fixture v2', FIXTURE);
 
@@ -260,22 +264,19 @@ test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture
         htmlOnlyVisible: text.includes('HTML版限定情報'),
         // :::if{format=pdf} — should be HIDDEN (html target ≠ pdf)
         pdfOnlyVisible: text.includes('PDF版限定情報'),
-        // ── 未実装疑い項目 ──
-        // :lead:[content] — should render as something visible (not literal)
-        leadAsText: text.includes(':lead:['),
-        leadAsElement: !!root.querySelector('.pkc-lead, p.pkc-lead, [data-pkc-role="lead"]'),
-        // :spacing:{size=N} — should render as spacer
-        spacingAsText: text.includes(':spacing:{'),
-        spacingAsElement: !!root.querySelector('.pkc-spacing, [data-pkc-spacing]'),
-        // :align:{position=end} — should affect next paragraph
-        alignAsText: text.includes(':align:{'),
-        alignAsElement: !!root.querySelector('[data-pkc-align], [style*="text-align"]'),
-        // :quote:{attribution=...} — inline directive form (not :::quote block)
-        quoteAsText: text.includes(':quote:{'),
-        quoteAsElement: !!root.querySelector('blockquote, .pkc-quote, [data-pkc-role="quote"]'),
+        // ── PR-2K hallucination signaling 検証 ──
+        leadHallucinationMarker: !!root.querySelector('.pkc-warning-hallucination-lead'),
+        leadWarnCode: root.querySelector('.pkc-warning-hallucination-lead')?.getAttribute('data-pkc-warn-code') ?? '',
+        spacingHallucinationMarker: !!root.querySelector('.pkc-warning-hallucination-spacing'),
+        spacingWarnCode: root.querySelector('.pkc-warning-hallucination-spacing')?.getAttribute('data-pkc-warn-code') ?? '',
+        alignHallucinationMarker: !!root.querySelector('.pkc-warning-hallucination-align'),
+        alignWarnCode: root.querySelector('.pkc-warning-hallucination-align')?.getAttribute('data-pkc-warn-code') ?? '',
+        quoteHallucinationMarker: !!root.querySelectorAll('.pkc-warning-hallucination-quote').length,
+        quoteHallucinationCount: root.querySelectorAll('.pkc-warning-hallucination-quote').length,
+        quoteWarnCode: root.querySelector('.pkc-warning-hallucination-quote')?.getAttribute('data-pkc-warn-code') ?? '',
         attributionVisible: text.includes('END OF DOCUMENT') || text.includes('作業責任者: 佐藤'),
-        // 警告要素
-        warningCount: root.querySelectorAll('.pkc-warning, [data-pkc-warning]').length,
+        // 警告要素 total
+        hallucinationTotal: root.querySelectorAll('.pkc-warning-hallucination').length,
         // 全 HTML 抜粋(問題箇所周辺)
         htmlExcerpt: html.length > 5000 ? html.substring(0, 5000) + '...' : html,
       };
@@ -309,14 +310,15 @@ test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture
         htmlOnly_visible: observed.htmlOnlyVisible,
         pdfOnly_hidden: !observed.pdfOnlyVisible,
       },
-      未実装疑い: {
-        lead: { 文字列残留: observed.leadAsText, element化: observed.leadAsElement },
-        spacing: { 文字列残留: observed.spacingAsText, element化: observed.spacingAsElement },
-        align: { 文字列残留: observed.alignAsText, element化: observed.alignAsElement },
-        quote_inline: { 文字列残留: observed.quoteAsText, element化: observed.quoteAsElement, attribution_visible: observed.attributionVisible },
+      hallucination_PR_2K: {
+        lead: { marker: observed.leadHallucinationMarker, code: observed.leadWarnCode },
+        spacing: { marker: observed.spacingHallucinationMarker, code: observed.spacingWarnCode },
+        align: { marker: observed.alignHallucinationMarker, code: observed.alignWarnCode },
+        quote: { marker: observed.quoteHallucinationMarker, count: observed.quoteHallucinationCount, code: observed.quoteWarnCode },
+        total: observed.hallucinationTotal,
+        consoleWarnings: consoleWarnings.filter((w) => w.includes('PKC1009') || w.includes('PKC1010')),
       },
       tableCount: observed.tableCount,
-      warningCount: observed.warningCount,
     }, null, 2));
     console.log('==================================================');
 
@@ -325,7 +327,6 @@ test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture
       fullPage: true,
     });
 
-    // 確認したい assertions(これは fail を許容、観測目的)
     // implemented features は green
     expect(observed.siteExpanded, 'vars.site が展開').toBe(true);
     expect(observed.sectionSummary, ':::section{role=summary} 描画').toBe(true);
@@ -337,5 +338,21 @@ test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture
     expect(observed.commentVisible, ':::comment block 隠蔽').toBe(false);
     expect(observed.htmlOnlyVisible, ':::if{format=html} 表示').toBe(true);
     expect(observed.pdfOnlyVisible, ':::if{format=pdf} 隠蔽').toBe(false);
+
+    // PR-2K hallucination signaling assertions
+    expect(observed.leadHallucinationMarker, ':lead: marker').toBe(true);
+    expect(observed.leadWarnCode, ':lead: code').toBe('PKC1009');
+    expect(observed.spacingHallucinationMarker, ':spacing: marker').toBe(true);
+    expect(observed.spacingWarnCode, ':spacing: code').toBe('PKC1009');
+    expect(observed.alignHallucinationMarker, ':align: marker').toBe(true);
+    expect(observed.alignWarnCode, ':align: code').toBe('PKC1009');
+    expect(observed.quoteHallucinationMarker, ':quote: marker').toBe(true);
+    expect(observed.quoteHallucinationCount, ':quote: 2 件').toBeGreaterThanOrEqual(2);
+    expect(observed.quoteWarnCode, ':quote: code').toBe('PKC1009');
+    // 4 inline directives + 2nd :quote: at end = 5 markers minimum
+    expect(observed.hallucinationTotal, 'total markers').toBeGreaterThanOrEqual(5);
+    // console.warn 経路:全 5 件以上 capture(:lead + :spacing + :align + :quote x2)
+    const pkc1009Count = consoleWarnings.filter((w) => w.includes('[PKC1009]')).length;
+    expect(pkc1009Count, 'PKC1009 console.warn 件数').toBeGreaterThanOrEqual(5);
   });
 });
