@@ -1,190 +1,218 @@
 /**
- * reform-2026-05 Phase 2 PR-2K:AI hallucination 形 deny-list directive signaling。
+ * reform-2026-05 Phase 2 PR-2K/2L:AI hallucination 形 signaling + tolerant alias。
  *
- * spec v2 §1.6 deny list の formal 構文(:lead:[…] / :spacing:{…} /
- * :align:{…} / :quote:{…} inline、:::toc / :::frontmatter / :::body block)を
- * AI(ChatGPT / Claude / Gemini)が Pandoc / RST 知識から hallucinate して
- * 生成する。Phase 2 PR-2K で 3 経路 signaling を実装:
- *   1. visible inline marker(<span class="pkc-warning-hallucination">)
- *   2. console.warn 出力(PKC1009 inline / PKC1010 block)
- *   3. WARNING_CODES code linkage
+ * PR-2K:less-critical block deny list(`:::toc` `:::frontmatter` `:::body`)を
+ *        sentinel + console.warn(PKC1010)で literal 残し signaling。
  *
- * 本 test では 1 + 2 を assert。
+ * PR-2L(2026-05-10、寛容 parse 格上げ):critical inline 4 件 + admonition
+ *        alias 群を **寛容 parse(tolerant alias)** に格上げ。data-pkc-canonical
+ *        attribute に推奨形 hint を転記、console.info で parse log emit。
+ *          :lead:[content]            → <span class="pkc-lead"> + PKC2005
+ *          :spacing:{size=N}          → <div class="pkc-tolerant-spacing"> + PKC2006
+ *          :align:{position=X}        → <span class="pkc-align-hint"> + PKC2007
+ *          :quote:{attribution=…}     → <small class="pkc-attribution"> + PKC2008
+ *          :::note / :::warning / :::tip / :::info / :::caution / :::important
+ *          / :::danger / :::summary   → :::section{role=NAME} alias + PKC2009
+ *          :::callout{type=X}         → :::section{role=X} alias + PKC2010
+ *          :::admonition{type=X
+ *               title=Y}              → :::section{role=X} + ## Y + PKC2011
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderMarkdown } from '@features/markdown/markdown-render';
 
-describe('hallucination signaling — inline directive(PR-2K)', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
+describe('PR-2L tolerant alias — inline 4 critical', () => {
+  let infoSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
   });
 
-  it(':lead:[本文] が pkc-warning-hallucination + PKC1009', () => {
+  it(':lead:[content] が <span class="pkc-lead"> + PKC2005', () => {
     const html = renderMarkdown(':lead:[本文書は計画を定義する]');
-    expect(html).toContain('class="pkc-warning-hallucination pkc-warning-hallucination-lead"');
-    expect(html).toContain('data-pkc-warn-code="PKC1009"');
+    expect(html).toContain('class="pkc-lead"');
+    expect(html).toContain('data-pkc-warn-code="PKC2005"');
     expect(html).toContain('data-pkc-warn-name="lead"');
-    expect(html).toContain(':lead:[本文書は計画を定義する]');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC1009]'));
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(':lead:'));
+    expect(html).toContain('data-pkc-canonical=');
+    expect(html).toContain('本文書は計画を定義する');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2005]'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('detected='));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('canonical='));
   });
 
-  it(':lead:[\\n本文\\n] multi-line も検出', () => {
+  it(':lead:[\\n本文\\n] multi-line も寛容 parse', () => {
     const html = renderMarkdown(':lead:[\n本文 1 行目\n本文 2 行目\n]');
-    expect(html).toContain('class="pkc-warning-hallucination');
-    expect(html).toContain('data-pkc-warn-name="lead"');
+    expect(html).toContain('class="pkc-lead"');
+    expect(html).toContain('data-pkc-warn-code="PKC2005"');
     expect(html).toContain('本文 1 行目');
-    expect(warnSpy).toHaveBeenCalled();
   });
 
-  it(':spacing:{size=2} が PKC1009 spacing', () => {
-    const html = renderMarkdown(':spacing:{size=2}');
-    expect(html).toContain('data-pkc-warn-code="PKC1009"');
-    expect(html).toContain('data-pkc-warn-name="spacing"');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(':spacing:'));
+  it(':spacing:{size=N} が <div class="pkc-tolerant-spacing"> + PKC2006', () => {
+    const html = renderMarkdown(':spacing:{size=3}');
+    expect(html).toContain('class="pkc-blank-line pkc-tolerant-spacing"');
+    expect(html).toContain('data-pkc-blank-count="3"');
+    expect(html).toContain('data-pkc-warn-code="PKC2006"');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2006]'));
   });
 
-  it(':align:{position=end} が PKC1009 align', () => {
+  it(':spacing:{size=N} N≦50 で cap', () => {
+    const html = renderMarkdown(':spacing:{size=200}');
+    expect(html).toContain('data-pkc-blank-count="50"');
+  });
+
+  it(':align:{position=X} が <span class="pkc-align-hint"> + PKC2007', () => {
     const html = renderMarkdown(':align:{position=end}');
-    expect(html).toContain('data-pkc-warn-code="PKC1009"');
-    expect(html).toContain('data-pkc-warn-name="align"');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(':align:'));
+    expect(html).toContain('class="pkc-align-hint"');
+    expect(html).toContain('data-pkc-align-next="right"');
+    expect(html).toContain('data-pkc-warn-code="PKC2007"');
+    expect(html).toContain('[align: end]');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2007]'));
   });
 
-  it(':quote:{attribution="…"} multi-line が PKC1009 quote', () => {
-    const html = renderMarkdown(':quote:{\n  attribution="作業責任者: 佐藤"\n}');
-    expect(html).toContain('data-pkc-warn-code="PKC1009"');
-    expect(html).toContain('data-pkc-warn-name="quote"');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(':quote:'));
+  it(':align: position→CSS mapping(start/end/center/justify)', () => {
+    expect(renderMarkdown(':align:{position=start}')).toContain('data-pkc-align-next="left"');
+    expect(renderMarkdown(':align:{position=end}')).toContain('data-pkc-align-next="right"');
+    expect(renderMarkdown(':align:{position=center}')).toContain('data-pkc-align-next="center"');
+    expect(renderMarkdown(':align:{position=justify}')).toContain('data-pkc-align-next="justify"');
   });
 
-  it('複数 hallucination 検出が全件 console.warn', () => {
-    const md = `:lead:[a]
-:spacing:{size=1}
-:align:{position=end}
-:quote:{attribution="b"}`;
-    renderMarkdown(md);
-    expect(warnSpy).toHaveBeenCalledTimes(4);
+  it(':quote:{attribution="…"} が <small class="pkc-attribution"> + PKC2008', () => {
+    const html = renderMarkdown(':quote:{attribution="作業責任者: 佐藤"}');
+    expect(html).toContain('class="pkc-attribution"');
+    expect(html).toContain('data-pkc-warn-code="PKC2008"');
+    expect(html).toContain('作業責任者: 佐藤');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2008]'));
   });
 
-  it('tooltip に推奨形 suggestion が入る', () => {
+  it(':quote:{attribution="…"} multi-line 受理', () => {
+    const html = renderMarkdown(':quote:{\n  attribution="END OF DOCUMENT"\n}');
+    expect(html).toContain('class="pkc-attribution"');
+    expect(html).toContain('END OF DOCUMENT');
+  });
+
+  it('canonical hint が data-pkc-canonical に転記', () => {
     const html = renderMarkdown(':lead:[本文]');
-    expect(html).toMatch(/title="[^"]*spec §1\.6[^"]*"/);
-    expect(html).toMatch(/title="[^"]*paragraph[^"]*"/);
+    expect(html).toMatch(/data-pkc-canonical="[^"]*段落[^"]*"/);
   });
 
-  it('silentHallucinationWarnings: console.warn を抑止', () => {
+  it('silentHallucinationWarnings で console.info も抑止', () => {
     renderMarkdown(':lead:[本文]', { silentHallucinationWarnings: true });
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(infoSpy).not.toHaveBeenCalled();
   });
 
-  it('fenced code(``` 内)では検出しない', () => {
-    const md = '```\n:lead:[コード内]\n:spacing:{size=2}\n```';
-    const html = renderMarkdown(md);
-    expect(html).not.toContain('pkc-warning-hallucination');
+  it('fenced code 内では tolerant parse 無効', () => {
+    const html = renderMarkdown('```\n:lead:[コード内]\n:spacing:{size=2}\n```');
+    expect(html).not.toContain('class="pkc-lead"');
+    expect(html).not.toContain('class="pkc-tolerant-spacing"');
     expect(html).toContain(':lead:[コード内]');
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(infoSpy).not.toHaveBeenCalled();
   });
 
-  it('tilde fenced code(~~~ 内)でも検出しない', () => {
-    const md = '~~~\n:quote:{attribution="x"}\n~~~';
-    const html = renderMarkdown(md);
-    expect(html).not.toContain('pkc-warning-hallucination');
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it('inline `:strong:` 等の実装済 formal は検出しない', () => {
-    const html = renderMarkdown(':strong:[太字] :emphasis:[斜体] :code:[コード] :strike:[取消]');
-    expect(html).not.toContain('pkc-warning-hallucination');
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it(':caption:[…] in :::figure は実装済として検出しない', () => {
-    const md = ':::figure{id="f1"}\n![](x)\n:caption:[既存]\n:::';
-    const html = renderMarkdown(md);
-    expect(html).not.toContain('pkc-warning-hallucination');
+  it('既存 simple markdown は完全 regression なし', () => {
+    const html = renderMarkdown('# heading\n**bold** *em* `code` ~~strike~~');
+    expect(html).not.toContain('pkc-lead');
+    expect(html).not.toContain('pkc-tolerant-spacing');
+    expect(infoSpy).not.toHaveBeenCalled();
   });
 });
 
-describe('hallucination signaling — block directive(PR-2K)', () => {
+describe('PR-2L tolerant alias — admonition 群', () => {
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+  });
+
+  it(':::note → :::section{role=note} + PKC2009', () => {
+    const html = renderMarkdown(':::note\n本文\n:::');
+    expect(html).toContain('pkc-section-note');
+    expect(html).toContain('本文');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2009]'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining(':::note'));
+  });
+
+  it(':::warning → :::section{role=warning}', () => {
+    const html = renderMarkdown(':::warning\n警告内容\n:::');
+    expect(html).toContain('pkc-section-warning');
+    expect(html).toContain('警告内容');
+  });
+
+  it(':::tip / :::info / :::caution / :::important / :::danger / :::summary 全部 alias', () => {
+    for (const role of ['tip', 'info', 'caution', 'important', 'danger', 'summary']) {
+      const html = renderMarkdown(`:::${role}\n本文\n:::`);
+      expect(html, role).toContain(`pkc-section-${role}`);
+    }
+  });
+
+  it(':::callout{type=tip} → :::section{role=tip} + PKC2010', () => {
+    const html = renderMarkdown(':::callout{type=tip}\n本文\n:::');
+    expect(html).toContain('pkc-section-tip');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2010]'));
+  });
+
+  it(':::admonition{type=info title="重要"} → role + ## 見出し + PKC2011', () => {
+    const html = renderMarkdown(':::admonition{type=info title="重要なお知らせ"}\n本文\n:::');
+    expect(html).toContain('pkc-section-info');
+    expect(html).toMatch(/<h2[^>]*>重要なお知らせ<\/h2>/);
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2011]'));
+  });
+
+  it(':::section{role=X} 既存形は alias 変換せず素通し', () => {
+    // 直接 :::section{role=note} を書いた場合は何も alias 変換しない
+    const html = renderMarkdown(':::section{role=note}\n本文\n:::');
+    expect(html).toContain('pkc-section-note');
+    // admonition alias 用 console.info は出ない(直接 :::section 入力には反応しない)
+    expect(infoSpy).not.toHaveBeenCalledWith(expect.stringContaining('[PKC2009]'));
+  });
+
+  it('fenced code 内 :::note は alias 変換しない', () => {
+    const html = renderMarkdown('```\n:::note\nコード内\n:::\n```');
+    expect(html).not.toContain('pkc-section-note');
+    expect(html).toContain(':::note');
+  });
+});
+
+describe('PR-2K(維持)— less-critical block deny list', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
-  it(':::toc block が PKC1010', () => {
+  it(':::toc block が PKC1010(寛容 parse しない)', () => {
     const md = ':::toc{depth=3}\nentry list\n:::';
     const html = renderMarkdown(md);
     expect(html).toContain('class="pkc-warning-hallucination-block pkc-warning-hallucination-block-toc"');
     expect(html).toContain('data-pkc-warn-code="PKC1010"');
-    expect(html).toContain('data-pkc-warn-name="toc"');
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC1010]'));
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(':::toc'));
   });
 
   it(':::frontmatter block が PKC1010', () => {
-    const md = ':::frontmatter\ntitle: x\n:::';
-    const html = renderMarkdown(md);
+    const html = renderMarkdown(':::frontmatter\ntitle: x\n:::');
     expect(html).toContain('data-pkc-warn-code="PKC1010"');
     expect(html).toContain('data-pkc-warn-name="frontmatter"');
   });
 
   it(':::body block が PKC1010', () => {
-    const md = ':::body\ncontent\n:::';
-    const html = renderMarkdown(md);
+    const html = renderMarkdown(':::body\ncontent\n:::');
     expect(html).toContain('data-pkc-warn-code="PKC1010"');
     expect(html).toContain('data-pkc-warn-name="body"');
   });
 
-  it(':::section{role=summary} 等の実装済 block は検出しない', () => {
-    const md = ':::section{role=summary}\n本文\n:::';
-    const html = renderMarkdown(md);
-    expect(html).not.toContain('pkc-warning-hallucination');
-    expect(html).toContain('pkc-section-summary');
-  });
-
-  it(':::figure / :::quote / :::if / :::break / :::comment は検出しない', () => {
-    const md1 = ':::figure{id="f"}\n![](x)\n:::';
-    const md2 = ':::quote{author="a"}\n本文\n:::';
-    const md3 = ':::if{format=html}\n本文\n:::';
-    const md4 = ':::break';
-    const md5 = ':::comment\nhidden\n:::';
-    expect(renderMarkdown(md1)).not.toContain('pkc-warning-hallucination');
-    expect(renderMarkdown(md2)).not.toContain('pkc-warning-hallucination');
-    expect(renderMarkdown(md3)).not.toContain('pkc-warning-hallucination');
-    expect(renderMarkdown(md4)).not.toContain('pkc-warning-hallucination');
-    expect(renderMarkdown(md5)).not.toContain('pkc-warning-hallucination');
-  });
-
-  it('閉じられない :::toc は signaling せず literal 残し', () => {
-    // 不正 markup の責任を user に戻す(spec §1.6 invariant)
-    const md = ':::toc\nnever closed';
-    const html = renderMarkdown(md);
-    expect(html).not.toContain('pkc-warning-hallucination-block');
-    expect(html).toContain(':::toc');
+  it(':::section / :::figure / :::quote / :::if / :::break / :::comment は無視', () => {
+    expect(renderMarkdown(':::figure{id="f"}\n![](x)\n:::')).not.toContain('pkc-warning-hallucination');
+    expect(renderMarkdown(':::quote{author="a"}\n本文\n:::')).not.toContain('pkc-warning-hallucination');
+    expect(renderMarkdown(':::if{format=html}\n本文\n:::')).not.toContain('pkc-warning-hallucination');
+    expect(renderMarkdown(':::break')).not.toContain('pkc-warning-hallucination');
+    expect(renderMarkdown(':::comment\nhidden\n:::')).not.toContain('pkc-warning-hallucination');
   });
 });
 
-describe('hallucination signaling — regression(PR-2K)', () => {
+describe('PR-2L Ishikari fixture 部分:全 4 inline tolerant + 0 warning', () => {
+  let infoSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
+    infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
-  it('既存 simple markdown は完全 regression なし', () => {
-    const html = renderMarkdown('# heading\n**bold** *em* `code` ~~strike~~');
-    expect(html).not.toContain('pkc-warning-hallucination');
-    expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it('既存 vars 展開は regression なし', () => {
-    const html = renderMarkdown('{{vars.x}}', { vars: { x: 'val' } });
-    expect(html).toContain('val');
-    expect(html).not.toContain('pkc-warning-hallucination');
-  });
-
-  it('Ishikari fixture v2 部分:全 4 inline + 0 block 検出', () => {
+  it('4 inline directive 全部 tolerant render、warning 0 件', () => {
     const md = `:lead:[本文書は計画]
 
 :spacing:{size=2}
@@ -195,10 +223,20 @@ describe('hallucination signaling — regression(PR-2K)', () => {
   attribution="作業責任者: 佐藤"
 }`;
     const html = renderMarkdown(md);
-    expect(html).toContain('pkc-warning-hallucination-lead');
-    expect(html).toContain('pkc-warning-hallucination-spacing');
-    expect(html).toContain('pkc-warning-hallucination-align');
-    expect(html).toContain('pkc-warning-hallucination-quote');
-    expect(warnSpy).toHaveBeenCalledTimes(4);
+    expect(html).toContain('class="pkc-lead"');
+    expect(html).toContain('class="pkc-blank-line pkc-tolerant-spacing"');
+    expect(html).toContain('class="pkc-align-hint"');
+    expect(html).toContain('class="pkc-attribution"');
+    // PR-2L で inline は warning 経路に乗らない(全 tolerant alias)
+    expect(html).not.toContain('pkc-warning-hallucination-lead');
+    expect(html).not.toContain('pkc-warning-hallucination-spacing');
+    expect(html).not.toContain('pkc-warning-hallucination-align');
+    expect(html).not.toContain('pkc-warning-hallucination-quote');
+    // console.info(PKC2005-2008)で 4 件 + 推奨 hint
+    const codes = ['PKC2005', 'PKC2006', 'PKC2007', 'PKC2008'];
+    for (const code of codes) {
+      expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining(code));
+    }
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });

@@ -38,6 +38,14 @@ export const WARNING_CODES = {
   SEMANTIC_PROFILE_UNKNOWN:       { code: 'PKC2002', category: 'semantic' as WarningCategory },
   SEMANTIC_VAR_UNDEFINED:         { code: 'PKC2003', category: 'semantic' as WarningCategory },
   SEMANTIC_REF_UNKNOWN_TARGET:    { code: 'PKC2004', category: 'semantic' as WarningCategory },
+  // PR-2L(2026-05-10):tolerant alias hint(寛容 parse + canonical recommendation)
+  SEMANTIC_TOLERANT_LEAD:         { code: 'PKC2005', category: 'semantic' as WarningCategory },
+  SEMANTIC_TOLERANT_SPACING:      { code: 'PKC2006', category: 'semantic' as WarningCategory },
+  SEMANTIC_TOLERANT_ALIGN:        { code: 'PKC2007', category: 'semantic' as WarningCategory },
+  SEMANTIC_TOLERANT_QUOTE:        { code: 'PKC2008', category: 'semantic' as WarningCategory },
+  SEMANTIC_TOLERANT_ADMONITION:   { code: 'PKC2009', category: 'semantic' as WarningCategory },
+  SEMANTIC_TOLERANT_CALLOUT:      { code: 'PKC2010', category: 'semantic' as WarningCategory },
+  SEMANTIC_TOLERANT_ADMONITION_TITLE: { code: 'PKC2011', category: 'semantic' as WarningCategory },
   // ── PKC3xxx renderer ─────────────────────────────
   RENDERER_BLANK_LINE_CAPPED:     { code: 'PKC3001', category: 'renderer' as WarningCategory },
   RENDERER_LIST_DEPTH_CAPPED:     { code: 'PKC3002', category: 'renderer' as WarningCategory },
@@ -67,6 +75,16 @@ export interface PkcWarning {
   loc?: { line?: number; column?: number };
   /** 関連 markup 名 / id 等の context。任意。 */
   context?: Record<string, string | number | boolean>;
+  /**
+   * PR-2L(2026-05-10、reform Phase 2):tolerant alias 時の 3 つ組 hint。
+   * - `detected`:入力 literal(例 `:lead:[本文]`)
+   * - `interpretedAs`:render 上の分類(例 `lead-paragraph`)
+   * - `canonical`:推奨 simple 形(例 `本文 を普通の段落として書く`)
+   * AI repair tool / IR canonicalizer はこの 3 つ組で round-trip 学習する。
+   */
+  detected?: string;
+  interpretedAs?: string;
+  canonical?: string;
 }
 
 /** Helper:WARNING_CODES から code + category を取り、detail / loc / context を埋めて PkcWarning 作成。 */

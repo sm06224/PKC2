@@ -70,52 +70,93 @@
 
 **設計原則**:reform 後は **simple 形を first**(人間が見たまま入力)、**formal 形は AI / 機械が emit する serializer**(round-trip 安全)。AI がテストデータを作る時は混在 OK。
 
-### 1.6 ⚠ AI が生成しがちだが **未実装 / 受理しない formal 構文**
+### 1.6 ⚠ AI が生成しがちな formal 構文の受容方針
 
-ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の知識から **PKC2 でサポートされていない formal 構文** を hallucination で生成することがある。本表は実機検証で **render されない** ことを確認済み。
+ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / Bootstrap / Tailwind / JSX / MDX 知識から **PKC2 でサポートされていない formal 構文** を hallucination で生成することがある。
 
-**2026-05-10 PR-2K**:未実装 deny-list directive を検出すると **visible inline marker(`<span class="pkc-warning-hallucination">`)+ `console.warn`(PKC1009 inline / PKC1010 block)** で signaling するようになった。AI test runner / Playwright `page.on('console', …)` で code 拾える、screenshot からも黄色ハイライトで視認できる。
+**PKC2 の対応方針**(2026-05-10 確定、PR-2K + PR-2L):
+
+1. **critical(HTML / CSS / framework component 想起、user が気付きにくい)**:**寛容 parse + parse log(PR-2L)**。 inline 4 件(`:lead:` `:spacing:` `:align:` `:quote:`)+ admonition alias 群(`:::note` 等)を受理し、`data-pkc-canonical` attribute + `console.info` で 3 つ組 hint(detected / interpretedAs / canonical)を emit。AI repair tool が round-trip 学習可能。
+2. **less-critical(structural、user が即気付ける)**:**warning marker + console.warn(PR-2K)**。 block 3 件(`:::toc` `:::frontmatter` `:::body`)は literal を残しつつ橙背景で signaling。
+
+#### 1.6.a 寛容 parse(PR-2L):critical inline 4 件 + admonition alias 群
+
+| AI が生成する形 | 寛容 parse 後 | console.info code | canonical(推奨形) |
+|----------------|--------------|-------------------|--------------------|
+| `:lead:[content]` | `<span class="pkc-lead">content</span>` | `[PKC2005]` | 普通の段落として書く(`==content==` で強調も可) |
+| `:spacing:{size=N}` | `<div class="pkc-blank-line pkc-tolerant-spacing">` | `[PKC2006]` | `_<N>`(L-8 blank-line marker、`_2` = 2 行空ける)|
+| `:align:{position=X}` | `<span class="pkc-align-hint">[align: X]</span>` | `[PKC2007]` | 行頭 prefix `||`(center)/ `|>`(end)/ `<|`(start)または `:::paragraph{align=…}` |
+| `:quote:{attribution=…}` | `<small class="pkc-attribution">— …</small>` | `[PKC2008]` | block `:::quote{author="…"} content :::` |
+| `:::note` `:::warning` `:::tip` `:::info` `:::caution` `:::important` `:::danger` `:::summary` | `:::section{role=NAME}` alias | `[PKC2009]` | `:::section{role=…}` |
+| `:::callout{type=X}` | `:::section{role=X}` alias | `[PKC2010]` | 同上 |
+| `:::admonition{type=X title=Y}` | `:::section{role=X}` + `## Y` | `[PKC2011]` | 同上 |
+
+各要素の `data-pkc-canonical` attribute に推奨形が転記される(DOM 走査で AI repair tool 取得可能)。
+
+#### 1.6.b warning signaling(PR-2K):less-critical block 3 件
+
+| AI が生成する形 | 状態 | 推奨形 |
+|----------------|-----|--------|
+| `:::toc{depth=N}` | ❌ 未実装 **+ PKC1010 signaling** | markdown heading(`# ## ###`)構造、TOC は別 feature |
+| `:::frontmatter` | ❌ 未実装 **+ PKC1010 signaling** | YAML frontmatter `---` 囲み top で書く |
+| `:::body` | ❌ 未実装 **+ PKC1010 signaling** | structural directive 不要、heading で region 表現 |
+
+#### 1.6.c 過去実装済(simple/formal 等価)
 
 | AI が生成する形 | 状態 | 推奨 simple 形(workaround)|
 |----------------|-----|-------------------------|
 | ~~`:::section{role=summary\|warning\|…}`~~ | ✅ **実装済(Phase 2 PR-2F、2026-05-10)** | 8 known role(summary / warning / note / tip / caution / important / info / danger)で callout、CSS で role 別 color scheme |
 | ~~`:::comment\n…\n:::`~~ | ✅ **実装済(Phase 2 PR-2G、2026-05-10)** | `%%%` block comment 等価、attrs(`block=true` / `visibility=hidden` 等)は今のところ無視、render 完全削除 |
-| `:lead:[text]` | ❌ 未実装 **+ PKC1009 signaling(PR-2K)** | 1 行 paragraph で先頭 + 適宜 `==hl==` などで装飾 |
+| ~~`:lead:[text]`~~ | ✅ **寛容 parse(Phase 2 PR-2L、2026-05-10)** | `<span class="pkc-lead">` で描画、canonical は普通段落 |
 | ~~`:strong:[text]`~~ | ✅ **実装済(Phase 2 PR-2B、2026-05-10)** | `**text**` 等価、AI emit 用に formal 形提供 |
 | ~~`:emphasis:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `*text*` 等価 |
 | ~~`:code:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `` `text` `` 等価 |
 | ~~`:strike:[text]`~~ | ✅ **実装済(Phase 2 PR-2B)** | `~~text~~` 等価 |
 | ~~`:caption:[text]`~~ | ✅ **実装済(Phase 2 PR-2C、2026-05-10)** | `:::figure` block 内で行頭 `:caption:[…]` が `^^^ caption` 等価 |
-| `:quote:{attribution="…"}`(inline self-closing)| ❌ 未実装 **+ PKC1009 signaling(PR-2K)** | block `:::quote{author="…"} content :::`(R-D)を使う |
-| `:align:{position=end}` | ❌ 未実装 **+ PKC1009 signaling(PR-2K)** | 行頭 prefix `\|>`(R-C)を使う |
-| `:spacing:{size=2}` | ❌ 未実装 **+ PKC1009 signaling(PR-2K)** | `_2`(L-8 blank-line marker、`_<N>` で N 空行) |
+| ~~`:quote:{attribution="…"}`~~ | ✅ **寛容 parse(Phase 2 PR-2L)** | `<small class="pkc-attribution">` で描画、canonical は block `:::quote{author=…}` |
+| ~~`:align:{position=end}`~~ | ✅ **寛容 parse(Phase 2 PR-2L)** | `<span class="pkc-align-hint">[align: end]</span>`、canonical は `\|>` 等の行頭 prefix |
+| ~~`:spacing:{size=2}`~~ | ✅ **寛容 parse(Phase 2 PR-2L)** | `<div class="pkc-tolerant-spacing">`、canonical は `_<N>` |
 | ~~`:autoref:{id="fig1"}`~~ | ✅ **実装済(Phase 2 PR-2D、2026-05-10)** | `[@fig1]` 等価、ASCII / smart quote / unquoted 全形受理 |
-| `:::toc` `:::frontmatter` `:::body` 等 | ❌ 未実装 **+ PKC1010 signaling(PR-2K)** | structural directive は markdown heading(`#` `##` `###`)で十分 |
+| `:::toc` `:::frontmatter` `:::body` | ❌ warning signaling(PR-2K)| structural directive は markdown heading で表現 |
 | `:strong:` `:emphasis:` 等 が parser fall-through すると?| `:strong:` は **literal text** として残る | parser は形式合致しない `:role:` を inline role として認識せず、L-6 simple-inline `:text:attrs:` パスへ fall-through する |
 
-#### 1.6.y hallucination signaling 詳細(PR-2K、2026-05-10)
+#### 1.6.y parse log 詳細(PR-2L、2026-05-10、寛容 parse + hint)
 
-未実装 deny-list directive を AI が生成した場合:
+AI が `:lead:[content]` を生成すると、PKC2 は以下を emit する:
 
-- **visible marker**:`<span class="pkc-warning-hallucination pkc-warning-hallucination-NAME" data-pkc-warn-code="PKC1009" data-pkc-warn-name="NAME" title="…推奨形…">literal</span>`(block は `<div class="pkc-warning-hallucination-block">` + `data-pkc-warn-code="PKC1010"`)
-- **console.warn**:`[PKC1009] hallucinated inline directive :NAME: detected. Use simple form per spec §1.6 (推奨形).`
-- **CSS**:橙背景(`#fef3c7` / `#92400e` text)+ 点線下線、tooltip で推奨形提示
+1. **render**:`<span class="pkc-lead" data-pkc-warn-code="PKC2005" data-pkc-warn-name="lead" data-pkc-canonical="普通の段落として書く(`==content==` で強調も可)" title="lead paragraph (寛容 parse)。(canonical: …)">content</span>`
+2. **console.info**:`[PKC2005] tolerant alias :lead: accepted. detected=":lead:[content]" interpretedAs="lead-paragraph (large/styled first content)" canonical="普通の段落として書く(`==content==` で強調も可)"`
 
-AI repair tool / test harness は以下で拾える:
+AI repair tool / test harness は以下で 3 つ組(detected / interpretedAs / canonical)を取得可能:
 
 ```ts
-// Playwright で console.warn を capture
+// Playwright で console.info を capture(寛容 parse PKC2005-2011)
 page.on('console', (msg) => {
-  if (msg.type() === 'warning' && msg.text().includes('[PKC1009]')) {
-    // hallucination 検出、AI に retry / 正規化 instruction
+  if (msg.type() === 'info' && /\[PKC20(0[5-9]|1[01])\]/.test(msg.text())) {
+    // tolerant alias accepted、parse log を AI に feedback
+    //   "次は ==content== の simple 形で書くと round-trip 安全"
   }
 });
 
 // または rendered HTML から DOM 走査
-document.querySelectorAll('[data-pkc-warn-code="PKC1009"]')
+document.querySelectorAll('[data-pkc-canonical]').forEach((el) => {
+  console.log({
+    code: el.getAttribute('data-pkc-warn-code'),
+    name: el.getAttribute('data-pkc-warn-name'),
+    canonical: el.getAttribute('data-pkc-canonical'),
+  });
+});
 ```
 
-fenced code(`` ``` `` / `~~~`)内は signaling 対象外(documentation 用途を保護)。
+fenced code(`` ``` `` / `~~~`)内は寛容 parse 対象外(documentation 用途を保護)。
+
+#### 1.6.z PR-2K warning signaling 詳細(less-critical block のみ)
+
+`:::toc` `:::frontmatter` `:::body` は寛容 parse せず literal を残す:
+
+- **visible marker**:`<div class="pkc-warning-hallucination-block" data-pkc-warn-code="PKC1010" data-pkc-warn-name="NAME">literal</div>`
+- **console.warn**:`[PKC1010] hallucinated block directive :::NAME detected. Use … instead.`
+- **CSS**:橙背景(`#fef3c7` / `#92400e` text)+ 左 border、tooltip で推奨形提示
 
 ### 1.6.x multi-line `[content]` 受理(2026-05-10、PR-2J)
 

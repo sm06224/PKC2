@@ -373,16 +373,7 @@ export function buildRenderedViewerHtml(
       text-decoration-color: #b91c1c;
       cursor: help;
     }
-    /* PR-2K(2026-05-10、reform Phase 2):hallucination directive 警告 mirror */
-    .pkc-md-rendered .pkc-warning-hallucination {
-      background-color: #fef3c7;
-      color: #92400e;
-      text-decoration: underline dotted;
-      text-decoration-color: #d97706;
-      padding: 0 0.15em;
-      border-radius: 2px;
-      cursor: help;
-    }
+    /* PR-2K(2026-05-10、reform Phase 2):less-critical block directive 警告 mirror */
     .pkc-md-rendered .pkc-warning-hallucination-block {
       background-color: #fef3c7;
       color: #92400e;
@@ -391,6 +382,36 @@ export function buildRenderedViewerHtml(
       margin: 0.5em 0;
       border-radius: 2px;
       cursor: help;
+    }
+    /* PR-2L(2026-05-10、reform Phase 2):tolerant alias 寛容 parse mirror */
+    .pkc-md-rendered .pkc-lead {
+      font-size: 1.05em;
+      font-weight: 500;
+      color: #1f2937;
+      border-bottom: 1px dotted #9ca3af;
+      cursor: help;
+    }
+    .pkc-md-rendered .pkc-attribution {
+      display: block;
+      text-align: right;
+      font-size: 0.85em;
+      color: #6b7280;
+      font-style: italic;
+      margin-top: 0.25em;
+      cursor: help;
+    }
+    .pkc-md-rendered .pkc-tolerant-spacing {
+      height: calc(1em * var(--pkc-blank-count, 1));
+    }
+    .pkc-md-rendered .pkc-align-hint {
+      display: inline-block;
+      font-size: 0.75em;
+      color: #1d4ed8;
+      background-color: #dbeafe;
+      padding: 0 0.3em;
+      border-radius: 2px;
+      cursor: help;
+      user-select: none;
     }
     /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
        hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため

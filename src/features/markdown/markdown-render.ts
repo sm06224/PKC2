@@ -2243,42 +2243,97 @@ const BLANK_OPEN = '\u{E130}';
 const BLANK_SEP = '\u{E131}';
 const BLANK_LINE_MAX = 50;
 
-// ── reform-2026-05 Phase 2 PR-2K:AI hallucination 形 signaling ──
+// ── reform-2026-05 Phase 2 PR-2K/2L:AI hallucination 形 寛容 parse + signaling ──
 //
-// spec v2 §1.6 deny list の formal 構文(:lead:[...] / :spacing:{...} /
-// :align:{...} / :quote:{...} / :::toc / :::frontmatter / :::body)を
-// AI(ChatGPT / Claude / Gemini) が Pandoc / RST 知識から hallucinate して
-// 生成する。これまでは parser fall-through で literal 残留 → 警告なし、
-// AI 側も「成功した」と誤認していた。
+// spec v2 §1.6 deny list の formal 構文を AI(ChatGPT / Claude / Gemini)が
+// Pandoc / RST / Bootstrap / Tailwind / JSX 知識から hallucinate して生成する
+// 問題に対し、2 段階の対応をする:
 //
-// PR-2K では preprocessor で patterns を検出し、3 経路で signaling する:
-//   1. visible inline marker: <span class="pkc-warning-hallucination"
-//      data-pkc-warn-code="PKC1009/PKC1010"> — user 視認 + AI screenshot 可読
-//   2. console.warn: AI test runner / Playwright capture 経路
-//   3. WARNING_CODES code(PKC1009 inline / PKC1010 block) — future Report dump
+//   PR-2K(2026-05-10):literal 残留 → visible marker + console.warn で signaling
+//   PR-2L(2026-05-10):critical inline 4 件 + admonition alias 群を 寛容 parse へ
+//                      格上げ、parse log に detected / interpretedAs / canonical の
+//                      3 つ組を含めることで AI repair tool が round-trip 学習可能に
 //
-// PUA sentinel pattern:U+E162/E163 で preprocess、post-process で <span> に展開。
+// PR-2L で寛容 parse する critical 群(HTML / CSS class / framework component 想起):
+//   :lead:[content]            → <span class="pkc-lead">content</span> + PKC2005
+//   :spacing:{size=N}          → blank-line N 個 + PKC2006
+//   :align:{position=X}        → 次段落 align directive + PKC2007
+//   :quote:{attribution=…}     → <small class="pkc-attribution">…</small> + PKC2008
+//   :::note / :::warning / :::tip / :::info / :::caution / :::important /
+//   :::danger / :::summary     → :::section{role=NAME} alias + PKC2009
+//   :::callout{type=X}         → :::section{role=X} alias + PKC2010
+//   :::admonition{type=X
+//      title=Y}                → :::section{role=X} + emphasis title + PKC2011
 //
-// fence aware:fenced code 内 marker は無視(マスク → 復元、他 preprocessor と一致)。
+// PR-2K で warning 据え置きの less-critical(structural、user が即気付ける):
+//   :::toc / :::frontmatter / :::body  → marker + PKC1010
+//   parser fall-through inline(:lead: 以外で形式不一致) → 何もしない
 
 const HALLUCINATION_OPEN = '\u{E162}';
 const HALLUCINATION_SEP = '\u{E163}';
 const HALLUCINATION_FENCE_OPEN = '\u{E164}';
 const HALLUCINATION_FENCE_SEP = '\u{E165}';
 
-/** AI hallucination 形 inline directive 表(spec v2 §1.6 deny list より)。 */
-const HALLUCINATION_INLINE_PATTERNS: ReadonlyArray<{
+// PR-2L:tolerant alias sentinel(PUA、PR-2K の hallucination sentinel と区別)
+const TOLERANT_OPEN = '\u{E166}';
+const TOLERANT_SEP = '\u{E167}';
+
+/**
+ * PR-2L: tolerant alias parse log entry。
+ *
+ * preprocessor が hallucination 形を render path に変換した際の hint。
+ * console.info で出力、`data-pkc-canonical=` attribute にも転記、Playwright
+ * `page.on('console')` / DOM 走査で AI repair tool が拾える。
+ */
+interface TolerantInlinePattern {
   re: RegExp;
-  name: string;
-  suggestion: string;
-}> = [
-  { re: /:lead:\[([\s\S]*?)\]/g, name: 'lead', suggestion: '1 行 paragraph + `==hl==` 等' },
-  { re: /:spacing:\{([^}]*?)\}/g, name: 'spacing', suggestion: '行頭 `_N`(L-8 blank-line marker)' },
-  { re: /:align:\{([^}]*?)\}/g, name: 'align', suggestion: '行頭 prefix `||` / `|>` / `<|`(L-5) または `:::paragraph{align=…}`' },
-  { re: /:quote:\{([\s\S]*?)\}/g, name: 'quote', suggestion: 'block `:::quote{author="…"} content :::`' },
+  /** 入力 directive 名(lead / spacing / align / quote)。 */
+  name: 'lead' | 'spacing' | 'align' | 'quote';
+  /** PKC<NNNN> code。 */
+  code: string;
+  /** parse log:render 上の分類。 */
+  interpretedAs: string;
+  /** parse log:推奨 simple 形。 */
+  canonical: string;
+}
+
+const TOLERANT_INLINE_PATTERNS: ReadonlyArray<TolerantInlinePattern> = [
+  {
+    re: /:lead:\[([\s\S]*?)\]/g,
+    name: 'lead',
+    code: 'PKC2005',
+    interpretedAs: 'lead-paragraph (large/styled first content)',
+    canonical: '普通の段落として書く(`==content==` で強調も可)',
+  },
+  {
+    re: /:spacing:\{([^}]*?)\}/g,
+    name: 'spacing',
+    code: 'PKC2006',
+    interpretedAs: 'blank-line spacer',
+    canonical: '`_<N>`(L-8 blank-line marker、`_2` = 2 行空ける)',
+  },
+  {
+    re: /:align:\{([^}]*?)\}/g,
+    name: 'align',
+    code: 'PKC2007',
+    interpretedAs: 'next-paragraph alignment hint',
+    canonical: '行頭 prefix `||`(center)/ `|>`(end)/ `<|`(start)または `:::paragraph{align=…}`',
+  },
+  {
+    re: /:quote:\{([\s\S]*?)\}/g,
+    name: 'quote',
+    code: 'PKC2008',
+    interpretedAs: 'attribution caption',
+    canonical: 'block `:::quote{author="…"} content :::`',
+  },
 ];
 
-/** AI hallucination 形 block directive 表(spec v2 §1.6 deny list より)。 */
+/** PR-2L:admonition alias の標準 role 集合(spec §1.6.y で alias 列挙)。 */
+const ADMONITION_ALIASES: ReadonlySet<string> = new Set([
+  'note', 'warning', 'tip', 'info', 'caution', 'important', 'danger', 'summary',
+]);
+
+/** PR-2K 維持:less-critical block deny list(structural、寛容 parse しない)。 */
 const HALLUCINATION_BLOCK_DIRECTIVES: ReadonlySet<string> = new Set([
   'toc', 'frontmatter', 'body',
 ]);
@@ -2290,20 +2345,21 @@ const HALLUCINATION_BLOCK_SUGGESTION: Record<string, string> = {
 };
 
 /**
- * AI hallucination 形 directive を検出して sentinel wrap + console.warn。
+ * PR-2L:tolerant alias parser — critical inline 4 件を寛容 parse して
+ * sentinel wrap、postprocess で正式 render に変換。AI が hallucinate しがちな
+ * `:lead:[…]` / `:spacing:{…}` / `:align:{…}` / `:quote:{…}` を受理し、
+ * 3 つ組(detected / interpretedAs / canonical)を parse log に emit。
  *
- * inline patterns(`:lead:[…]` 等)は regex で fenced code を保護した上で
- * 全 source に対し replace。block patterns(`:::toc` `:::frontmatter` `:::body`)
- * は行 base で fenceTransition aware に検出。
+ * sentinel 形式:`<TOLERANT_OPEN>name<TOLERANT_SEP>content<TOLERANT_OPEN>`
  *
- * `silentWarnings` opts:vitest 等で console を汚さない用途。
+ * fence-aware:fenced code 内 marker は対象外(別 mask 経由)。
  */
-function processHallucinatedDirectives(
+function processTolerantInlineAliases(
   source: string,
   lineMapIn: number[],
   silentWarnings = false,
 ): { transformed: string; lineMap: number[] } {
-  // Step 1: fenced code block を placeholder mask(inline pattern 適用前)。
+  // fenced code mask(他 preprocessor と同等)
   const fenceRegions: string[] = [];
   const FENCE_HOLDER = (idx: number) =>
     `${HALLUCINATION_FENCE_OPEN}${idx}${HALLUCINATION_FENCE_SEP}`;
@@ -2312,19 +2368,178 @@ function processHallucinatedDirectives(
     return FENCE_HOLDER(fenceRegions.length - 1);
   });
 
-  // Step 2: inline pattern を sentinel wrap + console.warn。
-  for (const pat of HALLUCINATION_INLINE_PATTERNS) {
-    masked = masked.replace(pat.re, (matched) => {
-      if (!silentWarnings && typeof console !== 'undefined' && console.warn) {
-        console.warn(
-          `[PKC1009] hallucinated inline directive :${pat.name}: detected. ` +
-          `Use simple form per spec §1.6 (${pat.suggestion}).`,
+  for (const pat of TOLERANT_INLINE_PATTERNS) {
+    masked = masked.replace(pat.re, (matched, content) => {
+      const trimmed = String(content ?? '').trim();
+      if (!silentWarnings && typeof console !== 'undefined' && console.info) {
+        console.info(
+          `[${pat.code}] tolerant alias :${pat.name}: accepted. ` +
+          `detected="${matched.replace(/\n/g, '\\n').slice(0, 80)}" ` +
+          `interpretedAs="${pat.interpretedAs}" ` +
+          `canonical="${pat.canonical}"`,
         );
       }
-      // sentinel 形式: <OPEN>inline<SEP>name<SEP>literal<OPEN>
-      return `${HALLUCINATION_OPEN}inline${HALLUCINATION_SEP}${pat.name}${HALLUCINATION_SEP}${matched}${HALLUCINATION_OPEN}`;
+      // パラメータ系(spacing/align/quote)は preprocess で値抽出
+      // (markdown-it が `"` → `&quot;` 化するので postprocess regex が崩れる)
+      if (pat.name === 'spacing') {
+        const m = /size\s*=\s*"?(\d+)"?/.exec(trimmed);
+        const size = m ? m[1]! : '1';
+        return `${TOLERANT_OPEN}spacing${TOLERANT_SEP}${size}${TOLERANT_OPEN}`;
+      }
+      if (pat.name === 'align') {
+        const m = /position\s*=\s*"?([a-z]+)"?/.exec(trimmed);
+        const pos = m ? m[1]! : 'start';
+        return `${TOLERANT_OPEN}align${TOLERANT_SEP}${pos}${TOLERANT_OPEN}`;
+      }
+      if (pat.name === 'quote') {
+        const m = /attribution\s*=\s*"([^"]*)"|attribution\s*=\s*([^\s}]+)/.exec(trimmed);
+        const text = m ? (m[1] ?? m[2] ?? '') : trimmed;
+        // HTML escape(markdown-it に渡す前に literal 化)
+        const escaped = text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+        return `${TOLERANT_OPEN}quote${TOLERANT_SEP}${escaped}${TOLERANT_OPEN}`;
+      }
+      // :lead: は content を markdown-it inline parser に渡す
+      return `${TOLERANT_OPEN}${pat.name}${TOLERANT_SEP}${trimmed}${TOLERANT_OPEN}`;
     });
   }
+
+  // fence restore
+  const restored = masked.replace(
+    new RegExp(`${HALLUCINATION_FENCE_OPEN}(\\d+)${HALLUCINATION_FENCE_SEP}`, 'g'),
+    (_m, idx) => fenceRegions[parseInt(idx, 10)] ?? '',
+  );
+  return { transformed: restored, lineMap: lineMapIn };
+}
+
+/**
+ * PR-2L:admonition alias rewriter — `:::note` `:::warning` `:::callout{type=X}`
+ * `:::admonition{type=X title=Y}` を `:::section{role=X}` に rewrite して
+ * 既存 PR-2F section processor に流す。fence-aware。
+ *
+ *   :::note               → :::section{role=note}
+ *   :::warning{...}       → :::section{role=warning ...}
+ *   :::callout{type=tip}  → :::section{role=tip}
+ *   :::admonition{type=info title="..."}
+ *                         → :::section{role=info}
+ *                           ## ...
+ *                           (本文)
+ *                           :::
+ */
+function processAdmonitionAliases(
+  source: string,
+  lineMapIn: number[],
+  silentWarnings = false,
+): { transformed: string; lineMap: number[] } {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let fence: FenceState = { inFence: false, marker: '' };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    // :::NAME{attrs?}  where NAME is in ADMONITION_ALIASES
+    let m = /^([ \t]*):::([a-z]+)(\{([^}]*)\})?\s*$/.exec(line);
+    if (m && ADMONITION_ALIASES.has(m[2]!)) {
+      const indent = m[1] ?? '';
+      const name = m[2]!;
+      const attrs = m[4] ? ` ${m[4]}` : '';
+      if (!silentWarnings && typeof console !== 'undefined' && console.info) {
+        console.info(
+          `[PKC2009] tolerant alias :::${name} accepted. ` +
+          `detected=":::${name}${attrs}" ` +
+          `interpretedAs="section callout role=${name}" ` +
+          `canonical=":::section{role=${name}}"`,
+        );
+      }
+      out.push(`${indent}:::section{role=${name}${attrs}}`);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    // :::callout{type=NAME ...}
+    m = /^([ \t]*):::callout(\{([^}]*)\})?\s*$/.exec(line);
+    if (m) {
+      const indent = m[1] ?? '';
+      const attrs = m[3] ?? '';
+      // type=X 抽出
+      const tm = /type\s*=\s*"?([a-z]+)"?/.exec(attrs);
+      const role = tm?.[1] ?? 'note';
+      const otherAttrs = attrs.replace(/type\s*=\s*"?[a-z]+"?/, '').trim();
+      const extraAttrs = otherAttrs ? ` ${otherAttrs}` : '';
+      if (!silentWarnings && typeof console !== 'undefined' && console.info) {
+        console.info(
+          `[PKC2010] tolerant alias :::callout{type=${role}} accepted. ` +
+          `detected=":::callout{${attrs}}" ` +
+          `interpretedAs="section callout role=${role}" ` +
+          `canonical=":::section{role=${role}}"`,
+        );
+      }
+      out.push(`${indent}:::section{role=${role}${extraAttrs}}`);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    // :::admonition{type=NAME title=Y}
+    m = /^([ \t]*):::admonition(\{([^}]*)\})?\s*$/.exec(line);
+    if (m) {
+      const indent = m[1] ?? '';
+      const attrs = m[3] ?? '';
+      const tm = /type\s*=\s*"?([a-z]+)"?/.exec(attrs);
+      const role = tm?.[1] ?? 'note';
+      const titleM = /title\s*=\s*"([^"]*)"|title\s*=\s*([^\s}]+)/.exec(attrs);
+      const title = titleM ? (titleM[1] ?? titleM[2] ?? '') : '';
+      if (!silentWarnings && typeof console !== 'undefined' && console.info) {
+        console.info(
+          `[PKC2011] tolerant alias :::admonition accepted. ` +
+          `detected=":::admonition{${attrs}}" ` +
+          `interpretedAs="section callout role=${role} title=${title}" ` +
+          `canonical=":::section{role=${role}}\\n## ${title}"`,
+        );
+      }
+      out.push(`${indent}:::section{role=${role}}`);
+      lineMapOut.push(inputIdx);
+      if (title) {
+        out.push(`## ${title}`);
+        lineMapOut.push(inputIdx);
+      }
+      continue;
+    }
+    out.push(line);
+    lineMapOut.push(inputIdx);
+  }
+  return { transformed: out.join('\n'), lineMap: lineMapOut };
+}
+
+/**
+ * AI hallucination 形 less-critical block directive(`:::toc` `:::frontmatter`
+ * `:::body`)を sentinel wrap + console.warn(PKC1010)。PR-2K で実装、PR-2L で
+ * inline 4 件 + admonition alias 群を寛容 parse 化したため、本関数は block
+ * structural 3 件のみを担当する。
+ *
+ * `silentWarnings` opts:vitest 等で console を汚さない用途。
+ */
+function processHallucinatedDirectives(
+  source: string,
+  lineMapIn: number[],
+  silentWarnings = false,
+): { transformed: string; lineMap: number[] } {
+  // Step 1: fenced code block を placeholder mask。
+  const fenceRegions: string[] = [];
+  const FENCE_HOLDER = (idx: number) =>
+    `${HALLUCINATION_FENCE_OPEN}${idx}${HALLUCINATION_FENCE_SEP}`;
+  const masked = source.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, (m) => {
+    fenceRegions.push(m);
+    return FENCE_HOLDER(fenceRegions.length - 1);
+  });
 
   // Step 3: block pattern を行 base で検出(masked 状態でも fence 内には
   // mask placeholder が残り、`:::` 行頭 match しないので安全)。
@@ -2384,44 +2599,10 @@ function processHallucinatedDirectives(
 }
 
 /**
- * Post-process:sentinel pair → `<span class="pkc-warning-hallucination">` または
- * `<div class="pkc-warning-hallucination-block">`。
- *
- * inline pattern: <OPEN>inline<SEP>name<SEP>literal<OPEN>
- *   → <span class="pkc-warning-hallucination pkc-warning-hallucination-NAME"
- *           data-pkc-warn-code="PKC1009" data-pkc-warn-name="NAME"
- *           title="未実装の formal 構文 :NAME:。spec §1.6 推奨形へ正規化を。">
- *       literal
- *     </span>
- *
- * block pattern は <p>...</p> 内で sentinel が見えるので、paragraph wrapper を
- * 剥がして <div class="pkc-warning-hallucination-block"> に置換。
+ * Post-process:sentinel pair → `<div class="pkc-warning-hallucination-block">`(PR-2K)。
+ * PR-2L で inline は tolerant alias 経路に移行したため、本関数は block 3 件のみ。
  */
 function postProcessHallucinatedDirectives(html: string): string {
-  // inline:sentinel pair 内の literal(markdown-it 通過済)を <span> 包む
-  html = html.replace(
-    new RegExp(
-      `${HALLUCINATION_OPEN}inline${HALLUCINATION_SEP}([a-z][a-z0-9_-]*)${HALLUCINATION_SEP}([\\s\\S]*?)${HALLUCINATION_OPEN}`,
-      'g',
-    ),
-    (_match, name, content) => {
-      const suggestion =
-        HALLUCINATION_INLINE_PATTERNS.find((p) => p.name === name)?.suggestion
-          ?? 'spec §1.6 推奨形';
-      const title = `未実装の formal 構文 :${name}:。spec §1.6 推奨形へ正規化してください(${suggestion})。`;
-      return (
-        `<span class="pkc-warning-hallucination pkc-warning-hallucination-${name}" ` +
-        `data-pkc-warn-code="PKC1009" data-pkc-warn-name="${name}" ` +
-        `title="${title.replace(/"/g, '&quot;')}">` +
-        content +
-        `</span>`
-      );
-    },
-  );
-  // block:`<p>SENTINEL...` から `</p>` の前の `SENTINEL` close まで包む
-  // markdown-it は each line を別 `<p>` にしないので、block 全体が 1 paragraph
-  // または mixed content として残る。簡易版:open sentinel を含む段落から
-  // close sentinel 含む段落までを greedy match で `<div>` 化。
   html = html.replace(
     new RegExp(
       `${HALLUCINATION_OPEN}block${HALLUCINATION_SEP}([a-z][a-z0-9_-]*)${HALLUCINATION_SEP}([\\s\\S]*?)${HALLUCINATION_OPEN}`,
@@ -2440,6 +2621,98 @@ function postProcessHallucinatedDirectives(html: string): string {
     },
   );
   return html;
+}
+
+/**
+ * PR-2L:tolerant alias sentinel(TOLERANT_OPEN/SEP)を実際の HTML に展開。
+ *
+ *   :lead → <span class="pkc-lead" data-pkc-warn-code="PKC2005"
+ *                 data-pkc-canonical="…">content</span>
+ *   :spacing → <div class="pkc-blank-line pkc-tolerant-spacing"
+ *                   data-pkc-blank-count="N" data-pkc-warn-code="PKC2006">
+ *                   (N 行の vertical space)</div>
+ *   :align → <span class="pkc-align-hint" data-pkc-align-next="X"
+ *                  data-pkc-warn-code="PKC2007">[align: X]</span>
+ *   :quote → <small class="pkc-attribution" data-pkc-warn-code="PKC2008"
+ *                   data-pkc-canonical="…">— attribution</small>
+ *
+ * 各要素は `data-pkc-canonical` attribute で AI repair tool が canonical 形を
+ * DOM 走査で拾えるようにする(parse log の永続化 layer)。
+ */
+function postProcessTolerantSentinels(html: string): string {
+  return html.replace(
+    new RegExp(
+      `${TOLERANT_OPEN}([a-z][a-z0-9_-]*)${TOLERANT_SEP}([\\s\\S]*?)${TOLERANT_OPEN}`,
+      'g',
+    ),
+    (_match, name, content) => {
+      const pat = TOLERANT_INLINE_PATTERNS.find((p) => p.name === name);
+      if (!pat) return content;  // unknown — strip sentinel
+      const canonical = pat.canonical.replace(/"/g, '&quot;');
+      const titleSuffix = `(canonical: ${canonical})`;
+      switch (name) {
+        case 'lead': {
+          // markdown-it inline-parsed content をそのまま中に入れる
+          return (
+            `<span class="pkc-lead" ` +
+            `data-pkc-warn-code="${pat.code}" data-pkc-warn-name="lead" ` +
+            `data-pkc-canonical="${canonical}" ` +
+            `title="lead paragraph (寛容 parse)。${titleSuffix}">` +
+            content +
+            `</span>`
+          );
+        }
+        case 'spacing': {
+          // preprocess で size value 抽出済(content = "N")
+          const sizeRaw = parseInt(content, 10);
+          const size = Number.isFinite(sizeRaw)
+            ? Math.max(1, Math.min(50, sizeRaw))
+            : 1;
+          return (
+            `<div class="pkc-blank-line pkc-tolerant-spacing" ` +
+            `style="--pkc-blank-count: ${size}" ` +
+            `data-pkc-blank-count="${size}" aria-hidden="true" ` +
+            `data-pkc-warn-code="${pat.code}" data-pkc-warn-name="spacing" ` +
+            `data-pkc-canonical="${canonical}" ` +
+            `title="${size} 行 spacing (寛容 parse)。${titleSuffix}"></div>`
+          );
+        }
+        case 'align': {
+          // preprocess で position value 抽出済(content = "end" 等)
+          const rawPos = content || 'start';
+          const cssAlignMap: Record<string, string> = {
+            start: 'left',
+            end: 'right',
+            center: 'center',
+            justify: 'justify',
+            left: 'left',
+            right: 'right',
+          };
+          const cssAlign = cssAlignMap[rawPos] ?? 'left';
+          return (
+            `<span class="pkc-align-hint" ` +
+            `data-pkc-align-next="${cssAlign}" ` +
+            `data-pkc-warn-code="${pat.code}" data-pkc-warn-name="align" ` +
+            `data-pkc-canonical="${canonical}" ` +
+            `title="align hint: ${rawPos}→${cssAlign} (寛容 parse)。${titleSuffix}">` +
+            `[align: ${rawPos}]</span>`
+          );
+        }
+        case 'quote': {
+          // preprocess で attribution text 抽出 + HTML escape 済
+          return (
+            `<small class="pkc-attribution" ` +
+            `data-pkc-warn-code="${pat.code}" data-pkc-warn-name="quote" ` +
+            `data-pkc-canonical="${canonical}" ` +
+            `title="attribution (寛容 parse)。${titleSuffix}">` +
+            `— ${content}</small>`
+          );
+        }
+        default:
+          return content;
+      }
+    },
+  );
 }
 
 function processBlankLineMarkers(source: string, lineMapIn: number[]): {
@@ -2553,13 +2826,23 @@ export function renderMarkdown(
   const ifResult = processIfBlocks(text, lineMap, 'html');
   text = ifResult.transformed;
   lineMap = ifResult.lineMap;
-  // reform-2026-05 Phase 2 PR-2K:AI hallucination 形 deny-list directive を
-  // sentinel wrap + console.warn(spec v2 §1.6 deny list:lead / spacing /
-  // align / quote inline、toc / frontmatter / body block)。post-process で
-  // <span class="pkc-warning-hallucination"> / <div class="pkc-warning-hallucination-block">
-  // に展開、PKC1009 / PKC1010 で AI repair tool 経由のフィードバック可能。
-  // 他 directive(:::section / :::figure / :::quote / :::if / :::break)後に
-  // 走らせて、実装済 directive と誤検出しない。
+  // reform-2026-05 Phase 2 PR-2L:AI hallucination 形 寛容 parse(critical 群)。
+  // inline 4 件(:lead: / :spacing: / :align: / :quote:)を sentinel wrap、
+  // postprocess で正式 HTML へ変換、console.info で canonical hint emit。
+  const tolerantInlineResult = processTolerantInlineAliases(
+    text, lineMap, opts.silentHallucinationWarnings,
+  );
+  text = tolerantInlineResult.transformed;
+  lineMap = tolerantInlineResult.lineMap;
+  // PR-2L:admonition alias(:::note / :::warning / :::callout / :::admonition)
+  // を :::section{role=…} に rewrite。processSectionBlocks より先に走らせる。
+  const admonitionResult = processAdmonitionAliases(
+    text, lineMap, opts.silentHallucinationWarnings,
+  );
+  text = admonitionResult.transformed;
+  lineMap = admonitionResult.lineMap;
+  // PR-2K:less-critical block 3 件(:::toc / :::frontmatter / :::body)を
+  // sentinel wrap + console.warn(PKC1010)。寛容 parse はせず literal 残し。
   const hallResult = processHallucinatedDirectives(text, lineMap, opts.silentHallucinationWarnings);
   text = hallResult.transformed;
   lineMap = hallResult.lineMap;
@@ -2632,7 +2915,9 @@ export function renderMarkdown(
   html = postProcessBlankLineMarkers(html);
   // M-7:undefined variable sentinel → <span class="pkc-variable-undefined">
   html = postProcessVariableUndefined(html);
-  // reform-2026-05 Phase 2 PR-2K:hallucination sentinel → <span>/<div> warning
+  // PR-2L:tolerant alias sentinel → <span class="pkc-lead">/<small>/<div>
+  html = postProcessTolerantSentinels(html);
+  // PR-2K:hallucination block sentinel → <div class="pkc-warning-hallucination-block">
   html = postProcessHallucinatedDirectives(html);
   return html;
 }
