@@ -586,6 +586,41 @@ _
 
 ---
 
+## 4.1 document layout(用紙 + 段組組版、PR-2N)
+
+frontmatter で `layout` を指定すると、用紙サイズ + 段組を CSS で組版する。AI が生成する「A4 2 段組レポート」「letter 1 段組」等の generative 組版を 1 行宣言で:
+
+```yaml
+---
+title: 報告書
+layout: a4-2col          # NEW(PR-2N)
+---
+```
+
+サポートする layout:
+
+| layout | 用紙 | 段組 | width(screen)|
+|--------|-----|-----|--------------|
+| `a4-1col` | A4(21 × 29.7cm) | 1 段 | 21cm |
+| `a4-2col` | A4 | 2 段 + column-rule | 21cm |
+| `a4-3col` | A4 | 3 段 + column-rule | 21cm |
+| `b5-1col` / `b5-2col` | B5(17.6 × 25cm)| 1 / 2 段 | 17.6cm |
+| `letter-1col` / `letter-2col` | letter(8.5 × 11in)| 1 / 2 段 | 21.59cm |
+| `legal-1col` / `legal-2col` | legal(8.5 × 14in)| 1 / 2 段 | 21.59cm |
+
+挙動:
+
+- **screen**:用紙幅で center、card box-shadow + 0.5rem border-radius、column-rule(1px 灰)
+- **print**:`@media print` で `@page :first { margin: 18mm }`、card chrome 全部 off、column-rule off
+- **見出し**(h1 / h2)は `column-span: all` で段抜き
+- **figure / table / pre** は `break-inside: avoid` で段内固定
+
+invalid layout 値(例 `a3-7col`)は warning + skip、`data-pkc-layout` attr 付かず default screen-first に fallback。
+
+CSS variable `--pkc-page-w`(用紙幅)、`--pkc-page-pad-v` / `--pkc-page-pad-h`(padding)で細部調整可能。
+
+---
+
 ## 4.2 ```html-render fence(HTML sandbox 描画、PR-2M)
 
 AI が「複雑 layout / SVG / interactive widget は HTML 生成の方が render が綺麗」と判断した場合、`html-render` info string で iframe sandbox 経由の seamless 描画が可能:
