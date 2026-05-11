@@ -1,6 +1,7 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
+import { extractDocumentGlobals, globalsToDataAttrs } from '../../features/markdown/document-globals';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
@@ -87,11 +88,24 @@ const textPresenter: DetailPresenter = {
     // renderMarkdown へ渡し、本文中の `{{vars.x}}` を展開する。
     const vars = extractVars(entry.body);
 
+    // reform-2026-05 Phase 2 PR-2A:frontmatter `writing` / `direction` /
+    // `align` を抽出して container に data-pkc-* attribute + dir 属性を反映。
+    // CSS 側で `.pkc-md-rendered[data-pkc-writing="vertical"]` 等で
+    // writing-mode / direction / 文書 default text-align を切替。
+    const globals = extractDocumentGlobals(entry.body);
+
     // Render as markdown if the body contains markdown syntax
     if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
       body.innerHTML = renderMarkdown(source, { currentContainerId, vars });
+      // PR-2A:document globals を data-pkc-* + dir attr で root に反映
+      for (const [k, v] of Object.entries(globalsToDataAttrs(globals))) {
+        body.setAttribute(k, v);
+      }
+      if (globals.direction === 'rtl' || globals.direction === 'ltr') {
+        body.setAttribute('dir', globals.direction);
+      }
       // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
       // markdown renderer. Guarded by `entries` being supplied so
       // tests / callers without container context still work.

@@ -113,6 +113,10 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 notation: pkc-markdown-1.0    # default、省略可
 title: ドキュメントタイトル
 author: 山田太郎
+# document globals(reform Phase 2 PR-2A、2026-05-10 着地)
+writing: horizontal           # horizontal | vertical(default horizontal)
+direction: ltr                # ltr | rtl(default ltr)
+align: left                   # horizontal: left|right|center / vertical: top|bottom|center
 vars:
   product: "PKC2"
   version: "2.2"
@@ -122,6 +126,11 @@ notation_overrides:
 ```
 
 - **notation profile**:`pkc-markdown-1.0`(default)/ `commonmark` / `gfm` / `pandoc` / `obsidian` / `pkc-markdown-experimental`
+- **document globals**(2026-05-10):
+  - `writing: horizontal | vertical` — CSS `writing-mode` 切替
+  - `direction: ltr | rtl` — HTML `dir` 属性 + CSS `direction`、RTL は Arabic / Hebrew / 縦書き右起こし
+  - `align: left | right | center | top | bottom` — 文書全体の default text-align
+  - 不正組み合わせ(horizontal × top 等)は warning + default 復帰
 - **vars.<key>**:本文中 `{{vars.<key>}}` で展開
 - **size cap**:frontmatter は SOFT 16KB / HARD 1MB(超過時 parse 中止 + warning)
 
