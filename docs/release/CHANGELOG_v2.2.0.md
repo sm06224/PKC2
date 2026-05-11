@@ -62,6 +62,25 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2M HTML sandbox 描画**(2026-05-10、別 AI 要望):AI が「複雑 layout / SVG /
+  interactive widget は HTML 生成の方が優れた renderning」と主張する分野
+  (2026-05-10 user 報告:A4 2 段組レポート style 含む)に対し、`` ```html-render``
+  fence で **iframe sandbox 経由の seamless 描画** を提供する。新規 module
+  `src/features/markdown/html-sandbox.ts`(`buildHtmlSandboxIframe` + `installHtml
+  SandboxResizer`)、markdown-render の fence renderer hook で発火、main.ts
+  + Viewer popup inline script で postMessage resizer install。
+  セキュリティ規約:`sandbox="allow-scripts"` のみ(allow-same-origin 無しで
+  cross-origin 隔離、parent storage / cookie 不可触)、CSP meta auto inject
+  (`connect-src 'none'`、`frame-src 'none'`、`object-src 'none'`、`base-uri 'none'`、
+  `script-src 'unsafe-inline'` のみ)、`referrerpolicy="no-referrer"`、auto-resize
+  cap 5000px、`loading="lazy"`。通常の `` ```html``(without `-render`)は引き続き
+  code block(誤発火防止、`/^html-render(\\s|$)/` で word boundary 厳密化)。
+  AI spec v2 §4.2 に新規 section「html-render fence」追加、§0.5 で禁止 inline HTML
+  の workaround として参照。`.pkc-html-render` CSS rule + Viewer popup mirror も追加。
+  18 unit cases + 2 smoke(center pane + Viewer popup で 2 iframe / sandbox attribute /
+  auto-resize 全部 pass、visual screenshot で 2 column grid + SVG 描画確認)。
+  bundle.css 154.6 KB(+0.2)/ bundle.js 999.9 KB(+3.1)。
+
 - **PR-2L 寛容 parse + canonical hint log**(2026-05-10、user + 他 AI 提案):「生成 AI は
   厳密 syntax を後付けで扱うのが苦手」という指摘を受容、PR-2K の「未実装は warning + 残し」
   パラダイムから **Postel's Law(寛容に accept、厳密に send)** への転換。critical 群

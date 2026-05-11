@@ -18,6 +18,7 @@ import {
   restoreRenderContinuity,
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
+import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
 import { isSnapshot } from './features/snapshot/types';
@@ -350,6 +351,12 @@ async function boot(): Promise<void> {
   // log row inputs, …). 2026-05-05 user direction:「caret 位置の
   // 視覚効果は PKC 全体で入力中部分で適用してください」.
   installCaretIndicator();
+
+  // reform-2026-05 Phase 2 PR-2M(2026-05-10):` ```html-render` fence の
+  // iframe sandbox から postMessage で height 通知を受け、対応 iframe の
+  // style.height を更新する parent-side listener。一度 install するだけで
+  // 全 iframe を listen(message に id を含めて iframe を特定)。
+  installHtmlSandboxResizer();
 
   // 3a-bis. iOS Safari hard reload(2026-05-10、user 報告対応):
   // Add to Home Screen mode で Safari がアグレッシブにキャッシュするため、

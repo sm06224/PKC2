@@ -413,6 +413,16 @@ export function buildRenderedViewerHtml(
       cursor: help;
       user-select: none;
     }
+    /* PR-2M(2026-05-10、reform Phase 2):html-render fence iframe mirror */
+    .pkc-md-rendered .pkc-html-render {
+      display: block;
+      width: 100%;
+      border: 0;
+      margin: 0.75em 0;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+      border-radius: 4px;
+      background: #ffffff;
+    }
     /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
        hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため
        base.css pkc-transclusion 群を inline mirror)。 */
@@ -681,6 +691,18 @@ export function buildRenderedViewerHtml(
   const filenameJson = JSON.stringify(filename);
   const script = `
 (function(){
+  // PR-2M(2026-05-10):html-render iframe からの postMessage で auto-resize。
+  // Viewer popup は独立 window なので main.ts の installHtmlSandboxResizer は
+  // 効かない → 同 protocol を popup 側でも install。
+  window.addEventListener('message', function(ev){
+    var d = ev.data;
+    if (!d || typeof d !== 'object') return;
+    if (d.type !== 'pkc-html-render-resize') return;
+    if (typeof d.id !== 'string' || typeof d.height !== 'number') return;
+    var h = Math.max(0, Math.min(5000, d.height));
+    var iframe = document.querySelector('iframe[data-pkc-html-render-id="' + (window.CSS && CSS.escape ? CSS.escape(d.id) : d.id) + '"]');
+    if (iframe) iframe.style.height = h + 'px';
+  });
   var printBtn = document.getElementById('pkc-viewer-print-btn');
   var dlBtn = document.getElementById('pkc-viewer-download-btn');
   var closeBtn = document.getElementById('pkc-viewer-close-btn');

@@ -17,7 +17,7 @@
    - **simple 形**(人間が日常 typing する短い形、本書 §2 の各記法の `simple:` 行)── default、AI も基本これを使う
    - **formal 形**(機械 emit 用の厳密形、`:::name{attrs}` block / `:role:[content]{attrs}` inline)── round-trip / IR 安全、AI が自動生成する場合に推奨
 4. **不確実な markup は使わない**。本書に未記載の構文(例:HTML タグ直書き、独自 JSX 風 syntax)は安全のため避ける。
-5. **inline HTML は禁止**。PKC2 の markdown engine は `html: false`(XSS 防止)。`<div>` / `<style>` 等は escape されてリテラル表示になる。
+5. **inline HTML は禁止**。PKC2 の markdown engine は `html: false`(XSS 防止)。`<div>` / `<style>` 等は escape されてリテラル表示になる。**ただし**、複雑 layout / SVG / interactive widget が必要な場合は \`\`\`html-render fence(§4.2、PR-2M)で iframe sandbox 経由 render 可能。
 6. **frontmatter は省略可**。普通の user は触らない。AI が profile 切替 / 変数定義をする時だけ書く(§1.5)。
 
 ---
@@ -586,11 +586,53 @@ _
 
 ---
 
+## 4.2 ```html-render fence(HTML sandbox 描画、PR-2M)
+
+AI が「複雑 layout / SVG / interactive widget は HTML 生成の方が render が綺麗」と判断した場合、`html-render` info string で iframe sandbox 経由の seamless 描画が可能:
+
+````markdown
+```html-render
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+  <article>左カラム</article>
+  <article>右カラム</article>
+</div>
+```
+````
+
+→ `<iframe class="pkc-html-render" sandbox="allow-scripts" srcdoc="…">` で描画。
+
+### セキュリティ規約(PR-2M)
+
+| 項目 | 設計 |
+|------|------|
+| iframe sandbox | `sandbox="allow-scripts"` のみ。`allow-same-origin` は付けず cross-origin 隔離、parent の localStorage / cookie / IndexedDB へのアクセス不可 |
+| CSP meta(auto inject) | `default-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; script-src 'unsafe-inline'` — 外部 fetch / 再帰 iframe / 外部 script src すべて拒否 |
+| referrerpolicy | `no-referrer`、外部 URL に referrer 漏洩しない |
+| auto-resize | iframe 内 ResizeObserver で height を計算、`postMessage({type:'pkc-html-render-resize', id, height})` で parent に通知、cap 5000px |
+| loading | `loading="lazy"`、scroll 外 iframe は遅延 load |
+
+### 推奨用途
+
+- 複雑 grid / flex layout(段組レポート、ダッシュボード)
+- SVG / canvas / mermaid 以外の vector graphics
+- A4 印刷組版(`@page` + `@media print` を iframe 内 CSS で完結)
+- 装飾的な interactive widget(button hover / animation)
+
+### 非推奨用途
+
+- 単純な見出し / 段落 → 通常 markdown を使う
+- 外部 fetch / API call → CSP で拒否される
+- iframe を入れ子にする → CSP `frame-src 'none'` で拒否
+
+通常の \`\`\`html(without `-render`)は引き続き code block として escape 表示される(誤発火防止)。
+
+---
+
 ## 4. やってはいけないこと
 
 | ❌ NG | 理由 |
 |-------|------|
-| `<div>` `<style>` 等 inline HTML | `html: false`、escape されてリテラル表示 |
+| `<div>` `<style>` 等 inline HTML(本文) | `html: false`、escape されてリテラル表示。複雑 layout が必要なら \`\`\`html-render fence(§4.2、PR-2M) |
 | `[[em:..]]` を新規生成 | deprecated、`^^..^^` を使う |
 | `<\|text` を「物理左寄せ」として使う | reform で 'end' に正規化(LTR で右寄せ)、物理左は formal-only |
 | `:role:[…]` で未知 role 名 | PR-E は sup / sub / span のみ、それ以外は L-6 fall-through で literal 残る |
