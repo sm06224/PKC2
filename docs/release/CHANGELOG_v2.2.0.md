@@ -10,6 +10,8 @@ v2.2.0 の主題は **Flags Protocol v1 wave 完了** です。const ハード�
 
 ## Highlights
 
+- **reform-2026-05 Phase 2 — formal vocabulary 拡張 + tolerant parse + 段組組版**(2026-05-10、PR #395〜#411、計 16 PR):Phase 1 着地後の継続 wave で `:::section{role=…}` callout(8 role 色分け)/ `:::comment` block / `:::break{kind=…}` / `:::paragraph{align=…}` / formal inline 4 形(`:strong:` `:emphasis:` `:code:` `:strike:`)/ `:caption:` formal / `:autoref:{id=…}` を全網羅、frontmatter `writing` / `direction` / `align` / **`layout: a4-2col`**(A4/B5/letter/legal × 1/2/3 段組、9 種)で generative 組版、`` ```html-render `` fence で iframe sandbox(`sandbox="allow-scripts"` + CSP + auto-resize)経由の HTML 直接 render、**寛容 parse + canonical hint log**(critical hallucination 4 形 + admonition alias 8 形を `<span class="pkc-lead">` `<small class="pkc-attribution">` 等の実 render + `console.info` で `[PKC2005-2011] detected="..." interpretedAs="..." canonical="..."` の 3 つ組 emit、AI repair tool / IR canonicalizer 連携可能)、multi-line `[content]` 受理、em-dot `^^**X**^^` の nested inline parse + asymmetric `*X**` tolerant normalize、AI spec v2 §1.6 全面刷新。docs:`docs/spec/markdown-dialect-for-ai-authors-v2.md`(canonical AI 規約)/ `docs/development/notation-redesign-2026-05/11-canonicalization-spec.md`(simple → formal 写像)/ `docs/development/parser-recovery-spec.md`(寛容 parse doctrine)。**non-breaking**(schema 不変、既存 entry 完全互換)
+- **PKC Markdown を About 自身で render**(2026-05-10、PR-2Q):About entry の Highlights / Known limitations bullet を **PKC Markdown で render**(`**bold**` `*em*` `` `code` `` `~~strike~~` `^^em-dot^^` `==highlight==` 等が描画される)。CHANGELOG の文字列をそのまま `renderMarkdownInline` で inline-only render、`<p>` wrap なし、block-level preprocessor 不経由で軽量。**「About は PKC Markdown のお披露目の場」** doctrine を確立、本機能を含む release notes 自身を本機能で表示する dogfooding 設計
 - **reform-2026-05 Phase 1 — Markdown notation reform**(2026-05-09〜10、PR #385〜#393):**simple-first / formal-as-serializer** の 2 階層 notation 再設計。`:::quote{author=...}` block citation + `:role:[content]{attrs}` formal inline(`:sup:` / `:sub:` / `:span:`)+ `:::if{format=...}` conditional + 4 形 align typo 寛容化(`|>` `<|` `|<` `>|` → all 'end' logical)+ AI 規約書 v2 + iOS Safari hard reload(#394)+ user バグレポ 7 件 hotfix。`docs/development/notation-redesign-2026-05/` 12 章設計書。**non-breaking**(schema 不変、既存 entry 完全互換)
 - **Flags Protocol v1**:`defineFlag(key, default, options?)` API + `__flags__` system entry + inspector overlay。Chrome `about:flags` 風の動的フラグ機構で、既存 7 件の Tier 0 const(recent.default_limit / textlog.staged_render.* / persistence.debounce_ms / image config / search.max_results_per_entry)を runtime 切替可能化
 - **3 layer resolution**:URL `?pkc-flag=KEY=VALUE` > `__flags__` Container entry > defineFlag default。debug / PoC / 実機 A/B が rebuild 不要で可能
@@ -61,6 +63,19 @@ v2.2.0 の主題は **Flags Protocol v1 wave 完了** です。const ハード�
 Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatter document
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
+
+- **PR-2Q About entry に PKC Markdown render(dogfooding)**(2026-05-10、user 直接指示):
+  user 直接指示「About 表示がマークダウン対応していません。PKC Markdown のお披露目の場
+  でもあるので、しっかり表示できるようにしてください」を受容、About entry の Highlights /
+  Known limitations bullets を PKC Markdown で render するように改修。実装:
+  `src/features/markdown/markdown-render.ts` に `renderMarkdownInline(text)` helper を
+  新規 export(`md.renderInline` で `<p>` wrap なし inline-only render、block-level
+  preprocessor 不経由、軽量)。`src/adapter/ui/renderer.ts` の `renderAboutRelease`
+  で `li.textContent = item` → `li.innerHTML = renderMarkdownInline(item)` に変更、
+  `<ul>` に `pkc-md-rendered` class 付与で既存 markdown CSS rule(strong / em / mark /
+  pkc-em-dot 等)を inherit。CHANGELOG bullet は信頼源、markdown-it `html: false` で
+  XSS safe。**dogfooding doctrine**:本機能を含む release notes 自身を本機能で表示、
+  「About は PKC Markdown のお披露目の場」を canonical 化。CSS 不変、bundle.js +0.3 KB。
 
 - **PR-2P em-dot `^^X^^` 内 nested inline parse**(2026-05-10、user バグレポ):
   user 報告(2026-05-10 続報):`^^**X**^^` の bold が太字 render されない。
@@ -919,12 +934,15 @@ bundle.js 915.57 → 916.15 KB(+0.58 KB)、bundle.css 144.07 → 144.31 KB(+0.24
 
 ## Known Limitations
 
+- **Theme 切替時の不整合**:System dark↔light 切替で **mermaid graph(galaxy theme)+ 右ペイン TOC + PIP popup** の theme が一部固定。iOS + Windows で同症状(2026-05-10 user 報告)、PR-2R(別 wave)で対応予定
+- **書式指定の WCAG コントラスト**:背景色 × 前景色の組み合わせで可読性が損なわれるケースあり。AI 生成 fixture では特に発生。同系色 shift で WCAG AA(4.5:1)を保証する Flag-gated 機能を PR-2S(別 wave)で予定
+- **`:::toc` `:::frontmatter` `:::body` block directive**:未実装、PKC1010 warning marker で literal 残し(structural、ユーザーが即気付ける category)
+- **multi-line `%% … %%`**:`%%` は single-line inline comment、複数行 strip は `%%%…%%%`(block form)必要
+- **block comment による行ズレ**:multi-line `%%%…%%%` を strip すると Split View source-preview-sync の line index が乖離。preprocessor LineMap thread が未対応(TODO)
 - **Flags inspector のキーボード操作**:Tab / Enter / Space で flag 編集は OS 標準挙動に依存、専用 hotkey は未実装(power user 向け、別 wave で検討)
-- **PR-γ wave 2 の defineFlag 化**:残 13 件の Tier 0 const(TAG_MAX_LENGTH / DEFAULT_MAX_PER_ENTRY / 等)は別 PR で段階移行予定
-- **領域 9 CSS architecture redesign**:CSS 流用最適化 / 透過構造化 / 実行時自動生成は別 wave に課題化(`feature-requests-2026-04-28-roadmap.md` §領域 9)、Flags 全容着地後の独立 wave
+- **領域 9 CSS architecture Phase 4**:per-archetype palette via `insertRule` は deferred(`USER_REQUEST_LEDGER.md` §3.6、user 確認で「拡大解釈」と認定、再 open trigger 5 件記録済)
 - **TEXTLOG drag-to-reorder**:USER_REQUEST_LEDGER §3.6 deferred items の trigger 解消(2026-05-03)、別 wave で着手予定
 - **PKC-Message v2 spec doc 起こし**:OQ decisions は固定済み、v2 spec normative 化は別 wave(v2.3 候補)
-- **PoC 提案 A**(`INITIAL_RENDER_ARTICLE_COUNT` bench sweep):**実行済み(2026-05-04 post-release fix wave、上記「PoC bench Application」参照)** — Flags 機構の実証として 6 値 sweep 完了、bench-results/textlog-staged-render-flag-sweep.md に snapshot
 - **Cross-container resolver / P2P**:未実装(v2.1.0 / v2.1.1 から継承)
 - **OS protocol handler for `pkc://`**:未実装(同)
 - **Full container footprint(body + relations + revisions)**:未実装、Storage Profile は asset-only(同)

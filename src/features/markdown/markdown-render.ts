@@ -3086,3 +3086,22 @@ export function hasMarkdownSyntax(text: string): boolean {
 export function getMarkdownInstance(): MarkdownIt {
   return md;
 }
+
+/**
+ * Render markdown as inline-only HTML (no <p> wrapper, no block-level
+ * preprocessors). About entry / Card preview / tooltip 等の「短い inline 文字列」
+ * を render するための軽量版(2026-05-10、PR-2Q、user 要望:「About も
+ * PKC Markdown お披露目の場、しっかり markdown 表示」)。
+ *
+ * 含まれる:emphasis(`**bold**` `*em*`)、inline code(`` `x` ``)、links、
+ * strikethrough、em-dot `^^X^^`、highlight `==X==`、ruby、L-6 simple inline、
+ * autolinks。
+ *
+ * 含まれない:block-level preprocessor(:::section / :::figure / vars 展開 /
+ * 寛容 parse 等)、`<p>` wrapper。block markup を含む文字列で呼んでも block
+ * 構造は復元されない。
+ */
+export function renderMarkdownInline(text: string): string {
+  if (!text) return '';
+  return md.renderInline(text);
+}
