@@ -1687,7 +1687,90 @@ function postProcessFigureSentinels(html: string): string {
  *  3. CSS が `[data-pkc-align="..."]` を読んで text-align を適用
  *     (`end` / `start` は CSS logical value、`direction: rtl` で自動 flip)
  */
-type AlignKind = 'center' | 'end' | 'start' | 'right' | 'left';
+// reform-2026-05 Phase 2 PR-2E:`:::paragraph{align=top|bottom}` の vertical
+// writing-mode 用 align も追加(物理 align、formal-only)。
+type AlignKind = 'center' | 'end' | 'start' | 'right' | 'left' | 'top' | 'bottom';
+
+const PHYSICAL_ALIGNS: ReadonlySet<AlignKind> = new Set([
+  'left', 'right', 'top', 'bottom', 'center',
+] as const);
+
+/**
+ * reform-2026-05 Phase 2 PR-2E:`:::paragraph{align=physical}` block directive。
+ *
+ *   :::paragraph{align=left}
+ *   本文
+ *   :::
+ *
+ * 物理 align(left / right / center / top / bottom)を強制する formal-only 形。
+ * AI / serializer が emit、user は L-5 行頭 prefix で十分(simple は logical、
+ * formal で物理強制が必要な場合のみ使う)。
+ *
+ * 動作:
+ *   - `:::paragraph{align=left}` 開き行を consume
+ *   - content 各行の output line に対し `alignMap` に物理 align を登録
+ *   - `:::` 閉じ行を consume
+ *   - 不正 align 値(letterspacing 等)は warning + skip
+ *
+ * processQuoteBlocks の後、preprocessAlignPrefix の前に走らせる。content 内に
+ * 行頭 align prefix(`||` 等)があった場合は preprocessAlignPrefix が後段で
+ * 処理(両方 alignMap に register され、後者(行頭 prefix)が上書き優先)。
+ */
+function processParagraphAlignDirective(
+  source: string,
+  lineMapIn: number[],
+): {
+  transformed: string;
+  alignMap: Map<number, AlignKind>;
+  lineMap: number[];
+} {
+  const lines = source.split('\n');
+  const alignMap = new Map<number, AlignKind>();
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || open.name !== 'paragraph') {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const alignRaw = open.attrs.kvs.align;
+    let align: AlignKind | null = null;
+    if (typeof alignRaw === 'string' && PHYSICAL_ALIGNS.has(alignRaw as AlignKind)) {
+      align = alignRaw as AlignKind;
+    }
+    // open 行は consume
+    i++;
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      const inner = lines[i]!;
+      const innerInputIdx = lineMapIn[i] ?? i;
+      // align が valid なら content 行の output index に対し register
+      if (align && inner.trim() !== '') {
+        alignMap.set(out.length, align);
+      }
+      out.push(inner);
+      lineMapOut.push(innerInputIdx);
+      i++;
+    }
+    // close 行を consume
+    if (i < lines.length) i++;
+  }
+  return { transformed: out.join('\n'), alignMap, lineMap: lineMapOut };
+}
 
 function preprocessAlignPrefix(source: string, lineMapIn: number[]): {
   stripped: string;
@@ -2080,13 +2163,25 @@ export function renderMarkdown(
   const quoteResult = processQuoteBlocks(text, lineMap);
   text = quoteResult.transformed;
   lineMap = quoteResult.lineMap;
+  // reform-2026-05 Phase 2 PR-2E:`:::paragraph{align=physical}` block directive
+  // を preprocessAlignPrefix の前に処理。content 行に物理 align(left/right/
+  // top/bottom/center)を register、後段の applyAlignAttrs で `<p data-pkc-align>`
+  // に変換される。L-5 行頭 prefix(logical)と orthogonal、後者が後勝ち。
+  const paraAlignResult = processParagraphAlignDirective(text, lineMap);
+  text = paraAlignResult.transformed;
+  lineMap = paraAlignResult.lineMap;
   const env = {
     currentContainerId: opts.currentContainerId ?? '',
   };
   // L-5 align prefix + L-9 indent prefix を pre-process で strip(挿入あり)。
   const alignResult = preprocessAlignPrefix(text, lineMap);
   const stripped = alignResult.stripped;
-  const alignMap = alignResult.alignMap;
+  // PR-2E paragraph directive で register された align も merge
+  // (preprocessAlignPrefix で同 line に行頭 prefix もあれば後者が上書き)
+  const alignMap = new Map<number, AlignKind>([
+    ...paraAlignResult.alignMap,
+    ...alignResult.alignMap,
+  ]);
   const indentMap = alignResult.indentMap;
   lineMap = alignResult.lineMap;
   let html: string;

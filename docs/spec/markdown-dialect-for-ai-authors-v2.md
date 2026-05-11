@@ -107,7 +107,7 @@ ChatGPT / Claude / Gemini 等の LLM は Pandoc / RST / AsciiDoc / 他方言の�
 |---|-----|------|
 | `[[em:傍点]]` | deprecated | `^^傍点^^` |
 | `[[ruby:base\|読み]]` | deprecated | `[base\|読み]`(将来) |
-| `<\|text` 物理左寄せ | reform 後 'end' に正規化 | 物理左は `:::paragraph{align=left}`(formal-only) |
+| `<\|text` 物理左寄せ | reform 後 'end' に正規化 | 物理左は `:::paragraph{align=left}`(formal-only、Phase 2 PR-2E で実装済) |
 | `^x^` superscript | 廃止予定 | `:sup:[x]` または math `$x^2$` |
 | `~x~` subscript | 廃止予定 | `:sub:[x]` または math `$a_n$` |
 
@@ -222,7 +222,7 @@ block 隠しメモ
 - HTML: `<p data-pkc-align="center">` / `<p data-pkc-align="end">`。
 - CSS: `text-align: center` / `text-align: end`(logical value、`writing-mode` / `direction` 切替で自動 flip)。
 - **reform 仕様**:`|>` 4 形(`|>` `<|` `|<` `>|`)は **全部 'end'** に正規化(typo 寛容、Postel's law)。
-- 物理 left / right を強制したい場合は formal `:::paragraph{align=left}` / `{align=right}`(後続 PR で実装予定)。
+- 物理 left / right を強制したい場合は formal **`:::paragraph{align=left|right|center|top|bottom}` block directive**(Phase 2 PR-2E、2026-05-10 実装済)。formal-only、AI / serializer 用。
 - **line scope contract(2026-05-09 hotfix)**:各 prefix 行は **独立 `<p>` paragraph**。継続行(prefix なし)は **default 段落として分離**される(同 align は伝播しない)。複数行を同 align にしたい場合は **各行に prefix を付ける**:
   ```
   |> 1 行目 end
@@ -411,7 +411,8 @@ nested directive も OK(depth tracking で正しく処理)。
 |------|-------|
 | 中央 | 行頭 `\|\|`(simple)/ `:::paragraph{align=center}`(formal) |
 | 右(LTR の場合)| 行頭 `\|>` または typo 3 形(`<\|` `\|<` `>\|`、全部 end) |
-| 物理 left / right 強制 | `:::paragraph{align=left}` / `{align=right}`(formal-only、後続 PR) |
+| 物理 left / right 強制 | `:::paragraph{align=left}` / `{align=right}`(formal-only、Phase 2 PR-2E 実装済) |
+| 縦書き top / bottom | `:::paragraph{align=top}` / `{align=bottom}`(formal-only、`writing: vertical` と組み合わせ) |
 | インデント | 行頭 `__` / `＿` |
 | 縦余白 | `_` `_3` |
 
