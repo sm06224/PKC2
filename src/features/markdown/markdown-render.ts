@@ -545,10 +545,40 @@ md.inline.ruler.after('emphasis', 'pkc_em_dot', function emDotRule(state, silent
 // `^^` 連続を delimiter として、内部に改行 / `^` を含まないこと。
 // 空 content は reject(literal `^^^^` を圏点扱いしない)。
 //
-// 2026-05-10 hotfix(user バグレポ):従来 content を plain text として push して
+// 2026-05-10 hotfix 1(user バグレポ):従来 content を plain text として push して
 // いたため `^^**X**^^` の inner emphasis が処理されず literal `**X**` が残った。
 // pushNestedInlineContent で markdown-it inline parser に通すように変更、
 // `^^**bold**^^` `^^==hl==^^` 等 nested inline markup が正常 render。
+//
+// 2026-05-10 hotfix 2(user バグレポ続報):asymmetric `*X**` / `**X*`(user typo
+// で AI 生成にも頻出)を tolerant に `**X**` に正規化する。em-dot 内 context 限定
+// で適用、外側 markdown には影響しない。`***X***`(triple)は normalize せず
+// markdown-it の標準 strong+em 処理に任せる。
+
+/**
+ * em-dot 内 content の asymmetric `*X**` / `**X*` を `**X**` に正規化(tolerant)。
+ * 外側 markdown には影響しない em-dot scope 限定処理。
+ *
+ *   `*X**`  → `**X**`(single open + double close)
+ *   `**X*`  → `**X**`(double open + single close)
+ *   `*X*`   → そのまま(emphasis、normalize しない)
+ *   `**X**` → そのまま(bold、すでに正しい)
+ *   `***X***` → そのまま(markdown 標準 strong+em)
+ */
+function normalizeAsymmetricEmphasis(content: string): string {
+  // *X** → **X**(content に `*` 無し、前後に余分な `*` 無し)
+  let normalized = content.replace(
+    /(^|[^*])\*([^*\n]+?)\*\*(?!\*)/g,
+    '$1**$2**',
+  );
+  // **X* → **X**(content に `*` 無し、前後に余分な `*` 無し)
+  normalized = normalized.replace(
+    /(^|[^*])\*\*([^*\n]+?)\*(?!\*)/g,
+    '$1**$2**',
+  );
+  return normalized;
+}
+
 md.inline.ruler.after('pkc_em_dot', 'pkc_em_dot_caret', function emDotCaretRule(state, silent) {
   if (silent) return false;
   const src = state.src;
@@ -565,8 +595,10 @@ md.inline.ruler.after('pkc_em_dot', 'pkc_em_dot_caret', function emDotCaretRule(
   const tokenOpen = state.push('em_dot_open', 'em', 1);
   tokenOpen.attrSet('class', 'pkc-em-dot');
   // inner content を markdown-it inline parser に通す(nested **X** / *X* /
-  // ==X== / `X` 等が処理される。2026-05-10 user バグレポ修正)
-  pushNestedInlineContent(state, content);
+  // ==X== / `X` 等が処理される。2026-05-10 user バグレポ修正)。
+  // asymmetric `*X**` / `**X*` は tolerant に `**X**` 正規化(em-dot scope 限定)。
+  const normalized = normalizeAsymmetricEmphasis(content);
+  pushNestedInlineContent(state, normalized);
   state.push('em_dot_close', 'em', -1);
   state.pos = closeIdx + 2;
   return true;

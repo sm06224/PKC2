@@ -168,12 +168,32 @@ describe('L-2: Inline 修飾(highlight / ruby / em-dot)', () => {
         expect(m![1]).toContain('plain');
       });
 
-      it('^^*X**^^ asymmetric は markdown 規則通り(`*` open + `*` close + literal `*`)', () => {
-        // user typo case:single `*` open、`**` close は emphasis 1 個 + literal `*`
+      it('^^*X**^^ asymmetric は tolerant に **X** に正規化(user typo 救済)', () => {
+        // user typo case:single `*` open、`**` close → tolerant 正規化で <strong>
         const html = renderMarkdown('^^*198,853**^^');
-        expect(html).toContain('class="pkc-em-dot"');
-        // 内側 <em> が 1 個 + literal `*` 残る
-        expect(html).toMatch(/<em class="pkc-em-dot"><em>198,853<\/em>\*<\/em>/);
+        expect(html).toMatch(/<em class="pkc-em-dot"><strong>198,853<\/strong><\/em>/);
+        // literal `*` が残らないことも確認
+        expect(html).not.toContain('><em>198,853</em>*');
+      });
+
+      it('^^**X*^^ asymmetric も tolerant(reverse 形)', () => {
+        const html = renderMarkdown('^^**X*^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><strong>X<\/strong><\/em>/);
+      });
+
+      it('^^*X*^^ symmetric emphasis は normalize せず emphasis のまま', () => {
+        const html = renderMarkdown('^^*斜体*^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><em>斜体<\/em><\/em>/);
+        // <strong> 化しない
+        expect(html).not.toContain('<strong>');
+      });
+
+      it('^^***X***^^ triple は normalize せず標準 strong+em', () => {
+        const html = renderMarkdown('^^***triple***^^');
+        // markdown-it 標準では <em><strong>...</strong></em>(em が外、strong が内)
+        expect(html).toContain('<strong>triple</strong>');
+        // em-dot + 内側 em + 内側 strong の 3 重 nest
+        expect(html).toMatch(/<em class="pkc-em-dot"><em><strong>triple<\/strong><\/em><\/em>/);
       });
     });
   });
