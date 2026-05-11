@@ -413,6 +413,46 @@ export function buildRenderedViewerHtml(
       cursor: help;
       user-select: none;
     }
+    /* PR-2N(2026-05-10、reform Phase 2):document layout(用紙 + 段組)mirror。
+     * Viewer popup は印刷ターゲットなので、screen と print 両方で挙動。 */
+    article.pkc-viewer-body[data-pkc-layout] {
+      max-width: var(--pkc-page-w, 21cm);
+      margin: 1rem auto;
+      padding: var(--pkc-page-pad-v, 1.5cm) var(--pkc-page-pad-h, 1.8cm);
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+      border-radius: 2px;
+      box-sizing: border-box;
+    }
+    article.pkc-viewer-body[data-pkc-layout^="a4-"]     { --pkc-page-w: 21cm; }
+    article.pkc-viewer-body[data-pkc-layout^="b5-"]     { --pkc-page-w: 17.6cm; }
+    article.pkc-viewer-body[data-pkc-layout^="letter-"] { --pkc-page-w: 21.59cm; }
+    article.pkc-viewer-body[data-pkc-layout^="legal-"]  { --pkc-page-w: 21.59cm; }
+    article.pkc-viewer-body[data-pkc-layout$="-2col"] {
+      column-count: 2;
+      column-gap: 0.8cm;
+      column-rule: 1px solid #e5e7eb;
+    }
+    article.pkc-viewer-body[data-pkc-layout$="-3col"] {
+      column-count: 3;
+      column-gap: 0.6cm;
+      column-rule: 1px solid #e5e7eb;
+    }
+    article.pkc-viewer-body[data-pkc-layout$="-2col"] h1,
+    article.pkc-viewer-body[data-pkc-layout$="-2col"] h2,
+    article.pkc-viewer-body[data-pkc-layout$="-3col"] h1,
+    article.pkc-viewer-body[data-pkc-layout$="-3col"] h2 {
+      column-span: all;
+    }
+    article.pkc-viewer-body[data-pkc-layout$="-2col"] figure,
+    article.pkc-viewer-body[data-pkc-layout$="-2col"] table,
+    article.pkc-viewer-body[data-pkc-layout$="-2col"] pre,
+    article.pkc-viewer-body[data-pkc-layout$="-3col"] figure,
+    article.pkc-viewer-body[data-pkc-layout$="-3col"] table,
+    article.pkc-viewer-body[data-pkc-layout$="-3col"] pre {
+      break-inside: avoid;
+    }
+    @page :first { margin: 18mm; }
     /* PR-2M(2026-05-10、reform Phase 2):html-render fence iframe mirror */
     .pkc-md-rendered .pkc-html-render {
       display: block;
@@ -670,6 +710,18 @@ export function buildRenderedViewerHtml(
         margin-bottom: 1rem;
       }
       .pkc-textlog-day { break-inside: avoid; }
+      /* PR-2N(2026-05-10):layout 指定時の print 専用調整。screen の card
+         box-shadow / padding を strip、column-rule も off(印刷で線重複防止)。 */
+      article.pkc-viewer-body[data-pkc-layout] {
+        margin: 0;
+        box-shadow: none;
+        border-radius: 0;
+        padding: 0;
+      }
+      article.pkc-viewer-body[data-pkc-layout$="-2col"],
+      article.pkc-viewer-body[data-pkc-layout$="-3col"] {
+        column-rule: none;
+      }
       .pkc-textlog-log { break-inside: avoid; }
       /* Print pre-flight (PR #204 follow-up, 2026-04-29):
        * the rendered viewer renders markdown via the same

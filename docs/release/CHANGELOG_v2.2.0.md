@@ -62,6 +62,23 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2N A4 / B5 / letter / legal 段組組版**(2026-05-10、別 AI 要望):AI が
+  「A4 2 段組レポート style はほぼ完璧に出せる」と主張した generative 組版を
+  frontmatter `layout: a4-2col` 1 行宣言で実現。9 種類の layout(用紙 4 種 × 段組
+  1col / 2col / 3col)を CSS `column-count` + `@page` + CSS variable で実装。
+  `extractDocumentGlobals` に `layout` 抽出 + 9 種 valid value 検証 + invalid
+  warning を追加、`globalsToDataAttrs` で `data-pkc-layout` attr 転記。
+  screen 表示:用紙幅で center、card box-shadow + border-radius、column-rule
+  divider。@media print:`@page :first { margin: 18mm }`、card chrome off、
+  column-rule off で印刷適化。見出し(h1 / h2)は `column-span: all` で段抜き、
+  figure / table / pre は `break-inside: avoid` で段内固定。Viewer popup は印刷
+  ターゲットなので CSS mirror も追加。AI spec v2 §4.1 に「document layout」を
+  新規 section、frontmatter table に `layout` を追加。`Layout` type で 9 種 narrow、
+  CSS variable `--pkc-page-w` / `--pkc-page-pad-v` / `--pkc-page-pad-h` で細部
+  調整可能。10 unit cases + 4 smoke(a4-2col / a4-3col / invalid layout / Viewer
+  popup、screenshot で 2 column grid + 見出し段抜き + table 段内固定 確認)。
+  bundle.css 156.3 KB(+1.7)/ bundle.js 1002.6 KB(+2.7)。
+
 - **PR-2M HTML sandbox 描画**(2026-05-10、別 AI 要望):AI が「複雑 layout / SVG /
   interactive widget は HTML 生成の方が優れた renderning」と主張する分野
   (2026-05-10 user 報告:A4 2 段組レポート style 含む)に対し、`` ```html-render``
