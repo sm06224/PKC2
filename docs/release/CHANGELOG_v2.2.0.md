@@ -62,6 +62,32 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2L 寛容 parse + canonical hint log**(2026-05-10、user + 他 AI 提案):「生成 AI は
+  厳密 syntax を後付けで扱うのが苦手」という指摘を受容、PR-2K の「未実装は warning + 残し」
+  パラダイムから **Postel's Law(寛容に accept、厳密に send)** への転換。critical 群
+  (HTML / CSS / Bootstrap / Tailwind / JSX / MDX 想起、user が hallucination と気付きにくい)
+  を **寛容 parse + parse log 3 つ組(detected / interpretedAs / canonical)** 経路に格上げ:
+  inline 4 件(`:lead:[…]` → `<span class="pkc-lead">` / `:spacing:{size=N}` →
+  `<div class="pkc-tolerant-spacing">` / `:align:{position=X}` →
+  `<span class="pkc-align-hint">` / `:quote:{attribution=…}` →
+  `<small class="pkc-attribution">`)、admonition alias 群(`:::note` `:::warning` `:::tip`
+  `:::info` `:::caution` `:::important` `:::danger` `:::summary` / `:::callout{type=X}` /
+  `:::admonition{type=X title=Y}` → 全て `:::section{role=…}` alias、title は `## …` 前置)。
+  各要素は `data-pkc-canonical` attribute に推奨 simple 形を転記、`console.info`
+  `[PKC2005-2011] tolerant alias :NAME: accepted. detected="…" interpretedAs="…"
+  canonical="…"` の 3 つ組 hint を emit、AI repair tool / IR canonicalizer が
+  round-trip 学習可能。`WARNING_CODES` に `SEMANTIC_TOLERANT_LEAD / SPACING / ALIGN /
+  QUOTE / ADMONITION / CALLOUT / ADMONITION_TITLE`(PKC2005-2011)を追加、
+  `PkcWarning` interface に `detected / interpretedAs / canonical` optional 3 fields を
+  足して structured emit。PR-2K の inline warning 4 件は本 PR で **削除**(寛容 parse に
+  格上げ)、`pkc-warning-hallucination-{lead,spacing,align,quote}` class は無くなる。
+  PR-2K の block warning 3 件(`:::toc` `:::frontmatter` `:::body`、user が即気付ける
+  structural)は **据え置き**。`.pkc-lead` / `.pkc-attribution` / `.pkc-tolerant-spacing`
+  / `.pkc-align-hint` CSS rule + Viewer popup mirror も追加。spec v2 §1.6 を全面刷新
+  (受容方針 1.6.a 寛容 / 1.6.b warning / 1.6.c 実装済 + §1.6.y parse log 詳細 + §1.6.z
+  warning signaling 詳細)。24 unit cases + 1 smoke(石狩 fixture v2 で 4 inline tolerant +
+  4 console.info PKC2005-2008 確認)、bundle.css +0.4 KB / bundle.js +4.5 KB。
+
 - **PR-2K AI hallucination signaling**(2026-05-10、user 提案):spec v2 §1.6 deny list
   の formal 構文を AI(ChatGPT / Claude / Gemini)が Pandoc / RST 知識から hallucinate
   して生成する問題に、3 経路 signaling で対応。inline 4 件(`:lead:[…]` / `:spacing:{…}` /
