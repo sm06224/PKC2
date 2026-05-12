@@ -220,10 +220,12 @@ async function createTextEntry(page: Page, title: string, body: string) {
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
 }
 
-test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture v2)+ PR-2K signaling', () => {
-  test('center pane:hallucination 4 件全部 signaling + console.warn', async ({ page }) => {
+test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture v2)+ PR-2L 寛容 parse', () => {
+  test('center pane:hallucination 4 件 tolerant 描画 + console.info(PKC2005-2008)', async ({ page }) => {
+    const consoleInfos: string[] = [];
     const consoleWarnings: string[] = [];
     page.on('console', (msg) => {
+      if (msg.type() === 'info') consoleInfos.push(msg.text());
       if (msg.type() === 'warning') consoleWarnings.push(msg.text());
     });
     await bootApp(page);
@@ -264,19 +266,22 @@ test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture
         htmlOnlyVisible: text.includes('HTML版限定情報'),
         // :::if{format=pdf} — should be HIDDEN (html target ≠ pdf)
         pdfOnlyVisible: text.includes('PDF版限定情報'),
-        // ── PR-2K hallucination signaling 検証 ──
-        leadHallucinationMarker: !!root.querySelector('.pkc-warning-hallucination-lead'),
-        leadWarnCode: root.querySelector('.pkc-warning-hallucination-lead')?.getAttribute('data-pkc-warn-code') ?? '',
-        spacingHallucinationMarker: !!root.querySelector('.pkc-warning-hallucination-spacing'),
-        spacingWarnCode: root.querySelector('.pkc-warning-hallucination-spacing')?.getAttribute('data-pkc-warn-code') ?? '',
-        alignHallucinationMarker: !!root.querySelector('.pkc-warning-hallucination-align'),
-        alignWarnCode: root.querySelector('.pkc-warning-hallucination-align')?.getAttribute('data-pkc-warn-code') ?? '',
-        quoteHallucinationMarker: !!root.querySelectorAll('.pkc-warning-hallucination-quote').length,
-        quoteHallucinationCount: root.querySelectorAll('.pkc-warning-hallucination-quote').length,
-        quoteWarnCode: root.querySelector('.pkc-warning-hallucination-quote')?.getAttribute('data-pkc-warn-code') ?? '',
+        // ── PR-2L tolerant alias 検証(寛容 parse + hint log)──
+        leadTolerant: !!root.querySelector('.pkc-lead'),
+        leadWarnCode: root.querySelector('.pkc-lead')?.getAttribute('data-pkc-warn-code') ?? '',
+        leadCanonical: root.querySelector('.pkc-lead')?.getAttribute('data-pkc-canonical') ?? '',
+        spacingTolerant: !!root.querySelector('.pkc-tolerant-spacing'),
+        spacingCount: root.querySelectorAll('.pkc-tolerant-spacing').length,
+        spacingWarnCode: root.querySelector('.pkc-tolerant-spacing')?.getAttribute('data-pkc-warn-code') ?? '',
+        alignTolerant: !!root.querySelector('.pkc-align-hint'),
+        alignWarnCode: root.querySelector('.pkc-align-hint')?.getAttribute('data-pkc-warn-code') ?? '',
+        alignNext: root.querySelector('.pkc-align-hint')?.getAttribute('data-pkc-align-next') ?? '',
+        quoteTolerant: !!root.querySelector('.pkc-attribution'),
+        quoteCount: root.querySelectorAll('.pkc-attribution').length,
+        quoteWarnCode: root.querySelector('.pkc-attribution')?.getAttribute('data-pkc-warn-code') ?? '',
         attributionVisible: text.includes('END OF DOCUMENT') || text.includes('作業責任者: 佐藤'),
-        // 警告要素 total
-        hallucinationTotal: root.querySelectorAll('.pkc-warning-hallucination').length,
+        // PR-2K 維持:警告要素 total(inline は 0 に減るはず、block 0 件 fixture 内)
+        warningHallucinationTotal: root.querySelectorAll('.pkc-warning-hallucination-block').length,
         // 全 HTML 抜粋(問題箇所周辺)
         htmlExcerpt: html.length > 5000 ? html.substring(0, 5000) + '...' : html,
       };
@@ -310,13 +315,13 @@ test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture
         htmlOnly_visible: observed.htmlOnlyVisible,
         pdfOnly_hidden: !observed.pdfOnlyVisible,
       },
-      hallucination_PR_2K: {
-        lead: { marker: observed.leadHallucinationMarker, code: observed.leadWarnCode },
-        spacing: { marker: observed.spacingHallucinationMarker, code: observed.spacingWarnCode },
-        align: { marker: observed.alignHallucinationMarker, code: observed.alignWarnCode },
-        quote: { marker: observed.quoteHallucinationMarker, count: observed.quoteHallucinationCount, code: observed.quoteWarnCode },
-        total: observed.hallucinationTotal,
-        consoleWarnings: consoleWarnings.filter((w) => w.includes('PKC1009') || w.includes('PKC1010')),
+      tolerant_PR_2L: {
+        lead: { marker: observed.leadTolerant, code: observed.leadWarnCode, canonical: observed.leadCanonical },
+        spacing: { marker: observed.spacingTolerant, count: observed.spacingCount, code: observed.spacingWarnCode },
+        align: { marker: observed.alignTolerant, code: observed.alignWarnCode, next: observed.alignNext },
+        quote: { marker: observed.quoteTolerant, count: observed.quoteCount, code: observed.quoteWarnCode },
+        warnings_block: observed.warningHallucinationTotal,
+        consoleInfo_PKC2005_to_2008: consoleInfos.filter((w) => /\[PKC200[5-8]\]/.test(w)),
       },
       tableCount: observed.tableCount,
     }, null, 2));
@@ -339,20 +344,27 @@ test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture
     expect(observed.htmlOnlyVisible, ':::if{format=html} 表示').toBe(true);
     expect(observed.pdfOnlyVisible, ':::if{format=pdf} 隠蔽').toBe(false);
 
-    // PR-2K hallucination signaling assertions
-    expect(observed.leadHallucinationMarker, ':lead: marker').toBe(true);
-    expect(observed.leadWarnCode, ':lead: code').toBe('PKC1009');
-    expect(observed.spacingHallucinationMarker, ':spacing: marker').toBe(true);
-    expect(observed.spacingWarnCode, ':spacing: code').toBe('PKC1009');
-    expect(observed.alignHallucinationMarker, ':align: marker').toBe(true);
-    expect(observed.alignWarnCode, ':align: code').toBe('PKC1009');
-    expect(observed.quoteHallucinationMarker, ':quote: marker').toBe(true);
-    expect(observed.quoteHallucinationCount, ':quote: 2 件').toBeGreaterThanOrEqual(2);
-    expect(observed.quoteWarnCode, ':quote: code').toBe('PKC1009');
-    // 4 inline directives + 2nd :quote: at end = 5 markers minimum
-    expect(observed.hallucinationTotal, 'total markers').toBeGreaterThanOrEqual(5);
-    // console.warn 経路:全 5 件以上 capture(:lead + :spacing + :align + :quote x2)
-    const pkc1009Count = consoleWarnings.filter((w) => w.includes('[PKC1009]')).length;
-    expect(pkc1009Count, 'PKC1009 console.warn 件数').toBeGreaterThanOrEqual(5);
+    // PR-2L tolerant alias assertions
+    expect(observed.leadTolerant, ':lead: tolerant render').toBe(true);
+    expect(observed.leadWarnCode, ':lead: code PKC2005').toBe('PKC2005');
+    expect(observed.leadCanonical, ':lead: canonical hint').toContain('段落');
+    expect(observed.spacingTolerant, ':spacing: tolerant render').toBe(true);
+    expect(observed.spacingCount, ':spacing: 2 件').toBeGreaterThanOrEqual(2);
+    expect(observed.spacingWarnCode, ':spacing: code PKC2006').toBe('PKC2006');
+    expect(observed.alignTolerant, ':align: tolerant render').toBe(true);
+    expect(observed.alignWarnCode, ':align: code PKC2007').toBe('PKC2007');
+    expect(observed.alignNext, ':align: end→right mapping').toBe('right');
+    expect(observed.quoteTolerant, ':quote: tolerant render').toBe(true);
+    expect(observed.quoteCount, ':quote: 2 件').toBeGreaterThanOrEqual(2);
+    expect(observed.quoteWarnCode, ':quote: code PKC2008').toBe('PKC2008');
+    expect(observed.attributionVisible, 'attribution テキスト visible').toBe(true);
+    // block warning 0 件(fixture v2 内に :::toc / :::frontmatter / :::body は無い)
+    expect(observed.warningHallucinationTotal, 'block warning 0').toBe(0);
+    // console.info(PKC2005-2008)で 4 directive 種 + 重複分カウント
+    for (const code of ['PKC2005', 'PKC2006', 'PKC2007', 'PKC2008']) {
+      expect(consoleInfos.some((w) => w.includes(`[${code}]`)), `console.info has ${code}`).toBe(true);
+    }
+    // PR-2K block warning(PKC1010) は 0 件 fixture
+    expect(consoleWarnings.some((w) => w.includes('[PKC1010]'))).toBe(false);
   });
 });
