@@ -507,19 +507,19 @@ canonical plan:`docs/development/phase3-stack-execution-plan-2026-05.md`(本 wav
 
 | # | PR | Block | scope | Status |
 |---|----|------|------|------|
-| 1 | **PR-2R** | 0 doc 先行 | Phase 3 plan + IR migration + WCAG + theme + AI 規約 v3 起草、Manual ch12 §12.8 rewrite | 🔄 in-progress(本 PR)|
-| 2 | PR-2S | A UX | theme 切替整合(mermaid + 右ペイン TOC + PIP popup)| ⏳ pending |
-| 3 | PR-2T | A UX | WCAG AA コントラスト探索 + Flag | ⏳ pending |
-| 4 | PR-2U | A UX | bold-in-if 再現テスト + fix | ⏳ pending |
-| 5 | PR-2V | B spec | `:::toc{depth=N}` 正式実装 | ⏳ pending |
-| 6 | PR-2W | B spec | `:::frontmatter` / `:::body` 正式実装 | ⏳ pending |
-| 7 | PR-2X | B spec | `%%%` block comment LineMap thread | ⏳ pending |
-| 8 | PR-2Y | C IR | AST parse(markdown-it Token → AstDocument)| ⏳ pending |
-| 9 | PR-2Z | C IR | AST render + 等価性 test | ⏳ pending |
-| 10 | PR-2AA | C IR | renderMarkdown migration(可換世界拡大)| ⏳ pending |
-| 11 | PR-2BB | C IR | Canonicalize + Pandoc filter export 雛形 | ⏳ pending |
-| 12 | PR-2CC | D 軽量 | Flags inspector keyboard 操作 | ⏳ pending |
-| 13 | PR-2DD | D 軽量 | Phase 2 deferred hotfix wave | ⏳ pending |
+| 1 | PR-2R | 0 doc 先行 | Phase 3 plan + IR migration + WCAG + theme + AI 規約 v3 起草、Manual ch12 §12.8 rewrite | ✅ #412 ready-to-merge |
+| 2 | PR-2S | A UX | theme 切替整合(mermaid + 右ペイン TOC + PIP popup)| ✅ #413 ready-to-merge |
+| 3 | PR-2T | A UX | WCAG AA コントラスト探索 + Flag | ✅ #414 ready-to-merge |
+| 4 | PR-2U | A UX | bold-in-if 15 variant matrix(再現せず結論)| ✅ #415 ready-to-merge |
+| 5 | PR-2V | B spec | `:::toc{depth=N}` 正式実装 | ✅ #416 ready-to-merge |
+| 6 | PR-2W | B spec | `:::frontmatter` / `:::body` 正式実装 | ✅ #417 ready-to-merge |
+| 7 | PR-2X | B spec | `%%%` / `:::comment` block comment LineMap thread | ✅ #418 ready-to-merge |
+| 8 | PR-2Y | C IR | AST parse(markdown-it Token → AstDocument)| ✅ #419 ready-to-merge |
+| 9 | PR-2Z | C IR | AST render + 等価性 test(30 fixture) | ✅ #420 ready-to-merge |
+| 10 | PR-2AA | C IR | IR migration scaffolding(Tier 0 flag + try/fallback) | ✅ #421 ready-to-merge |
+| 11 | PR-2BB | C IR | Canonicalize + Pandoc filter export 雛形 | ✅ #422 ready-to-merge |
+| 12 | PR-2CC | D 軽量 | Flags inspector keyboard 操作 | ✅ #423 ready-to-merge |
+| 13 | **PR-2DD** | D 軽量 | Phase 2 deferred hotfix wave(D-12 unskip)| 🔄 in-progress(本 PR)|
 | 14 | PR-2EE | E 新機能 | アルバム + コンタクトシート Phase 1 | ⏳ pending |
 | 15 | PR-2FF | E 新機能 | アプリランチャー Phase 1 | ⏳ pending |
 | 16 | PR-2GG | F 最終 | Bundle dedup pass | ⏳ pending |
