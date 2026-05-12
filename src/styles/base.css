@@ -1904,6 +1904,20 @@
   user-select: none;
 }
 
+/* PR-2M(2026-05-10、reform Phase 2):```html-render fence の iframe sandbox。
+ * sandbox="allow-scripts" 隔離で AI 生成 HTML を seamless 埋め込み。
+ * height は内側 ResizeObserver からの postMessage で auto-resize、cap 5000px。
+ * width 100%、border 0 で content と区別できる subtle 影。 */
+.pkc-md-rendered .pkc-html-render {
+  display: block;
+  width: 100%;
+  border: 0;
+  margin: 0.75em 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
 /* L-2(2026-05-07):Inline 修飾 */
 .pkc-md-rendered mark {
   background: var(--c-mark-bg, #fff59d);
