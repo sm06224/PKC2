@@ -62,6 +62,14 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2H `:::break{kind=page|rule role=…}` formal block**(2026-05-10):`+++` /
+  `---` simple の formal 等価。AI / serializer 用 formal 形を spec 完全網羅。
+  `kind=page`(default)→ `+++ {role=…}` 等価で page break / `<hr class="pkc-section-break">`、
+  `kind=rule` → `---` 等価で commonmark plain `<hr>`。`processBreakDirective`
+  preprocessor で simple 形に正規化、既存 `processSectionBreaks` パイプに委譲。
+  fenced code 内 marker 無効、leading whitespace 許容、quoted role 受理。
+  13 unit cases pass、bundle.js +0.4 KB / bundle.css 不変。
+
 - **PR-2G `:::comment{block=true}` formal block comment**(2026-05-10):`%%%`
   block comment の formal 等価。AI / serializer が IR-driven で emit する formal
   形を spec 完全網羅。`stripComments` の fence 外 strip pass で `:::comment(?:\{…\})?\n…\n:::`

@@ -60,6 +60,13 @@
 | **R-2B-3** | Inline code formal | `:code:[text]` | `` `text` `` 等価 |
 | **R-2B-4** | Strike formal | `:strike:[text]` | `~~text~~` 等価 |
 | **R-F** | Conditional block | `:::if{format=html\|markdown\|docx} content :::` | format 別本文(format 不一致は完全 strip) |
+| **R-2A** | Document globals | frontmatter `writing` / `direction` / `align` | 縦書き / 横書き / RTL / LTR の writing matrix |
+| **R-2C** | Caption formal | `:::figure` 内 `:caption:[text]{attrs}` | `^^^ caption` 等価、AI emit 用 |
+| **R-2D** | Auto-ref self-closing | `:autoref:{id="fig1"}` | `[@fig1]` 等価、smart quote 対応 |
+| **R-2E** | Paragraph align(物理)| `:::paragraph{align=left\|right\|center\|top\|bottom}` | 物理 align(formal-only、`<\|` の workaround) |
+| **R-2F** | Section semantic / callout | `:::section{role=summary\|warning\|note\|tip\|caution\|important\|info\|danger}` | callout 表現(MkDocs / Material 風) |
+| **R-2G** | Comment formal | `:::comment\n…\n:::` | `%%%` block comment 等価、attrs(`block=true` 等)は無視 |
+| **R-2H** | Break formal | `:::break{kind=page\|rule role=…}` | `+++` / `---` 等価、kind=page で page break + role 指定 |
 
 **設計原則**:reform 後は **simple 形を first**(人間が見たまま入力)、**formal 形は AI / 機械が emit する serializer**(round-trip 安全)。AI がテストデータを作る時は混在 OK。
 
