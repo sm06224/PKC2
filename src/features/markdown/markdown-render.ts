@@ -24,6 +24,7 @@
 
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
+import { renderMarkdownViaIR, useIrPipeline } from '../ast/render-markdown-via-ir';
 import { makeSlugCounter, extractHeadingsFromMarkdown } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
 import { renderCsvFence } from './csv-table';
@@ -3257,6 +3258,21 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
+  // PR-2AA(2026-05-12、reform Phase 3 Block C 3/4):IR migration scaffolding。
+  // Tier 0 flag `markdown.use_ir` が ON のとき IR pipeline を試す。IR は現時点で
+  // commonmark + GFM core のみ cover(PKC 固有 figure / quote / section /
+  // hallucination 寛容 parse 等は未統合)、production default は OFF。
+  // future wave で IR coverage を拡張、完了時に本 fallthrough を撤去予定。
+  if (useIrPipeline()) {
+    try {
+      return renderMarkdownViaIR(text, {
+        vars: opts.vars,
+        sourceLineAnchors: opts.sourceLineAnchors,
+      });
+    } catch {
+      // IR 経路失敗時は legacy にフォールバック(safety net、log は省略 to avoid 騒音)
+    }
+  }
   // PR-2V:original text を保存(`:::toc` block の処理で heading extraction に使う)
   const originalText = text;
   // 入力 line 数を覚えておき、initial lineMap = identity。preprocess 各 step
