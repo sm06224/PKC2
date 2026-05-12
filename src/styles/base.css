@@ -1904,6 +1904,79 @@
   user-select: none;
 }
 
+/* PR-2N(2026-05-10、reform Phase 2):document layout(frontmatter `layout:`)。
+ * AI が出した A4 2 段組レポート等の generative 組版を frontmatter 1 行で実現。
+ * 用紙サイズ(a4 / b5 / letter / legal)x 段組(1col / 2col / 3col)。
+ *
+ * screen 表示:用紙幅で center、column-count で段組(段組境界 line)。
+ * @media print:`@page size` 指定で paper に合わせる、column-rule なし。
+ *
+ * 見出しは段抜き(column-span: all)、figure / table は段内で break-inside: avoid。
+ */
+.pkc-md-rendered[data-pkc-layout] {
+  max-width: var(--pkc-page-w, 21cm);
+  margin: 1rem auto;
+  padding: var(--pkc-page-pad-v, 1.5cm) var(--pkc-page-pad-h, 1.8cm);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+/* 用紙サイズ */
+.pkc-md-rendered[data-pkc-layout^="a4-"]     { --pkc-page-w: 21cm; --pkc-page-h: 29.7cm; }
+.pkc-md-rendered[data-pkc-layout^="b5-"]     { --pkc-page-w: 17.6cm; --pkc-page-h: 25cm; }
+.pkc-md-rendered[data-pkc-layout^="letter-"] { --pkc-page-w: 21.59cm; --pkc-page-h: 27.94cm; }
+.pkc-md-rendered[data-pkc-layout^="legal-"]  { --pkc-page-w: 21.59cm; --pkc-page-h: 35.56cm; }
+/* 段組(2col / 3col)、1col は default */
+.pkc-md-rendered[data-pkc-layout$="-2col"] {
+  column-count: 2;
+  column-gap: 0.8cm;
+  column-rule: 1px solid #e5e7eb;
+}
+.pkc-md-rendered[data-pkc-layout$="-3col"] {
+  column-count: 3;
+  column-gap: 0.6cm;
+  column-rule: 1px solid #e5e7eb;
+}
+/* 段組内 break 制御 */
+.pkc-md-rendered[data-pkc-layout$="-2col"] h1,
+.pkc-md-rendered[data-pkc-layout$="-2col"] h2,
+.pkc-md-rendered[data-pkc-layout$="-3col"] h1,
+.pkc-md-rendered[data-pkc-layout$="-3col"] h2 {
+  column-span: all;
+}
+.pkc-md-rendered[data-pkc-layout$="-2col"] figure,
+.pkc-md-rendered[data-pkc-layout$="-2col"] table,
+.pkc-md-rendered[data-pkc-layout$="-2col"] pre,
+.pkc-md-rendered[data-pkc-layout$="-3col"] figure,
+.pkc-md-rendered[data-pkc-layout$="-3col"] table,
+.pkc-md-rendered[data-pkc-layout$="-3col"] pre {
+  break-inside: avoid;
+}
+/* 印刷時:@page で paper size 指定、shadow / radius / column-rule は off */
+@media print {
+  .pkc-md-rendered[data-pkc-layout^="a4-"]     { width: 21cm; }
+  .pkc-md-rendered[data-pkc-layout^="b5-"]     { width: 17.6cm; }
+  .pkc-md-rendered[data-pkc-layout^="letter-"] { width: 21.59cm; }
+  .pkc-md-rendered[data-pkc-layout^="legal-"]  { width: 21.59cm; }
+  .pkc-md-rendered[data-pkc-layout] {
+    margin: 0;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+  }
+  .pkc-md-rendered[data-pkc-layout$="-2col"],
+  .pkc-md-rendered[data-pkc-layout$="-3col"] {
+    column-rule: none;
+  }
+}
+/* CSS Paged Media @page rule(印刷時 page size + margin)。
+ * Note:user-agent default の `@page` は印刷 dialog で上書き可能、ここでは
+ * AI 生成 layout の意図(A4 + 18mm margin)を hint として持たせる程度。 */
+@page :first {
+  margin: 18mm;
+}
+
 /* PR-2M(2026-05-10、reform Phase 2):```html-render fence の iframe sandbox。
  * sandbox="allow-scripts" 隔離で AI 生成 HTML を seamless 埋め込み。
  * height は内側 ResizeObserver からの postMessage で auto-resize、cap 5000px。

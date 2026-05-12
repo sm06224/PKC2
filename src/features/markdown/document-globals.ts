@@ -30,6 +30,20 @@ import { parseFrontmatter } from './frontmatter';
 export type Writing = 'horizontal' | 'vertical';
 export type Direction = 'ltr' | 'rtl';
 export type Align = 'left' | 'right' | 'center' | 'top' | 'bottom';
+/**
+ * PR-2N(2026-05-10):document layout(用紙サイズ + 段組)。
+ * AI 生成 A4 2 段組レポート等の generative 組版を frontmatter 1 行で。
+ *   - `a4-1col` / `a4-2col` / `a4-3col`
+ *   - `b5-1col` / `b5-2col`
+ *   - `letter-1col` / `letter-2col`
+ *   - `legal-1col` / `legal-2col`
+ *   - 未指定時:screen-first wide layout(default、既存挙動)
+ */
+export type Layout =
+  | 'a4-1col' | 'a4-2col' | 'a4-3col'
+  | 'b5-1col' | 'b5-2col'
+  | 'letter-1col' | 'letter-2col'
+  | 'legal-1col' | 'legal-2col';
 
 export interface DocumentGlobals {
   /** writing-mode 指定。指定なし時 undefined(default の horizontal を意味する)。 */
@@ -38,6 +52,8 @@ export interface DocumentGlobals {
   direction?: Direction;
   /** text-align 指定。指定なし時 undefined(writing から導出される)。 */
   align?: Align;
+  /** PR-2N:用紙サイズ + 段組。指定なし時 undefined(default の screen-first)。 */
+  layout?: Layout;
   /** 不正値 / 不正組み合わせ検出時の構造化 warning(silent fail 回避)。 */
   warnings: GlobalWarning[];
 }
@@ -51,6 +67,12 @@ export interface GlobalWarning {
 const VALID_WRITING: ReadonlySet<Writing> = new Set(['horizontal', 'vertical'] as const);
 const VALID_DIRECTION: ReadonlySet<Direction> = new Set(['ltr', 'rtl'] as const);
 const VALID_ALIGN: ReadonlySet<Align> = new Set(['left', 'right', 'center', 'top', 'bottom'] as const);
+const VALID_LAYOUT: ReadonlySet<Layout> = new Set([
+  'a4-1col', 'a4-2col', 'a4-3col',
+  'b5-1col', 'b5-2col',
+  'letter-1col', 'letter-2col',
+  'legal-1col', 'legal-2col',
+] as const);
 
 const HORIZONTAL_ALIGNS: ReadonlySet<Align> = new Set(['left', 'right', 'center'] as const);
 const VERTICAL_ALIGNS: ReadonlySet<Align> = new Set(['top', 'bottom', 'center'] as const);
@@ -108,6 +130,20 @@ export function extractDocumentGlobals(body: string): DocumentGlobals {
     }
   }
 
+  // PR-2N:layout 抽出 + 検証(a4-2col 等)
+  const layoutRaw = fm.meta['layout'];
+  if (typeof layoutRaw === 'string') {
+    if (VALID_LAYOUT.has(layoutRaw as Layout)) {
+      result.layout = layoutRaw as Layout;
+    } else {
+      result.warnings.push({
+        kind: 'invalid_value',
+        key: 'layout',
+        detail: `'${layoutRaw}' は layout として無効。'a4-1col' / 'a4-2col' / 'a4-3col' / 'b5-1col' / 'b5-2col' / 'letter-1col' / 'letter-2col' / 'legal-1col' / 'legal-2col' のみ。`,
+      });
+    }
+  }
+
   // align 抽出 + 検証(値妥当性 → writing との組み合わせ)
   const alignRaw = fm.meta['align'];
   if (typeof alignRaw === 'string') {
@@ -145,5 +181,6 @@ export function globalsToDataAttrs(globals: DocumentGlobals): Record<string, str
   if (globals.writing) attrs['data-pkc-writing'] = globals.writing;
   if (globals.direction) attrs['data-pkc-direction'] = globals.direction;
   if (globals.align) attrs['data-pkc-doc-align'] = globals.align;
+  if (globals.layout) attrs['data-pkc-layout'] = globals.layout;
   return attrs;
 }

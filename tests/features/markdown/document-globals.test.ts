@@ -158,4 +158,57 @@ describe('globalsToDataAttrs', () => {
   it('全部 undefined → 空 record', () => {
     expect(globalsToDataAttrs({ warnings: [] })).toEqual({});
   });
+
+  it('PR-2N layout を data-pkc-layout に転記', () => {
+    const attrs = globalsToDataAttrs({ layout: 'a4-2col', warnings: [] });
+    expect(attrs).toEqual({ 'data-pkc-layout': 'a4-2col' });
+  });
+});
+
+describe('extractDocumentGlobals — layout(PR-2N)', () => {
+  it('layout: a4-2col を抽出', () => {
+    const r = extractDocumentGlobals(`---
+layout: a4-2col
+---
+本文`);
+    expect(r.layout).toBe('a4-2col');
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  it.each([
+    'a4-1col', 'a4-2col', 'a4-3col',
+    'b5-1col', 'b5-2col',
+    'letter-1col', 'letter-2col',
+    'legal-1col', 'legal-2col',
+  ])('valid layout: %s', (layout) => {
+    const r = extractDocumentGlobals(`---
+layout: ${layout}
+---`);
+    expect(r.layout).toBe(layout);
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  it('invalid layout は warning + skip', () => {
+    const r = extractDocumentGlobals(`---
+layout: a3-4col
+---`);
+    expect(r.layout).toBeUndefined();
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]!.key).toBe('layout');
+    expect(r.warnings[0]!.kind).toBe('invalid_value');
+  });
+
+  it('layout は writing / direction / align と orthogonal で共存可', () => {
+    const r = extractDocumentGlobals(`---
+layout: a4-2col
+writing: horizontal
+direction: ltr
+align: left
+---`);
+    expect(r.layout).toBe('a4-2col');
+    expect(r.writing).toBe('horizontal');
+    expect(r.direction).toBe('ltr');
+    expect(r.align).toBe('left');
+    expect(r.warnings).toHaveLength(0);
+  });
 });
