@@ -351,9 +351,10 @@ test.describe('reform Phase 2:user バグレポ詳細版(石狩変電所 fixture
     expect(observed.spacingTolerant, ':spacing: tolerant render').toBe(true);
     expect(observed.spacingCount, ':spacing: 2 件').toBeGreaterThanOrEqual(2);
     expect(observed.spacingWarnCode, ':spacing: code PKC2006').toBe('PKC2006');
-    expect(observed.alignTolerant, ':align: tolerant render').toBe(true);
-    expect(observed.alignWarnCode, ':align: code PKC2007').toBe('PKC2007');
-    expect(observed.alignNext, ':align: end→right mapping').toBe('right');
+    // PR-2O(2026-05-10):standalone `:align:{position=X}` は line-based 消費
+    // (次段落の data-pkc-align に register、directive 行 strip)→ hint chip 出ない。
+    // ユーザー fixture の `:align:{position=end}` は行頭で standalone なのでこの path。
+    // align は assert しない(PR-2O で実際の align として動作)。
     expect(observed.quoteTolerant, ':quote: tolerant render').toBe(true);
     expect(observed.quoteCount, ':quote: 2 件').toBeGreaterThanOrEqual(2);
     expect(observed.quoteWarnCode, ':quote: code PKC2008').toBe('PKC2008');
