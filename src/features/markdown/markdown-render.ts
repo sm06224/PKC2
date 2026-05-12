@@ -24,7 +24,7 @@
 
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
-import { makeSlugCounter } from './markdown-toc';
+import { makeSlugCounter, extractHeadingsFromMarkdown } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
 import { renderCsvFence } from './csv-table';
 import { buildHtmlSandboxIframe } from './html-sandbox';
@@ -1632,6 +1632,117 @@ interface SectionEntry {
   attrs: _BlockDirectiveAttrs;
 }
 
+/**
+ * PR-2V(2026-05-12):`:::toc{depth=N}` block を正式実装。
+ *
+ * 入力例:
+ *   :::toc
+ *   :::
+ *
+ *   :::toc{depth=2}
+ *   :::
+ *
+ * 動作:
+ *   1. block を sentinel(U+E168/E169)で wrap、depth を含めて記録
+ *   2. block 内の content(あれば)は無視(自動生成のみ)
+ *   3. post-process で `extractHeadingsFromMarkdown` で TOC nodes を取得、
+ *      depth で filter、`renderStaticTocHtml` 等価の `<nav class="pkc-toc">`
+ *      を生成して sentinel と入れ替え
+ *   4. PKC1010 deny list から除外(PR-2K)
+ *
+ * fence aware(``` 内は無視)。depth default は 3、range [1..6]。
+ */
+const TOC_OPEN = '\u{E168}';
+const TOC_SEP = '\u{E169}';
+
+interface TocDirectiveRecord {
+  depth: number;
+  // 将来の attr 拡張用(id / role / variant 等)
+}
+
+function processTocDirective(
+  source: string,
+  lineMapIn: number[],
+): { transformed: string; lineMap: number[]; records: TocDirectiveRecord[] } {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  const records: TocDirectiveRecord[] = [];
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    // `:::toc` or `:::toc{...}` を行頭(leading whitespace 許容)で検出
+    const openMatch = /^[ \t]*:::toc(?:\{([^}]*)\})?\s*$/.exec(line);
+    if (!openMatch) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    // depth attr 抽出
+    const attrs = openMatch[1] ?? '';
+    const dm = /depth\s*=\s*"?(\d)"?/.exec(attrs);
+    let depth = 3; // default
+    if (dm) {
+      const n = parseInt(dm[1]!, 10);
+      if (Number.isFinite(n) && n >= 1 && n <= 6) depth = n;
+    }
+    // closing `:::` を探索(content は無視、自動生成のみ)
+    let j = i + 1;
+    while (j < lines.length) {
+      if (/^[ \t]*:::[ \t]*$/.test(lines[j]!)) break;
+      j++;
+    }
+    if (j >= lines.length) {
+      // unclosed、open 行を literal で残して 1 行だけ消費
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    // sentinel 行に置換(depth 込み)、content + closing は consume
+    const recordIdx = records.length;
+    records.push({ depth });
+    out.push(`${TOC_OPEN}${recordIdx}${TOC_SEP}${depth}${TOC_OPEN}`);
+    lineMapOut.push(inputIdx);
+    // closing `:::` まで skip(空行で line count を維持)
+    for (let k = i + 1; k <= j; k++) {
+      out.push('');
+      lineMapOut.push(lineMapIn[k] ?? k);
+    }
+    i = j + 1;
+  }
+  return { transformed: out.join('\n'), lineMap: lineMapOut, records };
+}
+
+/**
+ * post-process:TOC sentinel を実 HTML に置換。
+ * markdown-it が sentinel 行を `<p>SENTINEL</p>` で wrap するので、その paragraph 全体を
+ * `<nav class="pkc-toc-formal pkc-toc-preview">` に書き換える。
+ *
+ * `tocHtmlByIdx` は同 render call 内の record idx → 実 HTML(`<nav>...`)map。
+ * 順序保証のため processTocDirective の records と対応。
+ */
+function postProcessTocSentinels(html: string, tocHtmlByIdx: readonly string[]): string {
+  return html.replace(
+    new RegExp(`<p[^>]*>${TOC_OPEN}(\\d+)${TOC_SEP}\\d+${TOC_OPEN}</p>`, 'g'),
+    (_match, idxStr) => {
+      const idx = parseInt(idxStr, 10);
+      return tocHtmlByIdx[idx] ?? '';
+    },
+  );
+}
+
 function processSectionBlocks(source: string, lineMapIn: number[]): {
   transformed: string;
   registry: Map<number, SectionEntry>;
@@ -2380,15 +2491,17 @@ const ADMONITION_ALIASES: ReadonlySet<string> = new Set([
   'note', 'warning', 'tip', 'info', 'caution', 'important', 'danger', 'summary',
 ]);
 
-/** PR-2K 維持:less-critical block deny list(structural、寛容 parse しない)。 */
+/**
+ * PR-2V(2026-05-12)で `:::toc` を正式実装(deny list から除外)。
+ * 残:`:::frontmatter` / `:::body` は PR-2W で実装予定。
+ */
 const HALLUCINATION_BLOCK_DIRECTIVES: ReadonlySet<string> = new Set([
-  'toc', 'frontmatter', 'body',
+  'frontmatter', 'body',
 ]);
 
 const HALLUCINATION_BLOCK_SUGGESTION: Record<string, string> = {
-  toc: 'markdown heading(`# ## ###`)構造で十分、TOC 生成は別機能',
-  frontmatter: 'YAML frontmatter(`---` で囲む top)を使う',
-  body: 'structural directive 不要、heading で region 表現',
+  frontmatter: 'YAML frontmatter(`---` で囲む top)を使う(PR-2W で正式実装予定)',
+  body: 'structural directive 不要、heading で region 表現(PR-2W で正式実装予定)',
 };
 
 /**
@@ -2920,6 +3033,8 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
+  // PR-2V:original text を保存(`:::toc` block の処理で heading extraction に使う)
+  const originalText = text;
   // 入力 line 数を覚えておき、initial lineMap = identity。preprocess 各 step
   // が line を挿入 / 消費する度に lineMap を更新、最終 lineMap[outputIdx] は
   // user の textarea source(原文)の line index を返す。Split View の
@@ -2946,6 +3061,39 @@ export function renderMarkdown(
   const ifResult = processIfBlocks(text, lineMap, 'html');
   text = ifResult.transformed;
   lineMap = ifResult.lineMap;
+  // PR-2V:`:::toc{depth=N}` block を sentinel 化、TOC HTML は post-process で展開。
+  // heading 抽出は originalText から(extractHeadingsFromMarkdown が独自に
+  // frontmatter strip + vars 展開 + :::if mismatch strip を実施)。
+  const tocResult = processTocDirective(text, lineMap);
+  text = tocResult.transformed;
+  lineMap = tocResult.lineMap;
+  // sentinel idx → 実 HTML map を構築(各 :::toc{depth=N} につき 1 件)
+  const tocHtmlByIdx: string[] = tocResult.records.length === 0
+    ? []
+    : (() => {
+        const allHeadings = extractHeadingsFromMarkdown(originalText);
+        return tocResult.records.map((rec) => {
+          const filtered = allHeadings.filter((h) => h.level <= rec.depth);
+          if (filtered.length === 0) {
+            return `<nav class="pkc-toc-formal pkc-toc-preview" data-pkc-region="toc-formal" data-pkc-toc-depth="${rec.depth}"><span class="pkc-toc-label">Contents</span><ul class="pkc-toc-list"></ul></nav>`;
+          }
+          const esc = (s: string) =>
+            s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          const items = filtered
+            .map((h) =>
+              `<li class="pkc-toc-item" data-pkc-toc-kind="heading" data-pkc-toc-level="${h.level}">` +
+              `<a class="pkc-toc-link" href="#${esc(h.slug)}">${esc(h.text)}</a>` +
+              `</li>`,
+            )
+            .join('');
+          return (
+            `<nav class="pkc-toc-formal pkc-toc-preview" data-pkc-region="toc-formal" data-pkc-toc-depth="${rec.depth}">` +
+            `<span class="pkc-toc-label">Contents</span>` +
+            `<ul class="pkc-toc-list">${items}</ul>` +
+            `</nav>`
+          );
+        });
+      })();
   // reform-2026-05 Phase 2 PR-2O:standalone :align:{position=X} は次段落の
   // alignMap に register、行は strip(PR-2L hint chip より格上げ、actual align)。
   const tolerantAlignResult = processTolerantStandaloneAlign(
@@ -3034,6 +3182,8 @@ export function renderMarkdown(
     tagSourceLines(tokens, lineMap);
     html = md.renderer.render(tokens, md.options, env);
   }
+  // PR-2V:`:::toc{depth=N}` sentinel → <nav class="pkc-toc-formal pkc-toc-preview">
+  html = postProcessTocSentinels(html, tocHtmlByIdx);
   // L-7:figure/table/equation sentinel → <figure>
   html = postProcessFigureSentinels(html);
   // reform-2026-05 PR-D:`:::quote{author=...}` sentinel → <blockquote class="pkc-quote-citation">

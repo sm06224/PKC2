@@ -182,17 +182,17 @@ describe('PR-2L tolerant alias — admonition 群', () => {
 });
 
 describe('PR-2K(維持)— less-critical block deny list', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
-    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
-  it(':::toc block が PKC1010(寛容 parse しない)', () => {
-    const md = ':::toc{depth=3}\nentry list\n:::';
+  it(':::toc block は PR-2V で deny list から外れ正式実装(formal nav 生成)', () => {
+    // Phase 3 PR-2V で :::toc は formal directive 化、PKC1010 deny list から離脱
+    const md = ':::toc{depth=3}\n:::';
     const html = renderMarkdown(md);
-    expect(html).toContain('class="pkc-warning-hallucination-block pkc-warning-hallucination-block-toc"');
-    expect(html).toContain('data-pkc-warn-code="PKC1010"');
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC1010]'));
+    expect(html).not.toContain('pkc-warning-hallucination-block-toc');
+    expect(html).toContain('pkc-toc-formal');
+    expect(html).toContain('data-pkc-toc-depth="3"');
   });
 
   it(':::frontmatter block が PKC1010', () => {
