@@ -62,6 +62,24 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2O hint chip default 非表示 + :align 実 適用**(2026-05-10、user バグレポ):
+  PR-2L の visible hint marker(`<span class="pkc-align-hint">[align: end]</span>` の青
+  chip、`.pkc-lead` の dotted underline)が user 視点で「画像みたいに render できない
+  ものがある」と映る副作用を解消。default で hint marker を `display: none`、
+  `?pkc-debug=hallucination` URL flag を立てた時(`html[data-pkc-debug-hallucination]`)
+  だけ visible に戻す。あわせて standalone `:align:{position=X}` 行(行頭 / 行末で
+  囲まれる pattern)を line-based に検出する `processTolerantStandaloneAlign`
+  preprocessor を新設、次の非空行に対応する出力行 alignMap に register、directive
+  行は strip。結果:standalone `:align:{position=end}` は次段落を実際に右寄せ
+  (`<p data-pkc-align="end">`)し、hint chip も出ない。inline form(行中央の
+  `:align:{…}`)は引き続き regex 経由で hint chip 化(default 非表示)。
+  Viewer popup の inline `<script>` で `window.opener.location.search` から
+  `?pkc-debug=hallucination` を継承(parent と popup の hint visibility 一致)。
+  `console.info` の parse log 3 つ組(detected / interpretedAs / canonical)は維持、
+  AI repair tool / IR canonicalizer 経路は影響なし。`data-pkc-canonical` attribute
+  も維持(DOM 走査で取得可能)。25 unit cases + 既存 smoke regression、bundle.css
+  156.5 KB(+0.2)/ bundle.js 1005.3 KB(+2.6)。
+
 - **PR-2N A4 / B5 / letter / legal 段組組版**(2026-05-10、別 AI 要望):AI が
   「A4 2 段組レポート style はほぼ完璧に出せる」と主張した generative 組版を
   frontmatter `layout: a4-2col` 1 行宣言で実現。9 種類の layout(用紙 4 種 × 段組

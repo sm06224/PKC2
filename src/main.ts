@@ -358,6 +358,19 @@ async function boot(): Promise<void> {
   // 全 iframe を listen(message に id を含めて iframe を特定)。
   installHtmlSandboxResizer();
 
+  // PR-2O(2026-05-10):?pkc-debug=hallucination で tolerant alias の hint
+  // marker(dotted underline / align chip)を visible に。default 非表示。
+  try {
+    if (typeof URLSearchParams !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const debugRaw = params.get('pkc-debug') ?? '';
+      const debugList = new Set(debugRaw.split(',').map((s) => s.trim()));
+      if (debugList.has('hallucination') || debugList.has('all')) {
+        document.documentElement.setAttribute('data-pkc-debug-hallucination', '');
+      }
+    }
+  } catch { /* URL parse 失敗時は default(非表示)維持 */ }
+
   // 3a-bis. iOS Safari hard reload(2026-05-10、user 報告対応):
   // Add to Home Screen mode で Safari がアグレッシブにキャッシュするため、
   // 起動時に 1 回 HEAD リクエストで Last-Modified を取得 → 前回値と異なれば
