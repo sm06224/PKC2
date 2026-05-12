@@ -326,11 +326,11 @@ test.describe('ChatGPT formal fixture diagnostic — 何が render され / 何�
     // - PR-2B(2026-05-10):strong / emphasis / code / strike formal 実装済
     // - PR-2C(2026-05-10):caption formal 実装済
     // - PR-2F(2026-05-10):::section{role=…} callout 実装済
-    // 残る未実装 hallucination:lead / spacing / inline quote / :::comment
+    // - PR-2G(2026-05-10):::comment block 実装済(完全 strip)
+    // 残る未実装 hallucination:lead / spacing / inline quote
     expect(observed.hallucinations.leadLiteral).toBe(true);
     expect(observed.hallucinations.spacingLiteral).toBe(true);
     expect(observed.hallucinations.inlineQuoteLiteral).toBe(true);
-    expect(observed.hallucinations.sectionCommentLiteral).toBe(true);
 
     await rendered.screenshot({
       path: 'test-results/chatgpt-fixture-diagnostic/center-pane.png',
