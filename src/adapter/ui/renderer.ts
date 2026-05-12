@@ -22,6 +22,7 @@ import {
   type GraphCanvasPayload,
 } from './graph-canvas';
 import { autoDetectFilerProfile } from '../../features/filer/auto-display-profile';
+import { isExplicitAlbum } from '../../features/album/album-metadata';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
 import { getFilerThumbPx } from './filer-flags';
 import type { Container } from '../../core/model/container';
@@ -4916,6 +4917,13 @@ function resolveFilerSubsetForScope(state: AppState, scope: Entry | null): Filer
   const explicit = scope && scope.archetype === 'folder' ? scope.display_profile : undefined;
   if (explicit && explicit.kind !== 'auto') {
     return explicit;
+  }
+  // PR-2EE (2026-05-12、reform Phase 3 Block E):folder frontmatter
+  // `kind: album` で明示的に album folder と宣言された場合、7 割多数決
+  // (autoDetectFilerProfile)を bypass して強制的に contact-sheet を選択。
+  // user 意図が画像 % 閾値を超えて優先される。
+  if (scope && isExplicitAlbum(scope)) {
+    return { kind: 'contact-sheet' };
   }
   // Auto-detect から実 profile を決める。scope === null = container root
   // のときは scope 全 user entries を直接 children として扱う(root も
