@@ -62,6 +62,25 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2I ChatGPT 9 提案 Phase 2 受容分**(2026-05-10):reform-2026-05 Phase 1 着地後の
+  ChatGPT 9 提案を私が evaluate し、6 件受容と判断したものを 1 PR に統合実装:
+  (1)**Canonicalization spec**(`notation-redesign-2026-05/11-canonicalization-spec.md`
+  新規):simple → canonical formal 1:1 写像表 + canonicalize rules(attrs alphabetical /
+  quote normalize / whitespace / line break)+ idempotent contract;
+  (2)**Warning code 体系**(`src/features/notation/warnings.ts` 新規):`PKC<NNNN>`
+  形式の structured code(parser=1xxx / semantic=2xxx / renderer=3xxx / export=4xxx /
+  security=5xxx)+ `makeWarning` factory + `findWarningCodeId` 逆引き helper;
+  (3)**Parser recovery spec**(`docs/development/parser-recovery-spec.md` 新規):
+  既存 20+ tolerance ケースを集約、fence-aware preprocessor pipeline 規律 doctrinize、
+  warning code 連動表;
+  (4)**Diff friendliness 設計原則明文化**(`00-overview-and-principles.md` §0.2.5 追加);
+  (5)**AST module skeleton**(`src/core/ast/index.ts` 新規):AstDocument / AstBlock /
+  AstInline 全 type 定義(20+ node kind)、Pandoc-style attrs / position 含む。実装
+  (parse / render / canonicalize)は post-reform Phase Z で IR persist 同期予定;
+  (6)**AI-safe profile**(`pkc-markdown-1.0-ai-safe`)を `notation-profiles.ts` に追加。
+  semantic round-trip(syntax は保証外)を `lossless round-trip` の定義として確定。
+  18 unit cases pass、bundle.js +0.4 KB、check:docs OK 418 docs / 0 broken links。
+
 - **PR-2H `:::break{kind=page|rule role=…}` formal block**(2026-05-10):`+++` /
   `---` simple の formal 等価。AI / serializer 用 formal 形を spec 完全網羅。
   `kind=page`(default)→ `+++ {role=…}` 等価で page break / `<hr class="pkc-section-break">`、
