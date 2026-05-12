@@ -506,6 +506,7 @@ Phase 2 完了直後の継続 wave。critical UX(theme / WCAG / bold-in-if)+ spe
 canonical plan:[`docs/development/phase3-stack-execution-plan-2026-05.md`](./phase3-stack-execution-plan-2026-05.md)(本 wave の起点 doc、wave 完了 status 反映済)
 retrospective:[`docs/development/reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md)(2026-05-12、wave 全 16 PR の deliverable / doctrine / archive 候補一覧)
 final audit:[`docs/development/reform-2026-05-phase3-final-audit.md`](./reform-2026-05-phase3-final-audit.md)(2026-05-12、PR-2II、17 PR 全件 ship-readiness 8 項目 audit + user direction 達成度 + bundle / test growth 集計)
+visual audit:[`docs/development/reform-2026-05-phase3-visual-audit-report.md`](./reform-2026-05-phase3-visual-audit-report.md)(2026-05-12、user 指摘「視覚テストしましたか?」の後付け対応、5 件 smoke + UX 課題 4 件 + 開発規律違反の謝罪)
 
 | # | PR | Block | scope | Status |
 |---|----|------|------|------|
