@@ -62,6 +62,25 @@ Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatt
 globals(writing / direction / align)** + **formal inline / block vocabulary
 完全網羅** を順次着地させる。
 
+- **PR-2K AI hallucination signaling**(2026-05-10、user 提案):spec v2 §1.6 deny list
+  の formal 構文を AI(ChatGPT / Claude / Gemini)が Pandoc / RST 知識から hallucinate
+  して生成する問題に、3 経路 signaling で対応。inline 4 件(`:lead:[…]` / `:spacing:{…}` /
+  `:align:{…}` / `:quote:{…}` self-closing)と block 3 件(`:::toc` / `:::frontmatter` /
+  `:::body`)を preprocessor で検出、PUA sentinel(`U+E162/E163`)wrap + post-process で
+  `<span class="pkc-warning-hallucination" data-pkc-warn-code="PKC1009">` / `<div class=
+  "pkc-warning-hallucination-block" data-pkc-warn-code="PKC1010">` に展開。橙背景 +
+  点線下線 + tooltip で推奨形提示、Viewer popup CSS mirror も追加。`console.warn` で
+  `[PKC1009] hallucinated inline directive :NAME: detected. Use ... per spec §1.6` を
+  出すので Playwright `page.on('console', …)` や AI test runner が code-based に拾える。
+  fenced code(`` ``` `` / `~~~`)内 marker は signaling 対象外(documentation 用途保護)。
+  `WARNING_CODES` に `PARSER_HALLUCINATED_INLINE` (PKC1009) + `PARSER_HALLUCINATED_BLOCK`
+  (PKC1010)を追加、`silentHallucinationWarnings` opts で vitest / Playwright 抑止可能。
+  AI spec v2 §1.6 deny list に signaling 列を追記、§1.6.y で詳細プロトコル明文化。
+  21 unit cases + 1 smoke(石狩 fixture v2 で 4 件全部 marker + 5+ console.warn 確認)。
+  bundle.css +0.48 KB / bundle.js +3.3 KB。あわせて PR-2J / PR-2I 着地で stale 化していた
+  test 2 件(`inline-role-parser.test.ts` multi-line null 期待 / `profiles.test.ts` count 6)
+  を更新(wave 規律 §3「既存問題は通さない」)。
+
 - **PR-2J multi-line `[content]` 受理(user バグレポ hotfix)**(2026-05-10):ChatGPT 等 AI が
   `:emphasis:[\n本文\n]` のように `[content]` を複数行に展開する習慣に対応。`scanBracketBalanced`
   で newline reject を blank line(`\n\n`)reject に変更、content は trim 済(先頭末尾

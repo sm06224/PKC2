@@ -373,6 +373,25 @@ export function buildRenderedViewerHtml(
       text-decoration-color: #b91c1c;
       cursor: help;
     }
+    /* PR-2K(2026-05-10、reform Phase 2):hallucination directive 警告 mirror */
+    .pkc-md-rendered .pkc-warning-hallucination {
+      background-color: #fef3c7;
+      color: #92400e;
+      text-decoration: underline dotted;
+      text-decoration-color: #d97706;
+      padding: 0 0.15em;
+      border-radius: 2px;
+      cursor: help;
+    }
+    .pkc-md-rendered .pkc-warning-hallucination-block {
+      background-color: #fef3c7;
+      color: #92400e;
+      border-left: 3px solid #d97706;
+      padding: 0.5em 0.75em;
+      margin: 0.5em 0;
+      border-radius: 2px;
+      cursor: help;
+    }
     /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
        hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため
        base.css pkc-transclusion 群を inline mirror)。 */

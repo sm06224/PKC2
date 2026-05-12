@@ -1147,6 +1147,13 @@ export interface RenderMarkdownOptions {
    * presenters) leave this off and emit clean HTML. Only the split
    * editor preview turns it on. */
   readonly sourceLineAnchors?: boolean;
+  /**
+   * reform-2026-05 Phase 2 PR-2K(2026-05-10):AI hallucination 形 directive
+   * 検出時の `console.warn` を抑止。vitest / Playwright で test 出力を汚さない
+   * 用途に opt-in。default false で、production / debug overlay では console
+   * へ流す(AI test runner / Playwright `page.on('console', …)` が拾える)。
+   */
+  readonly silentHallucinationWarnings?: boolean;
 }
 
 /**
@@ -2236,6 +2243,205 @@ const BLANK_OPEN = '\u{E130}';
 const BLANK_SEP = '\u{E131}';
 const BLANK_LINE_MAX = 50;
 
+// ── reform-2026-05 Phase 2 PR-2K:AI hallucination 形 signaling ──
+//
+// spec v2 §1.6 deny list の formal 構文(:lead:[...] / :spacing:{...} /
+// :align:{...} / :quote:{...} / :::toc / :::frontmatter / :::body)を
+// AI(ChatGPT / Claude / Gemini) が Pandoc / RST 知識から hallucinate して
+// 生成する。これまでは parser fall-through で literal 残留 → 警告なし、
+// AI 側も「成功した」と誤認していた。
+//
+// PR-2K では preprocessor で patterns を検出し、3 経路で signaling する:
+//   1. visible inline marker: <span class="pkc-warning-hallucination"
+//      data-pkc-warn-code="PKC1009/PKC1010"> — user 視認 + AI screenshot 可読
+//   2. console.warn: AI test runner / Playwright capture 経路
+//   3. WARNING_CODES code(PKC1009 inline / PKC1010 block) — future Report dump
+//
+// PUA sentinel pattern:U+E162/E163 で preprocess、post-process で <span> に展開。
+//
+// fence aware:fenced code 内 marker は無視(マスク → 復元、他 preprocessor と一致)。
+
+const HALLUCINATION_OPEN = '\u{E162}';
+const HALLUCINATION_SEP = '\u{E163}';
+const HALLUCINATION_FENCE_OPEN = '\u{E164}';
+const HALLUCINATION_FENCE_SEP = '\u{E165}';
+
+/** AI hallucination 形 inline directive 表(spec v2 §1.6 deny list より)。 */
+const HALLUCINATION_INLINE_PATTERNS: ReadonlyArray<{
+  re: RegExp;
+  name: string;
+  suggestion: string;
+}> = [
+  { re: /:lead:\[([\s\S]*?)\]/g, name: 'lead', suggestion: '1 行 paragraph + `==hl==` 等' },
+  { re: /:spacing:\{([^}]*?)\}/g, name: 'spacing', suggestion: '行頭 `_N`(L-8 blank-line marker)' },
+  { re: /:align:\{([^}]*?)\}/g, name: 'align', suggestion: '行頭 prefix `||` / `|>` / `<|`(L-5) または `:::paragraph{align=…}`' },
+  { re: /:quote:\{([\s\S]*?)\}/g, name: 'quote', suggestion: 'block `:::quote{author="…"} content :::`' },
+];
+
+/** AI hallucination 形 block directive 表(spec v2 §1.6 deny list より)。 */
+const HALLUCINATION_BLOCK_DIRECTIVES: ReadonlySet<string> = new Set([
+  'toc', 'frontmatter', 'body',
+]);
+
+const HALLUCINATION_BLOCK_SUGGESTION: Record<string, string> = {
+  toc: 'markdown heading(`# ## ###`)構造で十分、TOC 生成は別機能',
+  frontmatter: 'YAML frontmatter(`---` で囲む top)を使う',
+  body: 'structural directive 不要、heading で region 表現',
+};
+
+/**
+ * AI hallucination 形 directive を検出して sentinel wrap + console.warn。
+ *
+ * inline patterns(`:lead:[…]` 等)は regex で fenced code を保護した上で
+ * 全 source に対し replace。block patterns(`:::toc` `:::frontmatter` `:::body`)
+ * は行 base で fenceTransition aware に検出。
+ *
+ * `silentWarnings` opts:vitest 等で console を汚さない用途。
+ */
+function processHallucinatedDirectives(
+  source: string,
+  lineMapIn: number[],
+  silentWarnings = false,
+): { transformed: string; lineMap: number[] } {
+  // Step 1: fenced code block を placeholder mask(inline pattern 適用前)。
+  const fenceRegions: string[] = [];
+  const FENCE_HOLDER = (idx: number) =>
+    `${HALLUCINATION_FENCE_OPEN}${idx}${HALLUCINATION_FENCE_SEP}`;
+  let masked = source.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, (m) => {
+    fenceRegions.push(m);
+    return FENCE_HOLDER(fenceRegions.length - 1);
+  });
+
+  // Step 2: inline pattern を sentinel wrap + console.warn。
+  for (const pat of HALLUCINATION_INLINE_PATTERNS) {
+    masked = masked.replace(pat.re, (matched) => {
+      if (!silentWarnings && typeof console !== 'undefined' && console.warn) {
+        console.warn(
+          `[PKC1009] hallucinated inline directive :${pat.name}: detected. ` +
+          `Use simple form per spec §1.6 (${pat.suggestion}).`,
+        );
+      }
+      // sentinel 形式: <OPEN>inline<SEP>name<SEP>literal<OPEN>
+      return `${HALLUCINATION_OPEN}inline${HALLUCINATION_SEP}${pat.name}${HALLUCINATION_SEP}${matched}${HALLUCINATION_OPEN}`;
+    });
+  }
+
+  // Step 3: block pattern を行 base で検出(masked 状態でも fence 内には
+  // mask placeholder が残り、`:::` 行頭 match しないので安全)。
+  const lines = masked.split('\n');
+  const out: string[] = [];
+  let inBlockHallucination: { name: string; startIdx: number } | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    // open marker 検出(行頭 `:::name` で name が deny list block 名)
+    const openMatch = /^[ \t]*:::([a-z][a-z0-9_-]*)\b[^\n]*$/.exec(line);
+    if (
+      !inBlockHallucination &&
+      openMatch &&
+      HALLUCINATION_BLOCK_DIRECTIVES.has(openMatch[1]!)
+    ) {
+      const name = openMatch[1]!;
+      if (!silentWarnings && typeof console !== 'undefined' && console.warn) {
+        console.warn(
+          `[PKC1010] hallucinated block directive :::${name} detected. ` +
+          `Use ${HALLUCINATION_BLOCK_SUGGESTION[name] ?? 'spec §1.6 推奨形'} instead.`,
+        );
+      }
+      inBlockHallucination = { name, startIdx: out.length };
+      // 開始 sentinel(block kind)
+      out.push(`${HALLUCINATION_OPEN}block${HALLUCINATION_SEP}${name}${HALLUCINATION_SEP}${line}`);
+      continue;
+    }
+    // close marker 検出(`:::` 単独行)
+    if (inBlockHallucination && /^[ \t]*:::[ \t]*$/.test(line)) {
+      out.push(`${line}${HALLUCINATION_OPEN}`);
+      inBlockHallucination = null;
+      continue;
+    }
+    out.push(line);
+  }
+  // 閉じられなかった block は openline まで戻して sentinel を剥がす
+  // (markdown-it が `:::name` を literal として render するので signaling は失われるが、
+  // 不正 markup の責任を user 側に戻すのが妥当)
+  if (inBlockHallucination) {
+    const startIdx = inBlockHallucination.startIdx;
+    if (out[startIdx]) {
+      out[startIdx] = out[startIdx].replace(
+        new RegExp(`^${HALLUCINATION_OPEN}block${HALLUCINATION_SEP}[a-z0-9_-]+${HALLUCINATION_SEP}`),
+        '',
+      );
+    }
+  }
+
+  // Step 4: fence region を復元。
+  let restored = out.join('\n');
+  restored = restored.replace(
+    new RegExp(`${HALLUCINATION_FENCE_OPEN}(\\d+)${HALLUCINATION_FENCE_SEP}`, 'g'),
+    (_m, idx) => fenceRegions[parseInt(idx, 10)] ?? '',
+  );
+
+  return { transformed: restored, lineMap: lineMapIn };
+}
+
+/**
+ * Post-process:sentinel pair → `<span class="pkc-warning-hallucination">` または
+ * `<div class="pkc-warning-hallucination-block">`。
+ *
+ * inline pattern: <OPEN>inline<SEP>name<SEP>literal<OPEN>
+ *   → <span class="pkc-warning-hallucination pkc-warning-hallucination-NAME"
+ *           data-pkc-warn-code="PKC1009" data-pkc-warn-name="NAME"
+ *           title="未実装の formal 構文 :NAME:。spec §1.6 推奨形へ正規化を。">
+ *       literal
+ *     </span>
+ *
+ * block pattern は <p>...</p> 内で sentinel が見えるので、paragraph wrapper を
+ * 剥がして <div class="pkc-warning-hallucination-block"> に置換。
+ */
+function postProcessHallucinatedDirectives(html: string): string {
+  // inline:sentinel pair 内の literal(markdown-it 通過済)を <span> 包む
+  html = html.replace(
+    new RegExp(
+      `${HALLUCINATION_OPEN}inline${HALLUCINATION_SEP}([a-z][a-z0-9_-]*)${HALLUCINATION_SEP}([\\s\\S]*?)${HALLUCINATION_OPEN}`,
+      'g',
+    ),
+    (_match, name, content) => {
+      const suggestion =
+        HALLUCINATION_INLINE_PATTERNS.find((p) => p.name === name)?.suggestion
+          ?? 'spec §1.6 推奨形';
+      const title = `未実装の formal 構文 :${name}:。spec §1.6 推奨形へ正規化してください(${suggestion})。`;
+      return (
+        `<span class="pkc-warning-hallucination pkc-warning-hallucination-${name}" ` +
+        `data-pkc-warn-code="PKC1009" data-pkc-warn-name="${name}" ` +
+        `title="${title.replace(/"/g, '&quot;')}">` +
+        content +
+        `</span>`
+      );
+    },
+  );
+  // block:`<p>SENTINEL...` から `</p>` の前の `SENTINEL` close まで包む
+  // markdown-it は each line を別 `<p>` にしないので、block 全体が 1 paragraph
+  // または mixed content として残る。簡易版:open sentinel を含む段落から
+  // close sentinel 含む段落までを greedy match で `<div>` 化。
+  html = html.replace(
+    new RegExp(
+      `${HALLUCINATION_OPEN}block${HALLUCINATION_SEP}([a-z][a-z0-9_-]*)${HALLUCINATION_SEP}([\\s\\S]*?)${HALLUCINATION_OPEN}`,
+      'g',
+    ),
+    (_match, name, content) => {
+      const suggestion = HALLUCINATION_BLOCK_SUGGESTION[name] ?? 'spec §1.6 推奨形';
+      const title = `未実装の block directive :::${name}。spec §1.6 推奨形へ正規化してください(${suggestion})。`;
+      return (
+        `<div class="pkc-warning-hallucination-block pkc-warning-hallucination-block-${name}" ` +
+        `data-pkc-warn-code="PKC1010" data-pkc-warn-name="${name}" ` +
+        `title="${title.replace(/"/g, '&quot;')}">` +
+        content +
+        `</div>`
+      );
+    },
+  );
+  return html;
+}
+
 function processBlankLineMarkers(source: string, lineMapIn: number[]): {
   transformed: string;
   lineMap: number[];
@@ -2347,6 +2553,16 @@ export function renderMarkdown(
   const ifResult = processIfBlocks(text, lineMap, 'html');
   text = ifResult.transformed;
   lineMap = ifResult.lineMap;
+  // reform-2026-05 Phase 2 PR-2K:AI hallucination 形 deny-list directive を
+  // sentinel wrap + console.warn(spec v2 §1.6 deny list:lead / spacing /
+  // align / quote inline、toc / frontmatter / body block)。post-process で
+  // <span class="pkc-warning-hallucination"> / <div class="pkc-warning-hallucination-block">
+  // に展開、PKC1009 / PKC1010 で AI repair tool 経由のフィードバック可能。
+  // 他 directive(:::section / :::figure / :::quote / :::if / :::break)後に
+  // 走らせて、実装済 directive と誤検出しない。
+  const hallResult = processHallucinatedDirectives(text, lineMap, opts.silentHallucinationWarnings);
+  text = hallResult.transformed;
+  lineMap = hallResult.lineMap;
   // L-8:`_` / `_<N>` 空行マーカー(挿入あり、lineMap 更新)
   const blankResult = processBlankLineMarkers(text, lineMap);
   text = blankResult.transformed;
@@ -2416,6 +2632,8 @@ export function renderMarkdown(
   html = postProcessBlankLineMarkers(html);
   // M-7:undefined variable sentinel → <span class="pkc-variable-undefined">
   html = postProcessVariableUndefined(html);
+  // reform-2026-05 Phase 2 PR-2K:hallucination sentinel → <span>/<div> warning
+  html = postProcessHallucinatedDirectives(html);
   return html;
 }
 

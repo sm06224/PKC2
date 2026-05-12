@@ -1854,6 +1854,31 @@
   cursor: help;
 }
 
+/* PR-2K(2026-05-10、reform Phase 2):AI hallucination 形 directive warning。
+ * spec v2 §1.6 deny list の formal 構文(:lead: / :spacing: / :align: /
+ * :quote: inline、:::toc / :::frontmatter / :::body block)を AI が生成した
+ * 場合、literal を残しつつ橙背景 + 点線下線で visible signal、tooltip で
+ * 推奨形を提示。PKC1009(inline)/ PKC1010(block) として AI repair tool
+ * から code-based に拾える。pkc-variable-undefined と色を分けて区別。*/
+.pkc-md-rendered .pkc-warning-hallucination {
+  background-color: var(--c-warn-bg, #fef3c7);
+  color: var(--c-warn-fg, #92400e);
+  text-decoration: underline dotted;
+  text-decoration-color: var(--c-warn, #d97706);
+  padding: 0 0.15em;
+  border-radius: 2px;
+  cursor: help;
+}
+.pkc-md-rendered .pkc-warning-hallucination-block {
+  background-color: var(--c-warn-bg, #fef3c7);
+  color: var(--c-warn-fg, #92400e);
+  border-left: 3px solid var(--c-warn, #d97706);
+  padding: 0.5em 0.75em;
+  margin: 0.5em 0;
+  border-radius: 2px;
+  cursor: help;
+}
+
 /* L-2(2026-05-07):Inline 修飾 */
 .pkc-md-rendered mark {
   background: var(--c-mark-bg, #fff59d);
