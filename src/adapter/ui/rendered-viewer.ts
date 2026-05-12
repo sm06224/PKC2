@@ -383,13 +383,14 @@ export function buildRenderedViewerHtml(
       border-radius: 2px;
       cursor: help;
     }
-    /* PR-2L(2026-05-10、reform Phase 2):tolerant alias 寛容 parse mirror */
+    /* PR-2L+2O(2026-05-10、reform Phase 2):tolerant alias mirror。
+       PR-2O で hint marker(dotted underline / align chip)は default 非表示、
+       ?pkc-debug=hallucination で再表示。Viewer popup の場合は URL flag は
+       parent の location.href から継承される(open 時に parent.search を承継)。 */
     .pkc-md-rendered .pkc-lead {
       font-size: 1.05em;
       font-weight: 500;
       color: #1f2937;
-      border-bottom: 1px dotted #9ca3af;
-      cursor: help;
     }
     .pkc-md-rendered .pkc-attribution {
       display: block;
@@ -398,12 +399,21 @@ export function buildRenderedViewerHtml(
       color: #6b7280;
       font-style: italic;
       margin-top: 0.25em;
-      cursor: help;
     }
     .pkc-md-rendered .pkc-tolerant-spacing {
       height: calc(1em * var(--pkc-blank-count, 1));
     }
     .pkc-md-rendered .pkc-align-hint {
+      display: none;
+    }
+    html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-lead {
+      border-bottom: 1px dotted #9ca3af;
+      cursor: help;
+    }
+    html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-attribution {
+      cursor: help;
+    }
+    html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
       display: inline-block;
       font-size: 0.75em;
       color: #1d4ed8;
@@ -743,6 +753,19 @@ export function buildRenderedViewerHtml(
   const filenameJson = JSON.stringify(filename);
   const script = `
 (function(){
+  // PR-2O(2026-05-10):parent window の ?pkc-debug=hallucination を継承して
+  // hint marker(dotted underline / align chip)を visible にする。Viewer popup
+  // は独立 window で URL に search が無いので、opener から read。
+  try {
+    var parentSearch = (window.opener && window.opener.location && window.opener.location.search) || '';
+    if (parentSearch) {
+      var p = new URLSearchParams(parentSearch);
+      var dbg = (p.get('pkc-debug') || '').split(',').map(function(s){ return s.trim(); });
+      if (dbg.indexOf('hallucination') >= 0 || dbg.indexOf('all') >= 0) {
+        document.documentElement.setAttribute('data-pkc-debug-hallucination', '');
+      }
+    }
+  } catch (e) { /* opener が cross-origin or closed の場合は default 維持 */ }
   // PR-2M(2026-05-10):html-render iframe からの postMessage で auto-resize。
   // Viewer popup は独立 window なので main.ts の installHtmlSandboxResizer は
   // 効かない → 同 protocol を popup 側でも install。

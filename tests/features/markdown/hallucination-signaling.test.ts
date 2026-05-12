@@ -58,20 +58,32 @@ describe('PR-2L tolerant alias — inline 4 critical', () => {
     expect(html).toContain('data-pkc-blank-count="50"');
   });
 
-  it(':align:{position=X} が <span class="pkc-align-hint"> + PKC2007', () => {
-    const html = renderMarkdown(':align:{position=end}');
+  it('standalone :align:{position=end}:次段落を実 align(PR-2O)', () => {
+    // PR-2O:standalone form は line-based に消費、次の non-empty paragraph
+    // の data-pkc-align attr に register、directive 行は strip。
+    const html = renderMarkdown(':align:{position=end}\n\n次の段落');
+    expect(html).toMatch(/<p[^>]*data-pkc-align="end"[^>]*>次の段落<\/p>/);
+    // hint chip は出ない(line-based 消費後は inline regex に到達せず)
+    expect(html).not.toContain('class="pkc-align-hint"');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2007]'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('next-paragraph alignment'));
+  });
+
+  it('standalone :align: position→AlignKind mapping(start/end/center/left/right)', () => {
+    expect(renderMarkdown(':align:{position=start}\n\n本文')).toMatch(/data-pkc-align="start"/);
+    expect(renderMarkdown(':align:{position=end}\n\n本文')).toMatch(/data-pkc-align="end"/);
+    expect(renderMarkdown(':align:{position=center}\n\n本文')).toMatch(/data-pkc-align="center"/);
+    expect(renderMarkdown(':align:{position=left}\n\n本文')).toMatch(/data-pkc-align="start"/);
+    expect(renderMarkdown(':align:{position=right}\n\n本文')).toMatch(/data-pkc-align="end"/);
+  });
+
+  it('inline :align:{...}(行中央)は hint chip(default 非表示)経由', () => {
+    // 行頭 / 行末で囲まれていないので line-based に拾われず、inline regex で
+    // hint chip 化(CSS で default 非表示、debug flag で visible)
+    const html = renderMarkdown('文字列の中に :align:{position=end} がある');
     expect(html).toContain('class="pkc-align-hint"');
     expect(html).toContain('data-pkc-align-next="right"');
     expect(html).toContain('data-pkc-warn-code="PKC2007"');
-    expect(html).toContain('[align: end]');
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('[PKC2007]'));
-  });
-
-  it(':align: position→CSS mapping(start/end/center/justify)', () => {
-    expect(renderMarkdown(':align:{position=start}')).toContain('data-pkc-align-next="left"');
-    expect(renderMarkdown(':align:{position=end}')).toContain('data-pkc-align-next="right"');
-    expect(renderMarkdown(':align:{position=center}')).toContain('data-pkc-align-next="center"');
-    expect(renderMarkdown(':align:{position=justify}')).toContain('data-pkc-align-next="justify"');
   });
 
   it(':quote:{attribution="…"} が <small class="pkc-attribution"> + PKC2008', () => {
@@ -212,12 +224,14 @@ describe('PR-2L Ishikari fixture 部分:全 4 inline tolerant + 0 warning', () =
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
-  it('4 inline directive 全部 tolerant render、warning 0 件', () => {
+  it('4 inline directive 全部 tolerant render(PR-2O 後:align は実 align)', () => {
     const md = `:lead:[本文書は計画]
 
 :spacing:{size=2}
 
 :align:{position=end}
+
+実際に右寄せされる段落
 
 :quote:{
   attribution="作業責任者: 佐藤"
@@ -225,14 +239,11 @@ describe('PR-2L Ishikari fixture 部分:全 4 inline tolerant + 0 warning', () =
     const html = renderMarkdown(md);
     expect(html).toContain('class="pkc-lead"');
     expect(html).toContain('class="pkc-blank-line pkc-tolerant-spacing"');
-    expect(html).toContain('class="pkc-align-hint"');
+    // PR-2O:standalone :align: は次段落の data-pkc-align に register、chip なし
+    expect(html).toMatch(/<p[^>]*data-pkc-align="end"[^>]*>実際に右寄せされる段落<\/p>/);
+    expect(html).not.toContain('class="pkc-align-hint"');
     expect(html).toContain('class="pkc-attribution"');
-    // PR-2L で inline は warning 経路に乗らない(全 tolerant alias)
-    expect(html).not.toContain('pkc-warning-hallucination-lead');
-    expect(html).not.toContain('pkc-warning-hallucination-spacing');
-    expect(html).not.toContain('pkc-warning-hallucination-align');
-    expect(html).not.toContain('pkc-warning-hallucination-quote');
-    // console.info(PKC2005-2008)で 4 件 + 推奨 hint
+    // console.info(PKC2005-2008)で 4 件
     const codes = ['PKC2005', 'PKC2006', 'PKC2007', 'PKC2008'];
     for (const code of codes) {
       expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining(code));

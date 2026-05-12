@@ -2354,6 +2354,79 @@ const HALLUCINATION_BLOCK_SUGGESTION: Record<string, string> = {
 };
 
 /**
+ * PR-2O(2026-05-10):standalone `:align:{position=X}` 行を line-based に検出、
+ * **次の非空行に対応する出力行** の alignMap に register、directive 行は strip。
+ *
+ * PR-2L で `:align:{position=X}` は hint chip(青背景 `[align: end]`)で残して
+ * いたが、user 報告(2026-05-10)で「画像みたいに見えないものがある = chip が
+ * 余計」だったため、**実際に次段落を align させる** ように格上げ。inline form
+ * (行中央の `:align:{…}`)は引き続き processTolerantInlineAliases の regex
+ * 経由で hint chip(default 非表示、?pkc-debug=hallucination flag で visible)。
+ *
+ * fence-aware:fenced code 内の marker は無視。
+ */
+function processTolerantStandaloneAlign(
+  source: string,
+  lineMapIn: number[],
+  silentWarnings = false,
+): { transformed: string; alignMap: Map<number, AlignKind>; lineMap: number[] } {
+  const alignMap = new Map<number, AlignKind>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let pendingAlign: AlignKind | null = null;
+  let fence: FenceState = { inFence: false, marker: '' };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      continue;
+    }
+    const m = /^[ \t]*:align:\{\s*position\s*=\s*"?([a-z]+)"?\s*\}\s*$/.exec(line);
+    if (m) {
+      const rawPos = m[1]!;
+      const alignKindMap: Record<string, AlignKind | undefined> = {
+        start: 'start',
+        end: 'end',
+        center: 'center',
+        left: 'start',
+        right: 'end',
+        top: 'top',
+        bottom: 'bottom',
+      };
+      const align = alignKindMap[rawPos];
+      if (align) {
+        pendingAlign = align;
+        if (!silentWarnings && typeof console !== 'undefined' && console.info) {
+          console.info(
+            `[PKC2007] tolerant alias :align: accepted (line-based, applied to next paragraph). ` +
+            `detected=":align:{position=${rawPos}}" ` +
+            `interpretedAs="next-paragraph alignment (${align})" ` +
+            `canonical="行頭 prefix \`|>\`(end)/ \`||\`(center)/ \`<|\`(start)"`,
+          );
+        }
+        out.push('');
+        lineMapOut.push(inputIdx);
+        continue;
+      }
+    }
+    if (pendingAlign && line.trim() !== '') {
+      alignMap.set(out.length, pendingAlign);
+      pendingAlign = null;
+    }
+    out.push(line);
+    lineMapOut.push(inputIdx);
+  }
+
+  return { transformed: out.join('\n'), alignMap, lineMap: lineMapOut };
+}
+
+/**
  * PR-2L:tolerant alias parser — critical inline 4 件を寛容 parse して
  * sentinel wrap、postprocess で正式 render に変換。AI が hallucinate しがちな
  * `:lead:[…]` / `:spacing:{…}` / `:align:{…}` / `:quote:{…}` を受理し、
@@ -2835,9 +2908,18 @@ export function renderMarkdown(
   const ifResult = processIfBlocks(text, lineMap, 'html');
   text = ifResult.transformed;
   lineMap = ifResult.lineMap;
+  // reform-2026-05 Phase 2 PR-2O:standalone :align:{position=X} は次段落の
+  // alignMap に register、行は strip(PR-2L hint chip より格上げ、actual align)。
+  const tolerantAlignResult = processTolerantStandaloneAlign(
+    text, lineMap, opts.silentHallucinationWarnings,
+  );
+  text = tolerantAlignResult.transformed;
+  lineMap = tolerantAlignResult.lineMap;
   // reform-2026-05 Phase 2 PR-2L:AI hallucination 形 寛容 parse(critical 群)。
   // inline 4 件(:lead: / :spacing: / :align: / :quote:)を sentinel wrap、
   // postprocess で正式 HTML へ変換、console.info で canonical hint emit。
+  // 注:standalone :align: は PR-2O で先に消費されるので、ここに到達する
+  // :align: は inline form のみ(hint chip 経由、default 非表示)。
   const tolerantInlineResult = processTolerantInlineAliases(
     text, lineMap, opts.silentHallucinationWarnings,
   );
@@ -2891,6 +2973,7 @@ export function renderMarkdown(
   // PR-2E paragraph directive で register された align も merge
   // (preprocessAlignPrefix で同 line に行頭 prefix もあれば後者が上書き)
   const alignMap = new Map<number, AlignKind>([
+    ...tolerantAlignResult.alignMap,
     ...paraAlignResult.alignMap,
     ...alignResult.alignMap,
   ]);

@@ -1868,15 +1868,23 @@
   cursor: help;
 }
 
-/* PR-2L(2026-05-10、reform Phase 2):tolerant alias 寛容 parse。AI が
+/* PR-2L+2O(2026-05-10、reform Phase 2):tolerant alias 寛容 parse。AI が
  * Bootstrap/Tailwind/JSX/MDX 知識から hallucinate する critical inline 4 件を
  * 実 render path に variable して、parse log の 3 つ組(detected /
  * interpretedAs / canonical)を data-pkc-canonical / data-pkc-warn-code に転記。
- * 色は subtle(青系 hint、橙の warning と区別)。*/
+ *
+ * PR-2O(2026-05-10、user 報告対応):default で hint marker(dotted underline /
+ * align chip)を非表示にする。user 視点で「画像みたいに render できない」と映る
+ * 副作用を解消、本来の content だけ見える。`?pkc-debug=hallucination` URL flag
+ * を立てた時(html.data-pkc-debug-hallucination)だけ visible に戻す。
+ * canonical hint は `data-pkc-canonical` attribute と console.info で引き続き
+ * 取得可能(AI repair tool / IR canonicalizer 経路は影響なし)。 */
 .pkc-md-rendered .pkc-lead {
   font-size: 1.05em;
   font-weight: 500;
   color: var(--c-fg, #1f2937);
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-lead {
   border-bottom: 1px dotted var(--c-fg-muted, #9ca3af);
   cursor: help;
 }
@@ -1887,6 +1895,8 @@
   color: var(--c-fg-muted, #6b7280);
   font-style: italic;
   margin-top: 0.25em;
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-attribution {
   cursor: help;
 }
 .pkc-md-rendered .pkc-tolerant-spacing {
@@ -1894,6 +1904,11 @@
   height: calc(var(--pkc-blank-line-h, 1em) * var(--pkc-blank-count, 1));
 }
 .pkc-md-rendered .pkc-align-hint {
+  /* default 非表示(PR-2O):standalone :align:{position=X} は line-based に
+   * 消費されて次段落に実際 align、inline form の残骸 chip は隠す。 */
+  display: none;
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
   display: inline-block;
   font-size: 0.75em;
   color: var(--c-info-fg, #1d4ed8);
