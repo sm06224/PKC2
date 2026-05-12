@@ -58,7 +58,7 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 | 09 | トラブルシューティングと用語集 | 困ったときの対処と用語辞書 |
 | 10 | ファイラ / グラフ / インベントリ | filer view 5 subset(explorer / contact-sheet / book-base / video-base / novel-base / inventory)+ 独立 graph view 4 mode + frontmatter Properties + 画像 PiP プレビュー + bookmarklet 取込 + サイドバー filer モード |
 | 11 | Bookmarklet サンプル & アセット統合 | PKC-Message v1.1 capture profile の公式 sample(envelope / handshake / user-consent gate)+ 5 公式 site 実例(YouTube / niconico / なろう / カクヨム / Amazon)+ ローカルアセット(PDF / mp3 / mp4 / epub)を Bases UX で統合する設計 + epub reader 将来計画 |
-| 12 | マークダウン拡張記法 | Phase 1 拡張 9 種(L-1 セクション / L-2 ハイライト・ルビ・圏点 / L-4 コメント / L-5 行頭アライン / L-6 簡易インライン / L-7 図表自動採番 / L-8 空行マーカー / L-9 段落字下げ)+ 行頭空白統一許容 + Rich コピー(Word / ONLYOFFICE 連携)+ AI 規約書 v1 の活用ワークフロー + Phase 2 以降の予告 |
+| 12 | マークダウン拡張記法 | Phase 1 拡張 9 種(L-1 セクション / L-2 ハイライト・ルビ・圏点 / L-4 コメント / L-5 行頭アライン / L-6 簡易インライン / L-7 図表自動採番 / L-8 空行マーカー / L-9 段落字下げ)+ M-7 Variables(`{{vars.x}}`)+ **reform-2026-05 Phase 1+2**(`:::section{role=…}` / `:::comment` / `:::break` / `:::paragraph{align}` / formal inline 4 形 / `:caption:` / `:autoref:` / 寛容 parse + canonical hint log + admonition alias / `layout: a4-2col` 段組組版 / `` ```html-render `` iframe sandbox / em-dot nested inline)+ AI 規約書 v2 + Phase 3 以降の予告 |
 
 ## 最近の UX 改善（2026-04-22 時点）
 

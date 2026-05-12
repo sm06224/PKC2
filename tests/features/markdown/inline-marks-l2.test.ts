@@ -137,6 +137,65 @@ describe('L-2: Inline 修飾(highlight / ruby / em-dot)', () => {
       const html = renderMarkdown('^^改行\n含む^^');
       expect(html).not.toContain('pkc-em-dot');
     });
+
+    // 2026-05-10 user バグレポ修正:^^...^^ 内 nested inline markup の処理
+    describe('nested inline markup 内部処理(2026-05-10 hotfix、user バグレポ)', () => {
+      it('^^**bold**^^ で内側 ** が <strong> として render', () => {
+        const html = renderMarkdown('^^**最重要**^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><strong>最重要<\/strong><\/em>/);
+      });
+
+      it('^^*emphasis*^^ で内側 * が <em> として render', () => {
+        const html = renderMarkdown('^^*斜体*^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><em>斜体<\/em><\/em>/);
+      });
+
+      it('^^==hl==^^ で内側 highlight も render', () => {
+        const html = renderMarkdown('^^==黄背景==^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><mark>黄背景<\/mark><\/em>/);
+      });
+
+      it('^^`code`^^ で内側 inline code も render', () => {
+        const html = renderMarkdown('^^`code`^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><code>code<\/code><\/em>/);
+      });
+
+      it('^^**bold** plain^^ 部分混在', () => {
+        const html = renderMarkdown('^^**強調** plain^^');
+        const m = html.match(/<em class="pkc-em-dot">(.*)<\/em>/);
+        expect(m).not.toBeNull();
+        expect(m![1]).toContain('<strong>強調</strong>');
+        expect(m![1]).toContain('plain');
+      });
+
+      it('^^*X**^^ asymmetric は tolerant に **X** に正規化(user typo 救済)', () => {
+        // user typo case:single `*` open、`**` close → tolerant 正規化で <strong>
+        const html = renderMarkdown('^^*198,853**^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><strong>198,853<\/strong><\/em>/);
+        // literal `*` が残らないことも確認
+        expect(html).not.toContain('><em>198,853</em>*');
+      });
+
+      it('^^**X*^^ asymmetric も tolerant(reverse 形)', () => {
+        const html = renderMarkdown('^^**X*^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><strong>X<\/strong><\/em>/);
+      });
+
+      it('^^*X*^^ symmetric emphasis は normalize せず emphasis のまま', () => {
+        const html = renderMarkdown('^^*斜体*^^');
+        expect(html).toMatch(/<em class="pkc-em-dot"><em>斜体<\/em><\/em>/);
+        // <strong> 化しない
+        expect(html).not.toContain('<strong>');
+      });
+
+      it('^^***X***^^ triple は normalize せず標準 strong+em', () => {
+        const html = renderMarkdown('^^***triple***^^');
+        // markdown-it 標準では <em><strong>...</strong></em>(em が外、strong が内)
+        expect(html).toContain('<strong>triple</strong>');
+        // em-dot + 内側 em + 内側 strong の 3 重 nest
+        expect(html).toMatch(/<em class="pkc-em-dot"><em><strong>triple<\/strong><\/em><\/em>/);
+      });
+    });
   });
 
   describe('Code span / fence 内では作動しない', () => {

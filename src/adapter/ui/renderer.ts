@@ -86,7 +86,7 @@ import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
 import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
 import type { StorageProfile } from '../../features/asset/storage-profile';
-import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { renderMarkdown, renderMarkdownInline, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
@@ -9437,11 +9437,14 @@ function renderAboutRelease(
     const subHeading = createElement('h3', 'pkc-about-release-subheading');
     subHeading.textContent = 'Highlights';
     section.appendChild(subHeading);
-    const ul = createElement('ul', 'pkc-about-release-list');
+    const ul = createElement('ul', 'pkc-about-release-list pkc-md-rendered');
     ul.setAttribute('data-pkc-region', 'about-release-highlights');
     for (const item of release.highlights) {
       const li = createElement('li', 'pkc-about-release-item');
-      li.textContent = item;
+      // 2026-05-10 (PR-2Q):About に PKC Markdown を render(本機能の披露目場)。
+      // CHANGELOG 由来の string は信頼源、renderMarkdown は html:false で
+      // XSS safe。renderInline で <p> wrap を避け、<li> 直下に inline 要素を置く。
+      li.innerHTML = renderMarkdownInline(item);
       ul.appendChild(li);
     }
     section.appendChild(ul);
@@ -9451,11 +9454,11 @@ function renderAboutRelease(
     const subHeading = createElement('h3', 'pkc-about-release-subheading');
     subHeading.textContent = 'Known limitations';
     section.appendChild(subHeading);
-    const ul = createElement('ul', 'pkc-about-release-list');
+    const ul = createElement('ul', 'pkc-about-release-list pkc-md-rendered');
     ul.setAttribute('data-pkc-region', 'about-release-limitations');
     for (const item of release.knownLimitations) {
       const li = createElement('li', 'pkc-about-release-item');
-      li.textContent = item;
+      li.innerHTML = renderMarkdownInline(item);
       ul.appendChild(li);
     }
     section.appendChild(ul);
