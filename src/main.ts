@@ -19,6 +19,7 @@ import {
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
+import { installWcagResolverRuntime, applyWcagResolverNow } from './adapter/ui/wcag-runtime';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
 import { isSnapshot } from './features/snapshot/types';
@@ -230,6 +231,10 @@ async function boot(): Promise<void> {
 
     render(state, root, prevRenderState);
 
+    // PR-2T(2026-05-12):render 後の inline color に WCAG resolver を適用。
+    // `theme.wcag_auto_shift` flag が OFF なら no-op、ON なら同系色 shift。
+    applyWcagResolverNow(root);
+
     restoreRenderContinuity(root, continuity);
 
     // Edit-mode focus default: when NOTHING was focused before the
@@ -357,6 +362,13 @@ async function boot(): Promise<void> {
   // style.height を更新する parent-side listener。一度 install するだけで
   // 全 iframe を listen(message に id を含めて iframe を特定)。
   installHtmlSandboxResizer();
+
+  // reform-2026-05 Phase 3 PR-2T(2026-05-12):WCAG コントラスト探索 runtime。
+  // Tier 0 flag `theme.wcag_auto_shift`(default ON)/ `theme.wcag_target_ratio`
+  // (default 4.5、AA)で AI 生成色 + theme bg の組合せが contrast 不足な場合に
+  // 同系色 shift で AA を自動達成。OFF にすれば設定通りの色のまま。
+  // theme change(prefers-color-scheme)で re-apply listener も install。
+  installWcagResolverRuntime();
 
   // PR-2O(2026-05-10):?pkc-debug=hallucination で tolerant alias の hint
   // marker(dotted underline / align chip)を visible に。default 非表示。

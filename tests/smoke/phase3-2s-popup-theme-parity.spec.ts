@@ -68,7 +68,9 @@ async function setPopupTheme(popup: Page, theme: 'light' | 'dark') {
 function rgbToLuminance(rgb: string): number {
   const m = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
   if (!m) return NaN;
-  const [r, g, b] = m.slice(1, 4).map(Number);
+  const r = Number(m[1] ?? 0);
+  const g = Number(m[2] ?? 0);
+  const b = Number(m[3] ?? 0);
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
