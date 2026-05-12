@@ -2412,6 +2412,28 @@ function stripComments(source: string, lineMapIn?: number[]): {
   // 捨てる、close 無く EOF なら restore(元 stripComments の挙動を維持)。
   const commentDirectiveBuffer: Array<{ line: string; srcIdx: number }> = [];
   const stripInline = (s: string) => s.replace(/%%[^\n]*?%%/g, '');
+  // PR-2X hotfix(2026-05-12):inline code 内の `%%%` を block comment 開始と
+  // 誤検出するバグ修正。`stripComments` の %%% scan の前に inline backtick
+  // span を一時 sentinel に置換、scan 後に復元する。fence 行(``` 単独行)
+  // とは別、行内 `code` の話。table cell に `%%%` を含めると表が崩れる症状の
+  // root cause(2026-05-12 user バグレポ:「表が壊れてる」)。
+  const INLINE_CODE_OPEN = '\u{E170}';
+  const INLINE_CODE_CLOSE = '\u{E171}';
+  function maskInlineCode(line: string): { masked: string; spans: string[] } {
+    const spans: string[] = [];
+    const masked = line.replace(/`+[^`\n]*?`+/g, (m) => {
+      const idx = spans.length;
+      spans.push(m);
+      return `${INLINE_CODE_OPEN}${idx}${INLINE_CODE_CLOSE}`;
+    });
+    return { masked, spans };
+  }
+  function unmaskInlineCode(line: string, spans: readonly string[]): string {
+    return line.replace(
+      new RegExp(`${INLINE_CODE_OPEN}(\\d+)${INLINE_CODE_CLOSE}`, 'g'),
+      (_m, idxStr) => spans[parseInt(idxStr, 10)] ?? '',
+    );
+  }
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     const srcIdx = inMap[i] ?? i;
@@ -2476,13 +2498,16 @@ function stripComments(source: string, lineMapIn?: number[]): {
       continue;
     }
     // `%%%` open / close 検出を line 内 scan
-    if (!line.includes('%%%')) {
-      outLines.push(stripInline(line));
+    // PR-2X hotfix:inline backtick code `...` の中身は scan から exclude(mask)
+    const { masked: lineMasked, spans: lineSpans } = maskInlineCode(line);
+    if (!lineMasked.includes('%%%')) {
+      // inline code 内に `%%%` があっても block comment 開始ではない
+      outLines.push(unmaskInlineCode(stripInline(lineMasked), lineSpans));
       outMap.push(srcIdx);
       continue;
     }
     let result = '';
-    let working = line;
+    let working = lineMasked;
     let entered = false;
     for (;;) {
       const openIdx = working.indexOf('%%%');
@@ -2494,7 +2519,7 @@ function stripComments(source: string, lineMapIn?: number[]): {
       const after = working.slice(openIdx + 3);
       const closeIdx = after.indexOf('%%%');
       if (closeIdx < 0) {
-        pendingPrefix = result;
+        pendingPrefix = unmaskInlineCode(result, lineSpans);
         pendingSrcIdx = srcIdx;
         inBlockComment = true;
         entered = true;
@@ -2503,7 +2528,7 @@ function stripComments(source: string, lineMapIn?: number[]): {
       working = after.slice(closeIdx + 3);
     }
     if (!entered) {
-      outLines.push(stripInline(result));
+      outLines.push(unmaskInlineCode(stripInline(result), lineSpans));
       outMap.push(srcIdx);
     }
   }
