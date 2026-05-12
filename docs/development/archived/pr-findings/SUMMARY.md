@@ -37,6 +37,7 @@ PKC2 の **2026-04 perf wave + iPhone wave**(PR #173-#198)+ **領域 10-1 split-
 | #198 | [`editor-key-helpers-pr198-findings.md`](./editor-key-helpers-pr198-findings.md) | textarea key helpers(Enter list / bracket pairs / skip-out / Tab indent)— Phase 1B PR #1 で `tests/smoke/editor-key-helpers.spec.ts`(8 件、`page.keyboard.type` real keystroke)を追加し gate 5 を満たしてから archive |
 | #206 | [`pr-206-paused.md`](./pr-206-paused.md) | caret↔preview sync **paused 当時の retrospective**(2026-05-01)。reform-2026-05 doctrine の起点(描画 vs 生成 / debug 導線 / OS event 経由 click の 3 paused 理由が後続 reform を駆動)。**SUPERSEDED by #256**(2026-05-05 archive 移動) |
 | #256 | [`split-view-sync-pr256-findings.md`](./split-view-sync-pr256-findings.md) | 領域 10-1 Split View block 対応ハイライト + caret 位置 indicator wave。PR #255 (foundation, PR 1) + PR #256 (orchestration PR 2 + hotfix-1〜7 + follow-up x4) を集約。block-level anchor + comfort-band scroll + caret indicator + ⇄ opt-in toggle + chrome leak gate + Flags 4 個 + IR audit doc(NEW)起こし + visual-state-parity 52 件全 green。`pr-206-paused.md` の 3 paused 理由を逐一 counter |
+| PR-2U | [`bold-in-if-investigation-2026-05.md`](./bold-in-if-investigation-2026-05.md) | reform-2026-05 Phase 3 PR-2U(2026-05-12)。user 報告「`:::if{format=html}` 内 `**X**` が太字にならない」を 15 variant smoke matrix で包括検証 → 全 pass で**再現せず**結論、原因仮説(bundle cache / `__X__` 取り違え)+ user 向け推奨アクション(Hard reload / cache-bust)を整理。`tests/smoke/phase3-2u-bold-in-if-comprehensive.spec.ts` で regression guard |
 
 ## 残置 0 件(deficit register クリア)
 
