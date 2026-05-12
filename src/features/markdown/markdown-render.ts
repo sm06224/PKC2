@@ -2383,45 +2383,142 @@ function applyAlignAttrs(
  *   %%%
  *   block comment、複数行可
  *   %%%
+ *
+ *   :::comment{…}
+ *   formal block comment(`%%%` 等価、AI / serializer が emit)
+ *   :::
+ *
+ * PR-2X(2026-05-12、reform Phase 3):**LineMap thread 対応**。multi-line
+ * block comment(`%%%...%%%` / `:::comment...:::`)が複数行に跨ぐとき、
+ * 削除された行を skip しつつ output line → 原文 line index を保持。Split
+ * View source-preview-sync が `data-pkc-source-line` で逆引きする contract
+ * を maintain、source-line ズレ bug を構造的に防止。
  */
-function stripComments(source: string): string {
-  // fenced code block 内は touch しない(2026-05-08 hotfix:user 報告は
-  // 主に L-8 だが、`%%` も同根 bug。code 内に `%% comment %%` が書かれて
-  // いたら、それは code の一部なので残す)。fence 外の region だけを
-  // join して regex strip、その後 fence region と元の順序で再結合。
+function stripComments(source: string, lineMapIn?: number[]): {
+  transformed: string;
+  lineMap: number[];
+} {
   const lines = source.split('\n');
+  const inMap = lineMapIn ?? Array.from({ length: lines.length }, (_, i) => i);
+  const outLines: string[] = [];
+  const outMap: number[] = [];
   let fence: FenceState = { inFence: false, marker: '' };
-  // まず fence の中外を判定して block 化:[{ inFence, lines: string[] }, ...]
-  type Block = { inFence: boolean; lines: string[] };
-  const blocks: Block[] = [];
-  for (const line of lines) {
+  let inBlockComment = false; // %%%...%%%
+  let inCommentDirective = false; // :::comment...:::
+  let pendingPrefix = '';
+  let pendingSrcIdx = -1;
+  // `:::comment` 系の unclosed 保護:open 行から close まで buffer、close 見つかれば
+  // 捨てる、close 無く EOF なら restore(元 stripComments の挙動を維持)。
+  const commentDirectiveBuffer: Array<{ line: string; srcIdx: number }> = [];
+  const stripInline = (s: string) => s.replace(/%%[^\n]*?%%/g, '');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const srcIdx = inMap[i] ?? i;
     const t = fenceTransition(line, fence);
     const wasIn = fence.inFence;
     fence = t.state;
     const isFenceContent = wasIn || t.isBoundary;
-    const last = blocks[blocks.length - 1];
-    if (last && last.inFence === isFenceContent) {
-      last.lines.push(line);
-    } else {
-      blocks.push({ inFence: isFenceContent, lines: [line] });
+    if (isFenceContent) {
+      // Fenced code:passthrough(block comment 状態は維持しない、fence は優先)
+      if (!inBlockComment && !inCommentDirective) {
+        outLines.push(line);
+        outMap.push(srcIdx);
+      }
+      continue;
+    }
+    if (inCommentDirective) {
+      if (/^[ \t]*:::[ \t]*$/.test(line)) {
+        inCommentDirective = false;
+        commentDirectiveBuffer.length = 0; // close 見つかった、buffer 破棄
+      } else {
+        commentDirectiveBuffer.push({ line, srcIdx });
+      }
+      continue;
+    }
+    if (inBlockComment) {
+      const closeIdx = line.indexOf('%%%');
+      if (closeIdx < 0) continue; // 全行 comment 内
+      const remainder = line.slice(closeIdx + 3);
+      let result = pendingPrefix;
+      let working = remainder;
+      let reEntered = false;
+      for (;;) {
+        const openIdx = working.indexOf('%%%');
+        if (openIdx < 0) {
+          result += working;
+          break;
+        }
+        result += working.slice(0, openIdx);
+        const after = working.slice(openIdx + 3);
+        const nextClose = after.indexOf('%%%');
+        if (nextClose < 0) {
+          pendingPrefix = result;
+          reEntered = true;
+          break;
+        }
+        working = after.slice(nextClose + 3);
+      }
+      if (!reEntered) {
+        outLines.push(stripInline(result));
+        outMap.push(pendingSrcIdx);
+        pendingPrefix = '';
+        pendingSrcIdx = -1;
+        inBlockComment = false;
+      }
+      continue;
+    }
+    // `:::comment` open 検出(行頭、attrs 任意)。open 自体は buffer 起点として
+    // 押す(close 無く EOF なら restore)。
+    if (/^[ \t]*:::comment(?:\{[^}]*\})?[ \t]*$/.test(line)) {
+      inCommentDirective = true;
+      commentDirectiveBuffer.push({ line, srcIdx });
+      continue;
+    }
+    // `%%%` open / close 検出を line 内 scan
+    if (!line.includes('%%%')) {
+      outLines.push(stripInline(line));
+      outMap.push(srcIdx);
+      continue;
+    }
+    let result = '';
+    let working = line;
+    let entered = false;
+    for (;;) {
+      const openIdx = working.indexOf('%%%');
+      if (openIdx < 0) {
+        result += working;
+        break;
+      }
+      result += working.slice(0, openIdx);
+      const after = working.slice(openIdx + 3);
+      const closeIdx = after.indexOf('%%%');
+      if (closeIdx < 0) {
+        pendingPrefix = result;
+        pendingSrcIdx = srcIdx;
+        inBlockComment = true;
+        entered = true;
+        break;
+      }
+      working = after.slice(closeIdx + 3);
+    }
+    if (!entered) {
+      outLines.push(stripInline(result));
+      outMap.push(srcIdx);
     }
   }
-  return blocks.map((b) => {
-    if (b.inFence) return b.lines.join('\n');
-    let out = b.lines.join('\n');
-    out = out.replace(/%%%[\s\S]*?%%%/g, '');
-    out = out.replace(/%%[^\n]*?%%/g, '');
-    // reform-2026-05 Phase 2 PR-2G(2026-05-10):`:::comment{…}` formal も
-    // strip(`%%%` block 等価)。AI / serializer が emit する formal 形。
-    // `:::comment` open 行から `:::` close 行までを完全除去。block-only。
-    // attrs は無視(将来 hidden=false / fn=src1 等で footnote promote 等の
-    // 拡張余地、現時点では全 strip)。
-    out = out.replace(
-      /^[ \t]*:::comment(?:\{[^}]*\})?[ \t]*\n[\s\S]*?\n[ \t]*:::[ \t]*$/gm,
-      '',
-    );
-    return out;
-  }).join('\n');
+  // Unclosed `%%%` / `:::comment` at EOF:挽回処理。
+  if (inBlockComment) {
+    outLines.push(stripInline(pendingPrefix));
+    outMap.push(pendingSrcIdx >= 0 ? pendingSrcIdx : 0);
+  }
+  // `:::comment` 未閉じ:buffer を literal で restore(元 stripComments 挙動を維持)
+  if (inCommentDirective) {
+    for (const item of commentDirectiveBuffer) {
+      outLines.push(stripInline(item.line));
+      outMap.push(item.srcIdx);
+    }
+  }
+  return { transformed: outLines.join('\n'), lineMap: outMap };
 }
 
 // ── L-1 (2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`) ──
@@ -3170,9 +3267,13 @@ export function renderMarkdown(
   let lineMap: number[] = [];
   const initialLines = text.split('\n').length;
   for (let i = 0; i < initialLines; i++) lineMap.push(i);
-  // L-4:comment strip(block comment による line 削減は稀、現状 lineMap 不変
-  // として扱う。multi-line block comment 使用時に行ズレ可能性あり、TODO)
-  text = stripComments(text);
+  // L-4:comment strip + LineMap thread(PR-2X、reform Phase 3)。
+  // multi-line `%%%...%%%` / `:::comment...:::` で削除された行を skip しつつ
+  // output line → 原文 line index を保持、Split View source-preview-sync の
+  // `data-pkc-source-line` 逆引き contract を maintain。
+  const commentResult = stripComments(text, lineMap);
+  text = commentResult.transformed;
+  lineMap = commentResult.lineMap;
   // L-1:section break を sentinel 化(1:1 line 変換、lineMap 不変)
   // reform-2026-05 Phase 2 PR-2H:`:::break{kind=…}` formal を `+++` / `---`
   // simple に変換、processSectionBreaks に委譲。
