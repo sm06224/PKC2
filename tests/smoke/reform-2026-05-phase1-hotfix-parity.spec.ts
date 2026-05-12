@@ -196,14 +196,13 @@ test.describe('reform-2026-05 hotfix 5 件 + AI-formal/human-simple 複合 visua
       // hallucination 検出: 各 literal が body 内に残ること
       const bodyText = root.textContent ?? '';
       const hallucinationLiterals = [
-        // PR-2F(2026-05-10):`:::section{role=…}` 実装済(callout)→ literal にならない
-        // PR-2G(2026-05-10):`:::comment` 実装済(完全 strip)→ literal にならない
-        ':lead:[未実装の lead inline]',
-        // PR-2B(2026-05-10):`:strong:[…]` / `:emphasis:[…]` 実装済(formal commonmark)
+        // PR-2L(2026-05-10):critical 4 件(`:lead:` / `:spacing:` / `:align:` /
+        // `:quote:`)は寛容 parse + canonical hint log に格上げ → literal で残らない。
+        // PR-2F:`:::section{role=…}` 実装済(callout)→ literal にならない。
+        // PR-2G:`:::comment` 実装済(完全 strip)→ literal にならない。
+        // PR-2B:`:strong:` / `:emphasis:` / `:code:` / `:strike:` 実装済。
+        // 残: 単体 `:caption:`(:::figure 外の inline form)のみ literal 残る。
         ':caption:[未実装 caption]',
-        ':quote:{attribution=',
-        ':align:{position=end}',
-        ':spacing:{size=2}',
       ];
       const literalsFound = hallucinationLiterals.map((s) => bodyText.includes(s));
 

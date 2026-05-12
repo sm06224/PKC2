@@ -322,15 +322,14 @@ test.describe('ChatGPT formal fixture diagnostic — 何が render され / 何�
     expect(observed.expected.htmlOnlyVisible).toBe(true);
     expect(observed.expected.pdfOnlyHidden).toBe(true);
 
-    // hallucination のうち実装済の formal は literal にならない:
-    // - PR-2B(2026-05-10):strong / emphasis / code / strike formal 実装済
-    // - PR-2C(2026-05-10):caption formal 実装済
-    // - PR-2F(2026-05-10):::section{role=…} callout 実装済
-    // - PR-2G(2026-05-10):::comment block 実装済(完全 strip)
-    // 残る未実装 hallucination:lead / spacing / inline quote
-    expect(observed.hallucinations.leadLiteral).toBe(true);
-    expect(observed.hallucinations.spacingLiteral).toBe(true);
-    expect(observed.hallucinations.inlineQuoteLiteral).toBe(true);
+    // hallucination のうち実装済 / 寛容 parse 済の formal は literal にならない:
+    // - PR-2B:strong / emphasis / code / strike formal 実装済
+    // - PR-2C:caption formal 実装済
+    // - PR-2F:::section{role=…} callout 実装済
+    // - PR-2G:::comment block 実装済(完全 strip)
+    // - PR-2L(2026-05-10):lead / spacing / align / quote(inline)寛容 parse
+    //   + admonition alias 群 → literal にならない
+    // 残る未実装 hallucination:なし(本 fixture は全部 handle される)
 
     await rendered.screenshot({
       path: 'test-results/chatgpt-fixture-diagnostic/center-pane.png',
