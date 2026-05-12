@@ -3,10 +3,11 @@
 **Audience**: AI(LLM)が PKC2 entry の `body` を生成する際の規約書、特に **テストデータ生成** + **業務文書生成** 用途を想定。
 **Reader**: 機械的に処理する LLM。可読性は保つが、構造化と非曖昧化を優先。
 **Companion(human-oriented)**: `docs/manual/12_マークダウン拡張記法.md`(末端 user 用)+ `docs/development/notation-redesign-2026-05/`(設計議論)
-**Status**: candidate(2026-05-12 起草、reform-2026-05 Phase 2 完了 + Phase 3 着手時点)
-**Version**: v3(supersedes v2、2026-05-09 起草)
-**Phase 反映**: Phase 1(L-1〜L-9 + M-7)+ Phase 2(R-2A〜R-2Q、寛容 parse + html-render + 段組組版)+ Phase 3 予告(IR migration / WCAG / theme)
-**Supersedes**: `markdown-dialect-for-ai-authors-v2.md`(2026-05-09 〜 2026-05-12)
+**Status**: ✅ **canonical**(2026-05-12 promoted、reform-2026-05 Phase 3 wave 16 PR 完了 + AST 公開 API 着地)
+**Version**: v3(supersedes v2、2026-05-09 起草、2026-05-12 promoted to canonical)
+**Phase 反映**: Phase 1(L-1〜L-9 + M-7)+ Phase 2(R-2A〜R-2Q、寛容 parse + html-render + 段組組版)+ Phase 3(IR migration AstDocument 経路 + WCAG resolver + theme switching + AST 公開 API)
+**Supersedes**: `markdown-dialect-for-ai-authors-v2.md`(2026-05-09 〜 2026-05-12、v3 promoted で archive 候補)
+**AST API**: [`docs/spec/public-ast-api-for-ai.md`](./public-ast-api-for-ai.md)(PR-2GG で着地、`window.PKC.ast` namespace から parseMarkdown / renderHtml / canonicalize / toPandocJson 6 関数を expose)
 
 ---
 

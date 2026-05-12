@@ -1,8 +1,21 @@
 # reform-2026-05 Phase 3 stack 実行計画(2026-05-12)
 
-**Status**: 着手中(PR-2R が起点)
-**Wave**: 18 PR stack(±5 で 13〜23 の幅、Block E を可変)
-**Target main 着地**: 順次(user wake-up 後 bottom-up sequential merge 予定)
+**Status**: ✅ **wave 全 16 PR 着地ready**(2026-05-12 朝、PR #412〜#427、stack 完走)
+**Wave**: 16 PR stack(計画 18 件から最適化、Block F の AST API expose + bundle dedup を 1 PR に統合)
+**Target main 着地**: bottom-up sequential merge(全 PR CI green / user 判断で merge)
+
+**着地内訳**:
+- Block 0 doc 先行:**PR-2R** / #412
+- Block A critical UX:**PR-2S / 2T / 2U** / #413 / #414 / #415
+- Block B spec 完成度:**PR-2V / 2W / 2X** / #416 / #417 / #418
+- Block C IR migration(可換世界 4/4):**PR-2Y / 2Z / 2AA / 2BB** / #419 / #420 / #421 / #422
+- Block D 軽量:**PR-2CC / 2DD** / #423 / #424
+- Block E 新機能 foundation:**PR-2EE / 2FF** / #425 / #426
+- Block F 最終:**PR-2GG**(AST 公開 API + bundle dedup 同時着地)/ #427、PR-2HH(本 PR)/ PR-2II が後続
+
+詳細は [`docs/release/CHANGELOG_v2.2.0.md`](../release/CHANGELOG_v2.2.0.md) の reform-2026-05 Phase 3 section 参照。
+
+実装結果は実 PR への移行で固まったため、**本計画 doc は archive 候補**(`docs/development/archived/reform-2026-05/SUMMARY.md` への移動を Phase 3 wave クローズ後に検討)。
 
 ---
 
