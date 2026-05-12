@@ -14,7 +14,7 @@ describe('features/notation/profiles — registry', () => {
     expect(DEFAULT_PROFILE).toBe('pkc-markdown-1.0');
   });
 
-  it('listProfiles で 6 profile 全部返す', () => {
+  it('listProfiles で 7 profile 全部返す(PR-2I で ai-safe 追加)', () => {
     const list = listProfiles();
     expect(list).toEqual(
       expect.arrayContaining([
@@ -23,10 +23,11 @@ describe('features/notation/profiles — registry', () => {
         'pandoc',
         'obsidian',
         'pkc-markdown-1.0',
+        'pkc-markdown-1.0-ai-safe',
         'pkc-markdown-experimental',
       ]),
     );
-    expect(list.length).toBe(6);
+    expect(list.length).toBe(7);
   });
 
   it('isPkcMarkdownProfile:`pkc-markdown-*` なら true', () => {
