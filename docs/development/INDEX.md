@@ -505,6 +505,7 @@ Phase 2 完了直後の継続 wave。critical UX(theme / WCAG / bold-in-if)+ spe
 
 canonical plan:[`docs/development/phase3-stack-execution-plan-2026-05.md`](./phase3-stack-execution-plan-2026-05.md)(本 wave の起点 doc、wave 完了 status 反映済)
 retrospective:[`docs/development/reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md)(2026-05-12、wave 全 16 PR の deliverable / doctrine / archive 候補一覧)
+final audit:[`docs/development/reform-2026-05-phase3-final-audit.md`](./reform-2026-05-phase3-final-audit.md)(2026-05-12、PR-2II、17 PR 全件 ship-readiness 8 項目 audit + user direction 達成度 + bundle / test growth 集計)
 
 | # | PR | Block | scope | Status |
 |---|----|------|------|------|
@@ -524,8 +525,8 @@ retrospective:[`docs/development/reform-2026-05-phase3-wave-retrospective.md`](.
 | 14 | PR-2EE | E 新機能 | アルバム + コンタクトシート Phase 1 | ✅ #425 ready-to-merge |
 | 15 | PR-2FF | E 新機能 | アプリランチャー Phase 1 | ✅ #426 ready-to-merge |
 | 16 | PR-2GG | F 最終 | AST 公開 API + bundle dedup(`window.PKC.ast` 設置) | ✅ #427 ready-to-merge |
-| 17 | **PR-2HH** | F 最終 | Doc archival sweep(quarterly 前倒し、古 doc 統廃合)| 🔄 in-progress(本 PR)|
-| 18 | PR-2II | F 最終 | Final ship-readiness audit + 全 doc reconcile | ⏳ pending |
+| 17 | PR-2HH | F 最終 | Doc archival sweep(retrospective + spec v3 promote + 5 archive marker)| ✅ #428 ready-to-merge |
+| 18 | **PR-2II** | F 最終 | Final ship-readiness audit + 全 doc reconcile | 🔄 in-progress(本 PR)|
 
 ### COMPLETED — reform-2026-05 Phase 2 markdown notation 拡張 wave(2026-05-10)
 
