@@ -100,7 +100,7 @@ export function parseMarkdownToAst(text: string, opts?: ParseOptions): AstDocume
 
 **実装**:
 1. `parseFrontmatter(text)` → `globals` + `vars` + `warnings`
-2. `md.parse(body, env)` → markdown-it Token[](既存 renderMarkdown と同じ前処理 pipeline 適用済)
+2. `md.parse(body, env)` で markdown-it Token array を取得(既存 renderMarkdown と同じ前処理 pipeline 適用済)
 3. Token 走査 → AstBlock[](`heading_open` / `paragraph_open` / `bullet_list_open` 等を AstBlock に変換)
 4. 各 block の `inline` token を AstInline[] に展開(`text` / `strong_open` / 等)
 5. PKC 固有 token(`em_dot_open` / `mark_open` / `pkc_card` 等)を専用 AstInline kind にマップ
