@@ -58,6 +58,20 @@ v2.2.0 の主題は **Flags Protocol v1 wave 完了** です。const ハード�
 
 ---
 
+## reform-2026-05 Phase 3 — UX hotfix + IR migration + 可換世界拡大(2026-05-12〜、進行中)
+
+Phase 2 完了直後の継続 wave。**critical UX**(theme 切替整合 / WCAG コントラスト探索 / bold-in-if 再現バグ)+ **spec 完成度**(`:::toc` / `:::frontmatter` / `:::body` 正式実装 + `%%%` LineMap thread)+ **IR migration**(AST parse/render/migration/canonicalize、可換世界拡大)+ **新機能 foundation**(アルバム / ランチャー)+ **最終 audit + optimization + doc finalize** を 18 PR stack で着地予定。
+
+- **PR-2R doc 先行整備(本 PR 着手、2026-05-12)**:user direction「AI と人向けの手引書を先に整備、古いドキュメントの統廃合も込み」を受け、Phase 3 stack 実行前に doc を整える起点 PR。新規 doc 5 件起草:
+  (1)`docs/development/phase3-stack-execution-plan-2026-05.md` — 18 PR stack の全体俯瞰 + 各 PR の判断 / 設計メモ + user review 想定;
+  (2)`docs/development/ir-migration-plan-2026-05.md` — PR-2Y/2Z/2AA/2BB の設計確定(Migration approach、equivalence test 50+ 件、可換世界拡大 entry point、Pandoc filter 雛形);
+  (3)`docs/development/wcag-contrast-resolver-spec.md` — PR-2T 設計(WCAG コントラスト算出 + 同系色 shift algorithm + deterministic memoize + Tier 0 flag `theme.wcag_auto_shift` default ON);
+  (4)`docs/development/theme-switching-consistency-audit.md` — PR-2S 設計(3 site fix:mermaid 動的 theme + 右ペイン TOC CSS variable dual-track + PIP popup matchMedia listen);
+  (5)`docs/spec/markdown-dialect-for-ai-authors-v3.md` — AI 規約書 v3 candidate(v2 supersede、Phase 1+2 完了 + Phase 3 予告反映、寛容 alias 表 + fixture prompt template + self-correct loop 追加)。
+  Manual ch12 §12.8 を Phase 3 wave 全体俯瞰に rewrite、§12.9 関連 doc に Phase 3 設計 doc 4 件追加。**docs-only PR**、bundle 不変、src 変更 0、test pass 7131/7131。
+
+---
+
 ## reform-2026-05 Phase 2 — formal vocabulary 拡張 + document globals(2026-05-10〜)
 
 Phase 1 着地直後の継続 wave。**Phase 1 spec で漏れていた frontmatter document
