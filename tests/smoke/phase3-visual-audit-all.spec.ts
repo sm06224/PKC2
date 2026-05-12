@@ -119,10 +119,10 @@ body content with **bold**
     const probe = await page.evaluate(() => {
       // Tier 0 flag が registry に登録されているか確認
       const w = window as unknown as {
-        __pkcFlags__?: { all?: Array<{ key: string }> };
+        __pkcFlags__?: { all?: () => Array<{ key: string }> };
       };
       const flags = w.__pkcFlags__?.all?.() ?? [];
-      const wcagFlag = flags.find((f) => f.key === 'theme.wcag_auto_shift');
+      const wcagFlag = flags.find((f: { key: string }) => f.key === 'theme.wcag_auto_shift');
       return { hasWcagFlag: !!wcagFlag };
     });
     // flag が registry にあれば boot path で runtime install されている

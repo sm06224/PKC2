@@ -20,6 +20,11 @@ import {
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
 import { exposeAstApi } from './adapter/public-ast-api';
+import { mountAstDebugOverlay } from './adapter/ui/ast-debug-overlay';
+import {
+  parseAppQueryParam,
+  isLauncherRequested,
+} from './features/launcher/app-registry';
 import { installWcagResolverRuntime, applyWcagResolverNow } from './adapter/ui/wcag-runtime';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
@@ -368,6 +373,12 @@ async function boot(): Promise<void> {
   // に設置。他の AI(DevTools console / iframe / postMessage caller)から
   // markdown text を AST / Pandoc JSON に変換できる経路を提供。
   exposeAstApi();
+
+  // PR-2JJ(2026-05-12 hotfix):`?pkc-debug=ast` URL flag が有効なときに、
+  // currently selected entry の AST / Pandoc JSON を fixed-position overlay
+  // で可視化、clipboard へコピーする導線を install。debug-via-url-flag-protocol
+  // 既定。flag が無ければ no-op。
+  mountAstDebugOverlay(dispatcher);
 
   // reform-2026-05 Phase 3 PR-2T(2026-05-12):WCAG コントラスト探索 runtime。
   // Tier 0 flag `theme.wcag_auto_shift`(default ON)/ `theme.wcag_target_ratio`
@@ -735,6 +746,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeApplyLauncherUrlFlag(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
@@ -760,6 +772,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeApplyLauncherUrlFlag(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
@@ -779,6 +792,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeApplyLauncherUrlFlag(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
@@ -858,6 +872,41 @@ function maybeOpenFlagsInspectorFromUrl(dispatcher: Dispatcher): void {
   const params = new URLSearchParams(window.location.search);
   if (params.getAll('pkc-flag').includes('*')) {
     dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' });
+  }
+}
+
+/**
+ * PR-2JJ(2026-05-12 hotfix): `?app=<id>` / `?app=launcher` URL flag を
+ * boot 時に処理。
+ *   - `?app=launcher` → OPEN_LAUNCHER で dashboard overlay 表示
+ *   - `?app=calendar` / `?app=kanban` / `?app=filer` / `?app=graph` /
+ *     `?app=detail` → SET_VIEW_MODE で直接 view 切替
+ *   - `?app=flags` → OPEN_FLAGS_INSPECTOR
+ *   - `?app=album` → SET_VIEW_MODE filer(album-specific routing は user 操作で)
+ *
+ * App registry は `src/features/launcher/app-registry.ts` を source of truth。
+ */
+function maybeApplyLauncherUrlFlag(dispatcher: Dispatcher): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  const search = window.location.search;
+  if (isLauncherRequested(search)) {
+    dispatcher.dispatch({ type: 'OPEN_LAUNCHER' });
+    return;
+  }
+  const app = parseAppQueryParam(search);
+  if (!app) return;
+  switch (app.target.kind) {
+    case 'view-mode':
+      dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: app.target.viewMode });
+      break;
+    case 'overlay':
+      if (app.target.overlay === 'flags-inspector') {
+        dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' });
+      }
+      break;
+    case 'auto-filer-album':
+      dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
+      break;
   }
 }
 

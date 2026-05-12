@@ -9527,3 +9527,175 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: none;
 }
 
+/* ── App Launcher dashboard overlay(PR-2JJ 2026-05-12 hotfix)──
+   Flags inspector pattern を踏襲、tile grid を中央 modal で表示。 */
+.pkc-launcher-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 21500;
+}
+.pkc-launcher-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+}
+.pkc-launcher-panel {
+  position: relative;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51, 255, 102, 0.1);
+  padding: var(--space-5);
+  max-width: 720px;
+  width: 92%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow: hidden;
+}
+.pkc-launcher-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: var(--space-2-5);
+}
+.pkc-launcher-title { margin: 0; font-size: var(--fs-2xl); }
+.pkc-launcher-close {
+  background: transparent;
+  border: none;
+  color: var(--c-fg);
+  cursor: pointer;
+  font-size: var(--fs-3xl);
+  padding: var(--space-1-5) var(--space-3);
+}
+.pkc-launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+  overflow-y: auto;
+}
+.pkc-launcher-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-1-5);
+  padding: var(--space-4) var(--space-3);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+  transition: border-color 120ms, transform 120ms;
+}
+.pkc-launcher-tile:hover {
+  border-color: var(--c-accent);
+  transform: translateY(-2px);
+}
+.pkc-launcher-tile:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+.pkc-launcher-tile-icon { font-size: 2.4rem; line-height: 1; }
+.pkc-launcher-tile-label { font-weight: 600; font-size: var(--fs-lg); }
+.pkc-launcher-tile-desc {
+  font-size: var(--fs-sm);
+  color: var(--c-fg-dim);
+  line-height: 1.4;
+}
+.pkc-launcher-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--c-fg-dim);
+  border-top: 1px solid var(--c-border);
+  padding-top: var(--space-2-5);
+}
+
+/* ── AST debug overlay(PR-2JJ 2026-05-12 hotfix、`?pkc-debug=ast`)──
+   right-bottom anchored panel、AST 取得用の copy buttons + JSON preview。 */
+.pkc-ast-debug-overlay {
+  position: fixed;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 22000;
+  width: 360px;
+  max-width: calc(100vw - var(--space-6));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  color: var(--c-fg);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-sm);
+}
+.pkc-ast-debug-overlay[data-pkc-debug="true"] { /* selector hook、style 上は noop */ }
+.pkc-ast-debug-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg);
+}
+.pkc-ast-debug-title {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+}
+.pkc-ast-debug-close {
+  background: transparent;
+  border: none;
+  color: var(--c-fg);
+  cursor: pointer;
+  font-size: var(--fs-xl);
+  padding: 0 var(--space-1);
+}
+.pkc-ast-debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--c-border);
+}
+.pkc-ast-debug-action {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  color: var(--c-fg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+.pkc-ast-debug-action:hover { border-color: var(--c-accent); }
+.pkc-ast-debug-action:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+.pkc-ast-debug-body {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+  white-space: pre;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+.pkc-ast-debug-status {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  border-top: 1px solid var(--c-border);
+}
+

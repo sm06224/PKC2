@@ -259,6 +259,14 @@ export interface AppState {
    */
   flagsInspectorOpen?: boolean;
   /**
+   * App Launcher dashboard overlay open / close state. PR-2JJ
+   * (2026-05-12 hotfix). Runtime-only, not persisted. Opened by:
+   *  - `?app=launcher` URL parameter at boot
+   *  - shell-menu「🚀 Launcher」link click
+   * Closed by × button / ESC / backdrop click / tile click(app jump).
+   */
+  launcherOpen?: boolean;
+  /**
    * "Normalize PKC links" preview dialog open/close state
    * (Phase 2 Slice 2). Runtime-only, not persisted. When `true` the
    * renderer mounts the preview overlay via
@@ -2463,6 +2471,17 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'CLOSE_FLAGS_INSPECTOR': {
       if (state.flagsInspectorOpen !== true) return { state, events: [] };
       return { state: { ...state, flagsInspectorOpen: false }, events: [] };
+    }
+    case 'OPEN_LAUNCHER': {
+      if (state.launcherOpen === true) return { state, events: [] };
+      return {
+        state: { ...state, launcherOpen: true, menuOpen: false },
+        events: [],
+      };
+    }
+    case 'CLOSE_LAUNCHER': {
+      if (state.launcherOpen !== true) return { state, events: [] };
+      return { state: { ...state, launcherOpen: false }, events: [] };
     }
     case 'TOGGLE_MENU': {
       return { state: { ...state, menuOpen: !state.menuOpen }, events: [] };

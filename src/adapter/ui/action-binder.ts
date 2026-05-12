@@ -3018,6 +3018,41 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLOSE_FLAGS_INSPECTOR' });
         break;
       }
+      case 'open-launcher': {
+        // PR-2JJ(2026-05-12 hotfix): App Launcher dashboard.
+        dispatcher.dispatch({ type: 'OPEN_LAUNCHER' });
+        break;
+      }
+      case 'close-launcher': {
+        dispatcher.dispatch({ type: 'CLOSE_LAUNCHER' });
+        break;
+      }
+      case 'launch-app': {
+        // Tile click in launcher overlay → dispatch app-specific action +
+        // CLOSE_LAUNCHER. `data-pkc-app-id` carries the LauncherAppId
+        // (matches LAUNCHER_APPS table in features/launcher/app-registry.ts).
+        const appId = target.getAttribute('data-pkc-app-id') ?? '';
+        switch (appId) {
+          case 'detail':
+          case 'calendar':
+          case 'kanban':
+          case 'filer':
+          case 'graph':
+            dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: appId });
+            break;
+          case 'flags':
+            dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' });
+            break;
+          case 'album':
+            // Album app:filer view 開始(album folder への遷移は user 操作で)。
+            dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
+            break;
+          default:
+            break;
+        }
+        dispatcher.dispatch({ type: 'CLOSE_LAUNCHER' });
+        break;
+      }
       // set-flag-boolean / -numeric / -string / -enum live in
       // handleChange (input / select fire `change` on commit, not
       // `click`). Click-handled paths kept here are only the
@@ -4317,6 +4352,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // open via URL flag at boot).
       if (state.flagsInspectorOpen) {
         dispatcher.dispatch({ type: 'CLOSE_FLAGS_INSPECTOR' });
+        return;
+      }
+      // PR-2JJ(2026-05-12 hotfix): App Launcher dashboard.
+      if (state.launcherOpen) {
+        dispatcher.dispatch({ type: 'CLOSE_LAUNCHER' });
         return;
       }
       // Close shell menu if open

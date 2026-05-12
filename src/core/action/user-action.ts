@@ -265,6 +265,13 @@ export type UserAction =
    */
   | { type: 'OPEN_FLAGS_INSPECTOR' }
   | { type: 'CLOSE_FLAGS_INSPECTOR' }
+  /**
+   * PR-2JJ(2026-05-12 hotfix、PR #432 stack): App Launcher dashboard
+   * overlay open / close。`?app=launcher` URL flag、shell-menu「🚀 Launcher」、
+   * ESC / × button / backdrop click から dispatch。Runtime-only flip。
+   */
+  | { type: 'OPEN_LAUNCHER' }
+  | { type: 'CLOSE_LAUNCHER' }
   | { type: 'TOGGLE_MENU' }
   | { type: 'CLOSE_MENU' }
   /**

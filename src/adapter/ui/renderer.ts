@@ -4,6 +4,7 @@ import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/re
 import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFlagsInspector } from './flags-inspector';
+import { renderLauncher } from './launcher';
 import { applyThemeScale } from './theme-scale';
 import {
   getActiveFlagCount as getActiveFlagCountForAbout,
@@ -480,6 +481,13 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
     );
     setFlagsInspectorContainerSource(resolveFlagsPayload(flagsEntry?.body).values);
     root.appendChild(renderFlagsInspector());
+  }
+
+  // PR-2JJ(2026-05-12 hotfix): App Launcher dashboard overlay.
+  // Mounted when state.launcherOpen === true. Opens via `?app=launcher`
+  // URL flag at boot or shell-menu「🚀 Launcher」link.
+  if (state.launcherOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
+    root.appendChild(renderLauncher());
   }
 
   // Restore the sidebar / center scroll positions captured before
