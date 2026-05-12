@@ -1743,6 +1743,136 @@ function postProcessTocSentinels(html: string, tocHtmlByIdx: readonly string[]):
   );
 }
 
+// reform-2026-05 Phase 3 PR-2W(2026-05-12):`:::frontmatter` / `:::body`
+// region marker を正式実装(deny list から除外)。
+//
+// 動作:
+//   `:::frontmatter` ... `:::` → <aside class="pkc-region-frontmatter"
+//     data-pkc-region="frontmatter">...content (markdown rendered)...</aside>
+//   `:::body` ... `:::` → <section class="pkc-region-body"
+//     data-pkc-region="body">...content (markdown rendered)...</section>
+//
+// 用途:AI / 機械生成 doc で region の semantic 構造化、IR migration
+// (PR-2Y/2Z)で AST node `RegionNode { kind: 'frontmatter'|'body', children }`
+// に migrate する entry point。`---YAML---` の document-level frontmatter とは
+// 別物(あちらは metadata 抽出、本 directive は本文の region wrapper)。
+//
+// PUA sentinel:U+E16A / U+E16B(processSectionBlocks と同 pattern)。
+// fence aware:fenced code 内 marker は無視。
+// attrs:id / class / 任意 kv を受理、`data-pkc-region-*` に展開。
+const REGION_SENTINEL_OPEN = '\u{E16A}';
+const REGION_SENTINEL_SEP = '\u{E16B}';
+
+const REGION_DIRECTIVE_NAMES: ReadonlySet<string> = new Set(['frontmatter', 'body']);
+
+interface RegionEntry {
+  kind: 'frontmatter' | 'body';
+  attrs: _BlockDirectiveAttrs;
+}
+
+function processRegionBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<number, RegionEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<number, RegionEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let counter = 0;
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || !REGION_DIRECTIVE_NAMES.has(open.name)) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const kind = open.name as 'frontmatter' | 'body';
+    counter++;
+    const id = counter;
+    registry.set(id, { kind, attrs: open.attrs });
+    const openInputIdx = inputIdx;
+    i++;
+    out.push(`${REGION_SENTINEL_OPEN}${id}${REGION_SENTINEL_SEP}OPEN${REGION_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      out.push(lines[i]!);
+      lineMapOut.push(lineMapIn[i] ?? i);
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++;
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${REGION_SENTINEL_OPEN}${id}${REGION_SENTINEL_SEP}CLOSE${REGION_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+function postProcessRegionSentinels(
+  html: string,
+  registry: Map<number, RegionEntry>,
+): string {
+  // OPEN sentinel → <aside|section ...>
+  html = html.replace(
+    new RegExp(
+      `<p([^>]*)>${REGION_SENTINEL_OPEN}(\\d+)${REGION_SENTINEL_SEP}OPEN${REGION_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, pAttrs: string, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      const kind = entry.kind;
+      const tag = kind === 'frontmatter' ? 'aside' : 'section';
+      const attrs = entry.attrs;
+      const classes = [`pkc-region-${kind}`, ...attrs.classes].join(' ');
+      const idAttr = attrs.id ? ` id="${escapeAttrForHtml(attrs.id)}"` : '';
+      const dataAttrs: string[] = [];
+      for (const [k, v] of Object.entries(attrs.kvs)) {
+        if (!/^[A-Za-z_][\w-]*$/.test(k)) continue;
+        if (typeof v === 'boolean') {
+          if (v) dataAttrs.push(`data-pkc-region-${k}="true"`);
+        } else if (typeof v === 'string') {
+          dataAttrs.push(`data-pkc-region-${k}="${escapeAttrForHtml(v)}"`);
+        }
+      }
+      const dataStr = dataAttrs.length > 0 ? ' ' + dataAttrs.join(' ') : '';
+      return `<${tag}${idAttr} class="${classes}" data-pkc-region="${kind}"${dataStr}${pAttrs}>`;
+    },
+  );
+  // CLOSE sentinel → </aside> | </section>(closing tag は registry に lookup)
+  html = html.replace(
+    new RegExp(
+      `<p[^>]*>${REGION_SENTINEL_OPEN}(\\d+)${REGION_SENTINEL_SEP}CLOSE${REGION_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      return entry.kind === 'frontmatter' ? '</aside>' : '</section>';
+    },
+  );
+  return html;
+}
+
 function processSectionBlocks(source: string, lineMapIn: number[]): {
   transformed: string;
   registry: Map<number, SectionEntry>;
@@ -2492,17 +2622,14 @@ const ADMONITION_ALIASES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * PR-2V(2026-05-12)で `:::toc` を正式実装(deny list から除外)。
- * 残:`:::frontmatter` / `:::body` は PR-2W で実装予定。
+ * PR-2V(2026-05-12)で `:::toc` を、PR-2W(2026-05-12)で `:::frontmatter` /
+ * `:::body` を正式実装(全て deny list から除外、formal feature 化)。
+ * Set は空になったが、将来の deny list scenario(別 directive)用に
+ * infrastructure は維持。
  */
-const HALLUCINATION_BLOCK_DIRECTIVES: ReadonlySet<string> = new Set([
-  'frontmatter', 'body',
-]);
+const HALLUCINATION_BLOCK_DIRECTIVES: ReadonlySet<string> = new Set([]);
 
-const HALLUCINATION_BLOCK_SUGGESTION: Record<string, string> = {
-  frontmatter: 'YAML frontmatter(`---` で囲む top)を使う(PR-2W で正式実装予定)',
-  body: 'structural directive 不要、heading で region 表現(PR-2W で正式実装予定)',
-};
+const HALLUCINATION_BLOCK_SUGGESTION: Record<string, string> = {};
 
 /**
  * PR-2O(2026-05-10):standalone `:align:{position=X}` 行を line-based に検出、
@@ -3143,6 +3270,12 @@ export function renderMarkdown(
   const sectionResult = processSectionBlocks(text, lineMap);
   text = sectionResult.transformed;
   lineMap = sectionResult.lineMap;
+  // reform-2026-05 Phase 3 PR-2W:`:::frontmatter` / `:::body` region marker
+  // を sentinel 化、postProcessRegionSentinels で <aside> / <section> に展開。
+  // section と orthogonal、後段 align や figure とも干渉しない passthrough。
+  const regionResult = processRegionBlocks(text, lineMap);
+  text = regionResult.transformed;
+  lineMap = regionResult.lineMap;
   // reform-2026-05 Phase 2 PR-2E:`:::paragraph{align=physical}` block directive
   // を preprocessAlignPrefix の前に処理。content 行に物理 align(left/right/
   // top/bottom/center)を register、後段の applyAlignAttrs で `<p data-pkc-align>`
@@ -3189,6 +3322,8 @@ export function renderMarkdown(
   // reform-2026-05 PR-D:`:::quote{author=...}` sentinel → <blockquote class="pkc-quote-citation">
   html = postProcessQuoteSentinels(html, quoteResult.registry);
   html = postProcessSectionSentinels(html, sectionResult.registry);
+  // PR-2W:`:::frontmatter` / `:::body` sentinel → <aside> / <section>
+  html = postProcessRegionSentinels(html, regionResult.registry);
   // L-1:section break sentinel → <hr>
   html = postProcessSectionBreaks(html);
   // L-8:blank-line sentinel → <div class="pkc-blank-line">

@@ -195,16 +195,20 @@ describe('PR-2K(維持)— less-critical block deny list', () => {
     expect(html).toContain('data-pkc-toc-depth="3"');
   });
 
-  it(':::frontmatter block が PKC1010', () => {
+  it(':::frontmatter block は PR-2W で deny list から外れ formal region(aside)', () => {
+    // Phase 3 PR-2W で :::frontmatter は formal region marker 化、PKC1010 deny list から離脱
     const html = renderMarkdown(':::frontmatter\ntitle: x\n:::');
-    expect(html).toContain('data-pkc-warn-code="PKC1010"');
-    expect(html).toContain('data-pkc-warn-name="frontmatter"');
+    expect(html).not.toContain('pkc-warning-hallucination-block-frontmatter');
+    expect(html).toContain('pkc-region-frontmatter');
+    expect(html).toContain('data-pkc-region="frontmatter"');
   });
 
-  it(':::body block が PKC1010', () => {
+  it(':::body block は PR-2W で deny list から外れ formal region(section)', () => {
+    // Phase 3 PR-2W で :::body は formal region marker 化、PKC1010 deny list から離脱
     const html = renderMarkdown(':::body\ncontent\n:::');
-    expect(html).toContain('data-pkc-warn-code="PKC1010"');
-    expect(html).toContain('data-pkc-warn-name="body"');
+    expect(html).not.toContain('pkc-warning-hallucination-block-body');
+    expect(html).toContain('pkc-region-body');
+    expect(html).toContain('data-pkc-region="body"');
   });
 
   it(':::section / :::figure / :::quote / :::if / :::break / :::comment は無視', () => {
