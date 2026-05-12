@@ -26,26 +26,13 @@ import type {
   AstListItem,
   AstTableRow,
 } from '@core/ast/index';
+import { escapeHtml, escapeAttr } from '@core/escape';
 
 export interface RenderOptions {
   /** `data-pkc-source-line` attr を block element に転記する。 */
   sourceLineAnchors?: boolean;
   /** トップレベル wrap("article" / "body" / "main" / null = wrap なし)。 */
   rootTag?: 'article' | 'body' | 'main' | null;
-}
-
-const HTML_ESCAPE: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => HTML_ESCAPE[c] ?? c);
-}
-function escapeAttr(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => HTML_ESCAPE[c] ?? c);
 }
 
 function attrsToString(attrs: AstAttrs | undefined): string {

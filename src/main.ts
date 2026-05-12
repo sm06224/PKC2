@@ -19,6 +19,7 @@ import {
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
+import { exposeAstApi } from './adapter/public-ast-api';
 import { installWcagResolverRuntime, applyWcagResolverNow } from './adapter/ui/wcag-runtime';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
@@ -362,6 +363,11 @@ async function boot(): Promise<void> {
   // style.height を更新する parent-side listener。一度 install するだけで
   // 全 iframe を listen(message に id を含めて iframe を特定)。
   installHtmlSandboxResizer();
+
+  // PR-2GG(2026-05-12、reform Phase 3 Block F):AST 公開 API を window.PKC.ast
+  // に設置。他の AI(DevTools console / iframe / postMessage caller)から
+  // markdown text を AST / Pandoc JSON に変換できる経路を提供。
+  exposeAstApi();
 
   // reform-2026-05 Phase 3 PR-2T(2026-05-12):WCAG コントラスト探索 runtime。
   // Tier 0 flag `theme.wcag_auto_shift`(default ON)/ `theme.wcag_target_ratio`
