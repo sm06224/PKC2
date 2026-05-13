@@ -9633,6 +9633,50 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: none;
 }
 
+/* ── 編集画面 floating format panel(PR-2JJ v2、2026-05-13)──
+   text body の選択部に追従する PKC MD フォーマット設定ツールバー。 */
+.pkc-format-panel {
+  position: fixed;
+  z-index: 22500;
+  display: none;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  align-items: center;
+  max-width: min(90vw, 480px);
+}
+.pkc-format-panel-btn {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1-5);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 2rem;
+}
+.pkc-format-panel-btn:hover { border-color: var(--c-accent); }
+.pkc-format-panel-btn:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+.pkc-format-panel-close {
+  margin-left: var(--space-1-5);
+  background: transparent;
+  border: none;
+  color: var(--c-fg-dim);
+  font-size: var(--fs-base);
+  cursor: pointer;
+  padding: var(--space-1);
+}
+.pkc-format-panel-close:hover { color: var(--c-fg); }
+
 /* ── Data.. dropdown menu(PR-2JJ v2、entry detail header、AST / Pandoc 出力)──
    現在 selected entry の body を AST / Canonical / Pandoc / HTML に変換して
    clipboard へコピー。JSONL(1 行 compact)default、Pretty checkbox で整形。 */

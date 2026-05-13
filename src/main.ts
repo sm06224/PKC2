@@ -20,6 +20,7 @@ import {
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
 import { exposeAstApi } from './adapter/public-ast-api';
+import { mountFormatPanel } from './adapter/ui/format-panel';
 import { installWcagResolverRuntime, applyWcagResolverNow } from './adapter/ui/wcag-runtime';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
@@ -368,6 +369,11 @@ async function boot(): Promise<void> {
   // に設置。他の AI(DevTools console / iframe / postMessage caller)から
   // markdown text を AST / Pandoc JSON に変換できる経路を提供。
   exposeAstApi();
+
+  // PR-2JJ v2(2026-05-13、PR #432 stack):編集画面 選択部 追従の PKC MD
+  // フォーマットパネルを install。Tier 0 flag `editor.format_panel_enabled`
+  // (default ON)で完全 off 切替可能、panel の × button で session 中の hide。
+  mountFormatPanel();
 
   // reform-2026-05 Phase 3 PR-2T(2026-05-12):WCAG コントラスト探索 runtime。
   // Tier 0 flag `theme.wcag_auto_shift`(default ON)/ `theme.wcag_target_ratio`
