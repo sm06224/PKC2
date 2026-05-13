@@ -239,8 +239,13 @@ function renderInlines(
 
 function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
   switch (node.kind) {
-    case 'text':
-      return escapeText(node.value);
+    case 'text': {
+      // GFM mode で AST text node に残った PKC marker を plain 化、その後
+      // escape をかける。これにより `==text==` のような raw 文字列が
+      // GFM 出力に残らない(parser が PKC 拡張を分解できない symptom 緩和)。
+      const cleaned = mode === 'gfm' ? stripPkcMarkersForGfm(node.value) : node.value;
+      return escapeText(cleaned);
+    }
     case 'strong':
       return `**${renderInlines(node.children, mode)}**`;
     case 'emphasis':
@@ -332,10 +337,74 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
   }
 }
 
+/**
+ * CommonMark の "Backslash escape" rule に準拠した **最小限の inline escape**。
+ *
+ * 全 ASCII punctuation を escape すると `Hello (world)` → `Hello \(world\)` の
+ * ような過剰 escape を produce してしまう(PR-2JJ v2 critical bug fix、
+ * 2026-05-13 user 指摘:「MDコピーの両方の取得結果がシンタックスをエスケープ
+ * する致命的なバグ」)。
+ *
+ * inline context で **markup として interpret される可能性が確実にある** 文字
+ * のみ escape する:
+ *
+ *   - `\\` : escape character 自身(re-render の冪等性確保)
+ *   - `` ` `` : inline code 開始
+ *   - `*` `_` : emphasis / strong(連続する `*` / `_` が確実に markup)
+ *
+ * 他の punctuation(`( )` / `[ ]` / `#` / `+` / `-` / `!` / `|` / `>` /
+ * `{` `}` / `/` / `~` / `:` 等)は inline では **markup を確実に trigger
+ * しない** ので escape 不要。
+ *
+ *   - `[` `]`:本物の link は AST 上 `link` node に分解されており、text
+ *     node の value に残るのは literal 用途のみ。escape すると `[test]`
+ *     が `\[test\]` と読みづらくなる。markdown-it は対応する destination
+ *     がない `[...]` を text token として残すので、escape なしでも re-parse
+ *     で同じ AST に戻る。
+ *   - 行頭 marker(`#` / `>` / `-`):block level context で別途扱う
+ *     (paragraph wrap が常に block context を作るため)。
+ *
+ * 過剰 escape は出力の可読性を破壊するだけでなく、AI / 他システムへの
+ * 互換性 hand-off で誤動作の原因になるため、ここは厳密に限定する。
+ */
 function escapeText(s: string): string {
-  // commonmark の最小エスケープ:既存の構文文字は consumer が parse できるよう
-  // basic escape のみ(過剰 escape しない)
-  return s.replace(/([\\`*_{}[\]()#+\-!|>])/g, '\\$1');
+  return s.replace(/([\\`*_])/g, '\\$1');
+}
+
+/**
+ * GFM mode で AST text node に残った PKC 拡張 marker を plain text へ
+ * 落とす post-process(PR-2JJ v2、2026-05-13 user 指摘:「ASTが可換に
+ * なっていない、ASTの中なのにPKC Markdownがそのまま記録されていたりして、
+ * ASTの体を成していない」)。
+ *
+ * 本来は parser(PR-2Y / PR-2Z scope)が PKC 拡張を AST 構造に分解する
+ * のが筋だが、現 parser は **commonmark + GFM core のみ cover** で PKC
+ * 固有 marker(`==text==` / `..text..` / `:::role` / `%%comment%%` 等)を
+ * text node の value にそのまま渡してくる。
+ *
+ * GFM mode の互換性 contract を満たすため、render 段階で minimal な
+ * fallback 変換を提供:
+ *   - `==text==` → `text`(plain、強調マーカーは drop)
+ *   - `..text..` → `text`(em-dot マーカー drop)
+ *   - `%%hidden%%` → ``(hidden コメントは削除)
+ *   - `:::role` ... `:::` block 形式は block 段階で処理済(現実装で剥がし済)
+ *
+ * 真の修正は AST canonicalize / parser を PKC 固有 inline 対応に強化する
+ * future wave。本実装は symptom 緩和の bridge layer。
+ */
+function stripPkcMarkersForGfm(s: string): string {
+  let out = s;
+  // %%hidden%% コメントを削除(visibility=hidden 既定の inline comment 形式)
+  out = out.replace(/%%([^%\n]+?)%%/g, '');
+  // ==text== marker を中身だけ残す
+  out = out.replace(/==([^=\n]+?)==/g, '$1');
+  // ..text.. em-dot marker を中身だけ残す
+  out = out.replace(/\.\.([^.\n]+?)\.\./g, '$1');
+  // :::role{...} ブロック開始 / 閉じ marker を削除(parser が分解できない
+  // 場合、これらが text node の value に line として残る)
+  out = out.replace(/:::[a-zA-Z0-9_-]+(\{[^}]*\})?/g, '');
+  out = out.replace(/:::/g, '');
+  return out;
 }
 
 function hasAttrs(attrs: { id?: string; classes: readonly string[]; kvs: Readonly<Record<string, string | boolean>> }): boolean {

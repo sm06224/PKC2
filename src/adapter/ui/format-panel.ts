@@ -294,6 +294,18 @@ function handleSelection(target: EventTarget | null): void {
     'editor-body',
   ]);
   if (!isEditorClass && !editorFields.has(role)) return;
+
+  // 選択範囲が空(caret のみ)の場合は panel を出さない。
+  // PR-2JJ v2 hotfix(2026-05-13、smoke regression fix):caret 移動だけで
+  // panel が出ると、source-preview-sync の caret 駆動 scroll / wheel
+  // operation と DOM overlay が干渉する。フォーマットボタンは「選択範囲を
+  // 変換する」機能なので、selection が空なら panel は不要。
+  const selStart = target.selectionStart ?? 0;
+  const selEnd = target.selectionEnd ?? 0;
+  if (selStart === selEnd) {
+    hide();
+    return;
+  }
   lastTextarea = target;
   show();
   position(target);
