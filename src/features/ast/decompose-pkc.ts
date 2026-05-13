@@ -95,9 +95,18 @@ import type {
  */
 export function decomposePkcExtensions(ast: AstDocument): AstDocument {
   const vars = ast.vars ?? {};
+  // Phase 1: PKC formal 形(:::section / :role:[X] / 等)を AST node に分解
+  let children = decomposeBlocks(ast.children, vars);
+  // Phase 2: Reverse 認識 — GFM 由来の表現(blockquote `> **Role:**` /
+  // GitHub Alert `> [!NOTE]` / HTML inline `<mark>` / `<sup>` / `<ruby>` /
+  // `<span class="lead">` 等)を可能な限り PKC AST node に逆変換。
+  // これにより PKC ↔ GFM 双方向で AST が semantic equivalent に揃う
+  // (user direction 2026-05-13:「可換に持ち込めるものは AST を介して
+  // 変換器でターゲットに変換」「逆方向も然り」)。
+  children = recognizeReverseFromGfm(children);
   return {
     ...ast,
-    children: decomposeBlocks(ast.children, vars),
+    children,
   };
 }
 
@@ -740,6 +749,261 @@ function tryInlinePattern(
   }
 
   return null;
+}
+
+// ── Reverse recognition(GFM 表現 → PKC AST node)─────────
+//
+// user direction(2026-05-13):「可換に持ち込めるものは AST を介して変換器
+// でターゲットに変換できるようにしてください」「逆方向も然りです」
+//
+// GFM 経路で書かれた markdown を parse すると、PKC 拡張は失われた(plain
+// GFM 表現になる)ように見えるが、構造として識別可能なものは AST に逆
+// 復元する。これにより PKC ↔ GFM 双方向で **semantic equivalent な AST**
+// に収束し、可換性が成立する。
+//
+// 対応(現時点):
+//   1. `> **Role:** ...` blockquote → AstSection(role 抽出)
+//   2. `> [!NOTE]` / `> [!WARNING]` GitHub Alert → AstSection(role 小文字化)
+//   3. HTML inline `<mark>X</mark>` → AstMark
+//   4. HTML inline `<sup>X</sup>` / `<sub>X</sub>` → AstSup / AstSub
+//   5. HTML inline `<ruby>base<rt>rt</rt></ruby>` → AstRuby
+//   6. HTML inline `<span class="lead">X</span>` → AstSpan(class=lead)
+//   7. HTML inline `<span class="pkc-em-dot">X</span>` → AstEmDot
+
+/** GitHub Alert キーワードを PKC section role に正規化。 */
+const GITHUB_ALERT_ROLES: Record<string, string> = {
+  NOTE: 'note',
+  TIP: 'tip',
+  IMPORTANT: 'important',
+  WARNING: 'warning',
+  CAUTION: 'caution',
+};
+
+function recognizeReverseFromGfm(blocks: readonly AstBlock[]): AstBlock[] {
+  const out: AstBlock[] = [];
+  for (const block of blocks) {
+    out.push(recognizeReverseBlock(block));
+  }
+  return out;
+}
+
+function recognizeReverseBlock(block: AstBlock): AstBlock {
+  switch (block.kind) {
+    case 'quote': {
+      // (1)(2) Blockquote → AstSection 認識
+      const recognized = tryReverseSection(block);
+      if (recognized) return recognized;
+      // 通常 quote:children を再帰
+      return { ...block, children: recognizeReverseFromGfm(block.children) };
+    }
+    case 'paragraph':
+    case 'heading': {
+      return { ...block, children: recognizeReverseInlines(block.children) };
+    }
+    case 'list': {
+      return {
+        ...block,
+        items: block.items.map((it) => ({
+          ...it,
+          children: recognizeReverseFromGfm(it.children),
+        })),
+      };
+    }
+    case 'table': {
+      return {
+        ...block,
+        rows: block.rows.map((r) => ({
+          ...r,
+          cells: r.cells.map((c) => ({
+            ...c,
+            children: recognizeReverseInlines(c.children),
+          })),
+        })),
+      };
+    }
+    case 'figure':
+    case 'section':
+    case 'if-block': {
+      return { ...block, children: recognizeReverseFromGfm(block.children) };
+    }
+    default:
+      return block;
+  }
+}
+
+/**
+ * `> **Role:** ...` 形式の blockquote、または `> [!NOTE]` GitHub Alert を
+ * AstSection に変換。マッチしないなら null。
+ */
+function tryReverseSection(quote: { children: readonly AstBlock[] }): AstSection | null {
+  if (quote.children.length === 0) return null;
+  const first = quote.children[0]!;
+  if (first.kind !== 'paragraph') return null;
+  const firstText = inlinesToText(first.children).trim();
+
+  // (2) GitHub Alert:`[!NOTE]` 等。
+  // markdown-it が softbreak で結合した結果、firstText は
+  //   `[!NOTE]` or `[!NOTE] 内容続き` の 2 form 可能。
+  // 先頭 `[!ROLE]` を匹配、後続 content は paragraph として再構成。
+  const ghAlertMatch = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*([\s\S]*)$/.exec(firstText);
+  if (ghAlertMatch) {
+    const role = GITHUB_ALERT_ROLES[ghAlertMatch[1]!]!;
+    const afterLabel = ghAlertMatch[2]!.trim();
+    const restBlocks: AstBlock[] = [];
+    if (afterLabel !== '') {
+      // 第 1 paragraph の `[!NOTE]` を剥がした残りを paragraph として復元
+      restBlocks.push({
+        kind: 'paragraph',
+        children: [{ kind: 'text', value: afterLabel } as AstText],
+      });
+    }
+    restBlocks.push(...quote.children.slice(1));
+    return {
+      kind: 'section',
+      role,
+      children: recognizeReverseFromGfm(restBlocks),
+    };
+  }
+
+  // (1) `**Role:** [rest]` 形式。strong node が先頭にあって直後に `:` で
+  // 終わる role label の場合に section に。
+  const firstChild = first.children[0];
+  if (firstChild?.kind === 'strong') {
+    const labelText = inlinesToText(firstChild.children).trim();
+    const labelMatch = /^([A-Za-z][\w-]*):$/.exec(labelText);
+    if (labelMatch) {
+      const role = labelMatch[1]!.toLowerCase();
+      // 同 paragraph 内に role label 以外の content があるか確認
+      const restInlines = first.children.slice(1);
+      // strong の直後の text node の先頭 whitespace を trim
+      const cleanedRest = restInlines.map((n, i) => {
+        if (i === 0 && n.kind === 'text') {
+          return { ...n, value: n.value.replace(/^\s+/, '') } as AstInline;
+        }
+        return n;
+      });
+      // 第 2 child 以降の blocks
+      const tailBlocks = quote.children.slice(1);
+      const sectionChildren: AstBlock[] = [];
+      if (cleanedRest.length > 0 && hasNonEmptyContent(cleanedRest)) {
+        sectionChildren.push({ kind: 'paragraph', children: cleanedRest });
+      }
+      sectionChildren.push(...tailBlocks);
+      return {
+        kind: 'section',
+        role,
+        children: recognizeReverseFromGfm(sectionChildren),
+      };
+    }
+  }
+  return null;
+}
+
+function hasNonEmptyContent(inlines: readonly AstInline[]): boolean {
+  for (const n of inlines) {
+    if (n.kind === 'text' && n.value.trim() !== '') return true;
+    if (n.kind !== 'text') return true;
+  }
+  return false;
+}
+
+/** HTML inline element を PKC AST node に逆認識。 */
+function recognizeReverseInlines(inlines: readonly AstInline[]): AstInline[] {
+  const out: AstInline[] = [];
+  for (const node of inlines) {
+    if (node.kind === 'text') {
+      const split = scanHtmlInlineForReverse(node.value);
+      out.push(...split);
+    } else if (hasInlineChildren(node)) {
+      const decomposed = recognizeReverseInlines(node.children);
+      out.push({ ...node, children: decomposed } as AstInline);
+    } else {
+      out.push(node);
+    }
+  }
+  return mergeAdjacentText(out);
+}
+
+/**
+ * Text 内に埋まった HTML inline tag を PKC AST node に逆認識。
+ *
+ *   `<mark>X</mark>` → AstMark
+ *   `<sup>X</sup>` → AstSup
+ *   `<sub>X</sub>` → AstSub
+ *   `<ruby>base<rt>rt</rt></ruby>` → AstRuby
+ *   `<span class="lead">X</span>` → AstSpan(class=lead)
+ *   `<span class="pkc-em-dot">X</span>` → AstEmDot
+ */
+function scanHtmlInlineForReverse(text: string): AstInline[] {
+  const out: AstInline[] = [];
+  let i = 0;
+  let buf = '';
+  const flush = (): void => {
+    if (buf !== '') {
+      out.push({ kind: 'text', value: buf });
+      buf = '';
+    }
+  };
+  while (i < text.length) {
+    const slice = text.slice(i);
+    // <ruby>...<rt>...</rt></ruby>
+    let m = /^<ruby>([\s\S]*?)<rt>([\s\S]*?)<\/rt><\/ruby>/.exec(slice);
+    if (m) {
+      flush();
+      out.push({ kind: 'ruby', base: m[1]!, rt: m[2]! });
+      i += m[0].length;
+      continue;
+    }
+    // <mark>X</mark>
+    m = /^<mark>([\s\S]*?)<\/mark>/.exec(slice);
+    if (m) {
+      flush();
+      const inner = scanHtmlInlineForReverse(m[1]!);
+      out.push({ kind: 'mark', children: inner });
+      i += m[0].length;
+      continue;
+    }
+    // <sup>X</sup>
+    m = /^<sup>([\s\S]*?)<\/sup>/.exec(slice);
+    if (m) {
+      flush();
+      const inner = scanHtmlInlineForReverse(m[1]!);
+      out.push({ kind: 'sup', children: inner });
+      i += m[0].length;
+      continue;
+    }
+    // <sub>X</sub>
+    m = /^<sub>([\s\S]*?)<\/sub>/.exec(slice);
+    if (m) {
+      flush();
+      const inner = scanHtmlInlineForReverse(m[1]!);
+      out.push({ kind: 'sub', children: inner });
+      i += m[0].length;
+      continue;
+    }
+    // <span class="X">Y</span>(class=pkc-em-dot は AstEmDot へ、他は AstSpan)
+    m = /^<span\s+class="([^"]+)">([\s\S]*?)<\/span>/.exec(slice);
+    if (m) {
+      flush();
+      const cls = m[1]!;
+      const inner = scanHtmlInlineForReverse(m[2]!);
+      if (cls.split(/\s+/).includes('pkc-em-dot')) {
+        out.push({ kind: 'em-dot', children: inner });
+      } else {
+        out.push({
+          kind: 'span',
+          children: inner,
+          attrs: { classes: cls.split(/\s+/), kvs: {} },
+        });
+      }
+      i += m[0].length;
+      continue;
+    }
+    buf += text[i];
+    i++;
+  }
+  flush();
+  return out;
 }
 
 // ── Test exports ──────────────────────────────────────────

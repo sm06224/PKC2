@@ -498,20 +498,35 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
         const styleAttr = node.style && node.style !== 'dot' ? `[${node.style}]` : '';
         return `..${styleAttr}${inner}..`;
       }
-      // GFM:em-dot は強調点だが、近似として emphasis に落とす
-      return `*${inner}*`;
+      // GFM:em-dot は強調点。HTML span `class="pkc-em-dot"` で意味を保持
+      // (reverse direction で AST に戻せる)。`*..*` 近似より lossless。
+      return `<span class="pkc-em-dot">${inner}</span>`;
     }
     case 'ruby':
       if (mode === 'pkc') return `{${node.base}|${node.rt}}`;
-      return `${node.base}<rt>${escapeText(node.rt)}</rt>`;
-    case 'sup':
-      return `<sup>${renderInlines(node.children, mode)}</sup>`;
-    case 'sub':
-      return `<sub>${renderInlines(node.children, mode)}</sub>`;
+      // GFM:正しい `<ruby>` HTML(`<rt>` 単独は invalid、`<ruby>` で wrap 必要)
+      return `<ruby>${escapeText(node.base)}<rt>${escapeText(node.rt)}</rt></ruby>`;
+    case 'sup': {
+      const inner = renderInlines(node.children, mode);
+      // PKC mode は formal inline `:sup:[X]`(spec PR-2B 認可形式)、
+      // GFM mode は HTML `<sup>` で reverse 認識可能形に。
+      if (mode === 'pkc') return `:sup:[${inner}]`;
+      return `<sup>${inner}</sup>`;
+    }
+    case 'sub': {
+      const inner = renderInlines(node.children, mode);
+      if (mode === 'pkc') return `:sub:[${inner}]`;
+      return `<sub>${inner}</sub>`;
+    }
     case 'span': {
       const inner = renderInlines(node.children, mode);
       if (mode === 'pkc' && node.attrs && hasAttrs(node.attrs)) {
         return `[${inner}]${formatAttrs(node.attrs)}`;
+      }
+      // GFM:class が付いていれば `<span class="X">` で reverse 可能に
+      if (mode === 'gfm' && node.attrs && node.attrs.classes.length > 0) {
+        const cls = node.attrs.classes.join(' ');
+        return `<span class="${cls}">${inner}</span>`;
       }
       return inner;
     }
