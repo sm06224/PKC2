@@ -2458,31 +2458,31 @@ function stripComments(source: string, lineMapIn?: number[]): {
       }
       continue;
     }
+    // PR-2JJ v2 hotfix(2026-05-13、CI smoke regression fix):
+    // `%%%` block comment marker は spec 上 **行頭 anchor 必須**(`docs/spec/
+    // markdown-dialect-for-ai-authors-v1.md` §checklist L-4「block comment
+    // `%%%` が単独行で開閉しているか」)。mid-line `%%%` を block boundary
+    // 扱いすると、heading 等で literal に `%%%` を書いた瞬間に後続 content
+    // が全部 comment 内扱いで消える致命バグ(transclusion smoke regression、
+    // user 報告:「## %% comment / %%% block comment」 heading が原因で
+    // 終端 / 起案者 / 本文末尾の 3 行が render に出ない症状)。
+    //
+    // 修正 contract:line が **`%%%` で始まる場合のみ** block marker と認識:
+    //   (a)`%%%`(余白のみ)                → open / close marker
+    //   (b)`%%%text%%%`(両端で挟まれた form)→ 単一行 block コメント(strip)
+    //   (c)`%%%text`(末尾 close 無し)      → open marker + 後続を pending に
+    //   (d)`text %%%`(行中の `%%%`)        → literal text として通す
+    //
+    // (a)〜(c)は trimmed line が `%%%` で始まることが必要条件。
+    const trimmedLine = line.replace(/^[ \t]+/, '');
+    const startsWithBlockMarker = trimmedLine.startsWith('%%%');
+    const isStandaloneBlockMarker = /^[ \t]*%%%[ \t]*$/.test(line);
     if (inBlockComment) {
-      const closeIdx = line.indexOf('%%%');
-      if (closeIdx < 0) continue; // 全行 comment 内
-      const remainder = line.slice(closeIdx + 3);
-      let result = pendingPrefix;
-      let working = remainder;
-      let reEntered = false;
-      for (;;) {
-        const openIdx = working.indexOf('%%%');
-        if (openIdx < 0) {
-          result += working;
-          break;
-        }
-        result += working.slice(0, openIdx);
-        const after = working.slice(openIdx + 3);
-        const nextClose = after.indexOf('%%%');
-        if (nextClose < 0) {
-          pendingPrefix = result;
-          reEntered = true;
-          break;
-        }
-        working = after.slice(nextClose + 3);
-      }
-      if (!reEntered) {
-        outLines.push(stripInline(result));
+      // 閉じは「行が `%%%` で終わる」または「単独 `%%%` line」のみ受理。
+      // mid-line `%%%` は閉じ marker として扱わない(open と対称)。
+      const trimmed = line.trimEnd();
+      if (trimmed.endsWith('%%%')) {
+        outLines.push(stripInline(pendingPrefix));
         outMap.push(pendingSrcIdx);
         pendingPrefix = '';
         pendingSrcIdx = -1;
@@ -2497,40 +2497,37 @@ function stripComments(source: string, lineMapIn?: number[]): {
       commentDirectiveBuffer.push({ line, srcIdx });
       continue;
     }
-    // `%%%` open / close 検出を line 内 scan
-    // PR-2X hotfix:inline backtick code `...` の中身は scan から exclude(mask)
-    const { masked: lineMasked, spans: lineSpans } = maskInlineCode(line);
-    if (!lineMasked.includes('%%%')) {
-      // inline code 内に `%%%` があっても block comment 開始ではない
-      outLines.push(unmaskInlineCode(stripInline(lineMasked), lineSpans));
-      outMap.push(srcIdx);
-      continue;
-    }
-    let result = '';
-    let working = lineMasked;
-    let entered = false;
-    for (;;) {
-      const openIdx = working.indexOf('%%%');
-      if (openIdx < 0) {
-        result += working;
-        break;
-      }
-      result += working.slice(0, openIdx);
-      const after = working.slice(openIdx + 3);
-      const closeIdx = after.indexOf('%%%');
-      if (closeIdx < 0) {
-        pendingPrefix = unmaskInlineCode(result, lineSpans);
+    if (startsWithBlockMarker) {
+      if (isStandaloneBlockMarker) {
+        // (a)単独 `%%%`:open marker
+        pendingPrefix = '';
         pendingSrcIdx = srcIdx;
         inBlockComment = true;
-        entered = true;
-        break;
+        continue;
       }
-      working = after.slice(closeIdx + 3);
+      // 行が `%%%` で始まり、何らかの content を持つ(`%%%text...`)。
+      // 末尾が `%%%` で終わるなら単一行 block コメント(b)、それ以外は
+      // open marker + body 開始(c)。
+      const innerAfterOpen = trimmedLine.slice(3); // %%% を除いた部分
+      if (innerAfterOpen.replace(/[ \t]+$/, '').endsWith('%%%')) {
+        // (b)単一行 `%%%text%%%`:literal strip(無視)、空行を 1 行 emit して
+        // 段落区切りを保持。outMap は元 line を指す。
+        outLines.push('');
+        outMap.push(srcIdx);
+        continue;
+      }
+      // (c)`%%%text` open marker:pendingPrefix は空(content は次行以降)。
+      pendingPrefix = '';
+      pendingSrcIdx = srcIdx;
+      inBlockComment = true;
+      continue;
     }
-    if (!entered) {
-      outLines.push(unmaskInlineCode(stripInline(result), lineSpans));
-      outMap.push(srcIdx);
-    }
+    // (d)`%%%` を含むが行頭から始まらない line(heading で literal mention
+    // 等)は literal として通す。inline backtick code の mask は維持
+    // (`%%` inline comment の strip は stripInline で行う)。
+    const { masked: lineMasked, spans: lineSpans } = maskInlineCode(line);
+    outLines.push(unmaskInlineCode(stripInline(lineMasked), lineSpans));
+    outMap.push(srcIdx);
   }
   // Unclosed `%%%` / `:::comment` at EOF:挽回処理。
   if (inBlockComment) {
