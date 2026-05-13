@@ -272,10 +272,9 @@ function stripPkcInlinesForGfm(text: string): string {
 function normalizePkcMarkersForPkcMode(text: string): string {
   // 連続する `:::` open / close が空行を挟まない場合に挟む(parse 後 markdown-it
   // が paragraph 結合する症状を避ける)
-  let s = text;
   // formal inline はそのままで OK、attrs hint も維持
   // hidden inline `%%` は visible content として残るので強制削除しない
-  return s;
+  return text;
 }
 
 function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
@@ -398,8 +397,18 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
         const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
         return `:::section{role=${block.role}}\n\n${inner}\n\n:::`;
       }
-      // GFM:section marker を剥がして中身だけ(role は失われる)
-      return block.children.map((b) => renderBlock(b, mode)).join('\n\n');
+      // GFM:section marker を剥がすだけだと role 情報が失われる(user 指摘
+      // 2026-05-13:「AST section ブロックは GFM markdown の各行引用に
+      // 解決しますか?」)。blockquote `> ` で各行を引用、role を太字 label
+      // として先頭に追加することで GFM consumer でも視覚的 callout を保持。
+      const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
+      const roleLabel = `**${capitalize(block.role)}:**`;
+      // blockquote 化:各行に `> ` を prefix、空行は `>` のみ
+      const quoted = (roleLabel + '\n\n' + inner)
+        .split('\n')
+        .map((l) => (l.length > 0 ? `> ${l}` : '>'))
+        .join('\n');
+      return quoted;
     }
     case 'if-block': {
       if (mode === 'pkc') {
@@ -436,6 +445,15 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
       return `<!-- unsupported block kind: ${node.kind} -->`;
     }
   }
+}
+
+/**
+ * 文字列を Title Case 化(`note` → `Note` / `warning` → `Warning`)。
+ * GFM mode の section role label に使う。
+ */
+function capitalize(s: string): string {
+  if (s.length === 0) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function renderInlines(

@@ -20,8 +20,9 @@ function blockKinds(blocks: readonly AstBlock[]): string[] {
 function findFirst<T extends AstBlock>(blocks: readonly AstBlock[], kind: T['kind']): T | undefined {
   for (const b of blocks) {
     if (b.kind === kind) return b as T;
-    if ('children' in b && Array.isArray((b as { children?: AstBlock[] }).children)) {
-      const found = findFirst((b as { children: AstBlock[] }).children, kind);
+    const childBlocks = (b as unknown as { children?: AstBlock[] }).children;
+    if (Array.isArray(childBlocks) && childBlocks.length > 0 && typeof childBlocks[0] === 'object') {
+      const found = findFirst(childBlocks as readonly AstBlock[], kind);
       if (found) return found;
     }
   }
@@ -32,8 +33,9 @@ function collectInlineKinds(inlines: readonly AstInline[]): string[] {
   const out: string[] = [];
   for (const n of inlines) {
     out.push(n.kind);
-    if ('children' in n && Array.isArray((n as { children?: AstInline[] }).children)) {
-      out.push(...collectInlineKinds((n as { children: AstInline[] }).children));
+    const childInlines = (n as unknown as { children?: AstInline[] }).children;
+    if (Array.isArray(childInlines)) {
+      out.push(...collectInlineKinds(childInlines));
     }
   }
   return out;
@@ -149,69 +151,69 @@ describe('decompose-pkc:Inline 拡張の AST decomposition', () => {
     const ast = parseMarkdownToAst(`段落に :strong:[強調] テキスト。`);
     const para = ast.children[0]!;
     expect(para.kind).toBe('paragraph');
-    const kinds = collectInlineKinds((para as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((para as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('strong');
   });
 
   it(':emphasis:[X] → AstEmphasis', () => {
     const ast = parseMarkdownToAst(`:emphasis:[斜体] です。`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('emphasis');
   });
 
   it(':code:[X] → AstInlineCode', () => {
     const ast = parseMarkdownToAst(`:code:[const x = 1]`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('inline-code');
   });
 
   it(':strike:[X] → AstStrike', () => {
     const ast = parseMarkdownToAst(`:strike:[削除]`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('strike');
   });
 
   it(':lead:[X] → AstSpan(class=lead)', () => {
     const ast = parseMarkdownToAst(`:lead:[リード文]`);
-    const inlines = (ast.children[0]! as { children: AstInline[] }).children;
+    const inlines = (ast.children[0]! as unknown as { children: AstInline[] }).children;
     const span = inlines.find((n) => n.kind === 'span');
     expect(span).toBeDefined();
-    expect((span as { attrs: { classes: string[] } }).attrs.classes).toContain('lead');
+    expect((span as unknown as { attrs: { classes: readonly string[] } }).attrs.classes).toContain('lead');
   });
 
   it('==text== → AstMark', () => {
     const ast = parseMarkdownToAst(`これは ==重要== です。`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('mark');
   });
 
   it('..text.. → AstEmDot', () => {
     const ast = parseMarkdownToAst(`..em-dot..`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('em-dot');
   });
 
   it('^^text^^ → AstEmDot(alt form)', () => {
     const ast = parseMarkdownToAst(`^^新形圏点^^`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('em-dot');
   });
 
   it('[[em:X]] → AstEmDot(formal form)', () => {
     const ast = parseMarkdownToAst(`[[em:formal em-dot]]`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('em-dot');
   });
 
   it('[[ruby:base|rt]] → AstRuby', () => {
     const ast = parseMarkdownToAst(`[[ruby:漢字|かんじ]]`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('ruby');
   });
 
   it('%%hidden%% → AstCommentInline(visibility=hidden)', () => {
     const ast = parseMarkdownToAst(`通常 %%hidden text%% 続き。`);
-    const inlines = (ast.children[0]! as { children: AstInline[] }).children;
+    const inlines = (ast.children[0]! as unknown as { children: AstInline[] }).children;
     const cmt = inlines.find((n) => n.kind === 'comment-inline');
     expect(cmt).toBeDefined();
     expect((cmt as { visibility: string }).visibility).toBe('hidden');
@@ -219,7 +221,7 @@ describe('decompose-pkc:Inline 拡張の AST decomposition', () => {
 
   it('[@id] → AstAutoRef', () => {
     const ast = parseMarkdownToAst(`参照 [@fig-1] を見よ。`);
-    const kinds = collectInlineKinds((ast.children[0]! as { children: AstInline[] }).children);
+    const kinds = collectInlineKinds((ast.children[0]! as unknown as { children: AstInline[] }).children);
     expect(kinds).toContain('auto-ref');
   });
 
@@ -231,7 +233,7 @@ vars:
 
 {{vars.site}} 計画
 `);
-    const inlines = (ast.children[0]! as { children: AstInline[] }).children;
+    const inlines = (ast.children[0]! as unknown as { children: AstInline[] }).children;
     const text = inlines.map((n) => (n.kind === 'text' ? n.value : '')).join('');
     expect(text).toContain('石狩');
     // No AstVar should remain (defined → expanded)
@@ -241,7 +243,7 @@ vars:
 
   it('{{vars.x}} が未定義 → AstVar(literal は維持)', () => {
     const ast = parseMarkdownToAst(`{{vars.unknown}}`);
-    const inlines = (ast.children[0]! as { children: AstInline[] }).children;
+    const inlines = (ast.children[0]! as unknown as { children: AstInline[] }).children;
     const kinds = collectInlineKinds(inlines);
     expect(kinds).toContain('var');
   });
