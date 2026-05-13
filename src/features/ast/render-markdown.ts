@@ -382,10 +382,22 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
           .map((b) => renderBlock(b, mode))
           .join('\n\n');
         const cap = block.caption ? `\n\n${renderInlines(block.caption, mode)}` : '';
-        // PR-2JJ v2 final hotfix(2026-05-13):marker 前後に **必ず blank line**
-        // を入れて、markdown-it が close `:::` を直前 paragraph と結合しないように。
-        // これで round-trip 反復が iter 2 以降 idempotent になる。
-        return `:::figure{kind=${block.figureKind}}\n\n${inner}${cap}\n\n:::`;
+        // PR-2JJ v2 hotfix(2026-05-13、user fixture report):attrs.id /
+        // attrs.kvs を round-trip 保持。`:::figure{kind=figure}` だけだと
+        // `id="topology-overview"` 等の attrs 情報が失われる。
+        const attrParts: string[] = [`kind=${block.figureKind}`];
+        if (block.attrs) {
+          if (block.attrs.id) attrParts.push(`id="${block.attrs.id}"`);
+          for (const cls of block.attrs.classes) attrParts.push(`.${cls}`);
+          for (const [k, v] of Object.entries(block.attrs.kvs)) {
+            if (k === 'kind') continue; // already emitted
+            if (v === true) attrParts.push(k);
+            else if (v !== false) attrParts.push(`${k}=${JSON.stringify(v)}`);
+          }
+        }
+        // marker 前後に **必ず blank line** を入れて、markdown-it が
+        // close `:::` を直前 paragraph と結合しないように。
+        return `:::figure{${attrParts.join(' ')}}\n\n${inner}${cap}\n\n:::`;
       }
       // GFM:figure marker を剥がして中身 + caption を plain に
       const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
@@ -521,6 +533,17 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
     case 'span': {
       const inner = renderInlines(node.children, mode);
       if (mode === 'pkc' && node.attrs && hasAttrs(node.attrs)) {
+        // PR-2JJ v2 hotfix(2026-05-13):AstSpan(class=lead) や (class=caption)
+        // は formal inline 形(`:lead:[X]` / `:caption:[X]`)で round-trip 安定。
+        // decompose-pkc が同じ formal 形に戻すので idempotent。
+        const cls = node.attrs.classes;
+        if (cls.includes('lead') && cls.length === 1) return `:lead:[${inner}]`;
+        if (cls.includes('caption') && cls.length === 1) return `:caption:[${inner}]`;
+        if (cls.includes('pkc-em-dot') && cls.length === 1) {
+          // pkc-em-dot は AstEmDot として後段で生成されるが、念のため。
+          return `..${inner}..`;
+        }
+        // 一般 span:`[X]{attrs}` 形
         return `[${inner}]${formatAttrs(node.attrs)}`;
       }
       // GFM:class が付いていれば `<span class="X">` で reverse 可能に
@@ -551,6 +574,9 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
     case 'image':
       return `![${escapeText(node.alt)}](${node.src})`;
     case 'auto-ref':
+      // PR-2JJ v2 hotfix(2026-05-13):PKC mode は formal form `[@id]`、
+      // GFM mode は plain `@id`(GFM consumer は brackets 解釈しないので)。
+      if (mode === 'pkc') return `[@${node.id}]`;
       return `@${node.id}`;
     case 'var':
       if (mode === 'pkc') return `{{${node.path}}}`;

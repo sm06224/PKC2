@@ -1,0 +1,259 @@
+# PKC AST as Commutative IR — 双方向可換変換器の中央集権設計
+
+**Status**: ✅ canonical(2026-05-13 PR-2JJ v2 で着地)
+**Owner**: PKC2 reform-2026-05 Phase 3 後継、可換世界の中央集権 IR 設計
+**Audience**: 他 AI(ChatGPT / Gemini / 等)による設計レビュー、外部 tool 連携者
+
+## 1. 設計思想
+
+PKC2 の AST(`AstDocument`)を **可換世界の中央集権 IR**(Intermediate Representation)と位置付ける。各 format(MD-PKC / MD-GFM / HTML / Word / PDF / PPT / LaTeX / Pandoc JSON 等)への双方向 mapping は **すべて AST を介して** 定義する。
+
+```
+                    ┌──────────────────┐
+                    │   AstDocument    │
+                    │  (中央集権 IR)   │
+                    └──────────────────┘
+                    ↗ ↑    ↓ ↘
+                   /  |    |  \
+        parseMD──/   |    |   \──renderMD(pkc|gfm)
+                /     |    |     \
+      MD-PKC ───      |    |      ─── MD-GFM
+                      |    |
+        parseHTML─────|    |─────renderHtml
+                      |    |
+        Pandoc←-------|    |--→Pandoc-JSON
+                      |    |
+        (future)      |    |     (future)
+        Word←─────────|    |─────→Word
+        PPT←──────────|    |─────→PPT
+        LaTeX←────────|    |─────→LaTeX
+        PDF←──────────|    |─────→PDF
+```
+
+各 format との **双方向 mapping**(forward = AST → target、reverse = target → AST)を定義する。これにより:
+
+1. 任意 format で書いた document が AST にいったん上がる → 別 format に下りる
+2. 共通 IR を経由するので **N format 対応に N² ペアコンバータは不要**(代わりに N forward + N reverse 計 2N 個)
+3. 各 format で「直接表現できない」概念は **可換に持ち込める表現に変換**(例:`:::section{role=warning}` ↔ GFM blockquote `> **Warning:**`)
+4. AST を中央 IR にすることで、format 横断の lossless 変換が成立する範囲を最大化
+
+## 2. AstDocument の構造
+
+詳細は `src/core/ast/index.ts` を **truth source** として参照。本 doc では概要のみ。
+
+### 2.1 Document root
+
+```ts
+interface AstDocument {
+  kind: 'document';
+  writing?: 'horizontal' | 'vertical';
+  direction?: 'ltr' | 'rtl';
+  align?: 'left' | 'right' | 'center' | 'top' | 'bottom';
+  notation?: string;            // 例:'pkc-markdown-1.0'
+  vars?: Readonly<Record<string, string>>;  // frontmatter から抽出
+  children: readonly AstBlock[];
+  warnings?: readonly PkcWarning[];
+}
+```
+
+### 2.2 Inline node kinds(19 種)
+
+```
+text / strong / emphasis / strike / inline-code / mark / em-dot / ruby /
+sup / sub / span / link / card / embed / image / auto-ref / var /
+math-inline / comment-inline
+```
+
+### 2.3 Block node kinds(14 種)
+
+```
+heading / paragraph / quote / list / table / code-block / code-render /
+break / figure / section / if-block / comment-block / blank / math-block
+```
+
+## 3. 双方向 mapping table(MD-PKC ↔ MD-GFM)
+
+**Forward(PKC → GFM 互換表現)**:
+
+| PKC AST node | GFM 表現 | Forward 設計意図 |
+|---|---|---|
+| `AstSection(role=R)` | `> **R:**\n> ...` blockquote | GFM 普遍の callout、role を太字 label として visible 保持 |
+| `AstCommentBlock` | (削除) | コメントは consumer に出さない |
+| `AstIfBlock(format=pdf)` | (削除) | GFM target で PDF 限定 content を含めない |
+| `AstIfBlock(format=html/web)` | passthrough(中身展開) | format 互換 content |
+| `AstFigure` | image + italic caption | GFM に figure はないので近似 |
+| `AstMark` | `<mark>X</mark>` | GFM 認可 HTML inline |
+| `AstEmDot` | `<span class="pkc-em-dot">X</span>` | reverse 認識 hint 兼用 |
+| `AstRuby` | `<ruby>base<rt>rt</rt></ruby>` | 正規 HTML(GFM 認可) |
+| `AstSup` / `AstSub` | `<sup>X</sup>` / `<sub>X</sub>` | GFM 認可 HTML |
+| `AstSpan(class)` | `<span class="X">Y</span>` | class 維持で reverse 可能 |
+| `AstStrong/Emphasis/Strike/InlineCode` | `**X**` / `*X*` / `~~X~~` / `` `X` `` | commonmark 標準 |
+| `AstVar(path)` 定義済 | 値(展開済) | document.vars から expand |
+| `AstVar(path)` 未定義 | `{{vars.path}}` literal | consumer 側で展開できない場合は plain |
+| `AstAutoRef(id)` | `@id` plain | GFM 標準 mention 風 fallback |
+
+**Reverse(GFM → PKC AST node)**:
+
+| GFM 表現 | PKC AST node | Reverse 設計意図 |
+|---|---|---|
+| `> **Role:**` blockquote 先頭 | `AstSection(role=Role.toLowerCase())` | callout 表現を AST 構造として復元 |
+| `> [!NOTE]` GitHub Alert(5 種) | `AstSection(role=note/tip/important/warning/caution)` | GitHub 標準 alert 形式を取り込む |
+| `<mark>X</mark>` HTML | `AstMark` | |
+| `<sup>X</sup>` / `<sub>X</sub>` | `AstSup` / `AstSub` | |
+| `<ruby>base<rt>rt</rt></ruby>` | `AstRuby` | |
+| `<span class="lead">X</span>` | `AstSpan(class=lead)` | class hint で意味復元 |
+| `<span class="pkc-em-dot">X</span>` | `AstEmDot` | 特定 class を専用 node に昇格 |
+
+### 3.1 可換性 contract
+
+- **PKC → GFM → PKC** の往復で **semantic 等価な AST** に戻る
+- **5 cycle 反復で stable**(destructive change なし)
+- 失われる情報がある場合は **明示的に**(例:`:::section{role=warning}` の role 名は GFM blockquote の太字 label として復元できるが、`:::if{format=pdf}` 内容は GFM に出ない=明示的 drop)
+
+### 3.2 Test 根拠
+
+- `tests/features/ast/bidirectional-commutativity.test.ts`(22 cases)— forward 9 + reverse 8 + round-trip 4 + 他 format 土台 1
+- `tests/features/ast/pkc-extensions-full-coverage.test.ts`(53 cases)— 全 21 PKC 拡張 × 2 mode × 5 反復 stability
+- `tests/features/ast/decompose-pkc.test.ts`(23 cases)— AST decomposition の構造正確性
+- `tests/features/ast/user-fixture-roundtrip.test.ts`(20 cases)— 実機 fixture(石狩変電所)で 5 反復 stable
+
+## 4. parser pipeline
+
+```
+text(markdown 文字列)
+  ↓
+parseMarkdownToAst(text)
+  ├─ extractFrontmatter:`---\n...\n---\n` を YAML mini parse、vars 抽出
+  ├─ markdown-it.parse(body):commonmark + GFM core tokens
+  └─ walkBlocks(tokens):Token → AstBlock[] 構築
+  ↓
+decomposePkcExtensions(ast)
+  ├─ Phase 1:PKC formal 形(`:::role{...}` / `:role:[X]` / `==X==` / 等 21 種)を AST node に分解
+  │   ├─ block:`:::section/comment/figure/if/quote/paragraph` + `%%%` を opener/closer ペア検出
+  │   └─ inline:text node value を scanInlineMarkers で walk
+  │
+  └─ Phase 2:Reverse 認識(GFM 由来表現を PKC AST node に逆復元)
+      ├─ block:`> **Role:**` blockquote / `> [!NOTE]` GitHub Alert → AstSection
+      └─ inline:HTML inline(`<mark>` `<sup>` `<ruby>` `<span class>`)→ 対応 AST node
+  ↓
+canonicalize(ast)
+  ├─ link href normalize / inline-code value trim / 空 text 除去 / 連続 text merge
+  └─ idempotent contract(canonicalize(canonicalize(x)) === canonicalize(x))
+  ↓
+AstDocument(可換 IR)
+```
+
+## 5. render pipeline
+
+```
+AstDocument
+  ↓
+renderAstToMarkdown(ast, { mode: 'gfm' | 'pkc' })
+  ├─ block walker(switch on kind)
+  ├─ inline walker(switch on kind)
+  ├─ post-process bridge(残存 PKC marker の safety net):
+  │   ├─ expandVarsInOutput
+  │   ├─ stripPkcBlocksForGfm(GFM mode のみ)
+  │   ├─ stripPkcInlinesForGfm(GFM mode のみ)
+  │   └─ normalizePkcMarkersForPkcMode(PKC mode のみ)
+  └─ 連続空行を 2 連続まで折り畳む
+  ↓
+出力 markdown text
+```
+
+別経路:
+- `renderAstToHtml(ast)` → HTML 文字列
+- `astToPandocNative(ast)` → Pandoc Native JSON
+- 将来:`renderToWord(ast)` / `renderToPpt(ast)` / `renderToLatex(ast)` / `renderToPdf(ast)`
+
+## 6. window.PKC.ast 公開 API(v1.1.0)
+
+`docs/spec/public-ast-api-for-ai.md` を canonical 参照。本 doc では概要のみ。
+
+```ts
+window.PKC.ast.parseMarkdown(text, opts?): AstDocument
+window.PKC.ast.canonicalize(ast): AstDocument
+window.PKC.ast.renderHtml(ast, opts?): string
+window.PKC.ast.renderMarkdown(ast, opts?): string  // mode: 'gfm' | 'pkc'
+window.PKC.ast.toPandocJson(ast): object  // Pandoc Native JSON
+window.PKC.ast.markdownToPandoc(text, opts?): object
+window.PKC.ast.version: '1.1.0'
+```
+
+DevTools console / iframe / postMessage / 他 AI から呼べる。
+
+## 7. 他 format への展開ロードマップ
+
+| Target | Forward(AST → target) | Reverse(target → AST) | Phase |
+|---|---|---|---|
+| **HTML** | ✅ `renderAstToHtml` | future: HTML parser + ast-decompose | Phase 3(forward 完了) |
+| **Pandoc Native JSON** | ✅ `astToPandocNative` | future: Pandoc → AST 逆 mapping | Phase 3(forward 完了) |
+| **MD-PKC ↔ MD-GFM** | ✅ 本 commit 完了 | ✅ 本 commit 完了 | **本 PR で双方向達成** |
+| **Word(docx)** | Pandoc 中継(現)/ 直接 docx.js | future: docx → AST | Phase 4 |
+| **PPT(pptx)** | Pandoc 中継 | future: unzip + parse | Phase 4 |
+| **PDF** | print dialog(browser native)/ typst | future: PDF text scan → AST | Phase 4 |
+| **LaTeX** | Pandoc 中継 | future: latex parser | Phase 5 |
+| **EPUB** | Pandoc 中継 | future: epub unpack → HTML → AST | Phase 5 |
+| **Anki cards** | future: 専用 lowering | future: Anki text format → AST | Phase 6 |
+| **Org-mode** | Pandoc 中継 | future: org parser | Phase 6 |
+
+各 target で「可換に持ち込めるものは AST 経由」、独自表現が必要な部分のみ target 固有 lowering を入れる方針。
+
+## 8. 設計原則
+
+### 8.1 中央集権 IR としての不変条件
+
+1. **AST は format-agnostic**:特定 format の用語(HTML tag 名 / Word OOXML 用語 / etc.)を AST node 名に持ち込まない。例外:`code-block` / `code-render` は markdown-it 由来だが widespread な用語
+2. **AST は lossless**:可能な限り source representation の意味を保持。視覚 hint(`:spacing:{size=N}`)は AST node に変換、render 段階で各 format の表現に lower
+3. **canonicalize は idempotent**:`canonicalize(canonicalize(x)) === canonicalize(x)`
+4. **双方向 mapping は明示**:forward(AST → target)と reverse(target → AST)を対称的に定義、片方が lossy なら他方も同じ semantic で lossy
+
+### 8.2 可換性の現実主義
+
+完全な双方向 lossless 可換は **多くの場合で不可能**。本設計は:
+- **構造を保持できる範囲で AST 経由 mapping**(`:::section` ↔ blockquote with label)
+- **不可能な変換は明示的に drop / fallback**(`:::if{format=pdf}` は GFM target で drop、復元しない)
+- **5 cycle 反復で stable** を最低要件(2 cycle 目以降同一 output、destructive change なし)
+
+### 8.3 他 AI / 外部 tool への露出
+
+`window.PKC.ast` 経由で 6 関数を公開。他 AI(ChatGPT / Claude / Gemini)が:
+- DevTools console で `PKC.ast.parseMarkdown(...)` 呼んで AST を受け取る
+- iframe / postMessage で AST を交換
+- Pandoc 経由で docx / pptx / pdf / latex に展開
+
+## 9. CHANGELOG / 着地履歴
+
+- **PR-2Y(#419、2026-05-12)**:`parseMarkdownToAst` 着地、commonmark + GFM core 完全 cover
+- **PR-2Z(#420)**:`renderAstToHtml` + 30 fixture equivalence test
+- **PR-2AA(#421)**:IR migration scaffolding(Tier 0 flag `markdown.use_ir`)
+- **PR-2BB(#422)**:`canonicalize` + `astToPandocNative`
+- **PR-2GG(#427)**:`window.PKC.ast` 公開 API 着地、v1.0.0
+- **PR-2JJ v2(本 PR、2026-05-13)**:
+  - `decomposePkcExtensions` 着地:PKC 拡張 21 種を AST node に **真に decompose**
+  - `renderAstToMarkdown(ast, { mode: 'gfm' | 'pkc' })` 着地、`window.PKC.ast.renderMarkdown` v1.1.0
+  - PKC ↔ GFM 双方向可換変換器(forward + reverse 完備)
+  - 22 + 53 + 23 + 20 = 118 unit tests で fix
+
+## 10. 参考 doc
+
+- [`src/core/ast/index.ts`](../../src/core/ast/index.ts) — AST type 定義(truth source)
+- [`docs/spec/public-ast-api-for-ai.md`](./public-ast-api-for-ai.md) — `window.PKC.ast` API surface
+- [`docs/spec/markdown-dialect-for-ai-authors-v3.md`](./markdown-dialect-for-ai-authors-v3.md) — PKC MD spec(AI 向け規約書)
+- [`docs/development/notation-redesign-2026-05/`](../development/notation-redesign-2026-05/) — reform-2026-05 設計シリーズ
+- [`docs/development/ir-migration-plan-2026-05.md`](../development/ir-migration-plan-2026-05.md) — IR migration plan
+- [`docs/development/reform-2026-05-phase3-wave-retrospective.md`](../development/reform-2026-05-phase3-wave-retrospective.md) — Phase 3 wave 反省
+
+## 11. 他 AI へのレビュー依頼ポイント
+
+本 doc を ChatGPT / Gemini 等に渡すとき、以下に焦点をあててほしい:
+
+1. **AST 型の completeness**:現 19 inline + 14 block で markdown / HTML / Word / PDF / PPT / LaTeX を表現できるか? 不足 node kind はあるか?(例:footnote / definition list / abbr)
+2. **双方向 mapping の lossless 性**:現 PKC ↔ GFM table で意味を失う場面があれば指摘
+3. **他 format 拡張時の design pattern**:Word / PPT / LaTeX で AST 経由 mapping が困難な構造は? 専用 lowering が必要な部分はどこか?
+4. **canonical form の選び方**:simple form(`==X==`)と formal form(`:strong:[X]`)が併存するとき、AST canonical はどちらを source of truth とすべきか?
+5. **vars / メタプログラミング**:`{{vars.x}}` は parse 時に展開すべきか、render 時に展開すべきか? 双方向 mapping への影響は?
+
+---
+
+**meta**: 本 doc は user direction 2026-05-13「スペック文書はどこ? 他の AI にも設計を確認してもらうから出して、一番筋のいい、努力的可換の究極を作り出す気概で作っていきましょう」を受けて起こしたもの。「努力的可換の究極」を目指す設計を他 AI からレビューしてもらうための spec として明示的に書いた。
