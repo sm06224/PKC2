@@ -2284,12 +2284,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // SVG). We resolve the bytes fresh from container.assets at
         // click time — no cached blob URL, nothing escapes the current
         // dispatch cycle.
+        //
+        // PR-2JJ v2 hotfix(2026-05-13、user 報告「アプリランチャーで起動
+        // したアプリが別タブで開く」):`'_blank'` だけだと多くの browser
+        // が **別タブ** で開く。`popup=yes` + 具体的な width / height を
+        // features に指定すると browser に「別 window」として開く hint を
+        // 出せる(Chromium / Firefox / Edge は通常 popup window 化、
+        // Safari は user 設定次第)。これにより App Launcher tile click と
+        // 既存 「🌐 Open in New Window」button の両方が別窓化される。
         if (!lid) break;
         const resolved = resolveAttachmentData(lid, dispatcher);
         if (!resolved) break;
         if (classifyPreviewType(resolved.mime) !== 'html') break;
         const htmlString = decodeBase64ToText(resolved.data);
-        const win = window.open('', '_blank');
+        const features = 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes';
+        const win = window.open('', '_blank', features);
         if (win) {
           win.document.open();
           win.document.write(htmlString);
@@ -8585,13 +8594,20 @@ function populatePreviewElement(
   }
 }
 
+// PR-2JJ v2 hotfix(2026-05-13、user 報告「別タブではなく別窓で開く」):
+// `'_blank'` だけだと多くの browser で別タブ動作になる。`popup=yes` +
+// 具体的 width / height を指定すると **別 window** として開く hint を出せる。
+// 既存 noopener 指定は別 features 引数の concat で維持。
+const POPUP_WINDOW_FEATURES = 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes';
+const POPUP_WINDOW_FEATURES_NOOPENER = `${POPUP_WINDOW_FEATURES},noopener`;
+
 function createOpenButton(blobUrl: string, name: string, label: string): HTMLElement {
   const btn = document.createElement('button');
   btn.className = 'pkc-btn pkc-attachment-open-btn';
   btn.textContent = label;
   btn.setAttribute('title', `Open ${name} in a new browser window`);
   btn.addEventListener('click', () => {
-    window.open(blobUrl, '_blank', 'noopener');
+    window.open(blobUrl, '_blank', POPUP_WINDOW_FEATURES_NOOPENER);
   });
   return btn;
 }
@@ -8607,7 +8623,9 @@ function createHtmlOpenButton(htmlString: string, name: string): HTMLElement {
   btn.textContent = '🌐 Open HTML in New Window';
   btn.setAttribute('title', `Open ${name} in a new browser window`);
   btn.addEventListener('click', () => {
-    const win = window.open('', '_blank');
+    // noopener は document.write 経路では使えない(parent の write 権限が
+    // 失われるため、popup 機能 hint のみで別窓化)。
+    const win = window.open('', '_blank', POPUP_WINDOW_FEATURES);
     if (win) {
       win.document.open();
       win.document.write(htmlString);
@@ -8629,7 +8647,7 @@ function createLazyOpenButton(resolved: { data: string; mime: string; name: stri
   btn.setAttribute('title', `Open ${resolved.name} in a new browser window`);
   btn.addEventListener('click', () => {
     const url = createBlobUrl(resolved);
-    window.open(url, '_blank', 'noopener');
+    window.open(url, '_blank', POPUP_WINDOW_FEATURES_NOOPENER);
     setTimeout(() => URL.revokeObjectURL(url), 500);
   });
   return btn;

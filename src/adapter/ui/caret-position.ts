@@ -97,6 +97,31 @@ export function getCaretViewportCoords(
   ms.height = 'auto';
   ms.overflow = 'hidden';
 
+  // PR-2JJ v2 hotfix(2026-05-13、user 報告「長大マークダウンで caret
+  // overlay がズレていく」):textarea が縦 scrollbar を出している場合、
+  // content area の幅が scrollbar gutter 分(~15-17px、OS / browser 依存)
+  // 狭くなる。mirror div には scrollbar が出ないので、何も補正しないと
+  // **wrap 位置が 1 行ずれて caret position の累積誤差** を生む。
+  //
+  // `offsetWidth - clientWidth - borderLeft - borderRight` で実測 scrollbar
+  // gutter を算出し、mirror の `width` を同量だけ縮めて textarea と同じ
+  // 折り返し挙動にする。
+  //
+  // 横 scrollbar の場合(`wordWrap` を切ってる稀な textarea)は本ロジックで
+  // も補正されない(content area の幅は変わらないため)。
+  const borderLeftWidth = parseFloat(computed.borderLeftWidth) || 0;
+  const borderRightWidth = parseFloat(computed.borderRightWidth) || 0;
+  const verticalScrollbarGutter = Math.max(
+    0,
+    textarea.offsetWidth - textarea.clientWidth - borderLeftWidth - borderRightWidth,
+  );
+  if (verticalScrollbarGutter > 0) {
+    const mirrorWidthPx = parseFloat(ms.width) || 0;
+    if (mirrorWidthPx > 0) {
+      ms.width = `${mirrorWidthPx - verticalScrollbarGutter}px`;
+    }
+  }
+
   const valueBefore = textarea.value.slice(0, position);
   // Replace the trailing newline with newline + space so an
   // end-of-text caret has measurable geometry (otherwise the marker
