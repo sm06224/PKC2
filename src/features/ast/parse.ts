@@ -21,6 +21,7 @@
  */
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
+import { decomposePkcExtensions } from './decompose-pkc';
 import type {
   AstAttrs,
   AstBlock,
@@ -437,5 +438,13 @@ export function parseMarkdownToAst(text: string, opts: ParseOptions = {}): AstDo
   if (globals.align) doc.align = globals.align;
   if (globals.notation) doc.notation = globals.notation;
   if (Object.keys(globals.vars).length > 0) doc.vars = globals.vars;
-  return doc;
+  // PR-2JJ v2 final(2026-05-13、user direction「実装できるまでを終わりとします」):
+  // commonmark + GFM core parse の後に、PKC 拡張(`:::section` / `:::comment` /
+  // `:::figure` / `:::if` / `:::quote` / `:role:[X]` 系 formal inline / `==X==` /
+  // `..X..` / `^^X^^` / `[[em:X]]` / `[[ruby:base|rt]]` / `[@id]` / `%%X%%` /
+  // `{{vars.x}}`)を **真に AST node に decompose**。
+  //
+  // bridge layer(render-markdown.ts 末尾の regex 置換)を「symptom 緩和」と
+  // 表現していた件の正解。AST 自体が PKC を理解する世界。
+  return decomposePkcExtensions(doc);
 }

@@ -27,6 +27,7 @@ import type {
   AstListItem,
   AstText,
 } from '@core/ast/index';
+import { decomposePkcExtensions } from './decompose-pkc';
 
 function canonicalizeInline(node: AstInline): AstInline {
   switch (node.kind) {
@@ -133,12 +134,16 @@ function canonicalizeListItem(item: AstListItem): AstListItem {
  *
  * idempotent contract:`canonicalize(canonicalize(x))` の deep equal。
  *
- * 本 PR では link href / inline-code value / paragraph children / list items
- * の正規化を実装。complete simple→formal alias 写像は future wave。
+ * 順序:
+ *   1. `decomposePkcExtensions`(PR-2JJ v2 final、2026-05-13):AST 内の
+ *      raw 文字列に残った PKC 拡張を **真に AST node に分解**(可換性確保)
+ *   2. 基本正規化:link href / inline-code value / paragraph children /
+ *      list items の正規化
  */
 export function canonicalize(ast: AstDocument): AstDocument {
+  const decomposed = decomposePkcExtensions(ast);
   return {
-    ...ast,
-    children: canonicalizeBlockChildren(ast.children),
+    ...decomposed,
+    children: canonicalizeBlockChildren(decomposed.children),
   };
 }

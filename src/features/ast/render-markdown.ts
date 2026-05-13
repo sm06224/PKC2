@@ -382,8 +382,11 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
         const inner = block.children
           .map((b) => renderBlock(b, mode))
           .join('\n\n');
-        const cap = block.caption ? `\n${renderInlines(block.caption, mode)}` : '';
-        return `:::figure{kind=${block.figureKind}}\n${inner}${cap}\n:::`;
+        const cap = block.caption ? `\n\n${renderInlines(block.caption, mode)}` : '';
+        // PR-2JJ v2 final hotfix(2026-05-13):marker 前後に **必ず blank line**
+        // を入れて、markdown-it が close `:::` を直前 paragraph と結合しないように。
+        // これで round-trip 反復が iter 2 以降 idempotent になる。
+        return `:::figure{kind=${block.figureKind}}\n\n${inner}${cap}\n\n:::`;
       }
       // GFM:figure marker を剥がして中身 + caption を plain に
       const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
@@ -393,7 +396,7 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
     case 'section': {
       if (mode === 'pkc') {
         const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
-        return `:::${block.role}\n${inner}\n:::`;
+        return `:::section{role=${block.role}}\n\n${inner}\n\n:::`;
       }
       // GFM:section marker を剥がして中身だけ(role は失われる)
       return block.children.map((b) => renderBlock(b, mode)).join('\n\n');
@@ -401,15 +404,21 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
     case 'if-block': {
       if (mode === 'pkc') {
         const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
-        return `:::if{format=${block.format}}\n${inner}\n:::`;
+        return `:::if{format=${block.format}}\n\n${inner}\n\n:::`;
       }
-      // GFM:全 format を素通し(format フィルタは消失)
+      // PR-2JJ v2 final(2026-05-13、user direction「実装できるまでを終わり」):
+      // GFM mode の format フィルタを **AST node level** で実施。
+      // format=html / その他 web compatible は passthrough、format=pdf は drop。
+      // 真の AST decomposition が利いてる証拠の経路(以前は string regex で対応)。
+      if (block.format === 'pdf') return '';
       return block.children.map((b) => renderBlock(b, mode)).join('\n\n');
     }
     case 'comment-block': {
       // GFM:コメントは完全削除、PKC:`%%%`...`%%%` で復元
+      // marker 前後の blank line で markdown-it の paragraph 結合を防ぐ。
       if (mode === 'pkc') {
-        return '%%%\n' + block.source + (block.source.endsWith('\n') ? '' : '\n') + '%%%';
+        const src = block.source;
+        return '%%%\n\n' + src + (src.endsWith('\n') ? '\n' : '\n\n') + '%%%';
       }
       return '';
     }
