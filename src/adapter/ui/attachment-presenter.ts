@@ -23,6 +23,17 @@ export interface AttachmentBody {
   asset_key?: string;
   data?: string; // legacy: base64-encoded. new format: absent
   sandbox_allow?: string[]; // HTML sandbox permissions, e.g. ['allow-scripts', 'allow-forms']
+  /**
+   * PR-2JJ v2(2026-05-13、PR #432 stack):App Launcher opt-in flag。
+   * `true` のとき、center pane の `viewMode: 'launcher'` 画面に tile が並ぶ。
+   * HTML attachment(`mime: text/html` / SVG)以外は無視される。
+   */
+  registered_as_app?: boolean;
+  /**
+   * App tile に表示する icon(emoji 1 文字推奨、空 / 未指定なら default 🌐)。
+   * Phase 1 は emoji のみ対応、Phase 2 で image asset_key 対応予定。
+   */
+  app_icon?: string;
 }
 
 export function parseAttachmentBody(body: string): AttachmentBody {
@@ -37,6 +48,10 @@ export function parseAttachmentBody(body: string): AttachmentBody {
       sandbox_allow: Array.isArray(parsed.sandbox_allow)
         ? parsed.sandbox_allow.filter((v): v is string => typeof v === 'string')
         : undefined,
+      registered_as_app: typeof parsed.registered_as_app === 'boolean'
+        ? parsed.registered_as_app
+        : undefined,
+      app_icon: typeof parsed.app_icon === 'string' ? parsed.app_icon : undefined,
     };
   } catch {
     return { name: '', mime: 'application/octet-stream' };
@@ -54,6 +69,11 @@ export function serializeAttachmentBody(att: AttachmentBody): string {
   // Include data only if present (legacy round-trip support)
   if (att.data !== undefined) obj.data = att.data;
   if (att.sandbox_allow !== undefined && att.sandbox_allow.length > 0) obj.sandbox_allow = att.sandbox_allow;
+  // PR-2JJ v2(2026-05-13):registered_as_app / app_icon は値が無いとき序列化
+  // しない(`false` / 空文字も省略)、unaware の旧 PKC2 で round-trip して
+  // も noise を作らないため。
+  if (att.registered_as_app === true) obj.registered_as_app = true;
+  if (typeof att.app_icon === 'string' && att.app_icon.length > 0) obj.app_icon = att.app_icon;
   return JSON.stringify(obj);
 }
 
@@ -336,6 +356,40 @@ export const attachmentPresenter: DetailPresenter = {
       }
 
       card.appendChild(actionRow);
+
+      // PR-2JJ v2(2026-05-13、PR #432 stack):HTML attachment 限定の
+      // 「アプリランチャーに登録」opt-in row。ON にすると center pane の
+      // launcher view(`?app=launcher` or view-mode bar から)で tile が出る。
+      // tile click は既存 `open-html-attachment` と同一挙動(new window 起動)。
+      if (previewType === 'html') {
+        const appRow = document.createElement('div');
+        appRow.className = 'pkc-attachment-app-toggle';
+        appRow.setAttribute('data-pkc-region', 'attachment-app-toggle');
+
+        const toggleLabel = document.createElement('label');
+        const toggleInput = document.createElement('input');
+        toggleInput.type = 'checkbox';
+        toggleInput.checked = att.registered_as_app === true;
+        toggleInput.setAttribute('data-pkc-action', 'toggle-attachment-app-register');
+        toggleInput.setAttribute('data-pkc-lid', entry.lid);
+        toggleLabel.appendChild(toggleInput);
+        toggleLabel.appendChild(document.createTextNode(' アプリランチャーに登録'));
+        appRow.appendChild(toggleLabel);
+
+        const iconInput = document.createElement('input');
+        iconInput.type = 'text';
+        iconInput.className = 'pkc-attachment-app-icon-input';
+        iconInput.maxLength = 4; // emoji 1 字は code-point 2〜4 unit に展開され得る
+        iconInput.value = typeof att.app_icon === 'string' ? att.app_icon : '';
+        iconInput.placeholder = '🌐';
+        iconInput.setAttribute('data-pkc-action', 'set-attachment-app-icon');
+        iconInput.setAttribute('data-pkc-lid', entry.lid);
+        iconInput.setAttribute('title', 'アプリアイコン(emoji 1 字、空なら default 🌐)');
+        iconInput.setAttribute('aria-label', 'App icon emoji');
+        appRow.appendChild(iconInput);
+
+        card.appendChild(appRow);
+      }
     }
 
     root.appendChild(card);

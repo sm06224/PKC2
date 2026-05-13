@@ -59,6 +59,7 @@ import {
   attachmentWarningMessage,
 } from '../platform/storage-estimate';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
+import { getAstApi } from '../public-ast-api';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
 import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
@@ -2220,6 +2221,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         });
         break;
       }
+      case 'toggle-attachment-app-register': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):HTML attachment を App
+        // Launcher に登録 / 解除する opt-in checkbox(右ペインの attachment
+        // card)。`registered_as_app` boolean を flip して QUICK_UPDATE_ENTRY。
+        if (!lid) break;
+        const curState = dispatcher.getState();
+        const curEntry = curState.container?.entries.find((e) => e.lid === lid);
+        if (!curEntry || curEntry.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(curEntry.body);
+        const checked = (target as HTMLInputElement).checked;
+        const updatedBody = serializeAttachmentBody({ ...att, registered_as_app: checked });
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
+        });
+        break;
+      }
+      // set-attachment-app-icon は handleChange 経由(`<input type="text">`
+      // は change を blur で発火する)。
       case 'move-to-folder': {
         const moveSection = target.closest<HTMLElement>('[data-pkc-region="move-to-folder"]');
         if (!moveSection) break;
@@ -2285,6 +2304,56 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!ent) break;
         const src = entryToMarkdownSource(ent);
         void copyPlainText(src);
+        break;
+      }
+      case 'copy-ast-data': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):Data… menu の AST / Canonical /
+        // Pandoc / HTML 出力。`data-pkc-ast-format` で 4 種類のいずれかを選択。
+        // 同 details 内 [data-pkc-control="ast-pretty"] checkbox を読み、ON なら
+        // 整形 JSON、OFF(default)なら JSONL = 1 行 compact。HTML format のみ
+        // pretty checkbox は無視される(HTML は元から複数行 string)。
+        if (!lid) break;
+        const fmt = target.getAttribute('data-pkc-ast-format') ?? '';
+        if (fmt !== 'ast' && fmt !== 'canonical' && fmt !== 'pandoc' && fmt !== 'html') break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const sourceText = typeof ent.body === 'string'
+          ? ent.body
+          : ent.body == null ? '' : JSON.stringify(ent.body);
+        const prettyEl = target.closest('details')?.querySelector<HTMLInputElement>(
+          'input[data-pkc-control="ast-pretty"]',
+        );
+        const pretty = prettyEl?.checked === true;
+        try {
+          const api = getAstApi();
+          const ast = api.parseMarkdown(sourceText);
+          let out: string;
+          switch (fmt) {
+            case 'ast':
+              out = pretty ? JSON.stringify(ast, null, 2) : JSON.stringify(ast);
+              break;
+            case 'canonical':
+              out = pretty
+                ? JSON.stringify(api.canonicalize(ast), null, 2)
+                : JSON.stringify(api.canonicalize(ast));
+              break;
+            case 'pandoc':
+              out = pretty
+                ? JSON.stringify(api.toPandocJson(ast), null, 2)
+                : JSON.stringify(api.toPandocJson(ast));
+              break;
+            case 'html':
+              out = api.renderHtml(ast);
+              break;
+            default:
+              out = '';
+          }
+          void copyPlainText(out);
+        } catch (e) {
+          // window.PKC.ast が未設置 / parse 失敗時。silent fail で UI を壊さない。
+          console.warn('[PKC2] copy-ast-data failed', e);
+        }
         break;
       }
       case 'copy-rich-markdown': {
@@ -3016,41 +3085,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'close-flags-inspector': {
         // Reached from × button, ESC handler, and backdrop click.
         dispatcher.dispatch({ type: 'CLOSE_FLAGS_INSPECTOR' });
-        break;
-      }
-      case 'open-launcher': {
-        // PR-2JJ(2026-05-12 hotfix): App Launcher dashboard.
-        dispatcher.dispatch({ type: 'OPEN_LAUNCHER' });
-        break;
-      }
-      case 'close-launcher': {
-        dispatcher.dispatch({ type: 'CLOSE_LAUNCHER' });
-        break;
-      }
-      case 'launch-app': {
-        // Tile click in launcher overlay → dispatch app-specific action +
-        // CLOSE_LAUNCHER. `data-pkc-app-id` carries the LauncherAppId
-        // (matches LAUNCHER_APPS table in features/launcher/app-registry.ts).
-        const appId = target.getAttribute('data-pkc-app-id') ?? '';
-        switch (appId) {
-          case 'detail':
-          case 'calendar':
-          case 'kanban':
-          case 'filer':
-          case 'graph':
-            dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: appId });
-            break;
-          case 'flags':
-            dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' });
-            break;
-          case 'album':
-            // Album app:filer view 開始(album folder への遷移は user 操作で)。
-            dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
-            break;
-          default:
-            break;
-        }
-        dispatcher.dispatch({ type: 'CLOSE_LAUNCHER' });
         break;
       }
       // set-flag-boolean / -numeric / -string / -enum live in
@@ -4354,11 +4388,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLOSE_FLAGS_INSPECTOR' });
         return;
       }
-      // PR-2JJ(2026-05-12 hotfix): App Launcher dashboard.
-      if (state.launcherOpen) {
-        dispatcher.dispatch({ type: 'CLOSE_LAUNCHER' });
-        return;
-      }
       // Close shell menu if open
       if (state.menuOpen) {
         dispatcher.dispatch({ type: 'CLOSE_MENU' });
@@ -5064,6 +5093,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const v = target.value;
         if (typeof v === 'string') {
           dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid, title: v });
+        }
+      }
+      return;
+    }
+    if (action === 'set-attachment-app-icon') {
+      // PR-2JJ v2(2026-05-13):App icon emoji を attachment body に保存。
+      // `<input type="text">` の change(blur 時)で発火、空文字なら undefined
+      // にして serialize で省略 → default 🌐 に fallback。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLInputElement) {
+        const curState = dispatcher.getState();
+        const curEntry = curState.container?.entries.find((e) => e.lid === lid);
+        if (curEntry && curEntry.archetype === 'attachment') {
+          const att = parseAttachmentBody(curEntry.body);
+          const icon = target.value.trim();
+          const updatedBody = serializeAttachmentBody({
+            ...att,
+            app_icon: icon.length > 0 ? icon : undefined,
+          });
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
         }
       }
       return;

@@ -4,7 +4,6 @@ import { ABOUT_LID, isReservedLid, isSystemArchetype } from '../../core/model/re
 import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
 import { renderColorPickerTrigger } from './color-picker';
 import { renderFlagsInspector } from './flags-inspector';
-import { renderLauncher } from './launcher';
 import { applyThemeScale } from './theme-scale';
 import {
   getActiveFlagCount as getActiveFlagCountForAbout,
@@ -481,13 +480,6 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
     );
     setFlagsInspectorContainerSource(resolveFlagsPayload(flagsEntry?.body).values);
     root.appendChild(renderFlagsInspector());
-  }
-
-  // PR-2JJ(2026-05-12 hotfix): App Launcher dashboard overlay.
-  // Mounted when state.launcherOpen === true. Opens via `?app=launcher`
-  // URL flag at boot or shell-menu「🚀 Launcher」link.
-  if (state.launcherOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
-    root.appendChild(renderLauncher());
   }
 
   // Restore the sidebar / center scroll positions captured before
@@ -2726,6 +2718,60 @@ function renderExportImportInline(state: AppState): HTMLElement {
   importBatchBtn.textContent = '📥 Batch';
   content.appendChild(importBatchBtn);
 
+  // ── Group 4 (PR-2JJ v2 / 2026-05-13):AST / Pandoc / HTML 出力 ──
+  //
+  // 現在 selected entry の body を window.PKC.ast 経由で 4 種類の表現に変換、
+  // clipboard へコピー。JSONL(compact、1 行)default で AI / LLM 入力に最適、
+  // 「Pretty」checkbox を入れた状態で押すと整形 JSON を出す。
+  //
+  // 旧 `?pkc-debug=ast` overlay(右下 fixed panel)は廃止、本 menu に統合。
+  if (selectedEntry) {
+    const sep = createElement('div', 'pkc-eip-separator');
+    sep.setAttribute('aria-hidden', 'true');
+    content.appendChild(sep);
+
+    const prettyLabel = createElement('label', 'pkc-eip-pretty-label');
+    prettyLabel.setAttribute('title', '出力 JSON を整形(default は JSONL = 1 行 compact)');
+    const prettyInput = createElement('input', 'pkc-eip-pretty-input');
+    (prettyInput as HTMLInputElement).type = 'checkbox';
+    prettyInput.setAttribute('data-pkc-control', 'ast-pretty');
+    prettyLabel.appendChild(prettyInput);
+    prettyLabel.appendChild(document.createTextNode(' Pretty'));
+    content.appendChild(prettyLabel);
+
+    const astBtn = createElement('button', 'pkc-btn');
+    astBtn.setAttribute('data-pkc-action', 'copy-ast-data');
+    astBtn.setAttribute('data-pkc-ast-format', 'ast');
+    astBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    astBtn.setAttribute('title', 'AstDocument を clipboard にコピー(JSONL / Pretty 切替)');
+    astBtn.textContent = '🧬 AST';
+    content.appendChild(astBtn);
+
+    const canonBtn = createElement('button', 'pkc-btn');
+    canonBtn.setAttribute('data-pkc-action', 'copy-ast-data');
+    canonBtn.setAttribute('data-pkc-ast-format', 'canonical');
+    canonBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    canonBtn.setAttribute('title', 'Canonical AstDocument(idempotent な正規化済 AST)');
+    canonBtn.textContent = '🧬 Canonical';
+    content.appendChild(canonBtn);
+
+    const pandocBtn = createElement('button', 'pkc-btn');
+    pandocBtn.setAttribute('data-pkc-action', 'copy-ast-data');
+    pandocBtn.setAttribute('data-pkc-ast-format', 'pandoc');
+    pandocBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    pandocBtn.setAttribute('title', 'Pandoc Native JSON(`pandoc --from json` で docx/pptx/pdf 等に変換可能)');
+    pandocBtn.textContent = '🧬 Pandoc';
+    content.appendChild(pandocBtn);
+
+    const htmlBtn = createElement('button', 'pkc-btn');
+    htmlBtn.setAttribute('data-pkc-action', 'copy-ast-data');
+    htmlBtn.setAttribute('data-pkc-ast-format', 'html');
+    htmlBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    htmlBtn.setAttribute('title', 'renderHtml(ast) の HTML 文字列');
+    htmlBtn.textContent = '🧬 HTML';
+    content.appendChild(htmlBtn);
+  }
+
   details.appendChild(content);
   group.appendChild(details);
 
@@ -4297,6 +4343,14 @@ function renderCenterImpl(state: AppState): HTMLElement {
     return center;
   }
 
+  // PR-2JJ v2(2026-05-13、PR #432 stack):Launcher view。HTML attachment で
+  // `registered_as_app: true` のものを tile grid で表示、tile click は既存
+  // `open-html-attachment` action 経由(window.open + document.write)。
+  if (state.viewMode === 'launcher') {
+    center.appendChild(renderLauncherView(state));
+    return center;
+  }
+
   // Detail view (existing behavior).
   // Phase 4 follow-up 3: when the selected entry is a folder, fold the
   // detail surface into the filer view so the "folder detail" is the
@@ -4390,7 +4444,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
   return center;
 }
 
-function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph'): HTMLElement {
+function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher'): HTMLElement {
   const bar = createElement('div', 'pkc-view-mode-bar');
   bar.setAttribute('data-pkc-region', 'view-mode-bar');
 
@@ -4400,6 +4454,7 @@ function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'file
     { key: 'kanban', label: 'Kanban' },
     { key: 'filer', label: 'Filer' },
     { key: 'graph', label: 'Graph' },
+    { key: 'launcher', label: 'Launcher' },
   ];
 
   for (const { key, label } of modes) {
@@ -6299,6 +6354,91 @@ interface GraphNodeView {
  * 結果:「左:古い trunk / 右:新しい head」、各 entry は head に置かれ、
  * trunk の根(created_at)へ後方延長で revision dot が時系列に並ぶ。
  */
+/**
+ * PR-2JJ v2(2026-05-13、PR #432 stack):App Launcher center pane view。
+ *
+ * 仕様:
+ *   - container.entries から `archetype: 'attachment'`、preview type html、
+ *     `parseAttachmentBody(body).registered_as_app === true` のものを抽出
+ *   - tile grid を中央 pane に描画(viewMode: 'launcher' の本体)
+ *   - tile click → 既存 `open-html-attachment` action(新規 window で起動、
+ *     "Open in New Window" と完全同一挙動)
+ *   - 登録 0 件時は guidance(右ペインで HTML attachment を開いて
+ *     「アプリランチャーに登録」checkbox を ON する手順を表示)
+ *
+ * Opt-in source of truth は AttachmentBody.registered_as_app。
+ * Icon は AttachmentBody.app_icon(emoji 1 字、空なら 🌐 default)。
+ */
+function renderLauncherView(state: AppState): HTMLElement {
+  const view = createElement('section', 'pkc-launcher-view');
+  view.setAttribute('data-pkc-region', 'launcher-view');
+
+  const header = createElement('header', 'pkc-launcher-view-header');
+  const title = createElement('h2', 'pkc-launcher-view-title');
+  title.textContent = '🚀 App Launcher';
+  header.appendChild(title);
+  const hint = createElement('span', 'pkc-launcher-view-hint');
+  hint.textContent = '登録済 HTML アプリ — クリックで新規ウィンドウ起動';
+  header.appendChild(hint);
+  view.appendChild(header);
+
+  const registered: { lid: string; name: string; icon: string }[] = [];
+  for (const entry of state.container?.entries ?? []) {
+    if (entry.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(entry.body);
+    if (att.registered_as_app !== true) continue;
+    if (classifyPreviewType(att.mime) !== 'html') continue;
+    registered.push({
+      lid: entry.lid,
+      name: entry.title || att.name || '(untitled)',
+      icon: typeof att.app_icon === 'string' && att.app_icon.length > 0 ? att.app_icon : '🌐',
+    });
+  }
+
+  if (registered.length === 0) {
+    const empty = createElement('div', 'pkc-launcher-empty');
+    empty.setAttribute('data-pkc-region', 'launcher-empty');
+    const line1 = document.createElement('p');
+    line1.textContent = '登録済アプリはまだありません。';
+    empty.appendChild(line1);
+    const line2 = document.createElement('p');
+    line2.appendChild(document.createTextNode('HTML attachment を選択し、右ペインの '));
+    const code = document.createElement('code');
+    code.textContent = 'アプリランチャーに登録';
+    line2.appendChild(code);
+    line2.appendChild(document.createTextNode(' checkbox を ON にすると、ここに tile が並びます。'));
+    empty.appendChild(line2);
+    view.appendChild(empty);
+    return view;
+  }
+
+  const grid = createElement('div', 'pkc-launcher-grid');
+  grid.setAttribute('data-pkc-region', 'launcher-grid');
+  for (const app of registered) {
+    const tile = createElement('button', 'pkc-launcher-tile');
+    tile.setAttribute('type', 'button');
+    // 既存 open-html-attachment action を再利用、tile click = "Open in New Window"
+    tile.setAttribute('data-pkc-action', 'open-html-attachment');
+    tile.setAttribute('data-pkc-lid', app.lid);
+    tile.setAttribute('aria-label', `Launch ${app.name}`);
+    tile.setAttribute('title', `${app.name} を新規ウィンドウで起動`);
+
+    const iconEl = createElement('span', 'pkc-launcher-tile-icon');
+    iconEl.textContent = app.icon;
+    iconEl.setAttribute('aria-hidden', 'true');
+    tile.appendChild(iconEl);
+
+    const labelEl = createElement('span', 'pkc-launcher-tile-label');
+    labelEl.textContent = app.name;
+    tile.appendChild(labelEl);
+
+    grid.appendChild(tile);
+  }
+  view.appendChild(grid);
+
+  return view;
+}
+
 function seedTimeProximityLayout(
   nodes: readonly GraphNodeView[],
   entries: readonly Entry[],
