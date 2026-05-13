@@ -3936,8 +3936,11 @@ describe('Action surface consolidation', () => {
     render(makeState({ selectedLid: 'e-text' }), root);
     const more = root.querySelector('[data-pkc-region="action-bar-more"]');
     expect(more).not.toBeNull();
-    // Copy MD, Rich, Viewer, compact+Export are all inside
-    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    // PR-2JJ v2 (2026-05-13): copy-markdown-source は GFM cleanup 用の
+    // `copy-markdown-gfm` に repurpose、`copy-markdown-pkc` を追加。
+    // Rich / Viewer / Export は不変。
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-gfm"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-pkc"]')).not.toBeNull();
     expect(more!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
     expect(more!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
     expect(more!.querySelector('[data-pkc-action="export-text-zip"]')).not.toBeNull();
@@ -3966,9 +3969,10 @@ describe('Action surface consolidation', () => {
     expect(bar!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
     expect(bar!.querySelector('[data-pkc-action="delete-entry"]')).toBeNull();
     // More… should still be present
+    // PR-2JJ v2 (2026-05-13): copy-markdown-source → copy-markdown-gfm
     const more = bar!.querySelector('[data-pkc-region="action-bar-more"]');
     expect(more).not.toBeNull();
-    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-gfm"]')).not.toBeNull();
   });
 
   it('export/import buttons are reachable inside Data… panel', () => {
@@ -4422,7 +4426,9 @@ describe('Three-Pane Layout', () => {
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
     expect(actionBar).not.toBeNull();
-    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    // PR-2JJ v2 (2026-05-13): copy-markdown-source → copy-markdown-gfm
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-gfm"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-pkc"]')).not.toBeNull();
     expect(actionBar!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
     expect(actionBar!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
   });
@@ -4439,8 +4445,10 @@ describe('Three-Pane Layout', () => {
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
     expect(actionBar).not.toBeNull();
     // Mutating buttons are hidden in readonly, but copy/viewer are still there.
+    // PR-2JJ v2 (2026-05-13): copy-markdown-source → copy-markdown-gfm
     expect(actionBar!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
-    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-gfm"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-pkc"]')).not.toBeNull();
     expect(actionBar!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
     expect(actionBar!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
   });

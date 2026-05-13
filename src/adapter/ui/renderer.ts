@@ -2770,6 +2770,49 @@ function renderExportImportInline(state: AppState): HTMLElement {
     htmlBtn.setAttribute('title', 'renderHtml(ast) の HTML 文字列');
     htmlBtn.textContent = '🧬 HTML';
     content.appendChild(htmlBtn);
+
+    // ── Group 5 (PR-2JJ v2 / 2026-05-13):PDF / Word / PPT export ──
+    //
+    // PDF:browser native print dialog → "Save as PDF"。Viewer popup を
+    // 開いて user 操作で印刷確定。0 KB のバンドル増、依存 0。
+    // Word(docx):Pandoc Native JSON を .pandoc.json でダウンロード、
+    // user 側で `pandoc --from json -o out.docx input.pandoc.json` を実行する。
+    // PPT(pptx):同様、`pandoc -o out.pptx`。
+    //
+    // browser 内で完結する Word/PPT 直接生成は将来課題(docx.js / pptxgenjs
+    // を bundle すると +100〜200 KB)。Phase 1 は Pandoc JSON dump で interop。
+    const sep2 = createElement('div', 'pkc-eip-separator');
+    sep2.setAttribute('aria-hidden', 'true');
+    content.appendChild(sep2);
+
+    const pdfBtn = createElement('button', 'pkc-btn');
+    pdfBtn.setAttribute('data-pkc-action', 'export-entry-pdf');
+    pdfBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    pdfBtn.setAttribute('title', 'ブラウザ印刷ダイアログ経由で PDF 保存(Viewer popup → 印刷 → PDF として保存)');
+    pdfBtn.textContent = '📄 PDF';
+    content.appendChild(pdfBtn);
+
+    const docxBtn = createElement('button', 'pkc-btn');
+    docxBtn.setAttribute('data-pkc-action', 'export-entry-pandoc-json');
+    docxBtn.setAttribute('data-pkc-pandoc-target', 'docx');
+    docxBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    docxBtn.setAttribute(
+      'title',
+      'Pandoc Native JSON を .pandoc.json で保存。コマンドラインで `pandoc --from json -o out.docx <file>` を実行して Word 化',
+    );
+    docxBtn.textContent = '📝 Word';
+    content.appendChild(docxBtn);
+
+    const pptxBtn = createElement('button', 'pkc-btn');
+    pptxBtn.setAttribute('data-pkc-action', 'export-entry-pandoc-json');
+    pptxBtn.setAttribute('data-pkc-pandoc-target', 'pptx');
+    pptxBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    pptxBtn.setAttribute(
+      'title',
+      'Pandoc Native JSON を .pandoc.json で保存。コマンドラインで `pandoc --from json -o out.pptx <file>` を実行して PowerPoint 化',
+    );
+    pptxBtn.textContent = '🎞 PPT';
+    content.appendChild(pptxBtn);
   }
 
   details.appendChild(content);
@@ -7007,12 +7050,23 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
       // users export TEXTLOG via the rendered viewer's Download HTML
       // button instead.
       if (entry.archetype === 'text') {
+        // PR-2JJ v2(2026-05-13):既存「📋 MD」は GFM 標準クリーンアップ出力に変更、
+        // 相互運用(Word / Notion / Obsidian 等)用。AST 経由で PKC 拡張を剥がす。
         const copyMdBtn = createElement('button', 'pkc-btn pkc-action-copy-md');
-        copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-source');
+        copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-gfm');
         copyMdBtn.setAttribute('data-pkc-lid', entry.lid);
-        copyMdBtn.setAttribute('title', 'Markdown ソースをクリップボードにコピー');
+        copyMdBtn.setAttribute('title', 'GFM 標準 Markdown(PKC 拡張を剥がした相互運用用)をコピー');
         copyMdBtn.textContent = '📋 MD';
         moreContent.appendChild(copyMdBtn);
+
+        // PR-2JJ v2(2026-05-13):新規「📋 PKC MD」AST → 正規記法 PKC MD で復元、
+        // PKC2 ↔ PKC2 round-trip 用 / spec 準拠の canonical 形を入手。
+        const copyPkcMdBtn = createElement('button', 'pkc-btn pkc-action-copy-pkc-md');
+        copyPkcMdBtn.setAttribute('data-pkc-action', 'copy-markdown-pkc');
+        copyPkcMdBtn.setAttribute('data-pkc-lid', entry.lid);
+        copyPkcMdBtn.setAttribute('title', 'AST → 正規記法 PKC MD でコピー(PKC ↔ PKC 用、canonicalize 経由)');
+        copyPkcMdBtn.textContent = '📋 PKC MD';
+        moreContent.appendChild(copyPkcMdBtn);
 
         const copyRichBtn = createElement('button', 'pkc-btn pkc-action-copy-rich');
         copyRichBtn.setAttribute('data-pkc-action', 'copy-rich-markdown');
@@ -9798,8 +9852,12 @@ export function renderContextMenu(
      * Phase 1 step 5 / audit G6 — we keep the legacy actions for
      * power-user / markdown-authoring workflows but demote them from
      * equal-surface standing to clearly "advanced" territory.
+     *
+     * `'log-data'`(PR-2JJ v2、2026-05-13):TEXTLOG log row 専用の
+     * 📋 MD / PKC MD / AST / Pandoc / HTML 一群。TEXT entry の Data…
+     * menu と同等を log 単位で提供。
      */
-    group?: 'markdown-source';
+    group?: 'markdown-source' | 'log-data';
   };
 
   const isPreviewable = opts.archetype === 'text' || opts.archetype === 'textlog';
@@ -9857,12 +9915,60 @@ export function renderContextMenu(
       show: opts.archetype === 'attachment',
       group: 'markdown-source',
     },
+    // PR-2JJ v2(2026-05-13、PR #432 stack):TEXTLOG log row 専用の Data... 操作。
+    // TEXT entry の Data… menu(action bar)と同等を log 単位で提供。
+    {
+      action: 'copy-log-md-gfm',
+      label: '📋 MD (GFM)',
+      tip: 'このログ行を GFM 標準 Markdown でコピー(相互運用用、PKC 拡張は plain に変換)',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
+    {
+      action: 'copy-log-md-pkc',
+      label: '📋 PKC MD',
+      tip: 'このログ行を canonical PKC MD でコピー(AST → canonicalize → 正規記法)',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
+    {
+      action: 'copy-log-ast',
+      label: '🧬 AST',
+      tip: 'このログ行を AstDocument JSON でコピー(JSONL = 1 行 compact)',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
+    {
+      action: 'copy-log-pandoc',
+      label: '🧬 Pandoc',
+      tip: 'このログ行を Pandoc Native JSON でコピー(pandoc --from json で docx/pptx/pdf 変換可能)',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
+    {
+      action: 'copy-log-html',
+      label: '🧬 HTML',
+      tip: 'このログ行を render 済 HTML 文字列でコピー',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
   ];
 
-  // Track whether we have already emitted the `Markdown source`
-  // section header so it appears exactly once, right above the
-  // first legacy Internal Reference copy action.
+  // Track whether we have already emitted each group's section
+  // header so it appears exactly once, right above the first item
+  // of that group.
   let emittedMarkdownSectionHeader = false;
+  let emittedLogDataSectionHeader = false;
   for (const item of items) {
     if (!item.show) continue;
     if (item.group === 'markdown-source' && !emittedMarkdownSectionHeader) {
@@ -9873,6 +9979,16 @@ export function renderContextMenu(
       header.textContent = '📝 Markdown source';
       menu.appendChild(header);
       emittedMarkdownSectionHeader = true;
+    }
+    if (item.group === 'log-data' && !emittedLogDataSectionHeader) {
+      // PR-2JJ v2(2026-05-13):log-data section header(TEXTLOG 専用)
+      const sep = createElement('div', 'pkc-context-menu-separator');
+      menu.appendChild(sep);
+      const header = createElement('div', 'pkc-context-menu-label');
+      header.setAttribute('data-pkc-region', 'context-menu-log-data');
+      header.textContent = '🧬 Log data';
+      menu.appendChild(header);
+      emittedLogDataSectionHeader = true;
     }
     const btn = createElement('button', 'pkc-context-menu-item');
     btn.setAttribute('data-pkc-action', item.action);

@@ -20,6 +20,10 @@ import { parseMarkdownToAst, type ParseOptions } from '@features/ast/parse';
 import { renderAstToHtml, type RenderOptions } from '@features/ast/render-html';
 import { canonicalize } from '@features/ast/canonicalize';
 import { astToPandocNative } from '@features/ast/export-pandoc';
+import {
+  renderAstToMarkdown,
+  type RenderMarkdownOptions,
+} from '@features/ast/render-markdown';
 import type { AstDocument } from '@core/ast/index';
 
 export interface PkcAstApi {
@@ -31,6 +35,8 @@ export interface PkcAstApi {
   canonicalize(ast: AstDocument): AstDocument;
   /** AstDocument → Pandoc Native JSON(pandoc --from json で消費可能)。 */
   toPandocJson(ast: AstDocument): unknown;
+  /** AstDocument → Markdown 文字列(GFM 標準 / 正規 PKC MD)。 */
+  renderMarkdown(ast: AstDocument, opts?: RenderMarkdownOptions): string;
   /** 1 step convenience:markdown text → Pandoc JSON。 */
   markdownToPandoc(text: string, opts?: ParseOptions): unknown;
   /** API version(将来の breaking change 検出用)。 */
@@ -42,9 +48,10 @@ const API: PkcAstApi = {
   renderHtml: (ast, opts) => renderAstToHtml(ast, opts),
   canonicalize: (ast) => canonicalize(ast),
   toPandocJson: (ast) => astToPandocNative(ast),
+  renderMarkdown: (ast, opts) => renderAstToMarkdown(ast, opts),
   markdownToPandoc: (text, opts) =>
     astToPandocNative(parseMarkdownToAst(text, opts)),
-  version: '1.0.0',
+  version: '1.1.0',
 };
 
 /**

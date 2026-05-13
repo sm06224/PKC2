@@ -2306,6 +2306,143 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         void copyPlainText(src);
         break;
       }
+      case 'copy-markdown-gfm': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):AST 経由で GFM 標準にクリーンアップ。
+        // PKC 拡張(:::role / :::figure / mark color / em-dot / %% comment 等)を
+        // plain GFM に変換し、Word / Notion / Obsidian 等の標準 MD consumer に
+        // 互換性のある出力を提供。
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const src = entryToMarkdownSource(ent);
+        try {
+          const api = getAstApi();
+          const ast = api.parseMarkdown(src);
+          const gfm = api.renderMarkdown(ast, { mode: 'gfm' });
+          void copyPlainText(gfm);
+        } catch (e) {
+          console.warn('[PKC2] copy-markdown-gfm failed, falling back to source', e);
+          void copyPlainText(src);
+        }
+        break;
+      }
+      case 'copy-markdown-pkc': {
+        // PR-2JJ v2(2026-05-13):AST → canonicalize → 正規記法 PKC MD で出力。
+        // PKC ↔ PKC round-trip 用 / spec 準拠 canonical 形が必要なときに使う。
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const src = entryToMarkdownSource(ent);
+        try {
+          const api = getAstApi();
+          const ast = api.canonicalize(api.parseMarkdown(src));
+          const md = api.renderMarkdown(ast, { mode: 'pkc' });
+          void copyPlainText(md);
+        } catch (e) {
+          console.warn('[PKC2] copy-markdown-pkc failed, falling back to source', e);
+          void copyPlainText(src);
+        }
+        break;
+      }
+      case 'export-entry-pdf': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):browser native print dialog
+        // 経由で PDF 出力。既存の rendered-viewer popup を開いて、user は
+        // popup 内の Print ボタン or Ctrl+P で「PDF として保存」を選択。
+        // 0 dependency / 0 KB bundle 増。
+        if (!lid) break;
+        const viewerBtn = document.querySelector(
+          `button[data-pkc-action="open-rendered-viewer"][data-pkc-lid="${CSS.escape(lid)}"]`,
+        ) as HTMLButtonElement | null;
+        if (viewerBtn) {
+          viewerBtn.click();
+        } else {
+          // viewer ボタンが UI 上に無い entry archetype(folder 等)では何もしない。
+          console.warn('[PKC2] export-entry-pdf: no Viewer button found for this entry');
+        }
+        break;
+      }
+      case 'export-entry-pandoc-json': {
+        // PR-2JJ v2(2026-05-13):Pandoc Native JSON を .pandoc.json として
+        // download。docx / pptx 化は user 側 `pandoc --from json -o out.docx <file>`
+        // を実行する。ファイル名に target hint を含めて何用かを示す。
+        if (!lid) break;
+        const pandocTarget = target.getAttribute('data-pkc-pandoc-target') ?? 'generic';
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const src = entryToMarkdownSource(ent);
+        try {
+          const api = getAstApi();
+          const ast = api.parseMarkdown(src);
+          const pandoc = api.toPandocJson(ast);
+          const json = JSON.stringify(pandoc, null, 2);
+          const safeTitle = (ent.title || ent.lid).replace(/[^a-zA-Z0-9\-_]/g, '_').slice(0, 60);
+          const filename = `${safeTitle}.${pandocTarget}.pandoc.json`;
+          // browser file download via Blob URL
+          const blob = new Blob([json], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 0);
+        } catch (e) {
+          console.warn('[PKC2] export-entry-pandoc-json failed', e);
+        }
+        break;
+      }
+      case 'copy-log-md-gfm':
+      case 'copy-log-md-pkc':
+      case 'copy-log-ast':
+      case 'copy-log-pandoc':
+      case 'copy-log-html': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):TEXTLOG log row 専用の Data...
+        // context menu actions。TEXT entry の Data… menu と同等の 5 操作を log
+        // 単位で提供。log の bodySource(markdown 文字列)を AST API へ流す。
+        if (!lid) break;
+        const logId = target.getAttribute('data-pkc-log-id');
+        if (!logId) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const body = parseTextlogBody(ent.body);
+        const log = body.entries.find((l) => l.id === logId);
+        if (!log) break;
+        const src = log.text;
+        try {
+          const api = getAstApi();
+          const ast = api.parseMarkdown(src);
+          let out: string;
+          switch (action) {
+            case 'copy-log-md-gfm':
+              out = api.renderMarkdown(ast, { mode: 'gfm' });
+              break;
+            case 'copy-log-md-pkc':
+              out = api.renderMarkdown(api.canonicalize(ast), { mode: 'pkc' });
+              break;
+            case 'copy-log-ast':
+              out = JSON.stringify(ast);
+              break;
+            case 'copy-log-pandoc':
+              out = JSON.stringify(api.toPandocJson(ast));
+              break;
+            case 'copy-log-html':
+              out = api.renderHtml(ast);
+              break;
+            default:
+              out = src;
+          }
+          void copyPlainText(out);
+        } catch (e) {
+          console.warn(`[PKC2] ${action} failed, falling back to source`, e);
+          void copyPlainText(src);
+        }
+        break;
+      }
       case 'copy-ast-data': {
         // PR-2JJ v2(2026-05-13、PR #432 stack):Data… menu の AST / Canonical /
         // Pandoc / HTML 出力。`data-pkc-ast-format` で 4 種類のいずれかを選択。
