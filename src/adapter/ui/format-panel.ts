@@ -34,9 +34,45 @@ const formatPanelEnabled = defineFlag<boolean>('editor.format_panel_enabled', tr
 
 let panel: HTMLElement | null = null;
 let mounted = false;
-/** Session 中の close 状態。reload でリセット。 */
-let sessionClosed = false;
+/**
+ * Format panel の dismiss 状態。
+ *
+ * PR-V10(2026-05-14、C4 小品):**localStorage に persist** することで、
+ * 一度 close したパネルが次 session でも非表示のまま維持される。これまでは
+ * `let sessionClosed = false` で reload でリセットされていたが、user が
+ * 「邪魔だから閉じる」場合、次回も閉じたままが期待される。
+ *
+ * Reset 方法:
+ *   - flag inspector で `editor.format_panel_enabled` を OFF → ON に切替
+ *   - localStorage の `pkc2.formatPanelDismissed` キーを手動削除
+ *   - `resetFormatPanelDismiss()` 関数を test / 開発者向けに export
+ */
+const DISMISS_KEY = 'pkc2.formatPanelDismissed';
+let sessionClosed = readDismissedFromStorage();
 let lastTextarea: HTMLTextAreaElement | null = null;
+
+function readDismissedFromStorage(): boolean {
+  try {
+    return localStorage.getItem(DISMISS_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function writeDismissedToStorage(dismissed: boolean): void {
+  try {
+    if (dismissed) localStorage.setItem(DISMISS_KEY, 'true');
+    else localStorage.removeItem(DISMISS_KEY);
+  } catch {
+    /* private browsing / quota / no localStorage — degrade gracefully */
+  }
+}
+
+/** Test / dev tool 用:dismiss 状態をリセット。 */
+export function resetFormatPanelDismiss(): void {
+  sessionClosed = false;
+  writeDismissedToStorage(false);
+}
 
 interface FormatButton {
   label: string;
@@ -209,12 +245,13 @@ function buildPanel(): HTMLElement {
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'pkc-format-panel-close';
-  close.setAttribute('aria-label', 'パネルを閉じる(再表示は reload で)');
-  close.setAttribute('title', 'パネルを閉じる(reload で再表示)');
+  close.setAttribute('aria-label', 'パネルを閉じる(flag を OFF→ON で再表示)');
+  close.setAttribute('title', 'パネルを閉じる(localStorage に永続化、flag OFF→ON で再表示)');
   close.textContent = '✕';
   close.addEventListener('mousedown', (e) => e.preventDefault());
   close.addEventListener('click', () => {
     sessionClosed = true;
+    writeDismissedToStorage(true);
     hide();
   });
   el.appendChild(close);
@@ -350,10 +387,11 @@ export function mountFormatPanel(): void {
   }, true);
 }
 
-/** Test-only: panel state reset。 */
+/** Test-only: panel state reset。localStorage の dismissed 状態を再読込し、
+ *  module 初期化時と同じ state に戻す(fresh module load を simulate)。 */
 export function _resetFormatPanelForTests(): void {
   mounted = false;
-  sessionClosed = false;
+  sessionClosed = readDismissedFromStorage();
   lastTextarea = null;
   if (panel?.isConnected) panel.remove();
   panel = null;
