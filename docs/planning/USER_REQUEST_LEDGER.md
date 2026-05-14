@@ -216,6 +216,12 @@ spec / policy として記録して「将来具体的な pain / 要求が出た�
 横断的に抜粋。いずれも **こちら側が明示的に decline / defer した** 項目で、
 ユーザーから改めて明示要望が来るまで未完ではない。
 
+**2026-05-14 trigger 再評価（v2.3.x stack PR-V9 / C3）**: H-1 / H-2 / H-5 / H-9 の
+4 残置項目について trigger 条件成立を確認 → いずれも該当 user 要望 / 痛みの
+報告は v2.3.0 リリース後 1 日では発生していないため deferred 継続。次回再評価
+trigger:H-1(多言語ユーザー要望) / H-2(entry 1000+ 痛み再報告) / H-5(複数
+container 並立 UI 要求) / H-9(P2P / WebRTC 同期要望 = D-3 wave 起こし時)。
+
 | ID | 項目 | HANDOVER 参照 | 重複する §3 候補 | 昇格条件 |
 |----|------|--------------|-----------------|---------|
 | H-1 | **i18n 基盤**（日英文言統一） | §7.1 / §18.4.2 | — | 多言語ユーザーからの要望 |
@@ -230,6 +236,11 @@ spec / policy として記録して「将来具体的な pain / 要求が出た�
 | H-10 | **Merge import conflict UI v1**（entry 単位の C1/C2/C2-multi 分類 + 3 操作 + bulk + provenance） | merge-import-conflict-resolution.md §9 | — | **完了（§1 S-31、2026-04-17）**: behavior contract（13 章分割）+ pure / state / UI 3 slice + post-impl audit（DEFECT-1 / DEFECT-2 最小修正）+ manual 同期。policy UI / staging / revision 持込 / diff export / merge undo 等の「§9 将来拡張」は本 v1 の非対象で据え置き（v1.x / v2 テーマ） |
 
 ### 3.6 `docs/development/INDEX.md` CANDIDATE 節の保留候補
+
+**2026-05-14 trigger 再評価（v2.3.x stack PR-V9 / C3）**: 7 件全項目について
+trigger 条件の現状を確認 → いずれも v2.3.0 release 後の新規 user 報告 / 痛みは
+発生しておらず deferred 継続。`領域 10-1 entry-window split editor 同期スクロール`
+は user 報告頻度の傾向次第で次 wave 起こし候補(直近の使用感の変化を観察)。
 
 | 項目 | 保留理由 | 再評価 trigger(2026-05-03 追加) |
 |------|---------|----|
