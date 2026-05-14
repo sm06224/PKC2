@@ -9748,3 +9748,31 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   min-height: 1.2em;
 }
 
+/* ── PR-V2(2026-05-14):footnote + citation ── */
+.pkc-footnote-ref {
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+}
+.pkc-footnote-ref a {
+  color: var(--c-accent);
+  text-decoration: none;
+  padding: 0 0.15em;
+}
+.pkc-footnote-ref a::before { content: "["; }
+.pkc-footnote-ref a::after { content: "]"; }
+.pkc-footnote-ref a:hover { text-decoration: underline; }
+
+.pkc-citation {
+  font-style: italic;
+  color: var(--c-text-dim);
+  cursor: help;
+  padding: 0 0.1em;
+  border-bottom: 1px dotted var(--c-accent-dim);
+}
+.pkc-citation:hover {
+  color: var(--c-text);
+  border-bottom-color: var(--c-accent);
+}
+.pkc-citation-narrative { border-bottom: none; }
+

@@ -118,6 +118,15 @@ function renderInlineNode(node: AstInline): string {
       // escape して `<span data-pkc-opaque>` で wrap)。
       if (node.sourceFormat === 'html') return node.original;
       return `<span class="pkc-opaque" data-pkc-source-format="${escapeAttr(node.sourceFormat)}">${escapeHtml(node.original)}</span>`;
+    case 'citation': {
+      // PR-V2(2026-05-14、Gemini review 反映):学術 / 書誌的 inline citation。
+      // `<cite class="pkc-citation" data-pkc-cite-id="...">` で BibTeX 連携 +
+      // Pandoc citation processor が認識できる minimal HTML。
+      const prefix = node.prefix ? escapeHtml(node.prefix) + ' ' : '';
+      const suffix = node.suffix ? ' ' + escapeHtml(node.suffix) : '';
+      const modeClass = node.mode ? ` pkc-citation-${escapeAttr(node.mode)}` : '';
+      return `<cite class="pkc-citation${modeClass}" data-pkc-cite-id="${escapeAttr(node.id)}">${prefix}@${escapeHtml(node.id)}${suffix}</cite>`;
+    }
     default: {
       const unreachable: never = node;
       void unreachable;

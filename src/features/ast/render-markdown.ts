@@ -260,8 +260,13 @@ function stripPkcInlinesForGfm(text: string): string {
   s = s.replace(/%%([^%\n]+?)%%/g, '');
   s = s.replace(/==([^=\n]+?)==/g, '$1');
   s = s.replace(/\.\.([^.\n]+?)\.\./g, '$1');
-  // auto-ref `[@id]` → `@id`(GFM consumer 用 plain)
-  s = s.replace(/\[@([A-Za-z_][\w-]*)\]/g, '@$1');
+  // auto-ref `[@fig-X]` / `[@table-X]` 等の **図表参照** → `@id`(GFM plain)
+  // PR-V2(2026-05-14):citation(`[@smith2020]` 等)は Pandoc syntax 互換で
+  // brackets を残すので、prefix 判定で振り分ける。
+  s = s.replace(
+    /\[@([A-Za-z_][\w-]*)\]/g,
+    (m, id: string) => (/^(fig|figure|table|tbl|eq|eqn|equation)-/i.test(id) ? `@${id}` : m),
+  );
   return s;
 }
 
@@ -637,6 +642,17 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
       // PR-2JJ v2 final(2026-05-13、ChatGPT review 反映):未知構文 preserve。
       // 原文をそのまま emit、round-trip で AstOpaqueInline に戻る。
       return node.original;
+    case 'citation': {
+      // PR-V2(2026-05-14、Gemini review 反映):学術 citation を Pandoc 互換
+      // markdown 形式で出す。
+      //   - PKC mode:`[@id]` または `[prefix @id suffix]`
+      //   - GFM mode:Pandoc citation syntax と同じ(`[@id]`)
+      const parts: string[] = [];
+      if (node.prefix) parts.push(node.prefix);
+      parts.push(`@${node.id}`);
+      if (node.suffix) parts.push(node.suffix);
+      return `[${parts.join(' ')}]`;
+    }
     default: {
       const n = node as AstNodeBase & { kind: string };
       return `<!-- unsupported inline kind: ${n.kind} -->`;

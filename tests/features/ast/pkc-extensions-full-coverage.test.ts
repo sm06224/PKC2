@@ -253,7 +253,10 @@ HTML
     });
 
     it('inline marker 14 種が全部 AST node として decompose されている', () => {
-      const ast = parseMarkdownToAst(`:strong:[s] :emphasis:[e] :code:[c] :strike:[t] :lead:[l] :caption:[cap] :sup:[2] :sub:[n] ==m== ..em.. ^^new^^ [[em:f]] [[ruby:漢|かん]] %%h%% [@a]`);
+      // PR-V2(2026-05-14、Gemini review 反映):`[@a]` は citation に振り
+      // 分けるよう変更(`fig-` / `table-` prefix のみ auto-ref)。図表参照
+      // を testing するので `[@fig-1]` に変更。
+      const ast = parseMarkdownToAst(`:strong:[s] :emphasis:[e] :code:[c] :strike:[t] :lead:[l] :caption:[cap] :sup:[2] :sub:[n] ==m== ..em.. ^^new^^ [[em:f]] [[ruby:漢|かん]] %%h%% [@fig-1] [@smith2020]`);
       function collectKinds(inlines: ReadonlyArray<{ kind: string; children?: ReadonlyArray<{ kind: string }> }>): string[] {
         const out: string[] = [];
         for (const n of inlines) {
@@ -277,6 +280,7 @@ HTML
       expect(kinds).toContain('ruby');
       expect(kinds).toContain('comment-inline');
       expect(kinds).toContain('auto-ref');
+      expect(kinds).toContain('citation');
     });
   });
 

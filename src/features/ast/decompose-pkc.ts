@@ -63,6 +63,7 @@
 import type {
   AstAttrs,
   AstAutoRef,
+  AstCitation,
   AstFootnoteRef,
   AstBlock,
   AstCommentBlock,
@@ -749,13 +750,46 @@ function tryInlinePattern(
     };
   }
 
-  // 5. [@id] auto-ref
+  // 5. [@id] auto-ref vs citation(PR-V2 2026-05-14、Gemini review 反映)
+  //
+  // 同じ `[@id]` syntax を 2 用途に分岐:
+  //   - 図表参照(`fig-X` / `table-X` / `eq-X` / `eqn-X` プレフィックス)→
+  //     AstAutoRef(本文中の図番号 reference)
+  //   - 書誌的引用(その他、`smith2020` / `kuhn1962` 等)→ AstCitation
+  //     (Pandoc / BibTeX 互換)
+  //
+  // また `[prefix @id suffix]` 形式の citation も認識(Pandoc syntax)。
   m = /^\[@([A-Za-z_][\w-]*)\]/.exec(slice);
   if (m) {
+    const id = m[1]!;
+    const consumed = start + m[0].length;
+    if (/^(fig|figure|table|tbl|eq|eqn|equation)-/i.test(id)) {
+      return {
+        nodes: [{ kind: 'auto-ref', id } as AstAutoRef],
+        consumed,
+      };
+    }
+    // Pandoc citation syntax(書誌的 id、`figure-` 等の prefix 無し)
     return {
-      nodes: [{ kind: 'auto-ref', id: m[1]! } as AstAutoRef],
-      consumed: start + m[0].length,
+      nodes: [{ kind: 'citation', id } as AstCitation],
+      consumed,
     };
+  }
+  // 5b. `[prefix @id, suffix]` 形式の Pandoc citation
+  m = /^\[([^@\]]+?)@([A-Za-z_][\w-]*)(?:,\s*([^\]]+?))?\]/.exec(slice);
+  if (m) {
+    const prefix = m[1]!.trim();
+    const id = m[2]!;
+    const suffix = m[3]?.trim();
+    if (!/^(fig|figure|table|tbl|eq|eqn|equation)-/i.test(id)) {
+      const citation: AstCitation = { kind: 'citation', id };
+      if (prefix) citation.prefix = prefix;
+      if (suffix) citation.suffix = suffix;
+      return {
+        nodes: [citation],
+        consumed: start + m[0].length,
+      };
+    }
   }
 
   // 5b. footnote reference(Gemini review、2026-05-13 推奨)

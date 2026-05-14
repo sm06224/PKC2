@@ -208,6 +208,14 @@ function normalizeInline(node: AstInline): unknown {
         sourceFormat: node.sourceFormat,
         original: node.original,
       };
+    case 'citation':
+      return {
+        kind: 'citation',
+        id: node.id,
+        prefix: node.prefix,
+        suffix: node.suffix,
+        mode: node.mode,
+      };
     default: {
       const _exhaustive: never = node;
       void _exhaustive;
