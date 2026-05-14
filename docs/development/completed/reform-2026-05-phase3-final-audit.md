@@ -113,10 +113,10 @@
 
 ### 5.3 archive 候補(PR-2HH で marker 設置、2026-08 quarterly で物理移動)
 
-- `docs/development/phase3-stack-execution-plan-2026-05.md`
-- `docs/development/ir-migration-plan-2026-05.md`
-- `docs/development/wcag-contrast-resolver-spec.md`
-- `docs/development/theme-switching-consistency-audit.md`
+- `docs/development/completed/phase3-stack-execution-plan-2026-05.md`
+- `docs/development/completed/ir-migration-plan-2026-05.md`
+- `docs/development/completed/wcag-contrast-resolver-spec.md`
+- `docs/development/completed/theme-switching-consistency-audit.md`
 - `docs/spec/markdown-dialect-for-ai-authors-v2.md`
 
 ---
@@ -143,8 +143,8 @@ Phase 3 wave **完走** 🏁
 
 ## 7. 関連 doc
 
-- [`docs/release/CHANGELOG_v2.2.0.md`](../release/CHANGELOG_v2.2.0.md) — reform-2026-05 Phase 3 section に各 PR 詳細
-- [`docs/development/reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md) — wave retrospective(PR-2HH で着地)
-- [`docs/spec/markdown-dialect-for-ai-authors-v3.md`](../spec/markdown-dialect-for-ai-authors-v3.md) — canonical AI 規約書
-- [`docs/spec/public-ast-api-for-ai.md`](../spec/public-ast-api-for-ai.md) — 公開 AST API(他 AI 向け)
-- [`docs/development/INDEX.md`](./INDEX.md) Phase 3 stack table — 17 PR 全件 ready-to-merge ✅
+- [`docs/release/CHANGELOG_v2.2.0.md`](../../release/CHANGELOG_v2.2.0.md) — reform-2026-05 Phase 3 section に各 PR 詳細
+- [`docs/development/completed/reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md) — wave retrospective(PR-2HH で着地)
+- [`docs/spec/markdown-dialect-for-ai-authors-v3.md`](../../spec/markdown-dialect-for-ai-authors-v3.md) — canonical AI 規約書
+- [`docs/spec/public-ast-api-for-ai.md`](../../spec/public-ast-api-for-ai.md) — 公開 AST API(他 AI 向け)
+- [`docs/development/INDEX.md`](../INDEX.md) Phase 3 stack table — 17 PR 全件 ready-to-merge ✅

@@ -5,7 +5,7 @@
  * 損なう時がある。WCAG を算出して同系色で視認性を探索して欲しい。同じ組合せなら
  * 同じ見た目。Flag で OFF も可能に」
  *
- * 仕様 doc:`docs/development/wcag-contrast-resolver-spec.md`
+ * 仕様 doc:`docs/development/completed/wcag-contrast-resolver-spec.md`
  *
  * 設計:
  * 1. WCAG 2.1 §1.4.3 の式で relative luminance + contrast ratio 計算

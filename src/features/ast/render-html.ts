@@ -3,7 +3,7 @@
  * 実装。PR-2Y parse の出力面。`renderMarkdown` の equivalence test の
  * 対比対象。
  *
- * 設計(`docs/development/ir-migration-plan-2026-05.md` §3 PR-2Z):
+ * 設計(`docs/development/completed/ir-migration-plan-2026-05.md` §3 PR-2Z):
  *   - AstDocument を再帰的に traverse
  *   - 各 kind を HTML element にマップ
  *   - globals を `data-pkc-*` attr で root に転記(本 PR では document 全体

@@ -2,7 +2,7 @@
  * PR-2BB(2026-05-12、reform Phase 3 Block C 4/4):AstDocument → Pandoc
  * Native JSON 雛形。可換世界拡大の出口。
  *
- * 設計(`docs/development/ir-migration-plan-2026-05.md` §3 PR-2BB):
+ * 設計(`docs/development/completed/ir-migration-plan-2026-05.md` §3 PR-2BB):
  *   - `AstDocument` を Pandoc AST(`Pandoc` / `Meta` / `Block` / `Inline`)に変換
  *   - 出力 JSON は `pandoc --from json --to docx/pptx/pdf/latex/...` で消費可能
  *   - 本 PR は **最頻使用 kind のみ網羅**、完全実装は future wave

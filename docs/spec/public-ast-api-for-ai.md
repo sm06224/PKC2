@@ -8,7 +8,7 @@
 
 ## 概要
 
-PKC2 v2.2.0 は reform-2026-05 Phase 3 Block C で **markdown ↔ AstDocument ↔ HTML / Pandoc JSON** の可換経路を実装した(`docs/development/ir-migration-plan-2026-05.md`)。
+PKC2 v2.2.0 は reform-2026-05 Phase 3 Block C で **markdown ↔ AstDocument ↔ HTML / Pandoc JSON** の可換経路を実装した(`docs/development/completed/ir-migration-plan-2026-05.md`)。
 
 PR-2GG で **window.PKC.ast** namespace から AST 経路を **外部公開**:
 
@@ -186,7 +186,7 @@ const cb = window.PKC.ast.canonicalize(b);
 
 ## 関連 doc
 
-- `docs/development/ir-migration-plan-2026-05.md` — IR migration 設計
+- `docs/development/completed/ir-migration-plan-2026-05.md` — IR migration 設計
 - `src/core/ast/index.ts` — AST type 定義(canonical)
 - `src/features/ast/parse.ts` — parse 実装
 - `src/features/ast/render-html.ts` — HTML render 実装

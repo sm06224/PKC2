@@ -503,10 +503,10 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 Phase 2 完了直後の継続 wave。critical UX(theme / WCAG / bold-in-if)+ spec 完成度(`:::toc` / `:::frontmatter` / `:::body` / `%%%` LineMap)+ IR migration(可換世界拡大)+ 新機能 foundation + 最終 audit + doc finalize を計 16 PR で着地(計画 18 から最適化)。
 
-canonical plan:[`docs/development/phase3-stack-execution-plan-2026-05.md`](./phase3-stack-execution-plan-2026-05.md)(本 wave の起点 doc、wave 完了 status 反映済)
-retrospective:[`docs/development/reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md)(2026-05-12、wave 全 16 PR の deliverable / doctrine / archive 候補一覧)
-final audit:[`docs/development/reform-2026-05-phase3-final-audit.md`](./reform-2026-05-phase3-final-audit.md)(2026-05-12、PR-2II、17 PR 全件 ship-readiness 8 項目 audit + user direction 達成度 + bundle / test growth 集計)
-visual audit:[`docs/development/reform-2026-05-phase3-visual-audit-report.md`](./reform-2026-05-phase3-visual-audit-report.md)(2026-05-12、user 指摘「視覚テストしましたか?」の後付け対応、5 件 smoke + UX 課題 4 件 + 開発規律違反の謝罪)
+canonical plan:[`docs/development/completed/phase3-stack-execution-plan-2026-05.md`](./completed/phase3-stack-execution-plan-2026-05.md)(本 wave の起点 doc、wave 完了 status 反映済)
+retrospective:[`docs/development/completed/reform-2026-05-phase3-wave-retrospective.md`](./completed/reform-2026-05-phase3-wave-retrospective.md)(2026-05-12、wave 全 16 PR の deliverable / doctrine / archive 候補一覧)
+final audit:[`docs/development/completed/reform-2026-05-phase3-final-audit.md`](./completed/reform-2026-05-phase3-final-audit.md)(2026-05-12、PR-2II、17 PR 全件 ship-readiness 8 項目 audit + user direction 達成度 + bundle / test growth 集計)
+visual audit:[`docs/development/completed/reform-2026-05-phase3-visual-audit-report.md`](./completed/reform-2026-05-phase3-visual-audit-report.md)(2026-05-12、user 指摘「視覚テストしましたか?」の後付け対応、5 件 smoke + UX 課題 4 件 + 開発規律違反の謝罪)
 
 | # | PR | Block | scope | Status |
 |---|----|------|------|------|

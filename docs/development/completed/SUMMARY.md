@@ -58,6 +58,13 @@
 | 40 | [`todo-layering-fix.md`](./todo-layering-fix.md) | Todo layering fix |
 | 41 | [`todo-view-consistency.md`](./todo-view-consistency.md) | Todo view consistency (Detail/Calendar/Kanban) |
 | 42 | [`ux-regression-recovery.md`](./ux-regression-recovery.md) | UX regression recovery |
+| 43 | [`ir-migration-plan-2026-05.md`](./ir-migration-plan-2026-05.md) | IR migration plan(reform-2026-05 Phase 3、AST 中央集権 IR 実装計画) |
+| 44 | [`phase3-stack-execution-plan-2026-05.md`](./phase3-stack-execution-plan-2026-05.md) | reform-2026-05 Phase 3 stack 実行計画(18 PR wave) |
+| 45 | [`reform-2026-05-phase3-final-audit.md`](./reform-2026-05-phase3-final-audit.md) | Phase 3 wave 完走 final audit |
+| 46 | [`reform-2026-05-phase3-visual-audit-report.md`](./reform-2026-05-phase3-visual-audit-report.md) | Phase 3 visual smoke audit + UX 診断 |
+| 47 | [`reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md) | Phase 3 wave retrospective(16 PR + AI 規約 v3 promote) |
+| 48 | [`theme-switching-consistency-audit.md`](./theme-switching-consistency-audit.md) | theme 切替整合性 audit(PR-2S 実装着地済) |
+| 49 | [`wcag-contrast-resolver-spec.md`](./wcag-contrast-resolver-spec.md) | WCAG AA コントラスト探索 spec(PR-2T 実装着地済) |
 
 ## カテゴリ索引(secondary navigation)
 

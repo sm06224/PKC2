@@ -158,7 +158,7 @@ user 実機テストで `%%%` table バグが発見 → hotfix PR #430。
 
 ## 6. 関連 doc
 
-- [`docs/development/reform-2026-05-phase3-final-audit.md`](./reform-2026-05-phase3-final-audit.md) — 8 項目 audit(全 ✅ だったが視覚 audit が形骸的だった反省)
-- [`docs/development/reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md) — wave retrospective
-- [`docs/development/visual-state-parity-testing.md`](./visual-state-parity-testing.md) — 視覚 parity test methodology
-- [`CLAUDE.md`](../../CLAUDE.md) §10 — wave 運用規律(本 audit で違反した条項)
+- [`docs/development/completed/reform-2026-05-phase3-final-audit.md`](./reform-2026-05-phase3-final-audit.md) — 8 項目 audit(全 ✅ だったが視覚 audit が形骸的だった反省)
+- [`docs/development/completed/reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md) — wave retrospective
+- [`docs/development/visual-state-parity-testing.md`](../visual-state-parity-testing.md) — 視覚 parity test methodology
+- [`CLAUDE.md`](../../../CLAUDE.md) §10 — wave 運用規律(本 audit で違反した条項)

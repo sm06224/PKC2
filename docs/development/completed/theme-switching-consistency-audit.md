@@ -155,4 +155,4 @@ window.addEventListener('message', (ev) => {
 
 - iOS Safari hard reload(2026-05-10、Add to Home Screen cache 問題):`docs/development/ios-safari-hard-reload.md`(参照)
 - CSS architecture audit(theme.scale 連動):`docs/development/css-architecture-audit-2026-05.md`
-- Phase 3 stack plan:`docs/development/phase3-stack-execution-plan-2026-05.md`
+- Phase 3 stack plan:`docs/development/completed/phase3-stack-execution-plan-2026-05.md`
