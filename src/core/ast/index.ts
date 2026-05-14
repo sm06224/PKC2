@@ -33,6 +33,32 @@ export interface AstPosition {
   endColumn?: number;
 }
 
+/**
+ * Layout hint(`AstNodeBase.layout`)— PR-V3 で追加(Gemini review 2026-05-13
+ * 推奨「Word 変換器を作る際 layout 属性が AST レベルで必要」)。
+ *
+ * core AST は **semantic 中心** のまま、layout 指示は分離した layout 名前空間
+ * に持つことで attrs(semantic id / classes / kvs)との衝突を避ける。Word /
+ * PPT / PDF / LaTeX 直接出力時に各 target lowering が消費する。
+ *
+ * Phase 1:基本 hint(columns / float / pageBreakRole / textAlign 等)のみ
+ * を提供、PPT slide layout 等の format 固有指示は Phase 2 以降。
+ */
+export interface AstLayoutHint {
+  /** 段組数(1〜N)。1 / undefined は通常 1 段。 */
+  columns?: number;
+  /** float 配置(`left` / `right` / `none`)。figure / image / sidebar 用途。 */
+  float?: 'left' | 'right' | 'none';
+  /** 改ページ semantic role(`cover` / `section` / `appendix` / `bibliography` 等)。 */
+  pageBreakRole?: string;
+  /** Word / PPT で region anchor(本文 / sidebar / header / footer 等)を指定。 */
+  region?: string;
+  /** Text alignment(段落 align とは別、wrap context での text-align)。 */
+  textAlign?: 'left' | 'right' | 'center' | 'justify';
+  /** PPT slide layout 名(`title-content` / `two-content` / 等)。Phase 2。 */
+  slideLayout?: string;
+}
+
 /** すべての AST node の base type。 */
 export interface AstNodeBase {
   /** Discriminator。switch case / 型絞り込みに使う。 */
@@ -41,6 +67,8 @@ export interface AstNodeBase {
   attrs?: AstAttrs;
   /** Source 位置(parser が stamp、renderer は無視可)。 */
   pos?: AstPosition;
+  /** Layout hint(PR-V3、target lowering 用)。 */
+  layout?: AstLayoutHint;
 }
 
 // ── Inline nodes ────────────────────────────────────────

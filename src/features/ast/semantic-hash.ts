@@ -29,6 +29,7 @@ import type {
   AstBlock,
   AstDocument,
   AstInline,
+  AstLayoutHint,
 } from '@core/ast/index';
 
 export function semanticHash(ast: AstDocument): string {
@@ -63,6 +64,7 @@ function normalizeBlock(block: AstBlock): unknown {
         children: cleaned,
         align: block.align,
         indent: block.indent,
+        layout: normalizeLayout(block.layout),
       };
     }
     case 'quote':
@@ -70,6 +72,7 @@ function normalizeBlock(block: AstBlock): unknown {
         kind: 'quote',
         children: block.children.map(normalizeBlock),
         citation: block.citation ? sortObject(block.citation) : undefined,
+        layout: normalizeLayout(block.layout),
       };
     case 'list':
       return {
@@ -116,6 +119,7 @@ function normalizeBlock(block: AstBlock): unknown {
         caption: block.caption
           ? mergeInlineText(block.caption).map(normalizeInline)
           : undefined,
+        layout: normalizeLayout(block.layout),
       };
     case 'section':
       return {
@@ -123,12 +127,14 @@ function normalizeBlock(block: AstBlock): unknown {
         role: block.role,
         attrs: block.attrs ? normalizeAttrs(block.attrs) : undefined,
         children: block.children.map(normalizeBlock),
+        layout: normalizeLayout(block.layout),
       };
     case 'if-block':
       return {
         kind: 'if-block',
         format: block.format,
         children: block.children.map(normalizeBlock),
+        layout: normalizeLayout(block.layout),
       };
     case 'comment-block':
       // source は trim
@@ -263,6 +269,26 @@ function normalizeAttrs(attrs: AstAttrs): unknown {
     classes: [...attrs.classes].sort(),
     kvs: sortObject(attrs.kvs),
   };
+}
+
+/**
+ * PR-V3(2026-05-14):AstLayoutHint を semanticHash 用に正規化。
+ * 未設定は undefined を返して key 自体を hash から除外、設定済 layout は
+ * key 順序を整えた object として hash に含める(layout 差は semantic 差)。
+ */
+function normalizeLayout(layout: AstLayoutHint | undefined): unknown {
+  if (!layout) return undefined;
+  const keys = ['columns', 'float', 'pageBreakRole', 'region', 'textAlign', 'slideLayout'] as const;
+  const out: Record<string, unknown> = {};
+  let captured = false;
+  for (const k of keys) {
+    const v = (layout as Record<string, unknown>)[k];
+    if (v !== undefined) {
+      out[k] = v;
+      captured = true;
+    }
+  }
+  return captured ? out : undefined;
 }
 
 function sortObject<T>(obj: Readonly<Record<string, T>>): Record<string, T> {

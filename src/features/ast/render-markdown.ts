@@ -295,13 +295,14 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
     }
     case 'paragraph': {
       const text = renderInlines(block.children, mode);
-      // PKC mode のみ align / indent を `{...}` attrs として出す
+      // PKC mode のみ align / indent / layout を `{...}` attrs として出す
       if (mode === 'pkc') {
         const parts: string[] = [];
         if (block.align) parts.push(`align=${block.align}`);
         if (block.indent !== undefined && block.indent !== 0) {
           parts.push(`indent=${block.indent}`);
         }
+        parts.push(...layoutHintToAttrParts(block.layout));
         if (parts.length > 0) {
           return `${text}\n{${parts.join(' ')}}`;
         }
@@ -315,11 +316,14 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
         .split('\n')
         .map((l) => (l.length > 0 ? `> ${l}` : '>'))
         .join('\n');
-      if (mode === 'pkc' && block.citation && Object.keys(block.citation).length > 0) {
-        const cite = Object.entries(block.citation)
-          .map(([k, v]) => `${k}="${v}"`)
-          .join(' ');
-        return `:::quote{${cite}}\n${block.children
+      const layoutParts = layoutHintToAttrParts(block.layout);
+      const hasCitation = block.citation && Object.keys(block.citation).length > 0;
+      if (mode === 'pkc' && (hasCitation || layoutParts.length > 0)) {
+        const citeParts = hasCitation
+          ? Object.entries(block.citation!).map(([k, v]) => `${k}="${v}"`)
+          : [];
+        const allParts = [...citeParts, ...layoutParts];
+        return `:::quote{${allParts.join(' ')}}\n${block.children
           .map((b) => renderBlock(b, mode))
           .join('\n\n')}\n:::`;
       }
@@ -405,6 +409,7 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
             else if (v !== false) attrParts.push(`${k}=${JSON.stringify(v)}`);
           }
         }
+        attrParts.push(...layoutHintToAttrParts(block.layout));
         // marker 前後に **必ず blank line** を入れて、markdown-it が
         // close `:::` を直前 paragraph と結合しないように。
         return `:::figure{${attrParts.join(' ')}}\n\n${inner}${cap}\n\n:::`;
@@ -417,7 +422,18 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
     case 'section': {
       if (mode === 'pkc') {
         const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
-        return `:::section{role=${block.role}}\n\n${inner}\n\n:::`;
+        const attrParts: string[] = [`role=${block.role}`];
+        if (block.attrs) {
+          if (block.attrs.id) attrParts.push(`#${block.attrs.id}`);
+          for (const cls of block.attrs.classes) attrParts.push(`.${cls}`);
+          for (const [k, v] of Object.entries(block.attrs.kvs)) {
+            if (k === 'role') continue;
+            if (v === true) attrParts.push(k);
+            else if (v !== false) attrParts.push(`${k}=${JSON.stringify(v)}`);
+          }
+        }
+        attrParts.push(...layoutHintToAttrParts(block.layout));
+        return `:::section{${attrParts.join(' ')}}\n\n${inner}\n\n:::`;
       }
       // GFM:section marker を剥がすだけだと role 情報が失われる(user 指摘
       // 2026-05-13:「AST section ブロックは GFM markdown の各行引用に
@@ -435,7 +451,9 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
     case 'if-block': {
       if (mode === 'pkc') {
         const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
-        return `:::if{format=${block.format}}\n\n${inner}\n\n:::`;
+        const attrParts: string[] = [`format=${block.format}`];
+        attrParts.push(...layoutHintToAttrParts(block.layout));
+        return `:::if{${attrParts.join(' ')}}\n\n${inner}\n\n:::`;
       }
       // PR-2JJ v2 final(2026-05-13、user direction「実装できるまでを終わり」):
       // GFM mode の format フィルタを **AST node level** で実施。
@@ -734,4 +752,20 @@ function formatAttrs(attrs: { id?: string; classes: readonly string[]; kvs: Read
     else if (v !== false) parts.push(`${k}=${JSON.stringify(v)}`);
   }
   return `{${parts.join(' ')}}`;
+}
+
+/**
+ * PR-V3(2026-05-14):AstLayoutHint を `layout-* =N` 形式の attr 列に展開。
+ * PKC mode で `:::section{role=R layout-columns=2}` 等の round-trip 保持。
+ */
+function layoutHintToAttrParts(layout: import('@core/ast/index').AstLayoutHint | undefined): string[] {
+  if (!layout) return [];
+  const parts: string[] = [];
+  if (layout.columns !== undefined) parts.push(`layout-columns=${layout.columns}`);
+  if (layout.float !== undefined) parts.push(`layout-float=${layout.float}`);
+  if (layout.pageBreakRole !== undefined) parts.push(`layout-page-break-role=${JSON.stringify(layout.pageBreakRole)}`);
+  if (layout.region !== undefined) parts.push(`layout-region=${JSON.stringify(layout.region)}`);
+  if (layout.textAlign !== undefined) parts.push(`layout-text-align=${layout.textAlign}`);
+  if (layout.slideLayout !== undefined) parts.push(`slide-layout=${JSON.stringify(layout.slideLayout)}`);
+  return parts;
 }
