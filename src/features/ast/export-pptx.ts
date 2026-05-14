@@ -224,19 +224,24 @@ export async function astToPptxBlob(
       color: '363636',
     });
     if (draft.lines.length > 0) {
-      const textObjects = draft.lines
-        .filter((l) => l.text !== '')
-        .map((line) => ({
-          text: line.bullet ? '• ' + line.text : line.text,
-          options: {
-            fontSize: 18,
-            bold: line.bold,
-            italic: line.italic,
-            fontFace: line.fontFace,
-            // indent はインデント文字数 + 直接 indent option
-            indentLevel: line.indent ?? 0,
-          },
-        }));
+      // PR-V13 hotfix(2026-05-14、user audit「output 検証」発見):
+      // pptxgenjs の `addText(array)` は array entry を「同 paragraph 内の run」
+      // として render するため、`breakLine: true` を付けないと code-block の
+      // 各行 + 続く paragraph が visual に重なって消える。
+      // 修正:各 text object に `breakLine: true` を付与し、行ごとに改行。
+      const nonEmpty = draft.lines.filter((l) => l.text !== '');
+      const textObjects = nonEmpty.map((line, idx) => ({
+        text: line.bullet ? '• ' + line.text : line.text,
+        options: {
+          fontSize: 18,
+          bold: line.bold,
+          italic: line.italic,
+          fontFace: line.fontFace,
+          indentLevel: line.indent ?? 0,
+          // 最終行は breakLine 不要(余分な空行を防ぐ)
+          breakLine: idx < nonEmpty.length - 1,
+        },
+      }));
       slide.addText(textObjects, {
         x: 0.5,
         y: 1.3,

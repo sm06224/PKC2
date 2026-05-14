@@ -50,9 +50,12 @@ async function bootSyncOn(page: Page): Promise<void> {
     try { window.localStorage.setItem('pkc2.split-sync-enabled', 'true'); } catch { /* noop */ }
   });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
-  await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 15_000 });
+  // PR-V18(2026-05-14):bundle.js が PR-V13(docx + pptxgenjs)で +725 KB の
+  // ため、フル smoke 走行終盤での boot parse 時間が CI で 15s 限界に近づく。
+  // 30s に bump して flaky を吸収。
+  await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 30_000 });
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await page.locator('#pkc-root[data-pkc-phase="editing"]').first().waitFor({ timeout: 5_000 });
+  await page.locator('#pkc-root[data-pkc-phase="editing"]').first().waitFor({ timeout: 10_000 });
   await page.evaluate((body) => {
     const ta = document.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
     if (!ta) return;

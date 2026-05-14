@@ -176,34 +176,58 @@ function blockToDocxElements(block: AstBlock): Array<Paragraph | Table> {
       return [new Paragraph(opts)];
     }
     case 'quote': {
-      const inner = block.children.flatMap(blockToDocxElements);
-      // Word の quote style:左 indent + italic
-      return inner.map((el) => {
-        if (el instanceof Paragraph) {
-          // 既存 Paragraph に indent 付け直すのは docx API 制約で再構築が必要だが、
-          // 簡略化のため style 名を Quote に変更(template に Quote style がある前提)
-          return new Paragraph({
-            children: (el as unknown as { options?: { children?: TextRun[] } }).options?.children ?? [],
-            indent: { left: 720 }, // 0.5 inch
-            style: 'Quote',
-          });
+      // PR-V13 hotfix(2026-05-14、user audit「output 検証」発見):
+      // 旧実装は `blockToDocxElements(child)` を呼んでから生成済 Paragraph の
+      // `options.children` を hack で抜き出していたが、docx package の
+      // Paragraph は options を public expose しないため undefined になり、
+      // **blockquote の本文が .docx に全く出力されない致命 bug** だった。
+      //
+      // 修正:child paragraph の inline は直接 `inlineToRuns` で生成、Quote
+      // style + indent を付けて Paragraph を構築する。
+      const out: Paragraph[] = [];
+      for (const child of block.children) {
+        if (child.kind === 'paragraph') {
+          out.push(
+            new Paragraph({
+              children: child.children.flatMap((c) => inlineToRuns(c)),
+              indent: { left: 720 }, // 0.5 inch
+              style: 'Quote',
+            }),
+          );
+          continue;
         }
-        return el;
-      });
+        // Nested non-paragraph(list / nested quote 等)は再帰展開
+        const nested = blockToDocxElements(child);
+        for (const el of nested) {
+          if (el instanceof Paragraph) out.push(el);
+        }
+      }
+      return out;
     }
     case 'list': {
+      // PR-V13 hotfix(2026-05-14):同じ options.children hack で list 内容が
+      // .docx に出ていなかった。直接 inline を生成 + bullet/numbering 付与。
       const items: Paragraph[] = [];
       for (const item of block.items) {
         for (const child of item.children) {
-          const childEls = blockToDocxElements(child);
-          for (const el of childEls) {
-            if (el instanceof Paragraph) {
-              items.push(new Paragraph({
-                children: (el as unknown as { options?: { children?: TextRun[] } }).options?.children ?? [],
-                bullet: block.listKind === 'bullet' ? { level: 0 } : undefined,
-                numbering: block.listKind === 'ordered' ? { reference: 'pkc-ordered', level: 0 } : undefined,
-              }));
+          if (child.kind === 'paragraph') {
+            const children = child.children.flatMap((c) => inlineToRuns(c));
+            const opts: IParagraphOptions = { children };
+            if (block.listKind === 'bullet') opts.bullet = { level: 0 };
+            else if (block.listKind === 'ordered') opts.numbering = { reference: 'pkc-ordered', level: 0 };
+            else if (block.listKind === 'task') {
+              // Task list:checkbox 風 prefix(`[ ]` / `[x]`)を text として追加
+              const prefix = item.state === 'done' ? '☑ ' : '☐ ';
+              opts.children = [new TextRun({ text: prefix }), ...children];
+              opts.bullet = { level: 0 };
             }
+            items.push(new Paragraph(opts));
+            continue;
+          }
+          // Nested list / quote / 等:再帰
+          const nested = blockToDocxElements(child);
+          for (const el of nested) {
+            if (el instanceof Paragraph) items.push(el);
           }
         }
       }
@@ -250,21 +274,22 @@ function blockToDocxElements(block: AstBlock): Array<Paragraph | Table> {
     case 'math-block':
       return [new Paragraph({ children: [new TextRun({ text: block.src, font: 'Cambria Math' })] })];
     case 'definition-list': {
+      // PR-V13 hotfix:list と同じ options hack bug を解消、direct inline 生成。
       const out: Paragraph[] = [];
       for (const item of block.items) {
         out.push(new Paragraph({
           children: item.term.flatMap((c) => inlineToRuns(c, { bold: true })),
         }));
         for (const desc of item.description) {
-          const descEls = blockToDocxElements(desc);
-          for (const el of descEls) {
-            if (el instanceof Paragraph) {
-              out.push(new Paragraph({
-                children: (el as unknown as { options?: { children?: TextRun[] } }).options?.children ?? [],
-                indent: { left: 720 },
-              }));
-            }
+          if (desc.kind === 'paragraph') {
+            out.push(new Paragraph({
+              children: desc.children.flatMap((c) => inlineToRuns(c)),
+              indent: { left: 720 },
+            }));
+            continue;
           }
+          const nested = blockToDocxElements(desc);
+          for (const el of nested) if (el instanceof Paragraph) out.push(el);
         }
       }
       return out;

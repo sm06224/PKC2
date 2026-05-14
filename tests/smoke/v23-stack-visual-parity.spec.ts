@@ -389,3 +389,100 @@ test('PR-V6 visual parity: derived-branches link を real click すると branch
   await page.screenshot({ path: 'test-results/pr-v6-derived-branches-click.png' });
   void selectedLid; // unused, kept for diagnostic if test fails
 });
+
+test('PR-V14 visual parity: branch tree が多階層 nested で見える(depth 0/1 + guide marker)', async ({
+  page,
+}) => {
+  await page.goto('/pkc2.html');
+  await bootReady(page);
+
+  // 多階層 provenance:root → b1 / b2、b1 → b1a / b1b
+  const now = '2026-05-14T00:00:00.000Z';
+  const container = {
+    meta: {
+      container_id: 'branch-tree-parity',
+      title: 'Branch tree parity',
+      created_at: now,
+      updated_at: now,
+      schema_version: 1,
+    },
+    entries: [
+      { lid: 'root', title: 'Root', archetype: 'text', body: '', created_at: now, updated_at: now },
+      { lid: 'b1', title: 'B1', archetype: 'text', body: '', created_at: now, updated_at: now },
+      { lid: 'b2', title: 'B2', archetype: 'text', body: '', created_at: now, updated_at: now },
+      { lid: 'b1a', title: 'B1.a grandchild', archetype: 'text', body: '', created_at: now, updated_at: now },
+      { lid: 'b1b', title: 'B1.b grandchild', archetype: 'text', body: '', created_at: now, updated_at: now },
+    ],
+    relations: [
+      { id: 'r1', from: 'b1', to: 'root', kind: 'provenance', created_at: now, updated_at: now,
+        metadata: { branch_source: 'revision', source_revision_id: 'rev-1' } },
+      { id: 'r2', from: 'b2', to: 'root', kind: 'provenance', created_at: now, updated_at: now,
+        metadata: { branch_source: 'revision', source_revision_id: 'rev-2' } },
+      { id: 'r3', from: 'b1a', to: 'b1', kind: 'provenance', created_at: now, updated_at: now,
+        metadata: { branch_source: 'revision', source_revision_id: 'rev-3' } },
+      { id: 'r4', from: 'b1b', to: 'b1', kind: 'provenance', created_at: now, updated_at: now,
+        metadata: { branch_source: 'revision', source_revision_id: 'rev-4' } },
+    ],
+    revisions: [],
+    assets: {},
+  };
+  await seedContainer(page, container);
+  await page.goto('/pkc2.html');
+  await bootReady(page);
+  // entry-list 内の root を click
+  await page
+    .locator('[data-pkc-region="entry-list"]')
+    .locator('[data-pkc-action="select-entry"][data-pkc-lid="root"]')
+    .first()
+    .click();
+  await page.waitForTimeout(300);
+
+  // section + summary 数値
+  const summary = page.locator('.pkc-derived-branches-summary');
+  await expect(summary).toBeVisible();
+  await expect(summary).toContainText('(4)'); // total node 数
+
+  // depth 0 row が 2 件(b1, b2)
+  const d0 = page.locator('.pkc-derived-branch-row[data-pkc-branch-depth="0"]');
+  await expect(d0).toHaveCount(2);
+  // depth 1 row が 2 件(b1a, b1b)
+  const d1 = page.locator('.pkc-derived-branch-row[data-pkc-branch-depth="1"]');
+  await expect(d1).toHaveCount(2);
+
+  // tree guide marker `└──` が depth 1 row に存在
+  const guide = page.locator(
+    '.pkc-derived-branch-row[data-pkc-branch-lid="b1a"] .pkc-derived-branch-guide',
+  );
+  await expect(guide).toBeVisible();
+  await expect(guide).toContainText('└──');
+
+  // children wrapper が b1 配下に存在し、b1a / b1b を内包
+  const wrapper = page.locator('[data-pkc-branch-parent-lid="b1"]');
+  await expect(wrapper).toBeVisible();
+  await expect(wrapper.locator('.pkc-derived-branch-row[data-pkc-branch-lid="b1a"]')).toBeVisible();
+  await expect(wrapper.locator('.pkc-derived-branch-row[data-pkc-branch-lid="b1b"]')).toBeVisible();
+
+  // 視覚 parity:b1a row の中央点で elementFromPoint を逆引き
+  const b1aRow = page.locator('.pkc-derived-branch-row[data-pkc-branch-lid="b1a"]');
+  const box = await b1aRow.boundingBox();
+  expect(box).not.toBeNull();
+  if (box) {
+    const elInfo = await page.evaluate(
+      ([x, y]: [number, number]) => {
+        const el = document.elementFromPoint(x, y);
+        if (!el) return null;
+        // row 内のどこかにヒットすれば OK(button / span / row 本体いずれか)
+        return {
+          tag: (el as HTMLElement).tagName.toLowerCase(),
+          className: (el as HTMLElement).className,
+          ancestorLid:
+            (el as HTMLElement).closest('.pkc-derived-branch-row')?.getAttribute('data-pkc-branch-lid') ?? null,
+        };
+      },
+      [box.x + box.width / 2, box.y + box.height / 2] as [number, number],
+    );
+    expect(elInfo?.ancestorLid).toBe('b1a');
+  }
+
+  await page.screenshot({ path: 'test-results/pr-v14-branch-tree-parity.png' });
+});

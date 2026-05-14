@@ -45,7 +45,7 @@ async function bootEdit(page: Page, syncOn: boolean): Promise<void> {
     });
   }
   await page.goto('/pkc2.html', { waitUntil: 'load' });
-  await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 15_000 });
+  await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 30_000 });
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
   await page.locator('#pkc-root[data-pkc-phase="editing"]').first().waitFor({ timeout: 5_000 });
   await page.evaluate((body) => {
