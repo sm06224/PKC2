@@ -2359,20 +2359,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'export-entry-pdf': {
-        // PR-2JJ v2(2026-05-13、PR #432 stack):browser native print dialog
-        // 経由で PDF 出力。既存の rendered-viewer popup を開いて、user は
-        // popup 内の Print ボタン or Ctrl+P で「PDF として保存」を選択。
-        // 0 dependency / 0 KB bundle 増。
+        // PR-V19 hotfix(2026-05-14、user audit「PDF 出力は機能してない」):
+        // 旧実装は DOM 上の `open-rendered-viewer` button を click していたが、
+        // Data… menu open 中などで button が viewport から消えている / 未 render の
+        // archetype だと silent fail だった。`openRenderedViewer` を直接呼ぶ。
         if (!lid) break;
-        const viewerBtn = document.querySelector(
-          `button[data-pkc-action="open-rendered-viewer"][data-pkc-lid="${CSS.escape(lid)}"]`,
-        ) as HTMLButtonElement | null;
-        if (viewerBtn) {
-          viewerBtn.click();
-        } else {
-          // viewer ボタンが UI 上に無い entry archetype(folder 等)では何もしない。
-          console.warn('[PKC2] export-entry-pdf: no Viewer button found for this entry');
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) {
+          console.warn('[PKC2] export-entry-pdf: entry not found', lid);
+          break;
         }
+        if (!st.container) break;
+        openRenderedViewer(ent, st.container);
         break;
       }
       case 'export-entry-pandoc-json': {
