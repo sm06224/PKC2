@@ -207,19 +207,25 @@ function blockToDocxElements(block: AstBlock): Array<Paragraph | Table> {
     case 'list': {
       // PR-V13 hotfix(2026-05-14):同じ options.children hack で list 内容が
       // .docx に出ていなかった。直接 inline を生成 + bullet/numbering 付与。
+      // PR-V18 hotfix:`IParagraphOptions` は readonly field なので後から
+      // 代入できない。一度に object literal で構築する。
       const items: Paragraph[] = [];
       for (const item of block.items) {
         for (const child of item.children) {
           if (child.kind === 'paragraph') {
-            const children = child.children.flatMap((c) => inlineToRuns(c));
-            const opts: IParagraphOptions = { children };
-            if (block.listKind === 'bullet') opts.bullet = { level: 0 };
-            else if (block.listKind === 'ordered') opts.numbering = { reference: 'pkc-ordered', level: 0 };
-            else if (block.listKind === 'task') {
-              // Task list:checkbox 風 prefix(`[ ]` / `[x]`)を text として追加
+            const inlines = child.children.flatMap((c) => inlineToRuns(c));
+            let opts: IParagraphOptions;
+            if (block.listKind === 'ordered') {
+              opts = { children: inlines, numbering: { reference: 'pkc-ordered', level: 0 } };
+            } else if (block.listKind === 'task') {
               const prefix = item.state === 'done' ? '☑ ' : '☐ ';
-              opts.children = [new TextRun({ text: prefix }), ...children];
-              opts.bullet = { level: 0 };
+              opts = {
+                children: [new TextRun({ text: prefix }), ...inlines],
+                bullet: { level: 0 },
+              };
+            } else {
+              // bullet(default)
+              opts = { children: inlines, bullet: { level: 0 } };
             }
             items.push(new Paragraph(opts));
             continue;
