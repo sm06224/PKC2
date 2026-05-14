@@ -32,7 +32,7 @@ vars:
 
 {{vars.site}} 計画
 `);
-    const inlines = (ast.children[0] as { children: AstInline[] }).children;
+    const inlines = (ast.children[0] as unknown as { children: AstInline[] }).children;
     const varNode = inlines.find((n) => n.kind === 'var') as AstVar | undefined;
     expect(varNode).toBeDefined();
     expect(varNode!.path).toBe('vars.site');
@@ -77,7 +77,7 @@ vars:
     const md = renderAstToMarkdown(ast1, { mode: 'pkc' });
     const ast2 = parseMarkdownToAst(md);
     // round-trip で AstVar が保持される(source provenance 維持)
-    const inlines = (ast2.children[0] as { children: AstInline[] }).children;
+    const inlines = (ast2.children[0] as unknown as { children: AstInline[] }).children;
     expect(inlines.some((n) => n.kind === 'var')).toBe(true);
   });
 });
@@ -90,7 +90,7 @@ describe('AI review:footnote-ref + footnote definitions(Gemini)', () => {
 `);
     const para = ast.children[0]!;
     expect(para.kind).toBe('paragraph');
-    const inlines = (para as { children: AstInline[] }).children;
+    const inlines = (para as unknown as { children: AstInline[] }).children;
     const ref = inlines.find((n) => n.kind === 'footnote-ref') as AstFootnoteRef | undefined;
     expect(ref).toBeDefined();
     expect(ref!.id).toBe('note1');
@@ -126,7 +126,7 @@ describe('AI review:footnote-ref + footnote definitions(Gemini)', () => {
 describe('AI review:AstOpaque* 未知構文 lossless preserve(ChatGPT critical)', () => {
   it('LaTeX `\\textcolor{red}{X}` → AstOpaqueInline(sourceFormat=latex)', () => {
     const ast = parseMarkdownToAst('text with \\textcolor{red}{warning} marker');
-    const inlines = (ast.children[0] as { children: AstInline[] }).children;
+    const inlines = (ast.children[0] as unknown as { children: AstInline[] }).children;
     const opaque = inlines.find((n) => n.kind === 'opaque-inline') as
       | AstOpaqueInline
       | undefined;
@@ -148,7 +148,7 @@ describe('AI review:AstOpaque* 未知構文 lossless preserve(ChatGPT critical)'
       cur = renderAstToMarkdown(parseMarkdownToAst(cur), { mode: 'pkc' });
     }
     const ast = parseMarkdownToAst(cur);
-    const inlines = (ast.children[0] as { children: AstInline[] }).children;
+    const inlines = (ast.children[0] as unknown as { children: AstInline[] }).children;
     expect(inlines.some((n) => n.kind === 'opaque-inline')).toBe(true);
   });
 });
