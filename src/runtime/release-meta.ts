@@ -98,15 +98,23 @@ export const APP_ID = 'pkc2' as const;
  * Source-side version (semver).
  * Builder may override in pkc-meta; this is the source default.
  *
- * Bumped to 2.1.1 (Phase 3 / Phase 2 Link migration tool v1 close):
- * v2.1.0 shipped the Link system foundation with the migration tool
- * listed as "designed but not implemented"; v2.1.1 promotes it to
- * fully implemented (scanner + preview UI + Apply all safe +
- * revision-backed undo + manual sync). schema_version is unchanged.
- * See docs/release/CHANGELOG_v2.1.1.md and
- * docs/development/versioning-policy.md.
+ * Bumped to 2.3.0 (PR-2JJ v2 final、PR #432 close):
+ * v2.2.0 で reform-2026-05 Phase 1〜3 が完走、PR-2JJ v2 final で
+ * **AST 中央集権 IR 化 + 双方向可換変換器 + ChatGPT/Gemini review 反映**
+ * (AstVar parse 時非展開 / AstOpaque preserve / footnote / definition-list /
+ * astVersion: '2.0' / semanticHash / Launcher view / Data… menu / Format
+ * panel / Textlog 右クリック / PDF/Word/PPT 出力)が着地。
+ *
+ * **公開 API**:`window.PKC.ast` v1.2.0(parseMarkdown / canonicalize /
+ * renderHtml / renderMarkdown(gfm/pkc)/ toPandocJson / semanticHash /
+ * markdownToPandoc)。
+ *
+ * schema_version は **1 のまま**(Container shape は backward 互換、
+ * AttachmentBody に `registered_as_app?` / `app_icon?` 追加は前方互換)。
+ *
+ * See docs/release/CHANGELOG_v2.3.0.md and docs/spec/ast-commutative-ir.md。
  */
-export const VERSION = '2.1.1' as const;
+export const VERSION = '2.3.0' as const;
 
 /**
  * Data schema version. Increment when Container shape changes
