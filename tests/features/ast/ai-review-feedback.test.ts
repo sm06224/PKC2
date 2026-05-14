@@ -256,11 +256,13 @@ Hello {{vars.x}}
   });
 });
 
-describe('AI review:window.PKC.ast.semanticHash 公開(v1.2.0)', () => {
+describe('AI review:window.PKC.ast.semanticHash 公開(v1.2.0 で追加、v1.3.0 で parseHtml 追加)', () => {
   it('public API に semanticHash が追加されている', () => {
     const api = getAstApi();
     expect(typeof api.semanticHash).toBe('function');
-    expect(api.version).toBe('1.2.0');
+    expect(api.version).toBe('1.3.0');
+    // v1.3.0(2026-05-14 PR-V7)で parseHtml も追加
+    expect(typeof api.parseHtml).toBe('function');
   });
 
   it('semanticHash via public API も同じ behavior', () => {

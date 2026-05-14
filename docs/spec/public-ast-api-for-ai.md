@@ -1,7 +1,7 @@
 # PKC2 公開 AST API(for AI / external integrations)
 
 **Status**: 着地(2026-05-12、reform-2026-05 Phase 3 PR-2GG)
-**API version**: 1.0.0
+**API version**: 1.3.0(2026-05-14、v2.3.x stack PR-V7 で `parseHtml` 追加)
 **Entry point**: `window.PKC.ast`
 
 ---
@@ -99,8 +99,27 @@ const pandoc = window.PKC.ast.markdownToPandoc('# Hello\n\nworld');
 API version 文字列(将来の breaking change 検出用)。
 
 ```js
-console.log(window.PKC.ast.version); // '1.0.0'
+console.log(window.PKC.ast.version); // '1.3.0'
 ```
+
+### `window.PKC.ast.parseHtml(html) → AstDocument`(v1.3.0、PR-V7)
+
+HTML 文字列を AstDocument に **reverse parse**。commonmark + GFM core + PKC HTML output(`<section data-pkc-role>` / `<cite class="pkc-citation">` / `<a class="pkc-auto-ref">` / `<span class="pkc-em-dot">` / `<span class="pkc-variable">` / `<sup class="pkc-footnote-ref">` / `<div class="pkc-if-block">` 等)を AST に戻す。
+
+未知 tag(`<kbd>` / `<aside>` / 任意の inline / block)は **`AstOpaqueInline` / `AstOpaqueBlock`(`sourceFormat: 'html'`)** として lossless preserve(原文を `original` field に保持)。
+
+```js
+const ast = window.PKC.ast.parseHtml('<h1>Title</h1><p>hello <strong>world</strong></p>');
+// ast.children = [
+//   { kind: 'heading', level: 1, children: [{ kind: 'text', value: 'Title' }] },
+//   { kind: 'paragraph', children: [
+//     { kind: 'text', value: 'hello ' },
+//     { kind: 'strong', children: [{ kind: 'text', value: 'world' }] },
+//   ]},
+// ]
+```
+
+**可換性 contract**:`parseHtml(renderHtml(ast))` は `ast` と `semanticHash` 等価(PKC2 が出した HTML について成立)。外部 HTML も opaque 経路で lossless、2 回目以降の round-trip は idempotent。
 
 ---
 

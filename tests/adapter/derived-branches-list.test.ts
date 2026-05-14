@@ -70,9 +70,12 @@ function makeContainer(): Container {
     relations: [
       // branch-1 derived from source via revision branch
       {
+        id: 'rel-1',
         from: 'branch-1',
         to: 'source',
         kind: 'provenance',
+        created_at: '2026-05-14T00:30:00Z',
+        updated_at: '2026-05-14T00:30:00Z',
         metadata: {
           branch_source: 'revision',
           source_revision_id: 'rev-abc123def456',
@@ -81,9 +84,12 @@ function makeContainer(): Container {
       },
       // branch-2 also derived from source, using v1.x conversion_kind syntax
       {
+        id: 'rel-2',
         from: 'branch-2',
         to: 'source',
         kind: 'provenance',
+        created_at: '2026-05-14T00:45:00Z',
+        updated_at: '2026-05-14T00:45:00Z',
         metadata: {
           conversion_kind: 'revision-branch',
           source_revision_id: 'rev-xyz789',
@@ -92,9 +98,12 @@ function makeContainer(): Container {
       },
       // non-revision provenance — should be ignored
       {
+        id: 'rel-3',
         from: 'unrelated',
         to: 'source',
         kind: 'provenance',
+        created_at: '2026-05-14T00:00:00Z',
+        updated_at: '2026-05-14T00:00:00Z',
         metadata: { branch_source: 'import' },
       },
     ],

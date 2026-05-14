@@ -25,6 +25,7 @@ import {
   type RenderMarkdownOptions,
 } from '@features/ast/render-markdown';
 import { semanticHash } from '@features/ast/semantic-hash';
+import { parseHtmlToAst } from '@features/ast/parse-html';
 import type { AstDocument } from '@core/ast/index';
 
 export interface PkcAstApi {
@@ -47,6 +48,15 @@ export interface PkcAstApi {
    * ChatGPT review(2026-05-13)推奨で v1.2.0 で公開。
    */
   semanticHash(ast: AstDocument): string;
+  /**
+   * HTML 文字列 → AstDocument の **reverse parser**(PR-V7、v1.3.0 で公開)。
+   *
+   * commonmark + GFM core + PKC HTML output 表現をそのまま AST に戻す。
+   * 未知 tag は `AstOpaqueInline` / `AstOpaqueBlock` として lossless preserve。
+   * `parseHtml(renderHtml(ast)) === ast`(semantic 等価、`semanticHash` で
+   * 数値証明)を満たす。
+   */
+  parseHtml(html: string): AstDocument;
   /** API version(将来の breaking change 検出用)。 */
   readonly version: string;
 }
@@ -60,7 +70,8 @@ const API: PkcAstApi = {
   markdownToPandoc: (text, opts) =>
     astToPandocNative(parseMarkdownToAst(text, opts)),
   semanticHash: (ast) => semanticHash(ast),
-  version: '1.2.0',
+  parseHtml: (html) => parseHtmlToAst(html),
+  version: '1.3.0',
 };
 
 /**
