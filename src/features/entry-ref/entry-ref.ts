@@ -43,12 +43,30 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * Parse an `entry:` reference string.
  *
- * The second argument is reserved for future extension (e.g. passing
- * a viewer context so a raw `#log/xxx` fragment can be resolved
- * without the `entry:` prefix). Slice 1 does not use it.
+ * PR-V17(2026-05-14、U1 TEXTLOG Phase 1 §4.5 context-relative):`opts.currentLid`
+ * を渡すと、`#log/<id>` / `#day/<yyyy-mm-dd>` / `#log/<id>/<slug>` 等の **
+ * fragment-only ref**(`entry:` prefix 無し)を「同 entry 内 ref」として
+ * 受理する。spec §4.5 行 142-143 で「context-relative `#log/<id>` 等の単独形
+ * は同一 entry 内の描画コンテキストに限り有効」と規定されていたが、Slice 1
+ * では `reserved for future extension` として未実装だった。本 PR で着地。
  */
-export function parseEntryRef(raw: string): ParsedEntryRef {
-  if (typeof raw !== 'string' || !raw.startsWith(SCHEME)) {
+export interface ParseEntryRefOptions {
+  /**
+   * 描画 context の lid。指定すると `#log/...` / `#day/...` の fragment-only
+   * ref が `entry:<currentLid>#...` 同等として parse される。
+   */
+  currentLid?: string;
+}
+
+export function parseEntryRef(raw: string, opts: ParseEntryRefOptions = {}): ParsedEntryRef {
+  if (typeof raw !== 'string') {
+    return invalid(typeof raw === 'string' ? raw : String(raw));
+  }
+  // PR-V17:context-relative fragment-only path
+  if (raw.startsWith('#') && opts.currentLid && TOKEN_RE.test(opts.currentLid)) {
+    return parseFragmentWithLid(raw.slice(1), opts.currentLid, raw);
+  }
+  if (!raw.startsWith(SCHEME)) {
     return invalid(raw);
   }
   const rest = raw.slice(SCHEME.length);
@@ -100,6 +118,46 @@ export function parseEntryRef(raw: string): ParsedEntryRef {
     return { kind: 'legacy', lid, logId: frag };
   }
 
+  return invalid(raw);
+}
+
+/**
+ * PR-V17:fragment-only ref(`#log/...` / `#day/...` 等、`entry:` prefix 無し)
+ * を context lid 経由で parse。spec §4.5 「context-relative」path 用。
+ *
+ * 渡される `frag` は `#` を取り除いた fragment string、`raw` は元の文字列
+ * (invalid 時の echo 用)。
+ */
+function parseFragmentWithLid(frag: string, lid: string, raw: string): ParsedEntryRef {
+  if (frag === '') return invalid(raw);
+  if (frag.startsWith('day/')) {
+    const dateKey = frag.slice('day/'.length);
+    if (!DATE_RE.test(dateKey) || !isRealDate(dateKey)) return invalid(raw);
+    return { kind: 'day', lid, dateKey };
+  }
+  if (frag.startsWith('log/')) {
+    const after = frag.slice('log/'.length);
+    if (after === '') return invalid(raw);
+    const rangeIdx = after.indexOf('..');
+    if (rangeIdx !== -1) {
+      const fromId = after.slice(0, rangeIdx);
+      const toId = after.slice(rangeIdx + 2);
+      if (!TOKEN_RE.test(fromId) || !TOKEN_RE.test(toId)) return invalid(raw);
+      return { kind: 'range', lid, fromId, toId };
+    }
+    const slashIdx = after.indexOf('/');
+    if (slashIdx !== -1) {
+      const logId = after.slice(0, slashIdx);
+      const slug = after.slice(slashIdx + 1);
+      if (!TOKEN_RE.test(logId) || !SLUG_RE.test(slug)) return invalid(raw);
+      return { kind: 'heading', lid, logId, slug };
+    }
+    if (!TOKEN_RE.test(after)) return invalid(raw);
+    return { kind: 'log', lid, logId: after };
+  }
+  if (TOKEN_RE.test(frag)) {
+    return { kind: 'legacy', lid, logId: frag };
+  }
   return invalid(raw);
 }
 
