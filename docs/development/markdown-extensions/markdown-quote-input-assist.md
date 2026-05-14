@@ -1,42 +1,61 @@
 # Markdown Extension — Quote Input Assist
 
-Status: **PARTIALLY COMPLETED — Slice α (continuation) shipped 2026-04-14
-(USER_REQUEST_LEDGER S-17). Slice β / γ remain CONDITIONAL.**
+Status: **COMPLETED — Slice α(2026-04-14)+ Slice β(2026-05-14)+
+Slice γ(2026-05-14)。USER_REQUEST_LEDGER S-17 完了。**
 Created: 2026-04-12
 Category: B. Markdown / Rendering Extensions
 
 ---
 
-## 0. 実装サマリ（2026-04-14 / Slice α 完了）
+## 0. 実装サマリ（2026-04-14 Slice α / 2026-05-14 Slice β + γ 完了）
 
-§4 minimum scope の中から **continuation のみ** を最小差分で実装。
-spec の他項目（exit / bulk prefix shortcut / entry-window 同期）は
-依然 CONDITIONAL で、追加要望が来た時点で順次昇格する。
+§4 minimum scope を 3 slice で漸進的に完成。spec § 5「やらないこと」は
+全項目守られている。
+
+### Slice α(continuation、2026-04-14 着地)
 
 - **pure helper**: `src/features/markdown/quote-assist.ts` —
-  `computeQuoteAssistOnEnter(value, caretPos)` が
-  `{ type: 'continue', insert: '\n> ' } | null` を返す
+  `computeQuoteAssistOnEnter(value, caretPos)` が末尾 + 非空 `> X` 行
+  なら `{ type: 'continue', insert: '\n> ' }` を返す
 - **wire**: `src/adapter/ui/action-binder.ts` の `handleKeydown`
-  内、inline-calc の Enter ブロックの直後、Ctrl+Enter (TEXTLOG
-  append) ブロックの前。`isSlashEligible(textarea)` で markdown
-  入力対象（`body` / `todo-description` / `textlog-append-text` /
-  `textlog-entry-text`）に絞る
-- **Enter 挙動**: collapsed caret + 末尾 + `>[ \t]?(.+)` 一致時
-  のみ `preventDefault` → `execCommand('insertText', false, '\n> ')`
-  経路で挿入（happy-dom 等で execCommand が無ければ手動 fallback +
-  `input` event 発火、undo stack も保護）
-- **fall-through cases**: mid-line Enter / 空 `> ` 行 / 非引用行 /
-  Shift / Ctrl / Alt / IME composition / non-collapsed selection は
-  全て `preventDefault` せず native Enter に委譲
-- **テスト**: `tests/features/markdown/quote-assist.test.ts`（12
-  件、pure 規則の網羅）+ `tests/adapter/quote-assist-handler.test.ts`
-  （9 件、Enter 経路の integration: 継続成功 × 2 / 非引用 / Shift /
-  Ctrl / IME / non-collapsed / 空引用 / mid-line）
+  内、inline-calc の Enter ブロック直後、Ctrl+Enter(TEXTLOG append)
+  ブロックの前。`isSlashEligible(textarea)` で markdown 入力対象に絞る
 
-§5「やらないこと」は全項目守られている（rich text / 折り畳み /
-出典 URL 補助 / list heading code fence の補助 / mobile virtual key）。
-§7 Risk「IME 確定中の keydown 抑制」は `e.isComposing` ガードで
-解消、「entry window の inline script 同期」は依然 deferred。
+### Slice β(empty exit + bulk toggle、2026-05-14 着地、PR-V3 wave)
+
+- **空 `> ` 行 + Enter → exit**:`computeQuoteAssistOnEnter` の return
+  union が `{ type: 'continue'; insert } | { type: 'exit'; rangeStart;
+  rangeEnd; replacement }` に拡張。`> ` の line range を `\n` 置換し、
+  caret は新 blank line に来る(markdown 仕様:blank line で blockquote 終端)
+- **選択範囲 + Mod+Shift+. で `> ` prefix 一括 toggle**:
+  `computeQuoteToggleOnSelection(value, selStart, selEnd)` を追加、
+  全行 quote → 剥がす / 1 行でも non-quote → 全行に追加。空選択は
+  caret 行に対する 1 行 toggle。action-binder は Mod+Shift+. と
+  Mod+Shift+>(US 物理 key 別 layout)の両 keystroke を accept
+
+### Slice γ(entry-window 同期、2026-05-14 着地、PR-V3 wave)
+
+- 親 helper を child window の inline JS としてミラー(`entry-window.ts`
+  の template 内に `computeQuoteAssistEnterChild` /
+  `computeQuoteToggleChild` / `applyQuoteToggleChild` /
+  `replaceRangeChild` を定義)。child の keydown handler は親と同 contract
+  で Enter(continue / exit)と Mod+Shift+. を受ける
+- IME composition / modifier guard / non-collapsed selection guard は
+  親と同じ条件で先に return
+
+### テスト
+
+- `tests/features/markdown/quote-assist.test.ts`(24 件):pure 規則
+  網羅 — Slice α 継続(5)/ Slice β exit(4)/ null cases(5)/ bulk
+  toggle add(4)/ bulk toggle strip(3)/ edge case(3)
+- `tests/adapter/quote-assist-handler.test.ts`(15 件):action-binder
+  integration — Slice α(8)/ Slice β exit(2)/ Slice β bulk toggle(5)
+- `tests/adapter/entry-window-quote-assist.test.ts`(7 件、新規):
+  child-side inline mirror の生成 + 動作 parity — 4 関数存在確認 / 子側
+  continue / exit / null / bulk add / bulk strip / 親子 byte-identical fixture
+
+§7 Risk「IME 確定中の keydown 抑制」は `e.isComposing` ガードで解消、
+「entry window の inline script 同期」も Slice γ で解消。
 
 ---
 

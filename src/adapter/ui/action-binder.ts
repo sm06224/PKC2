@@ -86,7 +86,10 @@ import {
   refreshEditorActiveLine,
 } from './source-preview-sync';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
-import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
+import {
+  computeQuoteAssistOnEnter,
+  computeQuoteToggleOnSelection,
+} from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
@@ -4302,21 +4305,82 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (action) {
           e.preventDefault();
           ta.focus();
-          ta.setSelectionRange(start, start);
-          let inserted = false;
+          if (action.type === 'continue') {
+            ta.setSelectionRange(start, start);
+            let inserted = false;
+            try {
+              inserted = document.execCommand('insertText', false, action.insert);
+            } catch {
+              /* execCommand may not exist in non-browser test envs */
+            }
+            if (!inserted) {
+              ta.value = ta.value.slice(0, start) + action.insert + ta.value.slice(start);
+              const newCaret = start + action.insert.length;
+              ta.selectionStart = ta.selectionEnd = newCaret;
+              ta.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            return;
+          }
+          // Slice β:空 `> ` 行 + Enter → exit blockquote。
+          // 現在行の `> ` 区間を選択して `\n` で置換、native undo を保つために
+          // 可能なら execCommand 経路を取る。
+          ta.setSelectionRange(action.rangeStart, action.rangeEnd);
+          let replaced = false;
           try {
-            inserted = document.execCommand('insertText', false, action.insert);
+            replaced = document.execCommand('insertText', false, action.replacement);
           } catch {
             /* execCommand may not exist in non-browser test envs */
           }
-          if (!inserted) {
-            ta.value = ta.value.slice(0, start) + action.insert + ta.value.slice(start);
-            const newCaret = start + action.insert.length;
+          if (!replaced) {
+            ta.value =
+              ta.value.slice(0, action.rangeStart) +
+              action.replacement +
+              ta.value.slice(action.rangeEnd);
+            const newCaret = action.rangeStart + action.replacement.length;
             ta.selectionStart = ta.selectionEnd = newCaret;
             ta.dispatchEvent(new Event('input', { bubbles: true }));
           }
           return;
         }
+      }
+    }
+
+    // Slice β / 2(2026-05-14):Mod+Shift+. で `> ` prefix を一括 toggle。
+    // 選択行が全て quote → 剥がす、1 行でも non-quote → 全行に追加。
+    // Mod+Shift+. を選んだ理由:Mod+. は Slack 等で既に「次の予測」shortcut で
+    // 衝突しやすいが、Shift を絡めれば PKC editor の専用 binding として確保
+    // できる(Mod+Shift+> でも同 keystroke、層が変わらない)。
+    if (
+      mod
+      && e.shiftKey
+      && !e.altKey
+      && !e.isComposing
+      && (e.key === '.' || e.key === '>')
+      && e.target instanceof HTMLTextAreaElement
+      && isSlashEligible(e.target)
+    ) {
+      const ta = e.target;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? start;
+      const result = computeQuoteToggleOnSelection(ta.value, start, end);
+      if (result) {
+        e.preventDefault();
+        ta.focus();
+        // 既存 native undo stack に乗せるため、まず full-range を選択して
+        // execCommand 経路で置換 → fallback で直接代入。
+        ta.setSelectionRange(0, ta.value.length);
+        let replaced = false;
+        try {
+          replaced = document.execCommand('insertText', false, result.value);
+        } catch {
+          /* execCommand may not exist in non-browser test envs */
+        }
+        if (!replaced) {
+          ta.value = result.value;
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        ta.setSelectionRange(result.selStart, result.selEnd);
+        return;
       }
     }
 

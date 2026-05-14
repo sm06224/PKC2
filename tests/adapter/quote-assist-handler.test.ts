@@ -180,13 +180,25 @@ describe('B-3 Slice α — quote continuation in body textarea', () => {
     expect(ta.value).toBe('> hello world');
   });
 
-  it('Empty `> ` line is a noop (Slice β handles exit)', () => {
+  it('Empty `> ` line + Enter exits blockquote(Slice β)', () => {
     const { ta, evt } = bootEditAndPressEnter({
-      bodyValue: '> ',
-      caretPos: '> '.length,
+      bodyValue: 'prefix\n> ',
+      caretPos: 'prefix\n> '.length,
     });
-    expect(evt.defaultPrevented).toBe(false);
-    expect(ta.value).toBe('> ');
+    expect(evt.defaultPrevented).toBe(true);
+    // `prefix\n> ` の `> ` を `\n` に置換 → `prefix\n\n`
+    expect(ta.value).toBe('prefix\n\n');
+    expect(ta.selectionStart).toBe('prefix\n\n'.length);
+    expect(ta.selectionEnd).toBe('prefix\n\n'.length);
+  });
+
+  it('Bare `>` line + Enter also exits(Slice β)', () => {
+    const { ta, evt } = bootEditAndPressEnter({
+      bodyValue: '>',
+      caretPos: 1,
+    });
+    expect(evt.defaultPrevented).toBe(true);
+    expect(ta.value).toBe('\n');
   });
 
   it('Mid-line Enter inside a `> X` is a noop (let native split the line)', () => {
@@ -196,5 +208,105 @@ describe('B-3 Slice α — quote continuation in body textarea', () => {
     });
     expect(evt.defaultPrevented).toBe(false);
     expect(ta.value).toBe('> hello world');
+  });
+});
+
+describe('B-3 Slice β/2 — bulk `> ` toggle via Mod+Shift+.', () => {
+  /** Mod+Shift+. を発火させる helper。bootEditAndPressEnter と同じ流れで
+   * keydown event を作るが、key は '.' / shiftKey + ctrlKey。 */
+  function bootEditAndPressBulkToggle(opts: {
+    bodyValue: string;
+    selStart: number;
+    selEnd: number;
+  }): { ta: HTMLTextAreaElement; evt: KeyboardEvent } {
+    const { dispatcher, root } = bootBare();
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    if (!ta) throw new Error('body textarea not found after BEGIN_EDIT');
+    ta.value = opts.bodyValue;
+    ta.focus();
+    ta.setSelectionRange(opts.selStart, opts.selEnd);
+    const evt = new KeyboardEvent('keydown', {
+      key: '.',
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    ta.dispatchEvent(evt);
+    return { ta, evt };
+  }
+
+  function bootBare(): { dispatcher: ReturnType<typeof createDispatcher>; root: HTMLElement } {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((s) => render(s, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: makeContainer() });
+    return { dispatcher, root };
+  }
+
+  it('selection across plain lines → adds `> ` to each', () => {
+    const { ta, evt } = bootEditAndPressBulkToggle({
+      bodyValue: 'first\nsecond',
+      selStart: 0,
+      selEnd: 'first\nsecond'.length,
+    });
+    expect(evt.defaultPrevented).toBe(true);
+    expect(ta.value).toBe('> first\n> second');
+  });
+
+  it('selection across all-quoted lines → strips `> ` from each', () => {
+    const { ta, evt } = bootEditAndPressBulkToggle({
+      bodyValue: '> first\n> second',
+      selStart: 0,
+      selEnd: '> first\n> second'.length,
+    });
+    expect(evt.defaultPrevented).toBe(true);
+    expect(ta.value).toBe('first\nsecond');
+  });
+
+  it('caret-only on plain line → adds `> ` to that line', () => {
+    const { ta, evt } = bootEditAndPressBulkToggle({
+      bodyValue: 'plain',
+      selStart: 3,
+      selEnd: 3,
+    });
+    expect(evt.defaultPrevented).toBe(true);
+    expect(ta.value).toBe('> plain');
+  });
+
+  it('caret-only on quote line → strips `> ` from that line', () => {
+    const { ta, evt } = bootEditAndPressBulkToggle({
+      bodyValue: '> quoted',
+      selStart: 4,
+      selEnd: 4,
+    });
+    expect(evt.defaultPrevented).toBe(true);
+    expect(ta.value).toBe('quoted');
+  });
+
+  it('Mod+Shift+> (Shift+. on US layout) also triggers toggle', () => {
+    const { dispatcher, root } = bootBare();
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
+    render(dispatcher.getState(), root);
+    const ta = root.querySelector<HTMLTextAreaElement>('[data-pkc-field="body"]');
+    if (!ta) throw new Error('body textarea not found after BEGIN_EDIT');
+    ta.value = 'hello';
+    ta.focus();
+    ta.setSelectionRange(0, 'hello'.length);
+    const evt = new KeyboardEvent('keydown', {
+      key: '>',
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    ta.dispatchEvent(evt);
+    expect(evt.defaultPrevented).toBe(true);
+    expect(ta.value).toBe('> hello');
   });
 });

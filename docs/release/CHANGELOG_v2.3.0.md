@@ -47,9 +47,21 @@ v2.3.0 の主題は **AST を中央集権 IR に固定した可換世界の確�
 - **AST に PKC 拡張の raw text 残留は完全解消**:従来「parser が commonmark + GFM core のみ cover」と表現していた制約は本リリースで真に解消(`decomposePkcExtensions` で AST node に分解)。bridge regex layer は AST decomposition で漏れた edge case 用の safety net に役割が変わった。
 - **他 format の Forward**(Word / PPT / PDF / LaTeX):Pandoc 中継経由が主、直接生成は将来 wave。
 - **他 format の Reverse**(HTML / Word / LaTeX → AST):未実装、将来 wave。
-- **`AstCitation` 専用 node**:Gemini 推奨だが現状 `AstQuote.citation` 属性で代用、Phase 4 で格上げ判定。
+- **`AstCitation` 専用 node**:~~Gemini 推奨だが現状 `AstQuote.citation` 属性で代用~~ → **v2.3.x stack PR-V2(2026-05-14)で着地**。`[@id]` は figure/table/eq prefix 付きなら `AstAutoRef`、それ以外は `AstCitation`(Pandoc / BibTeX 互換)に分岐。`[prefix @id, suffix]` 形式も認識、Pandoc citation processor へ Cite node として export。
 - **`spanKind` discriminator**(`semantic` / `style` / `opaque`):ChatGPT 推奨だが class 用途が現状 3 種(`lead` / `caption` / `pkc-em-dot`)で安定、Phase 4 で混乱が始まれば導入。
-- **Layout 属性**(2-column / float / page-break role):core AST は semantic 中心、target lowering 層で吸収する方針。Phase 4 で必要に応じ `AstNodeBase.attrs` を semantic / presentational / foreign に 3 分割。
+- **Layout 属性**(2-column / float / page-break role):~~core AST は semantic 中心、target lowering 層で吸収する方針~~ → **v2.3.x stack PR-V3(2026-05-14)で着地**。`AstLayoutHint` interface を `AstNodeBase.layout?` に追加、`columns` / `float` / `pageBreakRole` / `region` / `textAlign` / `slideLayout` の 6 key を semantic kvs と名前空間分離。HTML は `data-pkc-layout-*` attribute、PKC MD は `:::section{role=R layout-columns=2}` round-trip、GFM MD は drop、semanticHash に組み込み。
+
+## v2.3.x stack PR(2026-05-14 着地予定、`claude/v23-stack-2026-05-14` branch)
+
+v2.3.0 リリース後の reform-2026-05 Phase 11 stack PR で以下を順次着地:
+
+- **PR-V1 doc archive(reform-2026-05 Phase 6)**:Phase 3 完了 docs を `docs/development/completed/` に 7 件移動、cross-link 修正、SUMMARY 表に登録。
+- **PR-V2 AstCitation 専用 node**(上記、Gemini 推奨着地)
+- **PR-V3 AstLayoutHint**(上記、Gemini 推奨着地)
+- **PR-V4 B-3 quote-assist Slice β + γ 完成**(USER_REQUEST_LEDGER S-17 完了):
+  - Slice β:空 `> ` 行 + Enter → exit blockquote(line range を `\n` 置換)
+  - Slice β / 2:Mod+Shift+. で選択範囲の `> ` prefix を一括 toggle
+  - Slice γ:entry-window child の inline JS に親 helper を mirror、Enter 継続 / exit と Mod+Shift+. が child でも parity 動作
 
 ---
 
