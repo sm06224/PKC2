@@ -4887,7 +4887,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             return;
           }
         }
-        return; // no more dates with todos in direction → no-op
+        // PR-V12(2026-05-14、Calendar Phase 2 §1):month boundary に到達した
+        // とき、月を ±1 月送り(year wrap 込み)、新月の最初/最後の todo に
+        // jump。これまでは edge no-op だったが、user が「月跨ぎで navigation
+        // 止まる」体感を改善。新月で todo が無ければそのまま no-op(無限 loop
+        // 防止のため 1 月だけ進める)。
+        const delta = e.key === 'ArrowLeft' ? -1 : 1;
+        const next = shiftCalendarMonth(state.calendarYear, state.calendarMonth, delta);
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: next.year, month: next.month });
+        // 次 frame で新月の cell を query して、最初の todo を select
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => {
+            const newCal = root.querySelector('[data-pkc-region="calendar-view"]');
+            if (!newCal) return;
+            const newCells = Array.from(newCal.querySelectorAll<HTMLElement>('[data-pkc-date]'));
+            const scanOrder = delta === 1 ? newCells : newCells.slice().reverse();
+            for (const cell of scanOrder) {
+              const items = cell.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+              const lids = Array.from(items)
+                .map((el) => el.getAttribute('data-pkc-lid')!)
+                .filter((lid) => containerLids.has(lid));
+              if (lids.length > 0) {
+                dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[0]! });
+                return;
+              }
+            }
+            // 新月に todo 無し → caret 維持(selectedLid 不変)
+          });
+        }
+        return;
       }
 
       // Kanban mode: cross-column navigation

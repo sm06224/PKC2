@@ -2372,23 +2372,34 @@ describe('Calendar keyboard navigation (Phase 1)', () => {
     expect(dispatcher.getState().selectedLid).toBe('c2');
   });
 
-  it('Arrow Right at last date with todos is no-op', () => {
+  // PR-V12(2026-05-14、Calendar Phase 2 §1):month boundary に到達した
+  // とき、月を ±1 月送りする。これまでは edge no-op だったが、user の
+  // 「月跨ぎ navigation 止まる」体感を改善。
+  it('Arrow Right at last date with todos: month を + 1 進めて新月の最初の todo を select(empty 月は no-op)', () => {
     const { dispatcher } = setupCalendar();
-    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c5' }); // Apr 22, last date with todos
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c5' }); // Apr 22
     render(dispatcher.getState(), root);
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
 
+    // 月は May 2026 に進む
+    expect(dispatcher.getState().calendarMonth).toBe(5);
+    expect(dispatcher.getState().calendarYear).toBe(2026);
+    // May 2026 には todo が無いので selectedLid は不変
     expect(dispatcher.getState().selectedLid).toBe('c5');
   });
 
-  it('Arrow Left at first date with todos is no-op', () => {
+  it('Arrow Left at first date with todos: month を - 1 退げて新月の最後の todo を select(empty 月は no-op)', () => {
     const { dispatcher } = setupCalendar();
-    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' }); // Apr 1, first date with todos
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'c1' }); // Apr 1
     render(dispatcher.getState(), root);
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
 
+    // 月は March 2026 に戻る
+    expect(dispatcher.getState().calendarMonth).toBe(3);
+    expect(dispatcher.getState().calendarYear).toBe(2026);
+    // March 2026 には todo が無いので selectedLid は不変
     expect(dispatcher.getState().selectedLid).toBe('c1');
   });
 

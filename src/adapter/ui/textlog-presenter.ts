@@ -205,7 +205,19 @@ export const textlogPresenter: DetailPresenter = {
     // PR-V8(2026-05-14、§8 future enhancement):TOC viewport highlight。
     // user が log を scroll している間、TOC sidebar に「現在見ている log/day」
     // marker を attach する。hydrator と独立した observer なので衝突なし。
-    activeTocViewport = attachTocViewportTracker(docEl);
+    //
+    // タイミング:presenter.renderBody が呼ばれる時点では renderer は中央 pane
+    // を組み立て中で、meta pane の TOC sidebar はまだ DOM に出ていない。
+    // tracker の `hasToc` check が false で早期 return しないよう、次 frame まで
+    // 遅延させて meta pane を含む render cycle 完了を待つ。
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (!docEl.isConnected) return; // entry 切替で textlog がもう unmount 済
+        activeTocViewport = attachTocViewportTracker(docEl);
+      });
+    } else {
+      activeTocViewport = attachTocViewportTracker(docEl);
+    }
 
     return container;
   },
