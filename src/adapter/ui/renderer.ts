@@ -7938,74 +7938,115 @@ function renderMetaPaneImpl(
     meta.appendChild(picker);
   }
 
-  // PR-V6(2026-05-14、v1.x §9.2 line 478 additive):derived-branches。
-  // provenance を逆引きして「この entry から派生した branches」を表示。
-  // 元 entry の meta pane で、その entry の過去 snapshot を branch source
-  // とする派生 entry を list。元 entry 側からも子 branch を辿れるように。
+  // PR-V6 + PR-V14(2026-05-14、U7 branch tree 視覚化):derived-branches。
+  // provenance を逆引きして「この entry から派生した branches」を **多階層
+  // tree** として render。元 entry → branch → 孫 branch まで再帰展開、
+  // 「ある版から派生してさらに派生した」系譜が一目で見える。
+  //
+  // PR-V6 では flat list だったが、user 宣言「branch tree 視覚化」に対する
+  // 不足だったため PR-V14 で nested 構造に拡張。
   //
   // revisions セクションの外に置く:branches は元 entry の revision が
   // compact / consolidate されて 0 件になった後も(provenance metadata に
   // source_revision_id が記録されているため)表示し続けるべき。
-  const derivedBranches: Array<{
+  interface BranchNode {
     lid: string;
     title: string;
     branchedAt?: string;
     sourceRevisionId?: string;
-  }> = [];
-  for (const rel of container.relations) {
-    if (rel.kind !== 'provenance') continue;
-    if (rel.to !== entry.lid) continue;
-    const md = rel.metadata as Record<string, unknown> | undefined;
-    if (!md) continue;
-    // branch_source === 'revision' で起源を限定。conversion_kind は v1.x で
-    // `'revision-branch'` を採用済(spec §4.1)、両方を accept。
-    const branchSource = md.branch_source ?? md.conversion_kind;
-    if (branchSource !== 'revision' && branchSource !== 'revision-branch') continue;
-    const branchEntry = container.entries.find((e) => e.lid === rel.from);
-    if (!branchEntry) continue;
-    derivedBranches.push({
-      lid: branchEntry.lid,
-      title: branchEntry.title || '(untitled)',
-      branchedAt: typeof md.branched_at === 'string'
-        ? md.branched_at
-        : typeof md.converted_at === 'string'
-          ? md.converted_at
-          : undefined,
-      sourceRevisionId: typeof md.source_revision_id === 'string'
-        ? md.source_revision_id
-        : undefined,
-    });
+    children: BranchNode[];
   }
-  if (derivedBranches.length > 0) {
+  const collectChildren = (parentLid: string, seen: Set<string>): BranchNode[] => {
+    const out: BranchNode[] = [];
+    for (const rel of container.relations) {
+      if (rel.kind !== 'provenance') continue;
+      if (rel.to !== parentLid) continue;
+      const md = rel.metadata as Record<string, unknown> | undefined;
+      if (!md) continue;
+      const branchSource = md.branch_source ?? md.conversion_kind;
+      if (branchSource !== 'revision' && branchSource !== 'revision-branch') continue;
+      const branchEntry = container.entries.find((e) => e.lid === rel.from);
+      if (!branchEntry) continue;
+      if (seen.has(branchEntry.lid)) continue; // cycle 防御
+      const childSeen = new Set(seen);
+      childSeen.add(branchEntry.lid);
+      out.push({
+        lid: branchEntry.lid,
+        title: branchEntry.title || '(untitled)',
+        branchedAt: typeof md.branched_at === 'string'
+          ? md.branched_at
+          : typeof md.converted_at === 'string'
+            ? md.converted_at
+            : undefined,
+        sourceRevisionId: typeof md.source_revision_id === 'string'
+          ? md.source_revision_id
+          : undefined,
+        children: collectChildren(branchEntry.lid, childSeen),
+      });
+    }
+    return out;
+  };
+  const tree = collectChildren(entry.lid, new Set([entry.lid]));
+  const countNodes = (nodes: BranchNode[]): number => {
+    let n = 0;
+    for (const node of nodes) n += 1 + countNodes(node.children);
+    return n;
+  };
+  const renderBranchRow = (b: BranchNode, depth: number): HTMLElement => {
+    const row = createElement('div', 'pkc-derived-branch-row');
+    row.setAttribute('data-pkc-branch-lid', b.lid);
+    row.setAttribute('data-pkc-branch-depth', String(depth));
+    // tree guide marker:depth ごとに「└──」style indent
+    if (depth > 0) {
+      const guide = createElement('span', 'pkc-derived-branch-guide');
+      guide.setAttribute('aria-hidden', 'true');
+      guide.textContent = '└── ';
+      row.appendChild(guide);
+    }
+    const link = createElement('button', 'pkc-derived-branch-link');
+    link.setAttribute('type', 'button');
+    link.setAttribute('data-pkc-action', 'select-entry');
+    link.setAttribute('data-pkc-lid', b.lid);
+    link.textContent = b.title;
+    link.setAttribute('title', `Jump to ${b.title}`);
+    row.appendChild(link);
+    if (b.branchedAt) {
+      const ts = createElement('span', 'pkc-derived-branch-ts');
+      ts.textContent = formatTimestamp(b.branchedAt);
+      row.appendChild(ts);
+    }
+    if (b.sourceRevisionId) {
+      const rid = createElement('span', 'pkc-derived-branch-source-rev');
+      rid.textContent = '@ ' + b.sourceRevisionId.slice(0, 8);
+      rid.setAttribute('title', `Source revision: ${b.sourceRevisionId}`);
+      row.appendChild(rid);
+    }
+    return row;
+  };
+  const renderBranchSubtree = (
+    nodes: BranchNode[],
+    parent: HTMLElement,
+    depth: number,
+  ): void => {
+    for (const b of nodes) {
+      parent.appendChild(renderBranchRow(b, depth));
+      if (b.children.length > 0) {
+        const wrapper = createElement('div', 'pkc-derived-branch-children');
+        wrapper.setAttribute('data-pkc-branch-parent-lid', b.lid);
+        renderBranchSubtree(b.children, wrapper, depth + 1);
+        parent.appendChild(wrapper);
+      }
+    }
+  };
+  if (tree.length > 0) {
+    const total = countNodes(tree);
     const branches = createElement('details', 'pkc-derived-branches');
     branches.setAttribute('data-pkc-region', 'derived-branches');
     branches.setAttribute('open', '');
     const bsum = createElement('summary', 'pkc-derived-branches-summary');
-    bsum.textContent = `Derived branches (${derivedBranches.length})`;
+    bsum.textContent = `Derived branches (${total})`;
     branches.appendChild(bsum);
-    for (const b of derivedBranches) {
-      const row = createElement('div', 'pkc-derived-branch-row');
-      row.setAttribute('data-pkc-branch-lid', b.lid);
-      const link = createElement('button', 'pkc-derived-branch-link');
-      link.setAttribute('type', 'button');
-      link.setAttribute('data-pkc-action', 'select-entry');
-      link.setAttribute('data-pkc-lid', b.lid);
-      link.textContent = b.title;
-      link.setAttribute('title', `Jump to ${b.title}`);
-      row.appendChild(link);
-      if (b.branchedAt) {
-        const ts = createElement('span', 'pkc-derived-branch-ts');
-        ts.textContent = formatTimestamp(b.branchedAt);
-        row.appendChild(ts);
-      }
-      if (b.sourceRevisionId) {
-        const rid = createElement('span', 'pkc-derived-branch-source-rev');
-        rid.textContent = '@ ' + b.sourceRevisionId.slice(0, 8);
-        rid.setAttribute('title', `Source revision: ${b.sourceRevisionId}`);
-        row.appendChild(rid);
-      }
-      branches.appendChild(row);
-    }
+    renderBranchSubtree(tree, branches, 0);
     meta.appendChild(branches);
   }
 

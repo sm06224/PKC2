@@ -212,3 +212,138 @@ describe('PR-V6 — Derived branches list', () => {
     expect(section).toBeNull();
   });
 });
+
+// PR-V14(2026-05-14、U7):多階層 branch tree 視覚化
+describe('PR-V14 — Derived branches multi-level tree', () => {
+  function makeMultilevelContainer(): Container {
+    const now = '2026-05-14T00:00:00Z';
+    return {
+      meta: {
+        container_id: 'multilevel-tree',
+        title: 'Multilevel',
+        created_at: now,
+        updated_at: now,
+        schema_version: 1,
+      },
+      entries: [
+        { lid: 'root', title: 'Root', archetype: 'text', body: '', created_at: now, updated_at: now },
+        { lid: 'b1', title: 'B1', archetype: 'text', body: '', created_at: now, updated_at: now },
+        { lid: 'b2', title: 'B2', archetype: 'text', body: '', created_at: now, updated_at: now },
+        { lid: 'b1a', title: 'B1.a (grandchild)', archetype: 'text', body: '', created_at: now, updated_at: now },
+        { lid: 'b1b', title: 'B1.b (grandchild)', archetype: 'text', body: '', created_at: now, updated_at: now },
+      ],
+      relations: [
+        // b1 from root
+        { id: 'r1', from: 'b1', to: 'root', kind: 'provenance', created_at: now, updated_at: now,
+          metadata: { branch_source: 'revision', source_revision_id: 'rev-1', branched_at: now } },
+        // b2 from root
+        { id: 'r2', from: 'b2', to: 'root', kind: 'provenance', created_at: now, updated_at: now,
+          metadata: { branch_source: 'revision', source_revision_id: 'rev-2', branched_at: now } },
+        // b1a from b1
+        { id: 'r3', from: 'b1a', to: 'b1', kind: 'provenance', created_at: now, updated_at: now,
+          metadata: { branch_source: 'revision', source_revision_id: 'rev-3', branched_at: now } },
+        // b1b from b1
+        { id: 'r4', from: 'b1b', to: 'b1', kind: 'provenance', created_at: now, updated_at: now,
+          metadata: { branch_source: 'revision', source_revision_id: 'rev-4', branched_at: now } },
+      ],
+      revisions: [],
+      assets: {},
+    };
+  }
+
+  function bootMulti(lid: string): ReturnType<typeof createDispatcher> {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((s) => render(s, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: makeMultilevelContainer() });
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+    render(dispatcher.getState(), root);
+    return dispatcher;
+  }
+
+  it('root entry tree:b1 と b2 が depth 0、b1 の下に b1a と b1b が nested', () => {
+    bootMulti('root');
+    const rows = root.querySelectorAll<HTMLElement>(
+      '[data-pkc-region="derived-branches"] .pkc-derived-branch-row',
+    );
+    expect(rows.length).toBe(4); // b1, b1a, b1b, b2 = 4 nodes
+    // b1, b2 at depth 0
+    const d0lids = Array.from(rows)
+      .filter((r) => r.getAttribute('data-pkc-branch-depth') === '0')
+      .map((r) => r.getAttribute('data-pkc-branch-lid'));
+    expect(d0lids).toContain('b1');
+    expect(d0lids).toContain('b2');
+    // b1a, b1b at depth 1
+    const d1lids = Array.from(rows)
+      .filter((r) => r.getAttribute('data-pkc-branch-depth') === '1')
+      .map((r) => r.getAttribute('data-pkc-branch-lid'));
+    expect(d1lids).toContain('b1a');
+    expect(d1lids).toContain('b1b');
+  });
+
+  it('header text に total node 数を表示(直系 + 全孫)', () => {
+    bootMulti('root');
+    const summary = root.querySelector('.pkc-derived-branches-summary');
+    expect(summary?.textContent).toBe('Derived branches (4)');
+  });
+
+  it('b1.a / b1.b は children wrapper の中に置かれて indent される', () => {
+    bootMulti('root');
+    const childWrapper = root.querySelector('[data-pkc-branch-parent-lid="b1"]');
+    expect(childWrapper).not.toBeNull();
+    const childLids = Array.from(
+      childWrapper!.querySelectorAll<HTMLElement>('.pkc-derived-branch-row'),
+    ).map((r) => r.getAttribute('data-pkc-branch-lid'));
+    expect(childLids).toEqual(expect.arrayContaining(['b1a', 'b1b']));
+  });
+
+  it('depth >= 1 の row は tree guide marker(└──)を持つ', () => {
+    bootMulti('root');
+    const childRow = root.querySelector(
+      '.pkc-derived-branch-row[data-pkc-branch-lid="b1a"]',
+    );
+    const guide = childRow?.querySelector('.pkc-derived-branch-guide');
+    expect(guide).not.toBeNull();
+    expect(guide?.textContent).toContain('└──');
+  });
+
+  it('b1 を選択すると b1 から派生した b1a / b1b の 2 件 tree が出る', () => {
+    bootMulti('b1');
+    const summary = root.querySelector('.pkc-derived-branches-summary');
+    expect(summary?.textContent).toBe('Derived branches (2)');
+    const rows = root.querySelectorAll<HTMLElement>(
+      '[data-pkc-region="derived-branches"] .pkc-derived-branch-row',
+    );
+    expect(rows.length).toBe(2);
+  });
+
+  it('cycle 防御:循環 provenance(a→b→a)で無限 loop しない', () => {
+    const cycle: Container = {
+      meta: { container_id: 'cycle', title: 'Cycle', created_at: '2026-05-14T00:00:00Z', updated_at: '2026-05-14T00:00:00Z', schema_version: 1 },
+      entries: [
+        { lid: 'a', title: 'A', archetype: 'text', body: '', created_at: '2026-05-14T00:00:00Z', updated_at: '2026-05-14T00:00:00Z' },
+        { lid: 'b', title: 'B', archetype: 'text', body: '', created_at: '2026-05-14T00:00:00Z', updated_at: '2026-05-14T00:00:00Z' },
+      ],
+      relations: [
+        { id: 'c1', from: 'b', to: 'a', kind: 'provenance', created_at: '2026-05-14T00:00:00Z', updated_at: '2026-05-14T00:00:00Z',
+          metadata: { branch_source: 'revision', source_revision_id: 'r1' } },
+        { id: 'c2', from: 'a', to: 'b', kind: 'provenance', created_at: '2026-05-14T00:00:00Z', updated_at: '2026-05-14T00:00:00Z',
+          metadata: { branch_source: 'revision', source_revision_id: 'r2' } },
+      ],
+      revisions: [],
+      assets: {},
+    };
+    const dispatcher = createDispatcher();
+    dispatcher.onState((s) => render(s, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: cycle });
+    cleanup = bindActions(root, dispatcher);
+    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'a' });
+    render(dispatcher.getState(), root);
+    // 無限 loop しない:b が 1 件出るだけで OK
+    const rows = root.querySelectorAll<HTMLElement>(
+      '[data-pkc-region="derived-branches"] .pkc-derived-branch-row',
+    );
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows.length).toBeLessThan(20); // 暴走しないことだけ確認
+  });
+});
