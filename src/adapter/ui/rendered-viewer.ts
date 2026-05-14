@@ -103,14 +103,52 @@ export function buildRenderedViewerHtml(
   //     width — so paper output stays dense and laid out like the
   //     original print-target design.
   const style = `
-    :root { color-scheme: light; }
+    /* PR-2S(2026-05-12、reform Phase 3):popup を system theme(prefers-color-scheme)
+       に追従させる。「PIP popup が固定 theme」 user 報告(2026-05-10)対応。
+       opener parent からの theme 継承は inline script(下部)で postMessage 経由実装。 */
+    :root {
+      color-scheme: light dark;
+      --pkc-popup-bg: #fafafa;
+      --pkc-popup-fg: #222;
+      --pkc-popup-border: #ddd;
+      --pkc-popup-muted: #666;
+      --pkc-popup-link: #2563eb;
+      --pkc-popup-table-stripe: rgba(0, 0, 0, 0.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --pkc-popup-bg: #1a1a14;
+        --pkc-popup-fg: #e6e0d3;
+        --pkc-popup-border: #3a4035;
+        --pkc-popup-muted: #9a9485;
+        --pkc-popup-link: #6ba0ff;
+        --pkc-popup-table-stripe: rgba(255, 255, 255, 0.04);
+      }
+    }
+    /* explicit theme override(opener 継承 or popup 内 toggle)*/
+    html[data-pkc-popup-theme="light"] {
+      --pkc-popup-bg: #fafafa;
+      --pkc-popup-fg: #222;
+      --pkc-popup-border: #ddd;
+      --pkc-popup-muted: #666;
+      --pkc-popup-link: #2563eb;
+      --pkc-popup-table-stripe: rgba(0, 0, 0, 0.04);
+    }
+    html[data-pkc-popup-theme="dark"] {
+      --pkc-popup-bg: #1a1a14;
+      --pkc-popup-fg: #e6e0d3;
+      --pkc-popup-border: #3a4035;
+      --pkc-popup-muted: #9a9485;
+      --pkc-popup-link: #6ba0ff;
+      --pkc-popup-table-stripe: rgba(255, 255, 255, 0.04);
+    }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
                    "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
-      background: #fafafa;
-      color: #222;
+      background: var(--pkc-popup-bg);
+      color: var(--pkc-popup-fg);
       /* Prose density aligned with the main app (which runs at 1.4 body
          / 1.4 .pkc-md-rendered). The previous 1.65 felt loose, read by
          users as "A4-print-optimised" even on screen. Print below can
@@ -130,7 +168,7 @@ export function buildRenderedViewerHtml(
     article.pkc-viewer-body[data-pkc-doc-align="center"] { text-align: center; }
     main { max-width: clamp(40rem, 90vw, 72rem); margin: 0 auto; }
     header.pkc-viewer-header {
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid var(--pkc-popup-border);
       margin-bottom: 1.5rem;
       padding-bottom: 0.75rem;
     }
@@ -140,15 +178,15 @@ export function buildRenderedViewerHtml(
     }
     header.pkc-viewer-header .pkc-viewer-meta {
       font-size: 0.85rem;
-      color: #666;
+      color: var(--pkc-popup-muted);
     }
     .pkc-viewer-toolbar {
       position: sticky;
       top: 0;
       z-index: 10;
-      background: rgba(250, 250, 250, 0.96);
+      background: color-mix(in srgb, var(--pkc-popup-bg) 96%, transparent);
       backdrop-filter: blur(4px);
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid var(--pkc-popup-border);
       margin: -2.5rem -1.5rem 1.25rem -1.5rem;
       padding: 0.55rem 1.5rem;
       display: flex;
@@ -159,13 +197,13 @@ export function buildRenderedViewerHtml(
       font: inherit;
       font-size: 0.88rem;
       padding: 0.25rem 0.75rem;
-      border: 1px solid #c0c0c0;
-      background: #fff;
-      color: #222;
+      border: 1px solid var(--pkc-popup-border);
+      background: var(--pkc-popup-bg);
+      color: var(--pkc-popup-fg);
       border-radius: 3px;
       cursor: pointer;
     }
-    .pkc-viewer-toolbar button:hover { background: #f0f0f0; }
+    .pkc-viewer-toolbar button:hover { background: color-mix(in srgb, var(--pkc-popup-fg) 8%, var(--pkc-popup-bg)); }
     .pkc-viewer-toolbar button:focus-visible {
       outline: 2px solid #1a6b35;
       outline-offset: 2px;
@@ -753,6 +791,29 @@ export function buildRenderedViewerHtml(
   const filenameJson = JSON.stringify(filename);
   const script = `
 (function(){
+  // PR-2S(2026-05-12):popup を opener parent の theme に追従させる。
+  // 1. opener の data-pkc-theme attribute を読み、明示 theme なら継承
+  // 2. opener が無効 / cross-origin なら、system theme(prefers-color-scheme)
+  //    に追従(CSS の @media クエリで自動切替、JS 介入不要)
+  // 3. opener から postMessage で theme 変更通知も受信、即時 attr 更新
+  try {
+    var opener = window.opener;
+    if (opener && opener.document) {
+      var openerRoot = opener.document.querySelector('#pkc-root');
+      var openerTheme = openerRoot ? openerRoot.getAttribute('data-pkc-theme') : null;
+      if (openerTheme === 'light' || openerTheme === 'dark') {
+        document.documentElement.setAttribute('data-pkc-popup-theme', openerTheme);
+      }
+    }
+  } catch (e) { /* opener cross-origin or closed → CSS @media で system theme 追従 */ }
+  // parent から theme 変更通知:opener が data-pkc-theme attribute を切替えた時に push される想定
+  window.addEventListener('message', function(ev){
+    var d = ev.data;
+    if (!d || typeof d !== 'object') return;
+    if (d.type === 'pkc-theme-changed' && (d.theme === 'light' || d.theme === 'dark')) {
+      document.documentElement.setAttribute('data-pkc-popup-theme', d.theme);
+    }
+  });
   // PR-2O(2026-05-10):parent window の ?pkc-debug=hallucination を継承して
   // hint marker(dotted underline / align chip)を visible にする。Viewer popup
   // は独立 window で URL に search が無いので、opener から read。

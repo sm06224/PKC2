@@ -1,9 +1,12 @@
-# PKC2 Markdown 方言:AI 書き手向け規約書 v2
+# PKC2 Markdown 方言:AI 書き手向け規約書 v2(superseded)
+
+**Status**: ⚠️ **superseded by v3**(2026-05-12、reform-2026-05 Phase 3 wave 完了で v3 が canonical 化)
+**Successor**: [`markdown-dialect-for-ai-authors-v3.md`](./markdown-dialect-for-ai-authors-v3.md)
+**Archive 移動候補**: 2026-08 quarterly review で `docs/spec/archived/` へ移動予定
 
 **Audience**: AI(LLM)が PKC2 entry の `body` を生成する際の規約書、特に **テストデータ生成** 用途を想定。
 **Reader**: 機械的に処理する LLM。可読性は保つが、構造化と非曖昧化を優先。
 **Companion(human-oriented)**: `docs/development/notation-redesign-2026-05/` 12 章 doc set(設計議論 / IR / 移行計画を含む)
-**Status**: stable for L-1〜L-9 + M-7 + reform-2026-05 Phase 1 全件着地(R-C / R-D / R-E / R-F)
 **Version**: v2(2026-05-09、reform-2026-05 Phase 1 反映)
 **Supersedes**: `markdown-dialect-for-ai-authors-v1.md`(2026-05-08)
 

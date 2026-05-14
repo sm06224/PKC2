@@ -320,7 +320,7 @@ export interface AppState {
    */
   advancedFiltersOpen?: boolean;
   /** Current center pane view mode. Runtime-only. */
-  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph';
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
   /**
    * Graph view edge / coloring mode (Phase 4 follow-up 4):
    *   - 'relations' (default) — structural + semantic relations as edges,

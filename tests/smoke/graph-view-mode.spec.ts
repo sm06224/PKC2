@@ -34,18 +34,20 @@ async function bootAndSeed(page: Page): Promise<void> {
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
 }
 
-test('view-mode toggle exposes 5 tabs including Graph', async ({ page }) => {
+test('view-mode toggle exposes 6 tabs including Graph and Launcher', async ({ page }) => {
+  // PR-2JJ v2 (2026-05-13): Launcher tab を追加して 5 → 6 に。
   await bootAndSeed(page);
   const bar = page.locator('[data-pkc-region="view-mode-bar"]');
   await expect(bar).toBeVisible();
   const buttons = bar.locator('button[data-pkc-action="set-view-mode"]');
-  await expect(buttons).toHaveCount(5);
+  await expect(buttons).toHaveCount(6);
   const labels = await buttons.allTextContents();
   expect(labels).toContain('Detail');
   expect(labels).toContain('Calendar');
   expect(labels).toContain('Kanban');
   expect(labels).toContain('Filer');
   expect(labels).toContain('Graph');
+  expect(labels).toContain('Launcher');
 });
 
 test('順序性: Graph tab click → viewMode=graph + graph-view region paints', async ({ page }) => {

@@ -3936,8 +3936,11 @@ describe('Action surface consolidation', () => {
     render(makeState({ selectedLid: 'e-text' }), root);
     const more = root.querySelector('[data-pkc-region="action-bar-more"]');
     expect(more).not.toBeNull();
-    // Copy MD, Rich, Viewer, compact+Export are all inside
-    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    // PR-2JJ v2 (2026-05-13): copy-markdown-source は GFM cleanup 用の
+    // `copy-markdown-gfm` に repurpose、`copy-markdown-pkc` を追加。
+    // Rich / Viewer / Export は不変。
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-gfm"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-pkc"]')).not.toBeNull();
     expect(more!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
     expect(more!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
     expect(more!.querySelector('[data-pkc-action="export-text-zip"]')).not.toBeNull();
@@ -3966,9 +3969,10 @@ describe('Action surface consolidation', () => {
     expect(bar!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
     expect(bar!.querySelector('[data-pkc-action="delete-entry"]')).toBeNull();
     // More… should still be present
+    // PR-2JJ v2 (2026-05-13): copy-markdown-source → copy-markdown-gfm
     const more = bar!.querySelector('[data-pkc-region="action-bar-more"]');
     expect(more).not.toBeNull();
-    expect(more!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(more!.querySelector('[data-pkc-action="copy-markdown-gfm"]')).not.toBeNull();
   });
 
   it('export/import buttons are reachable inside Data… panel', () => {
@@ -4422,7 +4426,9 @@ describe('Three-Pane Layout', () => {
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
     expect(actionBar).not.toBeNull();
-    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    // PR-2JJ v2 (2026-05-13): copy-markdown-source → copy-markdown-gfm
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-gfm"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-pkc"]')).not.toBeNull();
     expect(actionBar!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
     expect(actionBar!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
   });
@@ -4439,8 +4445,10 @@ describe('Three-Pane Layout', () => {
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
     expect(actionBar).not.toBeNull();
     // Mutating buttons are hidden in readonly, but copy/viewer are still there.
+    // PR-2JJ v2 (2026-05-13): copy-markdown-source → copy-markdown-gfm
     expect(actionBar!.querySelector('[data-pkc-action="begin-edit"]')).toBeNull();
-    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-source"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-gfm"]')).not.toBeNull();
+    expect(actionBar!.querySelector('[data-pkc-action="copy-markdown-pkc"]')).not.toBeNull();
     expect(actionBar!.querySelector('[data-pkc-action="copy-rich-markdown"]')).not.toBeNull();
     expect(actionBar!.querySelector('[data-pkc-action="open-rendered-viewer"]')).not.toBeNull();
   });
@@ -5166,7 +5174,7 @@ describe('Todo Calendar Foundation', () => {
     assets: {},
   };
 
-  it('shows view mode toggle bar with Detail / Calendar / Kanban / Filer / Graph buttons', () => {
+  it('shows view mode toggle bar with Detail / Calendar / Kanban / Filer / Graph / Launcher buttons', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
@@ -5176,12 +5184,14 @@ describe('Todo Calendar Foundation', () => {
     const bar = root.querySelector('[data-pkc-region="view-mode-bar"]');
     expect(bar).not.toBeNull();
     const btns = bar!.querySelectorAll('.pkc-view-mode-btn');
-    expect(btns).toHaveLength(5);
+    // PR-2JJ v2 (2026-05-13): Launcher 追加で 5 → 6
+    expect(btns).toHaveLength(6);
     expect(btns[0]!.textContent).toBe('Detail');
     expect(btns[1]!.textContent).toBe('Calendar');
     expect(btns[2]!.textContent).toBe('Kanban');
     expect(btns[3]!.textContent).toBe('Filer');
     expect(btns[4]!.textContent).toBe('Graph');
+    expect(btns[5]!.textContent).toBe('Launcher');
   });
 
   it('marks active view mode button', () => {
@@ -6545,10 +6555,10 @@ describe('Todo Kanban DnD Foundation', () => {
       expect(kanbanDraggables).toHaveLength(0);
     });
 
-    it('view mode toggle still renders five buttons', () => {
+    it('view mode toggle still renders six buttons (PR-2JJ v2 launcher)', () => {
       render(dndState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(5);
+      expect(btns).toHaveLength(6);
     });
 
     it('kanban column count badge still accurate', () => {
@@ -6780,10 +6790,10 @@ describe('Todo Calendar Date Move Foundation', () => {
       expect(calDraggables).toHaveLength(0);
     });
 
-    it('view mode toggle still renders five buttons', () => {
+    it('view mode toggle still renders six buttons (PR-2JJ v2 launcher)', () => {
       render(calDndState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(5);
+      expect(btns).toHaveLength(6);
     });
 
     it('calendar navigation buttons still present', () => {
@@ -6842,13 +6852,15 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
       render(kanbanState(), root);
       const bar = root.querySelector('[data-pkc-region="view-mode-bar"]')!;
       const btns = bar.querySelectorAll('[data-pkc-view-switch]');
-      // Kanban is active → Detail / Calendar / Filer / Graph should have view-switch
-      expect(btns).toHaveLength(4);
+      // Kanban is active → Detail / Calendar / Filer / Graph / Launcher should have view-switch
+      // PR-2JJ v2 (2026-05-13): Launcher 追加で 4 → 5
+      expect(btns).toHaveLength(5);
       const modes = Array.from(btns).map(b => b.getAttribute('data-pkc-view-switch'));
       expect(modes).toContain('detail');
       expect(modes).toContain('calendar');
       expect(modes).toContain('filer');
       expect(modes).toContain('graph');
+      expect(modes).toContain('launcher');
     });
 
     it('active view mode button does NOT have data-pkc-view-switch', () => {
@@ -6959,10 +6971,10 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
       expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
     });
 
-    it('view mode toggle still renders five buttons', () => {
+    it('view mode toggle still renders six buttons (PR-2JJ v2 launcher)', () => {
       render(kanbanState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(5);
+      expect(btns).toHaveLength(6);
     });
 
     it('readonly mode: no draggable on Kanban cards, no view-switch risk', () => {
@@ -7121,8 +7133,9 @@ describe('DnD Cleanup & Cancellation Robustness', () => {
     it('view switch attributes still on non-active tabs', () => {
       render(cleanupKanbanState(), root);
       const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
-      // Kanban active → Detail / Calendar / Filer / Graph have view-switch
-      expect(switchBtns).toHaveLength(4);
+      // Kanban active → Detail / Calendar / Filer / Graph / Launcher have view-switch
+      // PR-2JJ v2 (2026-05-13): Launcher 追加で 4 → 5
+      expect(switchBtns).toHaveLength(5);
     });
 
     it('click selection still works (select-entry present)', () => {
@@ -7269,10 +7282,10 @@ describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
       expect(item!.getAttribute('data-pkc-action')).toBe('select-entry');
     });
 
-    it('view mode toggle renders five buttons', () => {
+    it('view mode toggle renders six buttons (PR-2JJ v2 launcher)', () => {
       render(kanState(), root);
       const btns = root.querySelectorAll('[data-pkc-action="set-view-mode"]');
-      expect(btns).toHaveLength(5);
+      expect(btns).toHaveLength(6);
     });
 
     it('readonly: no draggable Calendar items', () => {
@@ -7898,8 +7911,9 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     it('view switch buttons still present on non-detail views', () => {
       render(baseState({ viewMode: 'kanban', container: todoContainer }), root);
       const switchBtns = root.querySelectorAll('[data-pkc-view-switch]');
-      // Kanban active → Detail / Calendar / Filer / Graph have view-switch
-      expect(switchBtns.length).toBe(4);
+      // Kanban active → Detail / Calendar / Filer / Graph / Launcher have view-switch
+      // PR-2JJ v2 (2026-05-13): launcher 追加で 4 → 5
+      expect(switchBtns.length).toBe(5);
     });
   });
 });

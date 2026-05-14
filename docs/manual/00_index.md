@@ -42,6 +42,10 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 
 - [12 マークダウン拡張記法](12_マークダウン拡張記法.md) — 行頭アライン / 段落字下げ / 空行マーカー / 圏点 / ルビ / 図表自動採番 / Rich コピー / AI 規約活用
 
+### 自作 HTML ツールを PKC2 から起動 / AI に AST で渡す方
+
+- [13 アプリランチャーと出力機能](13_アプリランチャーと出力機能.md) — HTML attachment をアプリ登録して新規ウィンドウ起動 / Data… メニュー(AST / Canonical / Pandoc / HTML / PDF / Word / PPT)/ 編集中のフォーマットツールバー / TEXTLOG のログ単位 Data…
+
 ## 全体目次
 
 | 章 | タイトル | 内容 |
@@ -59,6 +63,7 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 | 10 | ファイラ / グラフ / インベントリ | filer view 5 subset(explorer / contact-sheet / book-base / video-base / novel-base / inventory)+ 独立 graph view 4 mode + frontmatter Properties + 画像 PiP プレビュー + bookmarklet 取込 + サイドバー filer モード |
 | 11 | Bookmarklet サンプル & アセット統合 | PKC-Message v1.1 capture profile の公式 sample(envelope / handshake / user-consent gate)+ 5 公式 site 実例(YouTube / niconico / なろう / カクヨム / Amazon)+ ローカルアセット(PDF / mp3 / mp4 / epub)を Bases UX で統合する設計 + epub reader 将来計画 |
 | 12 | マークダウン拡張記法 | Phase 1 拡張 9 種(L-1 セクション / L-2 ハイライト・ルビ・圏点 / L-4 コメント / L-5 行頭アライン / L-6 簡易インライン / L-7 図表自動採番 / L-8 空行マーカー / L-9 段落字下げ)+ M-7 Variables(`{{vars.x}}`)+ **reform-2026-05 Phase 1+2**(`:::section{role=…}` / `:::comment` / `:::break` / `:::paragraph{align}` / formal inline 4 形 / `:caption:` / `:autoref:` / 寛容 parse + canonical hint log + admonition alias / `layout: a4-2col` 段組組版 / `` ```html-render `` iframe sandbox / em-dot nested inline)+ AI 規約書 v2 + Phase 3 以降の予告 |
+| 13 | アプリランチャーと出力機能 | HTML attachment をアプリとして登録して新規ウィンドウ起動できる Launcher view + Data… メニュー(🧬 AST / Canonical / Pandoc / HTML を JSONL or Pretty で copy、📄 PDF / 📝 Word / 🎞 PPT の出力)+ 編集中の選択部に追従する PKC MD フォーマットパネル + TEXTLOG の各ログ行を右クリックして Data… 同等の操作(PR-2JJ v2、2026-05-13) |
 
 ## 最近の UX 改善（2026-04-22 時点）
 

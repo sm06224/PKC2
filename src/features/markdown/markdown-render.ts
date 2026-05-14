@@ -24,7 +24,8 @@
 
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
-import { makeSlugCounter } from './markdown-toc';
+import { renderMarkdownViaIR, useIrPipeline } from '../ast/render-markdown-via-ir';
+import { makeSlugCounter, extractHeadingsFromMarkdown } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
 import { renderCsvFence } from './csv-table';
 import { buildHtmlSandboxIframe } from './html-sandbox';
@@ -1632,6 +1633,247 @@ interface SectionEntry {
   attrs: _BlockDirectiveAttrs;
 }
 
+/**
+ * PR-2V(2026-05-12):`:::toc{depth=N}` block を正式実装。
+ *
+ * 入力例:
+ *   :::toc
+ *   :::
+ *
+ *   :::toc{depth=2}
+ *   :::
+ *
+ * 動作:
+ *   1. block を sentinel(U+E168/E169)で wrap、depth を含めて記録
+ *   2. block 内の content(あれば)は無視(自動生成のみ)
+ *   3. post-process で `extractHeadingsFromMarkdown` で TOC nodes を取得、
+ *      depth で filter、`renderStaticTocHtml` 等価の `<nav class="pkc-toc">`
+ *      を生成して sentinel と入れ替え
+ *   4. PKC1010 deny list から除外(PR-2K)
+ *
+ * fence aware(``` 内は無視)。depth default は 3、range [1..6]。
+ */
+const TOC_OPEN = '\u{E168}';
+const TOC_SEP = '\u{E169}';
+
+interface TocDirectiveRecord {
+  depth: number;
+  // 将来の attr 拡張用(id / role / variant 等)
+}
+
+function processTocDirective(
+  source: string,
+  lineMapIn: number[],
+): { transformed: string; lineMap: number[]; records: TocDirectiveRecord[] } {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  const records: TocDirectiveRecord[] = [];
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    // `:::toc` or `:::toc{...}` を行頭(leading whitespace 許容)で検出
+    const openMatch = /^[ \t]*:::toc(?:\{([^}]*)\})?\s*$/.exec(line);
+    if (!openMatch) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    // depth attr 抽出
+    const attrs = openMatch[1] ?? '';
+    const dm = /depth\s*=\s*"?(\d)"?/.exec(attrs);
+    let depth = 3; // default
+    if (dm) {
+      const n = parseInt(dm[1]!, 10);
+      if (Number.isFinite(n) && n >= 1 && n <= 6) depth = n;
+    }
+    // closing `:::` を探索(content は無視、自動生成のみ)
+    let j = i + 1;
+    while (j < lines.length) {
+      if (/^[ \t]*:::[ \t]*$/.test(lines[j]!)) break;
+      j++;
+    }
+    if (j >= lines.length) {
+      // unclosed、open 行を literal で残して 1 行だけ消費
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    // sentinel 行に置換(depth 込み)、content + closing は consume
+    const recordIdx = records.length;
+    records.push({ depth });
+    out.push(`${TOC_OPEN}${recordIdx}${TOC_SEP}${depth}${TOC_OPEN}`);
+    lineMapOut.push(inputIdx);
+    // closing `:::` まで skip(空行で line count を維持)
+    for (let k = i + 1; k <= j; k++) {
+      out.push('');
+      lineMapOut.push(lineMapIn[k] ?? k);
+    }
+    i = j + 1;
+  }
+  return { transformed: out.join('\n'), lineMap: lineMapOut, records };
+}
+
+/**
+ * post-process:TOC sentinel を実 HTML に置換。
+ * markdown-it が sentinel 行を `<p>SENTINEL</p>` で wrap するので、その paragraph 全体を
+ * `<nav class="pkc-toc-formal pkc-toc-preview">` に書き換える。
+ *
+ * `tocHtmlByIdx` は同 render call 内の record idx → 実 HTML(`<nav>...`)map。
+ * 順序保証のため processTocDirective の records と対応。
+ */
+function postProcessTocSentinels(html: string, tocHtmlByIdx: readonly string[]): string {
+  return html.replace(
+    new RegExp(`<p[^>]*>${TOC_OPEN}(\\d+)${TOC_SEP}\\d+${TOC_OPEN}</p>`, 'g'),
+    (_match, idxStr) => {
+      const idx = parseInt(idxStr, 10);
+      return tocHtmlByIdx[idx] ?? '';
+    },
+  );
+}
+
+// reform-2026-05 Phase 3 PR-2W(2026-05-12):`:::frontmatter` / `:::body`
+// region marker を正式実装(deny list から除外)。
+//
+// 動作:
+//   `:::frontmatter` ... `:::` → <aside class="pkc-region-frontmatter"
+//     data-pkc-region="frontmatter">...content (markdown rendered)...</aside>
+//   `:::body` ... `:::` → <section class="pkc-region-body"
+//     data-pkc-region="body">...content (markdown rendered)...</section>
+//
+// 用途:AI / 機械生成 doc で region の semantic 構造化、IR migration
+// (PR-2Y/2Z)で AST node `RegionNode { kind: 'frontmatter'|'body', children }`
+// に migrate する entry point。`---YAML---` の document-level frontmatter とは
+// 別物(あちらは metadata 抽出、本 directive は本文の region wrapper)。
+//
+// PUA sentinel:U+E16A / U+E16B(processSectionBlocks と同 pattern)。
+// fence aware:fenced code 内 marker は無視。
+// attrs:id / class / 任意 kv を受理、`data-pkc-region-*` に展開。
+const REGION_SENTINEL_OPEN = '\u{E16A}';
+const REGION_SENTINEL_SEP = '\u{E16B}';
+
+const REGION_DIRECTIVE_NAMES: ReadonlySet<string> = new Set(['frontmatter', 'body']);
+
+interface RegionEntry {
+  kind: 'frontmatter' | 'body';
+  attrs: _BlockDirectiveAttrs;
+}
+
+function processRegionBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<number, RegionEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<number, RegionEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let counter = 0;
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || !REGION_DIRECTIVE_NAMES.has(open.name)) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const kind = open.name as 'frontmatter' | 'body';
+    counter++;
+    const id = counter;
+    registry.set(id, { kind, attrs: open.attrs });
+    const openInputIdx = inputIdx;
+    i++;
+    out.push(`${REGION_SENTINEL_OPEN}${id}${REGION_SENTINEL_SEP}OPEN${REGION_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      out.push(lines[i]!);
+      lineMapOut.push(lineMapIn[i] ?? i);
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++;
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${REGION_SENTINEL_OPEN}${id}${REGION_SENTINEL_SEP}CLOSE${REGION_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+function postProcessRegionSentinels(
+  html: string,
+  registry: Map<number, RegionEntry>,
+): string {
+  // OPEN sentinel → <aside|section ...>
+  html = html.replace(
+    new RegExp(
+      `<p([^>]*)>${REGION_SENTINEL_OPEN}(\\d+)${REGION_SENTINEL_SEP}OPEN${REGION_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, pAttrs: string, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      const kind = entry.kind;
+      const tag = kind === 'frontmatter' ? 'aside' : 'section';
+      const attrs = entry.attrs;
+      const classes = [`pkc-region-${kind}`, ...attrs.classes].join(' ');
+      const idAttr = attrs.id ? ` id="${escapeAttrForHtml(attrs.id)}"` : '';
+      const dataAttrs: string[] = [];
+      for (const [k, v] of Object.entries(attrs.kvs)) {
+        if (!/^[A-Za-z_][\w-]*$/.test(k)) continue;
+        if (typeof v === 'boolean') {
+          if (v) dataAttrs.push(`data-pkc-region-${k}="true"`);
+        } else if (typeof v === 'string') {
+          dataAttrs.push(`data-pkc-region-${k}="${escapeAttrForHtml(v)}"`);
+        }
+      }
+      const dataStr = dataAttrs.length > 0 ? ' ' + dataAttrs.join(' ') : '';
+      return `<${tag}${idAttr} class="${classes}" data-pkc-region="${kind}"${dataStr}${pAttrs}>`;
+    },
+  );
+  // CLOSE sentinel → </aside> | </section>(closing tag は registry に lookup)
+  html = html.replace(
+    new RegExp(
+      `<p[^>]*>${REGION_SENTINEL_OPEN}(\\d+)${REGION_SENTINEL_SEP}CLOSE${REGION_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      return entry.kind === 'frontmatter' ? '</aside>' : '</section>';
+    },
+  );
+  return html;
+}
+
 function processSectionBlocks(source: string, lineMapIn: number[]): {
   transformed: string;
   registry: Map<number, SectionEntry>;
@@ -2142,45 +2384,164 @@ function applyAlignAttrs(
  *   %%%
  *   block comment、複数行可
  *   %%%
+ *
+ *   :::comment{…}
+ *   formal block comment(`%%%` 等価、AI / serializer が emit)
+ *   :::
+ *
+ * PR-2X(2026-05-12、reform Phase 3):**LineMap thread 対応**。multi-line
+ * block comment(`%%%...%%%` / `:::comment...:::`)が複数行に跨ぐとき、
+ * 削除された行を skip しつつ output line → 原文 line index を保持。Split
+ * View source-preview-sync が `data-pkc-source-line` で逆引きする contract
+ * を maintain、source-line ズレ bug を構造的に防止。
  */
-function stripComments(source: string): string {
-  // fenced code block 内は touch しない(2026-05-08 hotfix:user 報告は
-  // 主に L-8 だが、`%%` も同根 bug。code 内に `%% comment %%` が書かれて
-  // いたら、それは code の一部なので残す)。fence 外の region だけを
-  // join して regex strip、その後 fence region と元の順序で再結合。
+function stripComments(source: string, lineMapIn?: number[]): {
+  transformed: string;
+  lineMap: number[];
+} {
   const lines = source.split('\n');
+  const inMap = lineMapIn ?? Array.from({ length: lines.length }, (_, i) => i);
+  const outLines: string[] = [];
+  const outMap: number[] = [];
   let fence: FenceState = { inFence: false, marker: '' };
-  // まず fence の中外を判定して block 化:[{ inFence, lines: string[] }, ...]
-  type Block = { inFence: boolean; lines: string[] };
-  const blocks: Block[] = [];
-  for (const line of lines) {
+  let inBlockComment = false; // %%%...%%%
+  let inCommentDirective = false; // :::comment...:::
+  let pendingPrefix = '';
+  let pendingSrcIdx = -1;
+  // `:::comment` 系の unclosed 保護:open 行から close まで buffer、close 見つかれば
+  // 捨てる、close 無く EOF なら restore(元 stripComments の挙動を維持)。
+  const commentDirectiveBuffer: Array<{ line: string; srcIdx: number }> = [];
+  const stripInline = (s: string) => s.replace(/%%[^\n]*?%%/g, '');
+  // PR-2X hotfix(2026-05-12):inline code 内の `%%%` を block comment 開始と
+  // 誤検出するバグ修正。`stripComments` の %%% scan の前に inline backtick
+  // span を一時 sentinel に置換、scan 後に復元する。fence 行(``` 単独行)
+  // とは別、行内 `code` の話。table cell に `%%%` を含めると表が崩れる症状の
+  // root cause(2026-05-12 user バグレポ:「表が壊れてる」)。
+  const INLINE_CODE_OPEN = '\u{E170}';
+  const INLINE_CODE_CLOSE = '\u{E171}';
+  function maskInlineCode(line: string): { masked: string; spans: string[] } {
+    const spans: string[] = [];
+    const masked = line.replace(/`+[^`\n]*?`+/g, (m) => {
+      const idx = spans.length;
+      spans.push(m);
+      return `${INLINE_CODE_OPEN}${idx}${INLINE_CODE_CLOSE}`;
+    });
+    return { masked, spans };
+  }
+  function unmaskInlineCode(line: string, spans: readonly string[]): string {
+    return line.replace(
+      new RegExp(`${INLINE_CODE_OPEN}(\\d+)${INLINE_CODE_CLOSE}`, 'g'),
+      (_m, idxStr) => spans[parseInt(idxStr, 10)] ?? '',
+    );
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const srcIdx = inMap[i] ?? i;
     const t = fenceTransition(line, fence);
     const wasIn = fence.inFence;
     fence = t.state;
     const isFenceContent = wasIn || t.isBoundary;
-    const last = blocks[blocks.length - 1];
-    if (last && last.inFence === isFenceContent) {
-      last.lines.push(line);
-    } else {
-      blocks.push({ inFence: isFenceContent, lines: [line] });
+    if (isFenceContent) {
+      // Fenced code:passthrough(block comment 状態は維持しない、fence は優先)
+      if (!inBlockComment && !inCommentDirective) {
+        outLines.push(line);
+        outMap.push(srcIdx);
+      }
+      continue;
+    }
+    if (inCommentDirective) {
+      if (/^[ \t]*:::[ \t]*$/.test(line)) {
+        inCommentDirective = false;
+        commentDirectiveBuffer.length = 0; // close 見つかった、buffer 破棄
+      } else {
+        commentDirectiveBuffer.push({ line, srcIdx });
+      }
+      continue;
+    }
+    // PR-2JJ v2 hotfix(2026-05-13、CI smoke regression fix):
+    // `%%%` block comment marker は spec 上 **行頭 anchor 必須**(`docs/spec/
+    // markdown-dialect-for-ai-authors-v1.md` §checklist L-4「block comment
+    // `%%%` が単独行で開閉しているか」)。mid-line `%%%` を block boundary
+    // 扱いすると、heading 等で literal に `%%%` を書いた瞬間に後続 content
+    // が全部 comment 内扱いで消える致命バグ(transclusion smoke regression、
+    // user 報告:「## %% comment / %%% block comment」 heading が原因で
+    // 終端 / 起案者 / 本文末尾の 3 行が render に出ない症状)。
+    //
+    // 修正 contract:line が **`%%%` で始まる場合のみ** block marker と認識:
+    //   (a)`%%%`(余白のみ)                → open / close marker
+    //   (b)`%%%text%%%`(両端で挟まれた form)→ 単一行 block コメント(strip)
+    //   (c)`%%%text`(末尾 close 無し)      → open marker + 後続を pending に
+    //   (d)`text %%%`(行中の `%%%`)        → literal text として通す
+    //
+    // (a)〜(c)は trimmed line が `%%%` で始まることが必要条件。
+    const trimmedLine = line.replace(/^[ \t]+/, '');
+    const startsWithBlockMarker = trimmedLine.startsWith('%%%');
+    const isStandaloneBlockMarker = /^[ \t]*%%%[ \t]*$/.test(line);
+    if (inBlockComment) {
+      // 閉じは「行が `%%%` で終わる」または「単独 `%%%` line」のみ受理。
+      // mid-line `%%%` は閉じ marker として扱わない(open と対称)。
+      const trimmed = line.trimEnd();
+      if (trimmed.endsWith('%%%')) {
+        outLines.push(stripInline(pendingPrefix));
+        outMap.push(pendingSrcIdx);
+        pendingPrefix = '';
+        pendingSrcIdx = -1;
+        inBlockComment = false;
+      }
+      continue;
+    }
+    // `:::comment` open 検出(行頭、attrs 任意)。open 自体は buffer 起点として
+    // 押す(close 無く EOF なら restore)。
+    if (/^[ \t]*:::comment(?:\{[^}]*\})?[ \t]*$/.test(line)) {
+      inCommentDirective = true;
+      commentDirectiveBuffer.push({ line, srcIdx });
+      continue;
+    }
+    if (startsWithBlockMarker) {
+      if (isStandaloneBlockMarker) {
+        // (a)単独 `%%%`:open marker
+        pendingPrefix = '';
+        pendingSrcIdx = srcIdx;
+        inBlockComment = true;
+        continue;
+      }
+      // 行が `%%%` で始まり、何らかの content を持つ(`%%%text...`)。
+      // 末尾が `%%%` で終わるなら単一行 block コメント(b)、それ以外は
+      // open marker + body 開始(c)。
+      const innerAfterOpen = trimmedLine.slice(3); // %%% を除いた部分
+      if (innerAfterOpen.replace(/[ \t]+$/, '').endsWith('%%%')) {
+        // (b)単一行 `%%%text%%%`:literal strip(無視)、空行を 1 行 emit して
+        // 段落区切りを保持。outMap は元 line を指す。
+        outLines.push('');
+        outMap.push(srcIdx);
+        continue;
+      }
+      // (c)`%%%text` open marker:pendingPrefix は空(content は次行以降)。
+      pendingPrefix = '';
+      pendingSrcIdx = srcIdx;
+      inBlockComment = true;
+      continue;
+    }
+    // (d)`%%%` を含むが行頭から始まらない line(heading で literal mention
+    // 等)は literal として通す。inline backtick code の mask は維持
+    // (`%%` inline comment の strip は stripInline で行う)。
+    const { masked: lineMasked, spans: lineSpans } = maskInlineCode(line);
+    outLines.push(unmaskInlineCode(stripInline(lineMasked), lineSpans));
+    outMap.push(srcIdx);
+  }
+  // Unclosed `%%%` / `:::comment` at EOF:挽回処理。
+  if (inBlockComment) {
+    outLines.push(stripInline(pendingPrefix));
+    outMap.push(pendingSrcIdx >= 0 ? pendingSrcIdx : 0);
+  }
+  // `:::comment` 未閉じ:buffer を literal で restore(元 stripComments 挙動を維持)
+  if (inCommentDirective) {
+    for (const item of commentDirectiveBuffer) {
+      outLines.push(stripInline(item.line));
+      outMap.push(item.srcIdx);
     }
   }
-  return blocks.map((b) => {
-    if (b.inFence) return b.lines.join('\n');
-    let out = b.lines.join('\n');
-    out = out.replace(/%%%[\s\S]*?%%%/g, '');
-    out = out.replace(/%%[^\n]*?%%/g, '');
-    // reform-2026-05 Phase 2 PR-2G(2026-05-10):`:::comment{…}` formal も
-    // strip(`%%%` block 等価)。AI / serializer が emit する formal 形。
-    // `:::comment` open 行から `:::` close 行までを完全除去。block-only。
-    // attrs は無視(将来 hidden=false / fn=src1 等で footnote promote 等の
-    // 拡張余地、現時点では全 strip)。
-    out = out.replace(
-      /^[ \t]*:::comment(?:\{[^}]*\})?[ \t]*\n[\s\S]*?\n[ \t]*:::[ \t]*$/gm,
-      '',
-    );
-    return out;
-  }).join('\n');
+  return { transformed: outLines.join('\n'), lineMap: outMap };
 }
 
 // ── L-1 (2026-05-07、wave-10-2 Phase 1):Section break(`+++ {role=...}`) ──
@@ -2380,16 +2741,15 @@ const ADMONITION_ALIASES: ReadonlySet<string> = new Set([
   'note', 'warning', 'tip', 'info', 'caution', 'important', 'danger', 'summary',
 ]);
 
-/** PR-2K 維持:less-critical block deny list(structural、寛容 parse しない)。 */
-const HALLUCINATION_BLOCK_DIRECTIVES: ReadonlySet<string> = new Set([
-  'toc', 'frontmatter', 'body',
-]);
+/**
+ * PR-2V(2026-05-12)で `:::toc` を、PR-2W(2026-05-12)で `:::frontmatter` /
+ * `:::body` を正式実装(全て deny list から除外、formal feature 化)。
+ * Set は空になったが、将来の deny list scenario(別 directive)用に
+ * infrastructure は維持。
+ */
+const HALLUCINATION_BLOCK_DIRECTIVES: ReadonlySet<string> = new Set([]);
 
-const HALLUCINATION_BLOCK_SUGGESTION: Record<string, string> = {
-  toc: 'markdown heading(`# ## ###`)構造で十分、TOC 生成は別機能',
-  frontmatter: 'YAML frontmatter(`---` で囲む top)を使う',
-  body: 'structural directive 不要、heading で region 表現',
-};
+const HALLUCINATION_BLOCK_SUGGESTION: Record<string, string> = {};
 
 /**
  * PR-2O(2026-05-10):standalone `:align:{position=X}` 行を line-based に検出、
@@ -2920,6 +3280,23 @@ export function renderMarkdown(
   opts: RenderMarkdownOptions = {},
 ): string {
   if (!text) return '';
+  // PR-2AA(2026-05-12、reform Phase 3 Block C 3/4):IR migration scaffolding。
+  // Tier 0 flag `markdown.use_ir` が ON のとき IR pipeline を試す。IR は現時点で
+  // commonmark + GFM core のみ cover(PKC 固有 figure / quote / section /
+  // hallucination 寛容 parse 等は未統合)、production default は OFF。
+  // future wave で IR coverage を拡張、完了時に本 fallthrough を撤去予定。
+  if (useIrPipeline()) {
+    try {
+      return renderMarkdownViaIR(text, {
+        vars: opts.vars,
+        sourceLineAnchors: opts.sourceLineAnchors,
+      });
+    } catch {
+      // IR 経路失敗時は legacy にフォールバック(safety net、log は省略 to avoid 騒音)
+    }
+  }
+  // PR-2V:original text を保存(`:::toc` block の処理で heading extraction に使う)
+  const originalText = text;
   // 入力 line 数を覚えておき、initial lineMap = identity。preprocess 各 step
   // が line を挿入 / 消費する度に lineMap を更新、最終 lineMap[outputIdx] は
   // user の textarea source(原文)の line index を返す。Split View の
@@ -2928,9 +3305,13 @@ export function renderMarkdown(
   let lineMap: number[] = [];
   const initialLines = text.split('\n').length;
   for (let i = 0; i < initialLines; i++) lineMap.push(i);
-  // L-4:comment strip(block comment による line 削減は稀、現状 lineMap 不変
-  // として扱う。multi-line block comment 使用時に行ズレ可能性あり、TODO)
-  text = stripComments(text);
+  // L-4:comment strip + LineMap thread(PR-2X、reform Phase 3)。
+  // multi-line `%%%...%%%` / `:::comment...:::` で削除された行を skip しつつ
+  // output line → 原文 line index を保持、Split View source-preview-sync の
+  // `data-pkc-source-line` 逆引き contract を maintain。
+  const commentResult = stripComments(text, lineMap);
+  text = commentResult.transformed;
+  lineMap = commentResult.lineMap;
   // L-1:section break を sentinel 化(1:1 line 変換、lineMap 不変)
   // reform-2026-05 Phase 2 PR-2H:`:::break{kind=…}` formal を `+++` / `---`
   // simple に変換、processSectionBreaks に委譲。
@@ -2946,6 +3327,39 @@ export function renderMarkdown(
   const ifResult = processIfBlocks(text, lineMap, 'html');
   text = ifResult.transformed;
   lineMap = ifResult.lineMap;
+  // PR-2V:`:::toc{depth=N}` block を sentinel 化、TOC HTML は post-process で展開。
+  // heading 抽出は originalText から(extractHeadingsFromMarkdown が独自に
+  // frontmatter strip + vars 展開 + :::if mismatch strip を実施)。
+  const tocResult = processTocDirective(text, lineMap);
+  text = tocResult.transformed;
+  lineMap = tocResult.lineMap;
+  // sentinel idx → 実 HTML map を構築(各 :::toc{depth=N} につき 1 件)
+  const tocHtmlByIdx: string[] = tocResult.records.length === 0
+    ? []
+    : (() => {
+        const allHeadings = extractHeadingsFromMarkdown(originalText);
+        return tocResult.records.map((rec) => {
+          const filtered = allHeadings.filter((h) => h.level <= rec.depth);
+          if (filtered.length === 0) {
+            return `<nav class="pkc-toc-formal pkc-toc-preview" data-pkc-region="toc-formal" data-pkc-toc-depth="${rec.depth}"><span class="pkc-toc-label">Contents</span><ul class="pkc-toc-list"></ul></nav>`;
+          }
+          const esc = (s: string) =>
+            s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          const items = filtered
+            .map((h) =>
+              `<li class="pkc-toc-item" data-pkc-toc-kind="heading" data-pkc-toc-level="${h.level}">` +
+              `<a class="pkc-toc-link" href="#${esc(h.slug)}">${esc(h.text)}</a>` +
+              `</li>`,
+            )
+            .join('');
+          return (
+            `<nav class="pkc-toc-formal pkc-toc-preview" data-pkc-region="toc-formal" data-pkc-toc-depth="${rec.depth}">` +
+            `<span class="pkc-toc-label">Contents</span>` +
+            `<ul class="pkc-toc-list">${items}</ul>` +
+            `</nav>`
+          );
+        });
+      })();
   // reform-2026-05 Phase 2 PR-2O:standalone :align:{position=X} は次段落の
   // alignMap に register、行は strip(PR-2L hint chip より格上げ、actual align)。
   const tolerantAlignResult = processTolerantStandaloneAlign(
@@ -2995,6 +3409,12 @@ export function renderMarkdown(
   const sectionResult = processSectionBlocks(text, lineMap);
   text = sectionResult.transformed;
   lineMap = sectionResult.lineMap;
+  // reform-2026-05 Phase 3 PR-2W:`:::frontmatter` / `:::body` region marker
+  // を sentinel 化、postProcessRegionSentinels で <aside> / <section> に展開。
+  // section と orthogonal、後段 align や figure とも干渉しない passthrough。
+  const regionResult = processRegionBlocks(text, lineMap);
+  text = regionResult.transformed;
+  lineMap = regionResult.lineMap;
   // reform-2026-05 Phase 2 PR-2E:`:::paragraph{align=physical}` block directive
   // を preprocessAlignPrefix の前に処理。content 行に物理 align(left/right/
   // top/bottom/center)を register、後段の applyAlignAttrs で `<p data-pkc-align>`
@@ -3034,11 +3454,15 @@ export function renderMarkdown(
     tagSourceLines(tokens, lineMap);
     html = md.renderer.render(tokens, md.options, env);
   }
+  // PR-2V:`:::toc{depth=N}` sentinel → <nav class="pkc-toc-formal pkc-toc-preview">
+  html = postProcessTocSentinels(html, tocHtmlByIdx);
   // L-7:figure/table/equation sentinel → <figure>
   html = postProcessFigureSentinels(html);
   // reform-2026-05 PR-D:`:::quote{author=...}` sentinel → <blockquote class="pkc-quote-citation">
   html = postProcessQuoteSentinels(html, quoteResult.registry);
   html = postProcessSectionSentinels(html, sectionResult.registry);
+  // PR-2W:`:::frontmatter` / `:::body` sentinel → <aside> / <section>
+  html = postProcessRegionSentinels(html, regionResult.registry);
   // L-1:section break sentinel → <hr>
   html = postProcessSectionBreaks(html);
   // L-8:blank-line sentinel → <div class="pkc-blank-line">

@@ -469,5 +469,74 @@ export function renderFlagsInspector(): HTMLElement {
   // re-render されても module-level memo から復元されるので、
   // user の検索文字列 / category 選択が維持される。
   applyInspectorFilter(panel);
+
+  // PR-2CC (2026-05-12、reform Phase 3 Block D):keyboard 操作を追加。
+  // - ESC で close(close button を programmatic click → action-binder で dispatch)
+  // - `/` で search input に focus(file explorer 風)
+  // - j / ArrowDown で次の flag row に focus、k / ArrowUp で前
+  // - Tab はブラウザ default 挙動(linear focus traversal)を維持
+  overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.defaultPrevented) return;
+    const target = e.target as HTMLElement | null;
+    // input / textarea / select に focus 中は j / k / / 等の hotkey を suppress
+    const inField =
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close.click();
+      return;
+    }
+    if (e.key === '/' && !inField) {
+      e.preventDefault();
+      search.focus();
+      search.select();
+      return;
+    }
+    if ((e.key === 'j' || e.key === 'ArrowDown') && !inField) {
+      e.preventDefault();
+      focusAdjacentRow(panel, target, 1);
+      return;
+    }
+    if ((e.key === 'k' || e.key === 'ArrowUp') && !inField) {
+      e.preventDefault();
+      focusAdjacentRow(panel, target, -1);
+      return;
+    }
+  });
+
   return overlay;
+}
+
+/**
+ * PR-2CC (2026-05-12):flag row 間の focus 移動。
+ * 現 focus の row index を起点に dir (+1 / -1) ぶん移動、
+ * その row の editor(input / select / textarea / button)に focus。
+ */
+function focusAdjacentRow(
+  panel: HTMLElement,
+  current: HTMLElement | null,
+  dir: 1 | -1,
+): void {
+  const rows = Array.from(
+    panel.querySelectorAll<HTMLElement>('.pkc-flag-row:not([style*="display: none"])'),
+  );
+  if (rows.length === 0) return;
+  let currentIdx = -1;
+  if (current) {
+    const containingRow = current.closest('.pkc-flag-row') as HTMLElement | null;
+    if (containingRow) currentIdx = rows.indexOf(containingRow);
+  }
+  const nextIdx = currentIdx < 0
+    ? (dir === 1 ? 0 : rows.length - 1)
+    : Math.max(0, Math.min(rows.length - 1, currentIdx + dir));
+  const nextRow = rows[nextIdx]!;
+  const editor = nextRow.querySelector<HTMLElement>(
+    '.pkc-flag-editor, .pkc-flag-reset',
+  );
+  if (editor) {
+    editor.focus();
+    nextRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 }

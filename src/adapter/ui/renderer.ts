@@ -22,6 +22,7 @@ import {
   type GraphCanvasPayload,
 } from './graph-canvas';
 import { autoDetectFilerProfile } from '../../features/filer/auto-display-profile';
+import { isExplicitAlbum } from '../../features/album/album-metadata';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
 import { getFilerThumbPx } from './filer-flags';
 import type { Container } from '../../core/model/container';
@@ -2717,6 +2718,103 @@ function renderExportImportInline(state: AppState): HTMLElement {
   importBatchBtn.textContent = '📥 Batch';
   content.appendChild(importBatchBtn);
 
+  // ── Group 4 (PR-2JJ v2 / 2026-05-13):AST / Pandoc / HTML 出力 ──
+  //
+  // 現在 selected entry の body を window.PKC.ast 経由で 4 種類の表現に変換、
+  // clipboard へコピー。JSONL(compact、1 行)default で AI / LLM 入力に最適、
+  // 「Pretty」checkbox を入れた状態で押すと整形 JSON を出す。
+  //
+  // 旧 `?pkc-debug=ast` overlay(右下 fixed panel)は廃止、本 menu に統合。
+  if (selectedEntry) {
+    const sep = createElement('div', 'pkc-eip-separator');
+    sep.setAttribute('aria-hidden', 'true');
+    content.appendChild(sep);
+
+    const prettyLabel = createElement('label', 'pkc-eip-pretty-label');
+    prettyLabel.setAttribute('title', '出力 JSON を整形(default は JSONL = 1 行 compact)');
+    const prettyInput = createElement('input', 'pkc-eip-pretty-input');
+    (prettyInput as HTMLInputElement).type = 'checkbox';
+    prettyInput.setAttribute('data-pkc-control', 'ast-pretty');
+    prettyLabel.appendChild(prettyInput);
+    prettyLabel.appendChild(document.createTextNode(' Pretty'));
+    content.appendChild(prettyLabel);
+
+    const astBtn = createElement('button', 'pkc-btn');
+    astBtn.setAttribute('data-pkc-action', 'copy-ast-data');
+    astBtn.setAttribute('data-pkc-ast-format', 'ast');
+    astBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    astBtn.setAttribute('title', 'AstDocument を clipboard にコピー(JSONL / Pretty 切替)');
+    astBtn.textContent = '🧬 AST';
+    content.appendChild(astBtn);
+
+    const canonBtn = createElement('button', 'pkc-btn');
+    canonBtn.setAttribute('data-pkc-action', 'copy-ast-data');
+    canonBtn.setAttribute('data-pkc-ast-format', 'canonical');
+    canonBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    canonBtn.setAttribute('title', 'Canonical AstDocument(idempotent な正規化済 AST)');
+    canonBtn.textContent = '🧬 Canonical';
+    content.appendChild(canonBtn);
+
+    const pandocBtn = createElement('button', 'pkc-btn');
+    pandocBtn.setAttribute('data-pkc-action', 'copy-ast-data');
+    pandocBtn.setAttribute('data-pkc-ast-format', 'pandoc');
+    pandocBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    pandocBtn.setAttribute('title', 'Pandoc Native JSON(`pandoc --from json` で docx/pptx/pdf 等に変換可能)');
+    pandocBtn.textContent = '🧬 Pandoc';
+    content.appendChild(pandocBtn);
+
+    const htmlBtn = createElement('button', 'pkc-btn');
+    htmlBtn.setAttribute('data-pkc-action', 'copy-ast-data');
+    htmlBtn.setAttribute('data-pkc-ast-format', 'html');
+    htmlBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    htmlBtn.setAttribute('title', 'renderHtml(ast) の HTML 文字列');
+    htmlBtn.textContent = '🧬 HTML';
+    content.appendChild(htmlBtn);
+
+    // ── Group 5 (PR-2JJ v2 / 2026-05-13):PDF / Word / PPT export ──
+    //
+    // PDF:browser native print dialog → "Save as PDF"。Viewer popup を
+    // 開いて user 操作で印刷確定。0 KB のバンドル増、依存 0。
+    // Word(docx):Pandoc Native JSON を .pandoc.json でダウンロード、
+    // user 側で `pandoc --from json -o out.docx input.pandoc.json` を実行する。
+    // PPT(pptx):同様、`pandoc -o out.pptx`。
+    //
+    // browser 内で完結する Word/PPT 直接生成は将来課題(docx.js / pptxgenjs
+    // を bundle すると +100〜200 KB)。Phase 1 は Pandoc JSON dump で interop。
+    const sep2 = createElement('div', 'pkc-eip-separator');
+    sep2.setAttribute('aria-hidden', 'true');
+    content.appendChild(sep2);
+
+    const pdfBtn = createElement('button', 'pkc-btn');
+    pdfBtn.setAttribute('data-pkc-action', 'export-entry-pdf');
+    pdfBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    pdfBtn.setAttribute('title', 'ブラウザ印刷ダイアログ経由で PDF 保存(Viewer popup → 印刷 → PDF として保存)');
+    pdfBtn.textContent = '📄 PDF';
+    content.appendChild(pdfBtn);
+
+    const docxBtn = createElement('button', 'pkc-btn');
+    docxBtn.setAttribute('data-pkc-action', 'export-entry-pandoc-json');
+    docxBtn.setAttribute('data-pkc-pandoc-target', 'docx');
+    docxBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    docxBtn.setAttribute(
+      'title',
+      'Pandoc Native JSON を .pandoc.json で保存。コマンドラインで `pandoc --from json -o out.docx <file>` を実行して Word 化',
+    );
+    docxBtn.textContent = '📝 Word';
+    content.appendChild(docxBtn);
+
+    const pptxBtn = createElement('button', 'pkc-btn');
+    pptxBtn.setAttribute('data-pkc-action', 'export-entry-pandoc-json');
+    pptxBtn.setAttribute('data-pkc-pandoc-target', 'pptx');
+    pptxBtn.setAttribute('data-pkc-lid', selectedEntry.lid);
+    pptxBtn.setAttribute(
+      'title',
+      'Pandoc Native JSON を .pandoc.json で保存。コマンドラインで `pandoc --from json -o out.pptx <file>` を実行して PowerPoint 化',
+    );
+    pptxBtn.textContent = '🎞 PPT';
+    content.appendChild(pptxBtn);
+  }
+
   details.appendChild(content);
   group.appendChild(details);
 
@@ -4288,6 +4386,14 @@ function renderCenterImpl(state: AppState): HTMLElement {
     return center;
   }
 
+  // PR-2JJ v2(2026-05-13、PR #432 stack):Launcher view。HTML attachment で
+  // `registered_as_app: true` のものを tile grid で表示、tile click は既存
+  // `open-html-attachment` action 経由(window.open + document.write)。
+  if (state.viewMode === 'launcher') {
+    center.appendChild(renderLauncherView(state));
+    return center;
+  }
+
   // Detail view (existing behavior).
   // Phase 4 follow-up 3: when the selected entry is a folder, fold the
   // detail surface into the filer view so the "folder detail" is the
@@ -4381,7 +4487,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
   return center;
 }
 
-function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph'): HTMLElement {
+function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher'): HTMLElement {
   const bar = createElement('div', 'pkc-view-mode-bar');
   bar.setAttribute('data-pkc-region', 'view-mode-bar');
 
@@ -4391,6 +4497,7 @@ function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'file
     { key: 'kanban', label: 'Kanban' },
     { key: 'filer', label: 'Filer' },
     { key: 'graph', label: 'Graph' },
+    { key: 'launcher', label: 'Launcher' },
   ];
 
   for (const { key, label } of modes) {
@@ -4916,6 +5023,13 @@ function resolveFilerSubsetForScope(state: AppState, scope: Entry | null): Filer
   const explicit = scope && scope.archetype === 'folder' ? scope.display_profile : undefined;
   if (explicit && explicit.kind !== 'auto') {
     return explicit;
+  }
+  // PR-2EE (2026-05-12、reform Phase 3 Block E):folder frontmatter
+  // `kind: album` で明示的に album folder と宣言された場合、7 割多数決
+  // (autoDetectFilerProfile)を bypass して強制的に contact-sheet を選択。
+  // user 意図が画像 % 閾値を超えて優先される。
+  if (scope && isExplicitAlbum(scope)) {
+    return { kind: 'contact-sheet' };
   }
   // Auto-detect から実 profile を決める。scope === null = container root
   // のときは scope 全 user entries を直接 children として扱う(root も
@@ -6283,6 +6397,91 @@ interface GraphNodeView {
  * 結果:「左:古い trunk / 右:新しい head」、各 entry は head に置かれ、
  * trunk の根(created_at)へ後方延長で revision dot が時系列に並ぶ。
  */
+/**
+ * PR-2JJ v2(2026-05-13、PR #432 stack):App Launcher center pane view。
+ *
+ * 仕様:
+ *   - container.entries から `archetype: 'attachment'`、preview type html、
+ *     `parseAttachmentBody(body).registered_as_app === true` のものを抽出
+ *   - tile grid を中央 pane に描画(viewMode: 'launcher' の本体)
+ *   - tile click → 既存 `open-html-attachment` action(新規 window で起動、
+ *     "Open in New Window" と完全同一挙動)
+ *   - 登録 0 件時は guidance(右ペインで HTML attachment を開いて
+ *     「アプリランチャーに登録」checkbox を ON する手順を表示)
+ *
+ * Opt-in source of truth は AttachmentBody.registered_as_app。
+ * Icon は AttachmentBody.app_icon(emoji 1 字、空なら 🌐 default)。
+ */
+function renderLauncherView(state: AppState): HTMLElement {
+  const view = createElement('section', 'pkc-launcher-view');
+  view.setAttribute('data-pkc-region', 'launcher-view');
+
+  const header = createElement('header', 'pkc-launcher-view-header');
+  const title = createElement('h2', 'pkc-launcher-view-title');
+  title.textContent = '🚀 App Launcher';
+  header.appendChild(title);
+  const hint = createElement('span', 'pkc-launcher-view-hint');
+  hint.textContent = '登録済 HTML アプリ — クリックで新規ウィンドウ起動';
+  header.appendChild(hint);
+  view.appendChild(header);
+
+  const registered: { lid: string; name: string; icon: string }[] = [];
+  for (const entry of state.container?.entries ?? []) {
+    if (entry.archetype !== 'attachment') continue;
+    const att = parseAttachmentBody(entry.body);
+    if (att.registered_as_app !== true) continue;
+    if (classifyPreviewType(att.mime) !== 'html') continue;
+    registered.push({
+      lid: entry.lid,
+      name: entry.title || att.name || '(untitled)',
+      icon: typeof att.app_icon === 'string' && att.app_icon.length > 0 ? att.app_icon : '🌐',
+    });
+  }
+
+  if (registered.length === 0) {
+    const empty = createElement('div', 'pkc-launcher-empty');
+    empty.setAttribute('data-pkc-region', 'launcher-empty');
+    const line1 = document.createElement('p');
+    line1.textContent = '登録済アプリはまだありません。';
+    empty.appendChild(line1);
+    const line2 = document.createElement('p');
+    line2.appendChild(document.createTextNode('HTML attachment を選択し、右ペインの '));
+    const code = document.createElement('code');
+    code.textContent = 'アプリランチャーに登録';
+    line2.appendChild(code);
+    line2.appendChild(document.createTextNode(' checkbox を ON にすると、ここに tile が並びます。'));
+    empty.appendChild(line2);
+    view.appendChild(empty);
+    return view;
+  }
+
+  const grid = createElement('div', 'pkc-launcher-grid');
+  grid.setAttribute('data-pkc-region', 'launcher-grid');
+  for (const app of registered) {
+    const tile = createElement('button', 'pkc-launcher-tile');
+    tile.setAttribute('type', 'button');
+    // 既存 open-html-attachment action を再利用、tile click = "Open in New Window"
+    tile.setAttribute('data-pkc-action', 'open-html-attachment');
+    tile.setAttribute('data-pkc-lid', app.lid);
+    tile.setAttribute('aria-label', `Launch ${app.name}`);
+    tile.setAttribute('title', `${app.name} を新規ウィンドウで起動`);
+
+    const iconEl = createElement('span', 'pkc-launcher-tile-icon');
+    iconEl.textContent = app.icon;
+    iconEl.setAttribute('aria-hidden', 'true');
+    tile.appendChild(iconEl);
+
+    const labelEl = createElement('span', 'pkc-launcher-tile-label');
+    labelEl.textContent = app.name;
+    tile.appendChild(labelEl);
+
+    grid.appendChild(tile);
+  }
+  view.appendChild(grid);
+
+  return view;
+}
+
 function seedTimeProximityLayout(
   nodes: readonly GraphNodeView[],
   entries: readonly Entry[],
@@ -6851,12 +7050,23 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
       // users export TEXTLOG via the rendered viewer's Download HTML
       // button instead.
       if (entry.archetype === 'text') {
+        // PR-2JJ v2(2026-05-13):既存「📋 MD」は GFM 標準クリーンアップ出力に変更、
+        // 相互運用(Word / Notion / Obsidian 等)用。AST 経由で PKC 拡張を剥がす。
         const copyMdBtn = createElement('button', 'pkc-btn pkc-action-copy-md');
-        copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-source');
+        copyMdBtn.setAttribute('data-pkc-action', 'copy-markdown-gfm');
         copyMdBtn.setAttribute('data-pkc-lid', entry.lid);
-        copyMdBtn.setAttribute('title', 'Markdown ソースをクリップボードにコピー');
+        copyMdBtn.setAttribute('title', 'GFM 標準 Markdown(PKC 拡張を剥がした相互運用用)をコピー');
         copyMdBtn.textContent = '📋 MD';
         moreContent.appendChild(copyMdBtn);
+
+        // PR-2JJ v2(2026-05-13):新規「📋 PKC MD」AST → 正規記法 PKC MD で復元、
+        // PKC2 ↔ PKC2 round-trip 用 / spec 準拠の canonical 形を入手。
+        const copyPkcMdBtn = createElement('button', 'pkc-btn pkc-action-copy-pkc-md');
+        copyPkcMdBtn.setAttribute('data-pkc-action', 'copy-markdown-pkc');
+        copyPkcMdBtn.setAttribute('data-pkc-lid', entry.lid);
+        copyPkcMdBtn.setAttribute('title', 'AST → 正規記法 PKC MD でコピー(PKC ↔ PKC 用、canonicalize 経由)');
+        copyPkcMdBtn.textContent = '📋 PKC MD';
+        moreContent.appendChild(copyPkcMdBtn);
 
         const copyRichBtn = createElement('button', 'pkc-btn pkc-action-copy-rich');
         copyRichBtn.setAttribute('data-pkc-action', 'copy-rich-markdown');
@@ -9642,8 +9852,12 @@ export function renderContextMenu(
      * Phase 1 step 5 / audit G6 — we keep the legacy actions for
      * power-user / markdown-authoring workflows but demote them from
      * equal-surface standing to clearly "advanced" territory.
+     *
+     * `'log-data'`(PR-2JJ v2、2026-05-13):TEXTLOG log row 専用の
+     * 📋 MD / PKC MD / AST / Pandoc / HTML 一群。TEXT entry の Data…
+     * menu と同等を log 単位で提供。
      */
-    group?: 'markdown-source';
+    group?: 'markdown-source' | 'log-data';
   };
 
   const isPreviewable = opts.archetype === 'text' || opts.archetype === 'textlog';
@@ -9701,12 +9915,60 @@ export function renderContextMenu(
       show: opts.archetype === 'attachment',
       group: 'markdown-source',
     },
+    // PR-2JJ v2(2026-05-13、PR #432 stack):TEXTLOG log row 専用の Data... 操作。
+    // TEXT entry の Data… menu(action bar)と同等を log 単位で提供。
+    {
+      action: 'copy-log-md-gfm',
+      label: '📋 MD (GFM)',
+      tip: 'このログ行を GFM 標準 Markdown でコピー(相互運用用、PKC 拡張は plain に変換)',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
+    {
+      action: 'copy-log-md-pkc',
+      label: '📋 PKC MD',
+      tip: 'このログ行を canonical PKC MD でコピー(AST → canonicalize → 正規記法)',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
+    {
+      action: 'copy-log-ast',
+      label: '🧬 AST',
+      tip: 'このログ行を AstDocument JSON でコピー(JSONL = 1 行 compact)',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
+    {
+      action: 'copy-log-pandoc',
+      label: '🧬 Pandoc',
+      tip: 'このログ行を Pandoc Native JSON でコピー(pandoc --from json で docx/pptx/pdf 変換可能)',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
+    {
+      action: 'copy-log-html',
+      label: '🧬 HTML',
+      tip: 'このログ行を render 済 HTML 文字列でコピー',
+      lid,
+      logId: opts.logId,
+      show: !!(opts.archetype === 'textlog' && opts.logId),
+      group: 'log-data',
+    },
   ];
 
-  // Track whether we have already emitted the `Markdown source`
-  // section header so it appears exactly once, right above the
-  // first legacy Internal Reference copy action.
+  // Track whether we have already emitted each group's section
+  // header so it appears exactly once, right above the first item
+  // of that group.
   let emittedMarkdownSectionHeader = false;
+  let emittedLogDataSectionHeader = false;
   for (const item of items) {
     if (!item.show) continue;
     if (item.group === 'markdown-source' && !emittedMarkdownSectionHeader) {
@@ -9717,6 +9979,16 @@ export function renderContextMenu(
       header.textContent = '📝 Markdown source';
       menu.appendChild(header);
       emittedMarkdownSectionHeader = true;
+    }
+    if (item.group === 'log-data' && !emittedLogDataSectionHeader) {
+      // PR-2JJ v2(2026-05-13):log-data section header(TEXTLOG 専用)
+      const sep = createElement('div', 'pkc-context-menu-separator');
+      menu.appendChild(sep);
+      const header = createElement('div', 'pkc-context-menu-label');
+      header.setAttribute('data-pkc-region', 'context-menu-log-data');
+      header.textContent = '🧬 Log data';
+      menu.appendChild(header);
+      emittedLogDataSectionHeader = true;
     }
     const btn = createElement('button', 'pkc-context-menu-item');
     btn.setAttribute('data-pkc-action', item.action);

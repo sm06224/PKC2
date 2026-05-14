@@ -59,6 +59,7 @@ import {
   attachmentWarningMessage,
 } from '../platform/storage-estimate';
 import { copyPlainText, copyMarkdownAndHtml } from './clipboard';
+import { getAstApi } from '../public-ast-api';
 import { openRenderedViewer } from './rendered-viewer';
 import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/textlog-bundle';
 import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
@@ -2220,6 +2221,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         });
         break;
       }
+      case 'toggle-attachment-app-register': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):HTML attachment を App
+        // Launcher に登録 / 解除する opt-in checkbox(右ペインの attachment
+        // card)。`registered_as_app` boolean を flip して QUICK_UPDATE_ENTRY。
+        if (!lid) break;
+        const curState = dispatcher.getState();
+        const curEntry = curState.container?.entries.find((e) => e.lid === lid);
+        if (!curEntry || curEntry.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(curEntry.body);
+        const checked = (target as HTMLInputElement).checked;
+        const updatedBody = serializeAttachmentBody({ ...att, registered_as_app: checked });
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
+        });
+        break;
+      }
+      // set-attachment-app-icon は handleChange 経由(`<input type="text">`
+      // は change を blur で発火する)。
       case 'move-to-folder': {
         const moveSection = target.closest<HTMLElement>('[data-pkc-region="move-to-folder"]');
         if (!moveSection) break;
@@ -2265,12 +2284,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // SVG). We resolve the bytes fresh from container.assets at
         // click time — no cached blob URL, nothing escapes the current
         // dispatch cycle.
+        //
+        // PR-2JJ v2 hotfix(2026-05-13、user 報告「アプリランチャーで起動
+        // したアプリが別タブで開く」):`'_blank'` だけだと多くの browser
+        // が **別タブ** で開く。`popup=yes` + 具体的な width / height を
+        // features に指定すると browser に「別 window」として開く hint を
+        // 出せる(Chromium / Firefox / Edge は通常 popup window 化、
+        // Safari は user 設定次第)。これにより App Launcher tile click と
+        // 既存 「🌐 Open in New Window」button の両方が別窓化される。
         if (!lid) break;
         const resolved = resolveAttachmentData(lid, dispatcher);
         if (!resolved) break;
         if (classifyPreviewType(resolved.mime) !== 'html') break;
         const htmlString = decodeBase64ToText(resolved.data);
-        const win = window.open('', '_blank');
+        const features = 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes';
+        const win = window.open('', '_blank', features);
         if (win) {
           win.document.open();
           win.document.write(htmlString);
@@ -2285,6 +2313,193 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!ent) break;
         const src = entryToMarkdownSource(ent);
         void copyPlainText(src);
+        break;
+      }
+      case 'copy-markdown-gfm': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):AST 経由で GFM 標準にクリーンアップ。
+        // PKC 拡張(:::role / :::figure / mark color / em-dot / %% comment 等)を
+        // plain GFM に変換し、Word / Notion / Obsidian 等の標準 MD consumer に
+        // 互換性のある出力を提供。
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const src = entryToMarkdownSource(ent);
+        try {
+          const api = getAstApi();
+          const ast = api.parseMarkdown(src);
+          const gfm = api.renderMarkdown(ast, { mode: 'gfm' });
+          void copyPlainText(gfm);
+        } catch (e) {
+          console.warn('[PKC2] copy-markdown-gfm failed, falling back to source', e);
+          void copyPlainText(src);
+        }
+        break;
+      }
+      case 'copy-markdown-pkc': {
+        // PR-2JJ v2(2026-05-13):AST → canonicalize → 正規記法 PKC MD で出力。
+        // PKC ↔ PKC round-trip 用 / spec 準拠 canonical 形が必要なときに使う。
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const src = entryToMarkdownSource(ent);
+        try {
+          const api = getAstApi();
+          const ast = api.canonicalize(api.parseMarkdown(src));
+          const md = api.renderMarkdown(ast, { mode: 'pkc' });
+          void copyPlainText(md);
+        } catch (e) {
+          console.warn('[PKC2] copy-markdown-pkc failed, falling back to source', e);
+          void copyPlainText(src);
+        }
+        break;
+      }
+      case 'export-entry-pdf': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):browser native print dialog
+        // 経由で PDF 出力。既存の rendered-viewer popup を開いて、user は
+        // popup 内の Print ボタン or Ctrl+P で「PDF として保存」を選択。
+        // 0 dependency / 0 KB bundle 増。
+        if (!lid) break;
+        const viewerBtn = document.querySelector(
+          `button[data-pkc-action="open-rendered-viewer"][data-pkc-lid="${CSS.escape(lid)}"]`,
+        ) as HTMLButtonElement | null;
+        if (viewerBtn) {
+          viewerBtn.click();
+        } else {
+          // viewer ボタンが UI 上に無い entry archetype(folder 等)では何もしない。
+          console.warn('[PKC2] export-entry-pdf: no Viewer button found for this entry');
+        }
+        break;
+      }
+      case 'export-entry-pandoc-json': {
+        // PR-2JJ v2(2026-05-13):Pandoc Native JSON を .pandoc.json として
+        // download。docx / pptx 化は user 側 `pandoc --from json -o out.docx <file>`
+        // を実行する。ファイル名に target hint を含めて何用かを示す。
+        if (!lid) break;
+        const pandocTarget = target.getAttribute('data-pkc-pandoc-target') ?? 'generic';
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const src = entryToMarkdownSource(ent);
+        try {
+          const api = getAstApi();
+          const ast = api.parseMarkdown(src);
+          const pandoc = api.toPandocJson(ast);
+          const json = JSON.stringify(pandoc, null, 2);
+          const safeTitle = (ent.title || ent.lid).replace(/[^a-zA-Z0-9\-_]/g, '_').slice(0, 60);
+          const filename = `${safeTitle}.${pandocTarget}.pandoc.json`;
+          // browser file download via Blob URL
+          const blob = new Blob([json], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 0);
+        } catch (e) {
+          console.warn('[PKC2] export-entry-pandoc-json failed', e);
+        }
+        break;
+      }
+      case 'copy-log-md-gfm':
+      case 'copy-log-md-pkc':
+      case 'copy-log-ast':
+      case 'copy-log-pandoc':
+      case 'copy-log-html': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):TEXTLOG log row 専用の Data...
+        // context menu actions。TEXT entry の Data… menu と同等の 5 操作を log
+        // 単位で提供。log の bodySource(markdown 文字列)を AST API へ流す。
+        if (!lid) break;
+        const logId = target.getAttribute('data-pkc-log-id');
+        if (!logId) break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent || ent.archetype !== 'textlog') break;
+        const body = parseTextlogBody(ent.body);
+        const log = body.entries.find((l) => l.id === logId);
+        if (!log) break;
+        const src = log.text;
+        try {
+          const api = getAstApi();
+          const ast = api.parseMarkdown(src);
+          let out: string;
+          switch (action) {
+            case 'copy-log-md-gfm':
+              out = api.renderMarkdown(ast, { mode: 'gfm' });
+              break;
+            case 'copy-log-md-pkc':
+              out = api.renderMarkdown(api.canonicalize(ast), { mode: 'pkc' });
+              break;
+            case 'copy-log-ast':
+              out = JSON.stringify(ast);
+              break;
+            case 'copy-log-pandoc':
+              out = JSON.stringify(api.toPandocJson(ast));
+              break;
+            case 'copy-log-html':
+              out = api.renderHtml(ast);
+              break;
+            default:
+              out = src;
+          }
+          void copyPlainText(out);
+        } catch (e) {
+          console.warn(`[PKC2] ${action} failed, falling back to source`, e);
+          void copyPlainText(src);
+        }
+        break;
+      }
+      case 'copy-ast-data': {
+        // PR-2JJ v2(2026-05-13、PR #432 stack):Data… menu の AST / Canonical /
+        // Pandoc / HTML 出力。`data-pkc-ast-format` で 4 種類のいずれかを選択。
+        // 同 details 内 [data-pkc-control="ast-pretty"] checkbox を読み、ON なら
+        // 整形 JSON、OFF(default)なら JSONL = 1 行 compact。HTML format のみ
+        // pretty checkbox は無視される(HTML は元から複数行 string)。
+        if (!lid) break;
+        const fmt = target.getAttribute('data-pkc-ast-format') ?? '';
+        if (fmt !== 'ast' && fmt !== 'canonical' && fmt !== 'pandoc' && fmt !== 'html') break;
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) break;
+        const sourceText = typeof ent.body === 'string'
+          ? ent.body
+          : ent.body == null ? '' : JSON.stringify(ent.body);
+        const prettyEl = target.closest('details')?.querySelector<HTMLInputElement>(
+          'input[data-pkc-control="ast-pretty"]',
+        );
+        const pretty = prettyEl?.checked === true;
+        try {
+          const api = getAstApi();
+          const ast = api.parseMarkdown(sourceText);
+          let out: string;
+          switch (fmt) {
+            case 'ast':
+              out = pretty ? JSON.stringify(ast, null, 2) : JSON.stringify(ast);
+              break;
+            case 'canonical':
+              out = pretty
+                ? JSON.stringify(api.canonicalize(ast), null, 2)
+                : JSON.stringify(api.canonicalize(ast));
+              break;
+            case 'pandoc':
+              out = pretty
+                ? JSON.stringify(api.toPandocJson(ast), null, 2)
+                : JSON.stringify(api.toPandocJson(ast));
+              break;
+            case 'html':
+              out = api.renderHtml(ast);
+              break;
+            default:
+              out = '';
+          }
+          void copyPlainText(out);
+        } catch (e) {
+          // window.PKC.ast が未設置 / parse 失敗時。silent fail で UI を壊さない。
+          console.warn('[PKC2] copy-ast-data failed', e);
+        }
         break;
       }
       case 'copy-rich-markdown': {
@@ -5024,6 +5239,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const v = target.value;
         if (typeof v === 'string') {
           dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid, title: v });
+        }
+      }
+      return;
+    }
+    if (action === 'set-attachment-app-icon') {
+      // PR-2JJ v2(2026-05-13):App icon emoji を attachment body に保存。
+      // `<input type="text">` の change(blur 時)で発火、空文字なら undefined
+      // にして serialize で省略 → default 🌐 に fallback。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLInputElement) {
+        const curState = dispatcher.getState();
+        const curEntry = curState.container?.entries.find((e) => e.lid === lid);
+        if (curEntry && curEntry.archetype === 'attachment') {
+          const att = parseAttachmentBody(curEntry.body);
+          const icon = target.value.trim();
+          const updatedBody = serializeAttachmentBody({
+            ...att,
+            app_icon: icon.length > 0 ? icon : undefined,
+          });
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
         }
       }
       return;
@@ -8359,13 +8594,20 @@ function populatePreviewElement(
   }
 }
 
+// PR-2JJ v2 hotfix(2026-05-13、user 報告「別タブではなく別窓で開く」):
+// `'_blank'` だけだと多くの browser で別タブ動作になる。`popup=yes` +
+// 具体的 width / height を指定すると **別 window** として開く hint を出せる。
+// 既存 noopener 指定は別 features 引数の concat で維持。
+const POPUP_WINDOW_FEATURES = 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes';
+const POPUP_WINDOW_FEATURES_NOOPENER = `${POPUP_WINDOW_FEATURES},noopener`;
+
 function createOpenButton(blobUrl: string, name: string, label: string): HTMLElement {
   const btn = document.createElement('button');
   btn.className = 'pkc-btn pkc-attachment-open-btn';
   btn.textContent = label;
   btn.setAttribute('title', `Open ${name} in a new browser window`);
   btn.addEventListener('click', () => {
-    window.open(blobUrl, '_blank', 'noopener');
+    window.open(blobUrl, '_blank', POPUP_WINDOW_FEATURES_NOOPENER);
   });
   return btn;
 }
@@ -8381,7 +8623,9 @@ function createHtmlOpenButton(htmlString: string, name: string): HTMLElement {
   btn.textContent = '🌐 Open HTML in New Window';
   btn.setAttribute('title', `Open ${name} in a new browser window`);
   btn.addEventListener('click', () => {
-    const win = window.open('', '_blank');
+    // noopener は document.write 経路では使えない(parent の write 権限が
+    // 失われるため、popup 機能 hint のみで別窓化)。
+    const win = window.open('', '_blank', POPUP_WINDOW_FEATURES);
     if (win) {
       win.document.open();
       win.document.write(htmlString);
@@ -8403,7 +8647,7 @@ function createLazyOpenButton(resolved: { data: string; mime: string; name: stri
   btn.setAttribute('title', `Open ${resolved.name} in a new browser window`);
   btn.addEventListener('click', () => {
     const url = createBlobUrl(resolved);
-    window.open(url, '_blank', 'noopener');
+    window.open(url, '_blank', POPUP_WINDOW_FEATURES_NOOPENER);
     setTimeout(() => URL.revokeObjectURL(url), 500);
   });
   return btn;

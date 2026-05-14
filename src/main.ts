@@ -19,6 +19,9 @@ import {
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
+import { exposeAstApi } from './adapter/public-ast-api';
+import { mountFormatPanel } from './adapter/ui/format-panel';
+import { installWcagResolverRuntime, applyWcagResolverNow } from './adapter/ui/wcag-runtime';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
 import { isSnapshot } from './features/snapshot/types';
@@ -230,6 +233,10 @@ async function boot(): Promise<void> {
 
     render(state, root, prevRenderState);
 
+    // PR-2T(2026-05-12):render 後の inline color に WCAG resolver を適用。
+    // `theme.wcag_auto_shift` flag が OFF なら no-op、ON なら同系色 shift。
+    applyWcagResolverNow(root);
+
     restoreRenderContinuity(root, continuity);
 
     // Edit-mode focus default: when NOTHING was focused before the
@@ -357,6 +364,23 @@ async function boot(): Promise<void> {
   // style.height を更新する parent-side listener。一度 install するだけで
   // 全 iframe を listen(message に id を含めて iframe を特定)。
   installHtmlSandboxResizer();
+
+  // PR-2GG(2026-05-12、reform Phase 3 Block F):AST 公開 API を window.PKC.ast
+  // に設置。他の AI(DevTools console / iframe / postMessage caller)から
+  // markdown text を AST / Pandoc JSON に変換できる経路を提供。
+  exposeAstApi();
+
+  // PR-2JJ v2(2026-05-13、PR #432 stack):編集画面 選択部 追従の PKC MD
+  // フォーマットパネルを install。Tier 0 flag `editor.format_panel_enabled`
+  // (default ON)で完全 off 切替可能、panel の × button で session 中の hide。
+  mountFormatPanel();
+
+  // reform-2026-05 Phase 3 PR-2T(2026-05-12):WCAG コントラスト探索 runtime。
+  // Tier 0 flag `theme.wcag_auto_shift`(default ON)/ `theme.wcag_target_ratio`
+  // (default 4.5、AA)で AI 生成色 + theme bg の組合せが contrast 不足な場合に
+  // 同系色 shift で AA を自動達成。OFF にすれば設定通りの色のまま。
+  // theme change(prefers-color-scheme)で re-apply listener も install。
+  installWcagResolverRuntime();
 
   // PR-2O(2026-05-10):?pkc-debug=hallucination で tolerant alias の hint
   // marker(dotted underline / align chip)を visible に。default 非表示。
@@ -717,6 +741,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeApplyLauncherUrlFlag(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
@@ -742,6 +767,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeApplyLauncherUrlFlag(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
@@ -761,6 +787,7 @@ async function boot(): Promise<void> {
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);
+        maybeApplyLauncherUrlFlag(dispatcher);
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
@@ -840,6 +867,24 @@ function maybeOpenFlagsInspectorFromUrl(dispatcher: Dispatcher): void {
   const params = new URLSearchParams(window.location.search);
   if (params.getAll('pkc-flag').includes('*')) {
     dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' });
+  }
+}
+
+/**
+ * PR-2JJ(2026-05-12 hotfix v2、user 要望に合わせた再設計):
+ * `?app=launcher` URL flag を boot 時に処理し、center pane の launcher view
+ * へ直接遷移する(`SET_VIEW_MODE 'launcher'`)。
+ *
+ * 経緯:v1 で固定 7-app enum を modal overlay として実装したが、user の
+ * 当初要望は「PKC が単一 HTML を attachment として保持 + sandbox 実行できる
+ * 能力を活かし、HTML attachment を opt-in でアプリ化して中央 pane で
+ * 一覧 → window で起動」だった。v2 で再設計。
+ */
+function maybeApplyLauncherUrlFlag(dispatcher: Dispatcher): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('app') === 'launcher') {
+    dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'launcher' });
   }
 }
 

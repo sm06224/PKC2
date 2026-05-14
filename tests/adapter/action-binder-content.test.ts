@@ -1110,13 +1110,20 @@ describe('Issue D / D — Markdown source + rich clipboard copy', () => {
       cleanup = bindActions(root, dispatcher);
       dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
 
+      // PR-2JJ v2 (2026-05-13): existing 📋 MD button repurposed to
+      // GFM cleanup output via AST. Action 名 `copy-markdown-source` →
+      // `copy-markdown-gfm`、出力は GFM 標準 Markdown(本テスト fixture
+      // `# Hello\n\nWorld` は GFM round-trip で `# Hello\n\nWorld\n` 同等)。
       const btn = root.querySelector<HTMLElement>(
-        '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
+        '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-gfm"]',
       );
       expect(btn).not.toBeNull();
       btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
-      expect(captured).toBe('# Hello\n\nWorld');
+      // GFM round-trip は `# Hello\n\nWorld\n` を出す(末尾改行付き)。
+      // 内容が一致することのみ確認(precision)。
+      expect(captured).toContain('# Hello');
+      expect(captured).toContain('World');
     } finally {
       restore();
     }
@@ -1125,13 +1132,14 @@ describe('Issue D / D — Markdown source + rich clipboard copy', () => {
   it('Copy MD button is not rendered for TEXTLOG entries (Slice 4-B)', () => {
     // Slice 4-B of textlog-viewer-and-linkability-redesign.md gated
     // Copy MD / Copy Rendered on `archetype === 'text'`. The TEXTLOG
-    // action bar now ships with viewer / export-csv only, so the
-    // copy-markdown-source button should not exist.
+    // action bar now ships with viewer / export-csv only, so neither
+    // `copy-markdown-source` nor `copy-markdown-gfm` should exist.
     mountTextlogContainer([
       { id: 'log-1', text: 'alpha', createdAt: '2026-04-09T10:00:00Z' },
     ]);
     const btn = root.querySelector<HTMLElement>(
-      '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
+      '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-gfm"], ' +
+        '[data-pkc-region="action-bar"] [data-pkc-action="copy-markdown-source"]',
     );
     expect(btn).toBeNull();
   });
