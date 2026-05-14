@@ -31,9 +31,20 @@ export interface AttachmentBody {
   registered_as_app?: boolean;
   /**
    * App tile に表示する icon(emoji 1 文字推奨、空 / 未指定なら default 🌐)。
-   * Phase 1 は emoji のみ対応、Phase 2 で image asset_key 対応予定。
+   * `app_icon_asset_key` が指定された場合はそちらが優先され、`app_icon` は
+   * fallback として保持される(asset 解決失敗時 / asset 削除時に emoji へ戻る)。
    */
   app_icon?: string;
+  /**
+   * App tile に表示する image asset 参照(PR-V5、2026-05-14)。
+   * 同 container 内 image attachment の `asset_key` を指定すると、launcher が
+   * `<img src="data:...">` で render する。asset が container から消えた / mime
+   * が image でない場合は `app_icon`(emoji)に fallback。
+   *
+   * `app_icon` との同居規約:`asset_key` set → image 優先、未 set → emoji。
+   * 両方 set でも asset 解決優先、emoji は隠れた safety net。
+   */
+  app_icon_asset_key?: string;
 }
 
 export function parseAttachmentBody(body: string): AttachmentBody {
@@ -52,6 +63,9 @@ export function parseAttachmentBody(body: string): AttachmentBody {
         ? parsed.registered_as_app
         : undefined,
       app_icon: typeof parsed.app_icon === 'string' ? parsed.app_icon : undefined,
+      app_icon_asset_key: typeof parsed.app_icon_asset_key === 'string'
+        ? parsed.app_icon_asset_key
+        : undefined,
     };
   } catch {
     return { name: '', mime: 'application/octet-stream' };
@@ -74,6 +88,9 @@ export function serializeAttachmentBody(att: AttachmentBody): string {
   // も noise を作らないため。
   if (att.registered_as_app === true) obj.registered_as_app = true;
   if (typeof att.app_icon === 'string' && att.app_icon.length > 0) obj.app_icon = att.app_icon;
+  if (typeof att.app_icon_asset_key === 'string' && att.app_icon_asset_key.length > 0) {
+    obj.app_icon_asset_key = att.app_icon_asset_key;
+  }
   return JSON.stringify(obj);
 }
 
@@ -387,6 +404,37 @@ export const attachmentPresenter: DetailPresenter = {
         iconInput.setAttribute('title', 'アプリアイコン(emoji 1 字、空なら default 🌐)');
         iconInput.setAttribute('aria-label', 'App icon emoji');
         appRow.appendChild(iconInput);
+
+        // PR-V5(2026-05-14):画像アイコン選択 dropdown。
+        // container 内の image attachment 一覧から選ぶ、または「emoji を使う」。
+        // ctx.container 由来の image 一覧は renderer 経路で渡されるが、attachment
+        // presenter 単体では access できないため、選択肢は data-pkc-region 内の
+        // option list として render し、選択時 action-binder が container snapshot
+        // から asset_key を解決する。
+        const iconAssetSelect = document.createElement('select');
+        iconAssetSelect.className = 'pkc-attachment-app-icon-asset-select';
+        iconAssetSelect.setAttribute('data-pkc-action', 'set-attachment-app-icon-asset');
+        iconAssetSelect.setAttribute('data-pkc-lid', entry.lid);
+        iconAssetSelect.setAttribute('aria-label', 'App icon image');
+        iconAssetSelect.setAttribute('title', 'アプリアイコン用画像(同 container 内の image attachment から選択、なしなら emoji を使用)');
+        const noneOpt = document.createElement('option');
+        noneOpt.value = '';
+        noneOpt.textContent = '— なし(emoji)—';
+        iconAssetSelect.appendChild(noneOpt);
+        // option 一覧は render 後 hydrateImageAttachmentOptions が container 経由で
+        // 注入する(presenter は container access を持たないため)。
+        iconAssetSelect.setAttribute('data-pkc-needs-image-options', 'true');
+        if (att.app_icon_asset_key) {
+          // 初期値:現在の asset_key を選択候補に preset、選択肢が後から hydrate
+          // されたとき正しく selected 状態になるよう data 属性に保持。
+          iconAssetSelect.setAttribute('data-pkc-current-asset-key', att.app_icon_asset_key);
+          const cur = document.createElement('option');
+          cur.value = att.app_icon_asset_key;
+          cur.textContent = '(現在の選択: ' + att.app_icon_asset_key.slice(0, 14) + '…)';
+          cur.selected = true;
+          iconAssetSelect.appendChild(cur);
+        }
+        appRow.appendChild(iconAssetSelect);
 
         card.appendChild(appRow);
       }

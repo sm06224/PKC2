@@ -6412,6 +6412,59 @@ interface GraphNodeView {
  * Opt-in source of truth は AttachmentBody.registered_as_app。
  * Icon は AttachmentBody.app_icon(emoji 1 字、空なら 🌐 default)。
  */
+/**
+ * PR-V5(2026-05-14):attachment-presenter が出す App icon select の option を、
+ * container 内の image attachment 一覧で埋める。presenter は container access が
+ * 無いので renderer 経路でここで hydrate する。
+ *
+ * 探す対象:`select[data-pkc-needs-image-options="true"]`(attachment-presenter の
+ * renderViewBody 内、HTML attachment + registered checkbox 区間で生成)。
+ */
+function hydrateAppIconAssetOptions(view: HTMLElement, container: Container): void {
+  const selects = view.querySelectorAll<HTMLSelectElement>(
+    'select[data-pkc-needs-image-options="true"]',
+  );
+  if (selects.length === 0) return;
+  const imageAttachments: { assetKey: string; label: string }[] = [];
+  for (const e of container.entries) {
+    if (e.archetype !== 'attachment') continue;
+    const ea = parseAttachmentBody(e.body);
+    if (!ea.asset_key) continue;
+    if (!ea.mime?.startsWith('image/')) continue;
+    if (container.assets[ea.asset_key] == null) continue;
+    imageAttachments.push({
+      assetKey: ea.asset_key,
+      label: e.title || ea.name || ea.asset_key,
+    });
+  }
+  for (const sel of selects) {
+    const current = sel.getAttribute('data-pkc-current-asset-key') ?? '';
+    // presenter が暫定で挿入した「現在の選択」option(value=current asset_key)
+    // を一度消して、container の真実の image 一覧で置き換える。
+    while (sel.options.length > 1) sel.remove(1);
+    let matched = false;
+    for (const ia of imageAttachments) {
+      const opt = document.createElement('option');
+      opt.value = ia.assetKey;
+      opt.textContent = ia.label;
+      if (ia.assetKey === current) {
+        opt.selected = true;
+        matched = true;
+      }
+      sel.appendChild(opt);
+    }
+    if (current && !matched) {
+      // 元の asset が container から消えている stale 参照:reminder option を残す
+      const stale = document.createElement('option');
+      stale.value = current;
+      stale.textContent = '⚠ 未解決 (' + current.slice(0, 14) + '…)';
+      stale.selected = true;
+      sel.appendChild(stale);
+    }
+    sel.removeAttribute('data-pkc-needs-image-options');
+  }
+}
+
 function renderLauncherView(state: AppState): HTMLElement {
   const view = createElement('section', 'pkc-launcher-view');
   view.setAttribute('data-pkc-region', 'launcher-view');
@@ -6425,16 +6478,39 @@ function renderLauncherView(state: AppState): HTMLElement {
   header.appendChild(hint);
   view.appendChild(header);
 
-  const registered: { lid: string; name: string; icon: string }[] = [];
+  const assets = state.container?.assets ?? {};
+  // PR-V5(2026-05-14):image asset_key の resolve helper。
+  // container.assets[K] は raw base64、attachment-presenter.resolveImageDataUrl と
+  // 同 contract で data: URL を組み立てる。MIME が不明な image attachment は
+  // image/* と仮定して `image/*` ではなく `image/png` を default 仮定する。
+  const resolveAppIconDataUrl = (assetKey: string): string | null => {
+    const base64 = assets[assetKey];
+    if (!base64) return null;
+    if (base64.startsWith('data:')) return base64;
+    // asset_key を持つ image attachment の MIME を逆引き
+    for (const e of state.container?.entries ?? []) {
+      if (e.archetype !== 'attachment') continue;
+      const ea = parseAttachmentBody(e.body);
+      if (ea.asset_key === assetKey && ea.mime?.startsWith('image/')) {
+        return `data:${ea.mime};base64,${base64}`;
+      }
+    }
+    return null;
+  };
+  const registered: { lid: string; name: string; iconText: string; iconImageUrl: string | null }[] = [];
   for (const entry of state.container?.entries ?? []) {
     if (entry.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(entry.body);
     if (att.registered_as_app !== true) continue;
     if (classifyPreviewType(att.mime) !== 'html') continue;
+    const iconImageUrl = att.app_icon_asset_key
+      ? resolveAppIconDataUrl(att.app_icon_asset_key)
+      : null;
     registered.push({
       lid: entry.lid,
       name: entry.title || att.name || '(untitled)',
-      icon: typeof att.app_icon === 'string' && att.app_icon.length > 0 ? att.app_icon : '🌐',
+      iconText: typeof att.app_icon === 'string' && att.app_icon.length > 0 ? att.app_icon : '🌐',
+      iconImageUrl,
     });
   }
 
@@ -6467,7 +6543,18 @@ function renderLauncherView(state: AppState): HTMLElement {
     tile.setAttribute('title', `${app.name} を新規ウィンドウで起動`);
 
     const iconEl = createElement('span', 'pkc-launcher-tile-icon');
-    iconEl.textContent = app.icon;
+    if (app.iconImageUrl) {
+      // PR-V5(2026-05-14):image asset_key 指定時は <img> で render。alt は
+      // tile name と重複するので decorative 扱い(`alt=""`)、tile aria-label が
+      // 既に「Launch <name>」を持つ。
+      const img = document.createElement('img');
+      img.src = app.iconImageUrl;
+      img.alt = '';
+      img.className = 'pkc-launcher-tile-icon-image';
+      iconEl.appendChild(img);
+    } else {
+      iconEl.textContent = app.iconText;
+    }
     iconEl.setAttribute('aria-hidden', 'true');
     tile.appendChild(iconEl);
 
@@ -7290,6 +7377,10 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   const presenter = getPresenter(entry.archetype);
   if (entry.archetype === 'attachment' && container?.assets) {
     view.appendChild(presenter.renderBody(entry, container.assets));
+    // PR-V5(2026-05-14):App icon image select の option を container 内の
+    // image attachment から hydrate。presenter 単体では container に access
+    // できないため、ここで補完する。
+    hydrateAppIconAssetOptions(view, container);
   } else if (container?.assets) {
     const mimeByKey = buildAssetMimeMap(container);
     const nameByKey = buildAssetNameMap(container);

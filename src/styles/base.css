@@ -9579,7 +9579,15 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
 }
-.pkc-launcher-tile-icon { font-size: 2.4rem; line-height: 1; }
+.pkc-launcher-tile-icon { font-size: 2.4rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 2.4rem; }
+/* PR-V5(2026-05-14):image asset_key 指定時の <img> アイコン。
+   emoji 同等のサイズ感に揃え、aspect ratio を保ったまま正方枠に収める。 */
+.pkc-launcher-tile-icon-image {
+  width: 2.4rem;
+  height: 2.4rem;
+  object-fit: contain;
+  border-radius: 4px;
+}
 .pkc-launcher-tile-label {
   font-weight: 600;
   font-size: var(--fs-base);

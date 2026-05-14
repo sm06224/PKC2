@@ -5327,6 +5327,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       }
       return;
     }
+    if (action === 'set-attachment-app-icon-asset') {
+      // PR-V5(2026-05-14):App icon を container 内 image attachment の asset_key
+      // で指定。`<select>` change で発火、value === '' なら asset_key を消去して
+      // emoji fallback に戻す。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLSelectElement) {
+        const curState = dispatcher.getState();
+        const curEntry = curState.container?.entries.find((e) => e.lid === lid);
+        if (curEntry && curEntry.archetype === 'attachment') {
+          const att = parseAttachmentBody(curEntry.body);
+          const key = target.value.trim();
+          const updatedBody = serializeAttachmentBody({
+            ...att,
+            app_icon_asset_key: key.length > 0 ? key : undefined,
+          });
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
+        }
+      }
+      return;
+    }
     if (action === 'set-folder-description') {
       // 領域 10-6 ζ'' Phase 4 follow-up — filer 内 folder description
       // textarea(folder.body は description として使用)。
