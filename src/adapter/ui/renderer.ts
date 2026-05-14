@@ -7938,6 +7938,77 @@ function renderMetaPaneImpl(
     meta.appendChild(picker);
   }
 
+  // PR-V6(2026-05-14、v1.x §9.2 line 478 additive):derived-branches。
+  // provenance を逆引きして「この entry から派生した branches」を表示。
+  // 元 entry の meta pane で、その entry の過去 snapshot を branch source
+  // とする派生 entry を list。元 entry 側からも子 branch を辿れるように。
+  //
+  // revisions セクションの外に置く:branches は元 entry の revision が
+  // compact / consolidate されて 0 件になった後も(provenance metadata に
+  // source_revision_id が記録されているため)表示し続けるべき。
+  const derivedBranches: Array<{
+    lid: string;
+    title: string;
+    branchedAt?: string;
+    sourceRevisionId?: string;
+  }> = [];
+  for (const rel of container.relations) {
+    if (rel.kind !== 'provenance') continue;
+    if (rel.to !== entry.lid) continue;
+    const md = rel.metadata as Record<string, unknown> | undefined;
+    if (!md) continue;
+    // branch_source === 'revision' で起源を限定。conversion_kind は v1.x で
+    // `'revision-branch'` を採用済(spec §4.1)、両方を accept。
+    const branchSource = md.branch_source ?? md.conversion_kind;
+    if (branchSource !== 'revision' && branchSource !== 'revision-branch') continue;
+    const branchEntry = container.entries.find((e) => e.lid === rel.from);
+    if (!branchEntry) continue;
+    derivedBranches.push({
+      lid: branchEntry.lid,
+      title: branchEntry.title || '(untitled)',
+      branchedAt: typeof md.branched_at === 'string'
+        ? md.branched_at
+        : typeof md.converted_at === 'string'
+          ? md.converted_at
+          : undefined,
+      sourceRevisionId: typeof md.source_revision_id === 'string'
+        ? md.source_revision_id
+        : undefined,
+    });
+  }
+  if (derivedBranches.length > 0) {
+    const branches = createElement('details', 'pkc-derived-branches');
+    branches.setAttribute('data-pkc-region', 'derived-branches');
+    branches.setAttribute('open', '');
+    const bsum = createElement('summary', 'pkc-derived-branches-summary');
+    bsum.textContent = `Derived branches (${derivedBranches.length})`;
+    branches.appendChild(bsum);
+    for (const b of derivedBranches) {
+      const row = createElement('div', 'pkc-derived-branch-row');
+      row.setAttribute('data-pkc-branch-lid', b.lid);
+      const link = createElement('button', 'pkc-derived-branch-link');
+      link.setAttribute('type', 'button');
+      link.setAttribute('data-pkc-action', 'select-entry');
+      link.setAttribute('data-pkc-lid', b.lid);
+      link.textContent = b.title;
+      link.setAttribute('title', `Jump to ${b.title}`);
+      row.appendChild(link);
+      if (b.branchedAt) {
+        const ts = createElement('span', 'pkc-derived-branch-ts');
+        ts.textContent = formatTimestamp(b.branchedAt);
+        row.appendChild(ts);
+      }
+      if (b.sourceRevisionId) {
+        const rid = createElement('span', 'pkc-derived-branch-source-rev');
+        rid.textContent = '@ ' + b.sourceRevisionId.slice(0, 8);
+        rid.setAttribute('title', `Source revision: ${b.sourceRevisionId}`);
+        row.appendChild(rid);
+      }
+      branches.appendChild(row);
+    }
+    meta.appendChild(branches);
+  }
+
   // Unified References umbrella (v1, Option E) — groups the two distinct
   // reference systems under one heading so the meta pane stops having
   // two separate "Backlinks (N)" sub-headings in unrelated places:

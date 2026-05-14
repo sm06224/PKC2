@@ -475,7 +475,7 @@ v1 では以下の UX パターンを **提供しない**（§0.1-3）:
 - revision hover での snapshot 先頭 N 文字 preview
 - 最新 "Revert" と picker 内 Restore の統合 UI（§7.3）
 - branch entry title の suffix 装飾オプション（`(branch)` / `[v${n}]`）
-- branch 関係の一覧表示（provenance を逆引きして「この entry から派生した branches」を表示）
+- ~~branch 関係の一覧表示（provenance を逆引きして「この entry から派生した branches」を表示）~~ → **v2.3.x stack PR-V6（2026-05-14）で着地**。元 entry の meta pane に `data-pkc-region="derived-branches"` を新設、provenance を逆引きして「この entry から派生した branches」を list 表示、各行は branch entry へ jump できる `select-entry` button + branched_at timestamp + source_revision_id 短縮を表示。`branch_source: 'revision'` / `conversion_kind: 'revision-branch'` の両 metadata key を accept。`tests/adapter/derived-branches-list.test.ts`（8 件）で固定。
 
 ### 9.3 canonical spec との関係（破壊せず・緩めず）
 
