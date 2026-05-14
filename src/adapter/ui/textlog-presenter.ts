@@ -27,15 +27,24 @@ import {
   type HydratorContext,
   type HydratorHandle,
 } from './textlog-hydrator';
+import {
+  attachTocViewportTracker,
+  type TocViewportHandle,
+} from './textlog-toc-viewport';
 
 export { parseTextlogBody, serializeTextlogBody, appendLogEntry };
 
 let activeHydrator: HydratorHandle | null = null;
+let activeTocViewport: TocViewportHandle | null = null;
 
 function cleanupActiveHydrator(): void {
   if (activeHydrator) {
     activeHydrator.disconnect();
     activeHydrator = null;
+  }
+  if (activeTocViewport) {
+    activeTocViewport.disconnect();
+    activeTocViewport = null;
   }
 }
 
@@ -188,7 +197,15 @@ export const textlogPresenter: DetailPresenter = {
     if (ctxMap.size > 0) {
       cleanupActiveHydrator();
       activeHydrator = attachHydrator(docEl, ctxMap, renderLogArticle);
+    } else {
+      // 全 article が eager hydrate された場合でも viewport tracker は必要。
+      // hydrator は disconnect されるが、TOC tracker は別系統。
+      cleanupActiveHydrator();
     }
+    // PR-V8(2026-05-14、§8 future enhancement):TOC viewport highlight。
+    // user が log を scroll している間、TOC sidebar に「現在見ている log/day」
+    // marker を attach する。hydrator と独立した observer なので衝突なし。
+    activeTocViewport = attachTocViewportTracker(docEl);
 
     return container;
   },

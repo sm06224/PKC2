@@ -3045,6 +3045,17 @@ mark.pkc-search-mark {
   color: var(--c-accent);
 }
 
+/* PR-V8(2026-05-14、textlog-viewer-and-linkability-redesign §8 future
+   enhancement):TOC viewport highlight。scroll 位置に応じて「現在見ている
+   day/log」を強調表示。`textlog-toc-viewport.ts` の IntersectionObserver が
+   data-pkc-toc-current="true" を attach。 */
+.pkc-toc-link[data-pkc-toc-current="true"] {
+  background: var(--c-accent-bg, var(--c-border));
+  color: var(--c-accent);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--c-accent);
+}
+
 /*
  * Light-mode hard overrides — belt-and-braces against any cascade edge
  * case (`all: unset` interaction, specificity quirks, future refactors)

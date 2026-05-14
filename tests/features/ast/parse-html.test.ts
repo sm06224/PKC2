@@ -51,7 +51,7 @@ describe('PR-V7 parseHtmlToAst — block elements', () => {
 
   it('<ul><li> → AstList(bullet)', () => {
     const b = blocks('<ul><li>a</li><li>b</li></ul>');
-    const list = b[0] as { kind: string; listKind: string; items: unknown[] };
+    const list = b[0] as unknown as { kind: string; listKind: string; items: unknown[] };
     expect(list.kind).toBe('list');
     expect(list.listKind).toBe('bullet');
     expect(list.items.length).toBe(2);
@@ -59,15 +59,15 @@ describe('PR-V7 parseHtmlToAst — block elements', () => {
 
   it('<ol start="5"> → AstList(ordered, start=5)', () => {
     const b = blocks('<ol start="5"><li>a</li></ol>');
-    expect((b[0] as { listKind: string; start?: number }).listKind).toBe('ordered');
-    expect((b[0] as { listKind: string; start?: number }).start).toBe(5);
+    expect((b[0] as unknown as { listKind: string; start?: number }).listKind).toBe('ordered');
+    expect((b[0] as unknown as { listKind: string; start?: number }).start).toBe(5);
   });
 
   it('<ul><li><input type=checkbox> → task list', () => {
     const b = blocks(
       '<ul><li><input type="checkbox" disabled> open</li><li><input type="checkbox" checked disabled> done</li></ul>',
     );
-    const list = b[0] as { listKind: string; items: Array<{ state?: string }> };
+    const list = b[0] as unknown as { listKind: string; items: Array<{ state?: string }> };
     expect(list.listKind).toBe('task');
     expect(list.items[0]?.state).toBe('open');
     expect(list.items[1]?.state).toBe('done');
@@ -88,7 +88,7 @@ describe('PR-V7 parseHtmlToAst — block elements', () => {
     const b = blocks(
       '<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>',
     );
-    const tbl = b[0] as { kind: string; rows: Array<{ isHeader?: boolean; cells: unknown[] }> };
+    const tbl = b[0] as unknown as { kind: string; rows: Array<{ isHeader?: boolean; cells: unknown[] }> };
     expect(tbl.kind).toBe('table');
     expect(tbl.rows.length).toBe(2);
     expect(tbl.rows[0]?.isHeader).toBe(true);
@@ -116,7 +116,7 @@ describe('PR-V7 parseHtmlToAst — block elements', () => {
 
   it('<dl><dt><dd> → AstDefinitionList', () => {
     const b = blocks('<dl><dt>Term1</dt><dd><p>desc1</p></dd></dl>');
-    const dl = b[0] as { kind: string; items: Array<{ term: unknown[]; description: unknown[] }> };
+    const dl = b[0] as unknown as { kind: string; items: Array<{ term: unknown[]; description: unknown[] }> };
     expect(dl.kind).toBe('definition-list');
     expect(dl.items.length).toBe(1);
   });
@@ -172,7 +172,7 @@ describe('PR-V7 parseHtmlToAst — inline elements', () => {
 
   it('<img src alt> → AstImage', () => {
     const b = blocks('<p><img src="a.png" alt="a"></p>');
-    const para = b[0] as { children: AstInline[] };
+    const para = b[0] as unknown as { children: AstInline[] };
     expect(para.children[0]?.kind).toBe('image');
   });
 
