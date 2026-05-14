@@ -63,6 +63,7 @@
 import type {
   AstAttrs,
   AstAutoRef,
+  AstFootnoteRef,
   AstBlock,
   AstCommentBlock,
   AstCommentInline,
@@ -104,10 +105,47 @@ export function decomposePkcExtensions(ast: AstDocument): AstDocument {
   // (user direction 2026-05-13:「可換に持ち込めるものは AST を介して
   // 変換器でターゲットに変換」「逆方向も然り」)。
   children = recognizeReverseFromGfm(children);
-  return {
+  // Phase 3: Footnote 定義 `[^id]: 本文` を抽出して ast.footnotes へ
+  // (Gemini review 反映、2026-05-13)。
+  const { remaining, footnotes } = extractFootnoteDefs(children);
+  const result: AstDocument = {
     ...ast,
-    children,
+    children: remaining,
   };
+  if (Object.keys(footnotes).length > 0) {
+    result.footnotes = { ...(ast.footnotes ?? {}), ...footnotes };
+  }
+  return result;
+}
+
+/**
+ * 第 3 パス:本文中の `[^id]: 本文` を footnote definition として ast.footnotes
+ * に抽出し、本文 block 列からは取り除く。
+ *
+ * パターン:paragraph の text が `[^id]: …` から始まる場合、footnote 定義として
+ * 認識。複数行に渡る定義(後続 indent 行)は単純化のため第 1 paragraph のみ。
+ */
+function extractFootnoteDefs(
+  blocks: readonly AstBlock[],
+): { remaining: AstBlock[]; footnotes: Record<string, readonly AstBlock[]> } {
+  const remaining: AstBlock[] = [];
+  const footnotes: Record<string, AstBlock[]> = {};
+  for (const block of blocks) {
+    if (block.kind === 'paragraph') {
+      const text = inlinesToText(block.children);
+      // sentinel(parse 段階で shieldFootnotes が置換)を匹配。
+      // 形式:`\u{E152}fndef:id|body\u{E153}`
+      const m = /^\u{E152}fndef:([A-Za-z_][\w-]*)\|([\s\S]*?)\u{E153}\s*$/u.exec(text.trim());
+      if (m) {
+        const id = m[1]!;
+        const body = m[2]!;
+        footnotes[id] = [makeParagraphFromText(body)];
+        continue;
+      }
+    }
+    remaining.push(block);
+  }
+  return { remaining, footnotes };
 }
 
 // ── Attrs パーサー ─────────────────────────────────────────
@@ -598,16 +636,19 @@ function tryInlinePattern(
 ): { nodes: AstInline[]; consumed: number } | null {
   const slice = text.slice(start);
 
-  // 1. {{vars.x}}
+  // 1. {{vars.x}} — **常に AstVar として保持**(parse 時展開しない)。
+  //
+  // ChatGPT review(2026-05-13)重要推奨:
+  // 「vars は parse 時展開しない。AstVar を semantic IR に残し、render 時のみ
+  // resolve。理由:source provenance / reverse 可換 / late binding /
+  // target-specific vars / template 化、すべて parse 時展開すると失われる」
+  //
+  // render 時の resolve は `renderAstToMarkdown` / `renderAstToHtml` の
+  // entry point で document.vars を経由して行う。
   let m = /^\{\{\s*vars\.([A-Za-z_][\w-]*)\s*\}\}/.exec(slice);
   if (m) {
     const key = m[1]!;
-    if (Object.prototype.hasOwnProperty.call(vars, key)) {
-      return {
-        nodes: [{ kind: 'text', value: vars[key]! }],
-        consumed: start + m[0].length,
-      };
-    }
+    void vars; // marker:render 時に展開する設計、parse 時は未展開で保持
     const node: AstVar = { kind: 'var', path: `vars.${key}` };
     return { nodes: [node], consumed: start + m[0].length };
   }
@@ -713,6 +754,17 @@ function tryInlinePattern(
   if (m) {
     return {
       nodes: [{ kind: 'auto-ref', id: m[1]! } as AstAutoRef],
+      consumed: start + m[0].length,
+    };
+  }
+
+  // 5b. footnote reference(Gemini review、2026-05-13 推奨)
+  // `[^id]` は parse 段階で markdown-it に shielded されて sentinel に
+  // 置換されている(`\u{E150}fnref:id\u{E151}`)。decompose で AST node 化。
+  m = /^\u{E150}fnref:([A-Za-z_][\w-]*)\u{E151}/u.exec(slice);
+  if (m) {
+    return {
+      nodes: [{ kind: 'footnote-ref', id: m[1]! } as AstFootnoteRef],
       consumed: start + m[0].length,
     };
   }
@@ -925,7 +977,7 @@ function recognizeReverseInlines(inlines: readonly AstInline[]): AstInline[] {
 }
 
 /**
- * Text 内に埋まった HTML inline tag を PKC AST node に逆認識。
+ * Text 内に埋まった HTML inline tag / 未知 inline 構文を PKC AST node に逆認識。
  *
  *   `<mark>X</mark>` → AstMark
  *   `<sup>X</sup>` → AstSup
@@ -933,6 +985,10 @@ function recognizeReverseInlines(inlines: readonly AstInline[]): AstInline[] {
  *   `<ruby>base<rt>rt</rt></ruby>` → AstRuby
  *   `<span class="lead">X</span>` → AstSpan(class=lead)
  *   `<span class="pkc-em-dot">X</span>` → AstEmDot
+ *   `\textcolor{...}{...}` 等 LaTeX 構文 → AstOpaqueInline(sourceFormat='latex')
+ *
+ * ChatGPT review(2026-05-13)推奨:lossless preservation のため未知 inline は
+ * AstOpaqueInline として保持(drop しない)。Pandoc が raw inline を持つのと同じ。
  */
 function scanHtmlInlineForReverse(text: string): AstInline[] {
   const out: AstInline[] = [];
@@ -996,6 +1052,20 @@ function scanHtmlInlineForReverse(text: string): AstInline[] {
           attrs: { classes: cls.split(/\s+/), kvs: {} },
         });
       }
+      i += m[0].length;
+      continue;
+    }
+    // LaTeX `\command{a}{b}` or `\command[opt]{...}` → AstOpaqueInline。
+    // 複数 `{...}` グループに対応(`\textcolor{red}{warning}` 等)。
+    // ChatGPT review(2026-05-13):未知構文は drop ではなく opaque preserve。
+    m = /^\\[a-zA-Z]+(?:\[[^\]]*\])?(?:\{[^{}]*\})+/.exec(slice);
+    if (m) {
+      flush();
+      out.push({
+        kind: 'opaque-inline',
+        sourceFormat: 'latex',
+        original: m[0],
+      });
       i += m[0].length;
       continue;
     }

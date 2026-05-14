@@ -102,8 +102,13 @@ export function renderAstToMarkdown(
   // ── Post-process bridge layer(PR-2JJ v2 hotfix、2026-05-13、user fixture
   // 対応):AST に raw 残留した PKC 拡張を全文字列に対して line-aware に
   // strip / 正規化。詳細は本ファイル先頭の Scope セクション参照。
-  result = expandVarsInOutput(result, ast.vars ?? {});
+  //
+  // ChatGPT review 反映(2026-05-13):AstVar は semantic IR としてそのまま
+  // 残し、render target が決定する。
+  //   - PKC mode → `{{vars.x}}` literal を保持(template として serializable)
+  //   - GFM mode → vars 値で expand(consumer は template を解釈できない)
   if (mode === 'gfm') {
+    result = expandVarsInOutput(result, ast.vars ?? {});
     result = stripPkcBlocksForGfm(result);
     result = stripPkcInlinesForGfm(result);
   } else {
@@ -451,6 +456,33 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
     case 'math-block': {
       return '$$\n' + block.src + (block.src.endsWith('\n') ? '' : '\n') + '$$';
     }
+    case 'definition-list': {
+      // PR-2JJ v2 final(2026-05-13、Gemini review 反映):dl の MD 表現は
+      // 多くの dialect で `term\n: description` 形式(Pandoc / PHP Markdown
+      // Extra 等)。両 mode で同一(GFM 標準には無いが Pandoc / Hugo 等
+      // 主要 dialect で widespread)。
+      return block.items
+        .map((it) => {
+          const termText = renderInlines(it.term, mode);
+          const descBlocks = it.description
+            .map((b) => renderBlock(b, mode))
+            .join('\n\n');
+          // description の各行先頭に `: ` prefix、続く行は indent
+          const descLines = descBlocks.split('\n');
+          const formattedDesc = descLines
+            .map((l, i) => (i === 0 ? `: ${l}` : `  ${l}`))
+            .join('\n');
+          return `${termText}\n${formattedDesc}`;
+        })
+        .join('\n\n');
+    }
+    case 'opaque-block': {
+      // PR-2JJ v2 final(2026-05-13、ChatGPT review 反映):未知構文を
+      // **lossless preserve**。両 mode で原文をそのまま emit。round-trip
+      // 経路で再 parse されたとき AstOpaqueBlock に戻る(decompose-pkc が
+      // sourceFormat hint で detect)。
+      return block.original;
+    }
     default: {
       // 未対応 kind は plain stringify(forward compatibility)
       const node = block as AstNodeBase & { kind: string };
@@ -597,6 +629,14 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
       }
       return '';
     }
+    case 'footnote-ref':
+      // PR-2JJ v2 final(2026-05-13、Gemini review 反映):両 mode で `[^id]`。
+      // GFM / Pandoc / 学術 dialect 共通の脚注参照 syntax。
+      return `[^${node.id}]`;
+    case 'opaque-inline':
+      // PR-2JJ v2 final(2026-05-13、ChatGPT review 反映):未知構文 preserve。
+      // 原文をそのまま emit、round-trip で AstOpaqueInline に戻る。
+      return node.original;
     default: {
       const n = node as AstNodeBase & { kind: string };
       return `<!-- unsupported inline kind: ${n.kind} -->`;

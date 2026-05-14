@@ -160,6 +160,35 @@ export interface AstCommentInline extends AstNodeBase {
   children: readonly AstInline[];
 }
 
+/**
+ * Footnote reference(`[^id]` 形式の本文参照)。
+ *
+ * **Gemini review(2026-05-13)推奨**:学術 / 技術文書で必須。
+ * Pandoc / LaTeX への変換時に link 代用ではセマンティクスが壊れるため
+ * 独立 node に。本文末の `[^id]: 本文` は AstDocument.footnotes に保持。
+ */
+export interface AstFootnoteRef extends AstNodeBase {
+  kind: 'footnote-ref';
+  /** 参照 id(本文末 `[^id]: ...` と対応)。 */
+  id: string;
+}
+
+/**
+ * Opaque inline(未知 / 他 format 由来の inline 構文 preserve)。
+ *
+ * **ChatGPT review(2026-05-13)推奨**:LaTeX `\textcolor{red}{...}` /
+ * Word OOXML inline / HTML `<data-*>` 等、semantic IR に自然還元できない
+ * inline 構文を **lossless preserve** する逃げ道。drop すると lossless
+ * 性が死ぬので raw を持つ。
+ */
+export interface AstOpaqueInline extends AstNodeBase {
+  kind: 'opaque-inline';
+  /** 由来 format(`'latex'` / `'html'` / `'docx'` / `'unknown'` 等)。 */
+  sourceFormat: string;
+  /** Raw source text(再構築のため reconstructable な原文)。 */
+  original: string;
+}
+
 /** Inline union(parser 結果 / renderer 入力の中身)。 */
 export type AstInline =
   | AstText
@@ -180,7 +209,9 @@ export type AstInline =
   | AstAutoRef
   | AstVar
   | AstMathInline
-  | AstCommentInline;
+  | AstCommentInline
+  | AstFootnoteRef
+  | AstOpaqueInline;
 
 // ── Block nodes ─────────────────────────────────────────
 
@@ -299,6 +330,44 @@ export interface AstMathBlock extends AstNodeBase {
   src: string;
 }
 
+/**
+ * Definition list(`<dl>` 風 term + description ペア)。
+ *
+ * **Gemini review(2026-05-13)推奨**:仕様書 / 辞書的コンテンツで多用、
+ * Pandoc / MDX 互換にも必要。
+ *
+ *   term1
+ *   : description1
+ *
+ *   term2
+ *   : description2
+ */
+export interface AstDefinitionList extends AstNodeBase {
+  kind: 'definition-list';
+  items: readonly AstDefinitionItem[];
+}
+
+export interface AstDefinitionItem extends AstNodeBase {
+  kind: 'definition-item';
+  term: readonly AstInline[];
+  description: readonly AstBlock[];
+}
+
+/**
+ * Opaque block(未知 / 他 format 由来の block 構文 preserve)。
+ *
+ * **ChatGPT review(2026-05-13)推奨**:`\begin{tikzpicture}...\end{tikzpicture}`
+ * / Word floating anchors / docx comments 等を **lossless preserve**。
+ * Pandoc が raw block を持っているのと同じ思想。drop すると lossless 性が死ぬ。
+ */
+export interface AstOpaqueBlock extends AstNodeBase {
+  kind: 'opaque-block';
+  /** 由来 format(`'latex'` / `'html'` / `'docx'` / `'unknown'` 等)。 */
+  sourceFormat: string;
+  /** Raw source text(再構築のため reconstructable な原文)。 */
+  original: string;
+}
+
 /** Block union。 */
 export type AstBlock =
   | AstHeading
@@ -314,23 +383,42 @@ export type AstBlock =
   | AstIfBlock
   | AstCommentBlock
   | AstBlank
-  | AstMathBlock;
+  | AstMathBlock
+  | AstDefinitionList
+  | AstOpaqueBlock;
 
 // ── Document root ───────────────────────────────────────
 
 /** Document root。frontmatter から抽出した globals + body の AST tree。 */
 export interface AstDocument {
   kind: 'document';
+  /**
+   * AST schema version。**ChatGPT review(2026-05-13)推奨**:
+   * 「serialized AST 保存 / postMessage / remote AI / cache / DB persistence
+   * が始まると、AST schema migration が絶対発生する。document payload に
+   * astVersion を埋め込んだ方がいい」。
+   *
+   * - `'2.0'`(2026-05-13、PR-2JJ v2 final):footnote / definition-list /
+   *   opaque inline/block / 真 AstVar(parse 時非展開)導入版
+   * - 旧 version は migration adapter で `'2.0'` に lift する
+   *
+   * 未指定 → `'2.0'` 同等(parser が default で書き込み)。
+   */
+  astVersion?: '2.0';
   /** frontmatter から抽出した globals(writing / direction / align)。 */
   writing?: 'horizontal' | 'vertical';
   direction?: 'ltr' | 'rtl';
   align?: 'left' | 'right' | 'center' | 'top' | 'bottom';
   /** frontmatter `notation: pkc-markdown-1.0` 等の profile。 */
   notation?: string;
-  /** frontmatter vars(本文 `{{vars.x}}` で展開)。 */
+  /** frontmatter vars(本文 `{{vars.x}}` で展開)。**ChatGPT review 推奨**で
+   *  parse 時には展開せず、render 時に AstVar から resolve。これにより
+   *  source provenance / reverse 可換 / late binding / template 化が可能。 */
   vars?: Readonly<Record<string, string>>;
   /** body の block 列。 */
   children: readonly AstBlock[];
+  /** body 末尾の footnote 定義(`[^id]: 本文` form)。 */
+  footnotes?: Readonly<Record<string, readonly AstBlock[]>>;
   /** parser が emit した structured warning(`PkcWarning`)。 */
   warnings?: readonly import('../../features/notation/warnings').PkcWarning[];
 }

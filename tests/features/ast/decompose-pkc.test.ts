@@ -225,7 +225,11 @@ describe('decompose-pkc:Inline 拡張の AST decomposition', () => {
     expect(kinds).toContain('auto-ref');
   });
 
-  it('{{vars.x}} が定義済 → text に展開', () => {
+  it('{{vars.x}} が定義済 → AstVar として保持(render 時に resolve)', () => {
+    // PR-2JJ v2 final(2026-05-13、ChatGPT review 推奨):
+    // parse 時には AstVar をそのまま残す。source provenance / reverse 可換 /
+    // late binding / template 化、すべて parse 時展開すると失われるため。
+    // render 時に target に応じて resolve(GFM mode は展開、PKC mode は維持)。
     const ast = parseMarkdownToAst(`---
 vars:
   site: 石狩
@@ -234,11 +238,11 @@ vars:
 {{vars.site}} 計画
 `);
     const inlines = (ast.children[0]! as unknown as { children: AstInline[] }).children;
-    const text = inlines.map((n) => (n.kind === 'text' ? n.value : '')).join('');
-    expect(text).toContain('石狩');
-    // No AstVar should remain (defined → expanded)
     const kinds = collectInlineKinds(inlines);
-    expect(kinds).not.toContain('var');
+    // AstVar として保持される(parse 時に展開されない)
+    expect(kinds).toContain('var');
+    // document.vars には値が保存される
+    expect(ast.vars?.site).toBe('石狩');
   });
 
   it('{{vars.x}} が未定義 → AstVar(literal は維持)', () => {

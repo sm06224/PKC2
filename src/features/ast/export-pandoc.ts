@@ -153,6 +153,15 @@ function inlineToPandoc(node: AstInline): PandocNode[] {
     case 'comment-inline':
       // PKC 固有、render に出さない form は Str fallback
       return [{ t: 'Str', c: '' }];
+    case 'footnote-ref':
+      // Pandoc Note は inline-level footnote(`{ t: 'Note', c: [Block...] }`)。
+      // Pandoc 仕様では本文末参照 ID は `Note` の中身に block を直接埋め込む形。
+      // Pandoc 側で BibTeX / docx 等の export 時に footnote として処理される。
+      return [{ t: 'Note', c: [] }];
+    case 'opaque-inline':
+      // Pandoc raw inline:`{ t: 'RawInline', c: [format, raw] }`。
+      // sourceFormat が 'html' なら Pandoc も HTML として認識。
+      return [{ t: 'RawInline', c: [node.sourceFormat, node.original] }];
     default: {
       const _exhaustive: never = node;
       void _exhaustive;
@@ -254,6 +263,18 @@ function blockToPandoc(node: AstBlock): PandocNode {
         t: 'Para',
         c: [{ t: 'Math', c: [{ t: 'DisplayMath' }, node.src] }],
       };
+    case 'definition-list':
+      // Pandoc DefinitionList:`{ t: 'DefinitionList', c: [[Term, [[Block]]]] }`
+      return {
+        t: 'DefinitionList',
+        c: node.items.map((it) => [
+          inlinesToPandoc(it.term),
+          [blocksToPandoc(it.description)],
+        ]),
+      };
+    case 'opaque-block':
+      // Pandoc RawBlock:`{ t: 'RawBlock', c: [format, raw] }`
+      return { t: 'RawBlock', c: [node.sourceFormat, node.original] };
     case 'code-render':
       return {
         t: 'CodeBlock',

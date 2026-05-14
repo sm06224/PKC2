@@ -24,6 +24,7 @@ import {
   renderAstToMarkdown,
   type RenderMarkdownOptions,
 } from '@features/ast/render-markdown';
+import { semanticHash } from '@features/ast/semantic-hash';
 import type { AstDocument } from '@core/ast/index';
 
 export interface PkcAstApi {
@@ -39,6 +40,13 @@ export interface PkcAstApi {
   renderMarkdown(ast: AstDocument, opts?: RenderMarkdownOptions): string;
   /** 1 step convenience:markdown text → Pandoc JSON。 */
   markdownToPandoc(text: string, opts?: ParseOptions): unknown;
+  /**
+   * AstDocument → semantic hash 文字列。`semanticHash(A) === semanticHash(B)`
+   * のとき A と B は **意味的同一**。round-trip stability の根拠 test に使う。
+   *
+   * ChatGPT review(2026-05-13)推奨で v1.2.0 で公開。
+   */
+  semanticHash(ast: AstDocument): string;
   /** API version(将来の breaking change 検出用)。 */
   readonly version: string;
 }
@@ -51,7 +59,8 @@ const API: PkcAstApi = {
   renderMarkdown: (ast, opts) => renderAstToMarkdown(ast, opts),
   markdownToPandoc: (text, opts) =>
     astToPandocNative(parseMarkdownToAst(text, opts)),
-  version: '1.1.0',
+  semanticHash: (ast) => semanticHash(ast),
+  version: '1.2.0',
 };
 
 /**

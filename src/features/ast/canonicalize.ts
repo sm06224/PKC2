@@ -116,6 +116,19 @@ function canonicalizeBlock(node: AstBlock): AstBlock {
       }));
       return { ...node, rows };
     }
+    case 'definition-list':
+      // PR-2JJ v2 final:dl の term は inline 配列、description は block 配列。
+      return {
+        ...node,
+        items: node.items.map((it) => ({
+          ...it,
+          term: canonicalizeInlineChildren(it.term),
+          description: canonicalizeBlockChildren(it.description),
+        })),
+      };
+    case 'opaque-block':
+      // opaque は original 保持(canonicalize しない)。
+      return node;
     default:
       return node;
   }

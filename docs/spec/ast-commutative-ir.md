@@ -257,3 +257,151 @@ DevTools console / iframe / postMessage / 他 AI から呼べる。
 ---
 
 **meta**: 本 doc は user direction 2026-05-13「スペック文書はどこ? 他の AI にも設計を確認してもらうから出して、一番筋のいい、努力的可換の究極を作り出す気概で作っていきましょう」を受けて起こしたもの。「努力的可換の究極」を目指す設計を他 AI からレビューしてもらうための spec として明示的に書いた。
+
+---
+
+## 12. AI review feedback と Design decision(2026-05-13)
+
+ChatGPT と Gemini が §11 question に基づき review した結果と、それを受けた
+PKC 側の design decision を記録。
+
+### 12.1 ChatGPT review(critical 採用済)
+
+> 「AST が syntax tree なのか semantic IR なのかをもっと明確に分離した方がいい」
+
+**Decision**:本 IR は **semantic document IR** と位置付ける(`§8.1 中央集権 IR
+としての不変条件` で明文化)。full publishing IR(PPT layout / DTP / advanced
+PDF)には拡張せず、それらは target lowering 層に寄せる方針。3 層 IR
+(Syntax Tree → Semantic IR → Target Lowering IR)の Lowering 層は
+Phase 4 以降で必要に応じ導入。
+
+> 「`AstSpan(class)` が闇属性化する」
+
+**Decision**:現状は AstSpan に attrs.classes を持たせる方式で進める。class
+hint の用途は **3 種類のみ厳格化**:
+  - `lead` / `caption` → 専用 `:lead:[X]` / `:caption:[X]` formal 形に round-trip
+  - `pkc-em-dot` → AstEmDot に昇格
+  - その他 → AstSpan(class) のまま(reverse hint として活用)
+
+class が増え過ぎたら、`spanKind: 'semantic' | 'style' | 'opaque'`
+discriminator を Phase 4 で導入。
+
+> 「**opaque node を最初から導入した方がいい**」(critical 推奨)
+
+**Decision**:**採用**。`AstOpaqueInline` / `AstOpaqueBlock` を core/ast/index.ts
+に追加。`sourceFormat: 'latex' | 'html' | 'docx' | 'unknown'` + `original`(raw)
+を持つ。LaTeX `\command{a}{b}` 等を lossless preserve。render は `original`
+そのまま emit、re-parse で AstOpaque に戻る。
+
+> 「**AstVar は parse 時展開しない**」(critical 推奨)
+
+**Decision**:**採用**。`decompose-pkc.ts` の `tryInlinePattern` で
+`{{vars.x}}` を **常に AstVar として保持**(従来:定義済 → text 展開)。
+理由:
+  - source provenance 維持(再 parse で `{{vars.x}}` 復元可能)
+  - reverse 可換性(GFM → PKC 経路で AstVar に戻せる)
+  - late binding(AstDocument を渡したまま vars を差し替え可能)
+  - target-specific vars(GFM target は展開、PKC target は template 維持)
+  - template 化(複数パターン生成、宛名差し込み的 use case)
+
+render 時の動作分岐:
+  - **PKC mode**:`{{vars.x}}` literal を出力(template 維持、reverse 可換)
+  - **GFM mode**:`ast.vars[x]` で展開(consumer は template 解釈できない)
+
+> 「**semanticHash(ast)** を定義した方がいい」(critical 推奨)
+
+**Decision**:**採用**。`src/features/ast/semantic-hash.ts` 新規。
+normalize:空 text node 除去 / 連続 text merge / whitespace normalize /
+attrs 順序 normalize / link href fragment lower-case。
+`semanticHash(rt(ast)) === semanticHash(ast)` を round-trip stability の
+**数値証明** として使う。
+
+> 「**AstIfBlock は conditional compilation / macro system**」「parse-time
+> pruning か render-time evaluation かを明確化」
+
+**Decision**:現状は **render-time evaluation**(parser は AST に残す、
+render-markdown.ts の `case 'if-block'` で `format` 評価して drop / passthrough)。
+**parse-time pruning にはしない** ← AstVar と同じく source provenance 維持。
+
+> 「**astVersion を document payload に埋め込め**」(critical 推奨)
+
+**Decision**:**採用**。`AstDocument.astVersion: '2.0'` を必須化、parser が
+default 設定。serialized AST 保存 / postMessage / cache / DB persistence
+時に schema migration の基盤になる。
+
+> 「**footnote / definition-list / task-list / page-break / raw-inline /
+> raw-block** が不足候補」
+
+**Decision**:
+  - `AstFootnoteRef` + `AstDocument.footnotes` → **採用**(本 PR で着地)
+  - `AstDefinitionList` + `AstDefinitionItem` → **採用**(本 PR で着地)
+  - `task-list` → 既存 `AstListItem.state: 'open' | 'done'` でカバー済
+  - `page-break` → 既存 `AstBreak(breakKind: 'rule' | 'page')` でカバー済
+  - `raw-inline` / `raw-block` → `AstOpaqueInline` / `AstOpaqueBlock` で
+    実現(命名は ChatGPT 提案を踏まえ "opaque" に統一)
+
+> 「**attribute system** が semantic / presentational / foreign で混ざる」
+
+**Decision**:現状は `AstAttrs = { id, classes, kvs }` の単一構造で進める。
+Phase 4 で混乱が始まれば 3 種分離を導入する。
+
+> 「PKC AST は **semantic document IR** に固定、PPT/DTP は target lowering
+> に寄せる」
+
+**Decision**:**採用**。PPT/DTP/advanced PDF は target lowering の責務、
+core AST に持ち込まない。これにより AST は semantic に集中、cross-format
+の意味的可換性を最大化。
+
+### 12.2 Gemini review(critical 採用済)
+
+> 「footnote / definition list / citation / page-slide break が不足候補」
+
+**Decision**:footnote / definition-list は ChatGPT と同じく採用。
+**citation** は AstQuote.citation で属性として表現済(spec §2.2 既出)、
+専用 node に格上げするかは Phase 4 で判定。
+
+> 「`> **Warning:**` の手動入力を意図せず AstSection に昇格させる懸念」
+
+**Decision**:**仕様として許容**。意図せぬ昇格を避けたい場合は invisible
+marker(`<!-- pkc:no-promote -->` 等)を提供する方向を Phase 4 で検討。
+現時点では「明確な benefit(reverse 可換性)があり、稀な誤検出は許容」
+の判断。
+
+> 「Word 変換器を作る際、layout 属性(`2-column` 等)が AST レベルで
+> 必要になる」
+
+**Decision**:**Phase 4 で AstNodeBase.attrs に layout hint を拡張する**
+方向。core AST は当面 semantic 中心、layout は target lowering で吸収。
+
+> 「Canonical form は **Formal Form**(`:strong:[X]`)を AST truth source に」
+
+**Decision**:**採用**。canonicalize は **formal form が source of truth**。
+ただし render 段階で:
+  - PKC mode → formal form(`:strong:[X]` / `:emphasis:[X]` 等)で出力
+  - GFM mode → simple form(`**X**` / `*X*`)で出力(GFM consumer 互換)
+
+これにより AST 上は曖昧さなし、render 時に target format に応じた表現選択。
+
+### 12.3 着地一覧(PR-2JJ v2 final)
+
+| 採用項目 | 実装ファイル | test |
+|---|---|---|
+| AstFootnoteRef + footnotes 抽出 | `decompose-pkc.ts` + `parse.ts` | `ai-review-feedback.test.ts` |
+| AstDefinitionList / AstDefinitionItem | `core/ast/index.ts` + render-*.ts | (待) |
+| AstOpaqueInline / AstOpaqueBlock | `core/ast/index.ts` + scanHtmlInlineForReverse | `ai-review-feedback.test.ts` |
+| astVersion: '2.0' | `parse.ts` + `core/ast/index.ts` | `ai-review-feedback.test.ts` |
+| AstVar parse 時非展開 | `decompose-pkc.ts` tryInlinePattern | `ai-review-feedback.test.ts` |
+| render 時 vars expansion(GFM only) | `render-markdown.ts` | `ai-review-feedback.test.ts` |
+| semanticHash 関数 | `semantic-hash.ts`(NEW) | `ai-review-feedback.test.ts` |
+| `window.PKC.ast.semanticHash` 公開(v1.2.0) | `public-ast-api.ts` | `ai-review-feedback.test.ts` |
+
+### 12.4 Phase 4 以降への懸案
+
+- `spanKind` discriminator(class 用途が増えたら)
+- `AstAttrs` の semantic / presentational / foreign 分離
+- `AstCitation` 専用 node 格上げ
+- `<!-- pkc:no-promote -->` invisible marker(意図せぬ昇格防止)
+- layout hint(2-column 等)を AstNodeBase.attrs に
+- 3 層 IR(Syntax Tree / Semantic IR / Target Lowering IR)分離
+- Word docx / PowerPoint pptx / LaTeX の **直接 forward**(Pandoc 中継卒業)
+- HTML / LaTeX / docx の **reverse**(target → AST)

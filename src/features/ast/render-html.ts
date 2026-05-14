@@ -107,6 +107,17 @@ function renderInlineNode(node: AstInline): string {
       return `<span class="pkc-math-inline">${escapeHtml(node.src)}</span>`;
     case 'comment-inline':
       return ''; // hidden / footnote は render しない(footnote は後段 wave で promote)
+    case 'footnote-ref':
+      // PR-2JJ v2 final(2026-05-13、Gemini review 反映):学術用 footnote。
+      // `<a class="pkc-footnote-ref" href="#fn-X">` で footnote 定義への jump、
+      // CSS で sup スタイル化(後段 wave で sup 化を選択可能)。
+      return `<sup class="pkc-footnote-ref"><a href="#fn-${escapeAttr(node.id)}" id="fnref-${escapeAttr(node.id)}">${escapeHtml(node.id)}</a></sup>`;
+    case 'opaque-inline':
+      // PR-2JJ v2 final(2026-05-13、ChatGPT review 反映):未知構文 preserve。
+      // HTML 出力では原文をそのまま埋め込む(format=html なら raw、それ以外は
+      // escape して `<span data-pkc-opaque>` で wrap)。
+      if (node.sourceFormat === 'html') return node.original;
+      return `<span class="pkc-opaque" data-pkc-source-format="${escapeAttr(node.sourceFormat)}">${escapeHtml(node.original)}</span>`;
     default: {
       const unreachable: never = node;
       void unreachable;
@@ -192,6 +203,21 @@ function renderBlock(block: AstBlock, opts: RenderOptions): string {
       return `<div class="pkc-blank-line" data-pkc-blank-count="${block.count}"${lineAttr}></div>`;
     case 'math-block':
       return `<div class="pkc-math-block"${lineAttr}>${escapeHtml(block.src)}</div>`;
+    case 'definition-list': {
+      // PR-2JJ v2 final(2026-05-13、Gemini review 反映):仕様書 / 辞書的 dl。
+      const items = block.items
+        .map((it) => {
+          const dt = `<dt>${renderInline(it.term)}</dt>`;
+          const dd = `<dd>${it.description.map((b) => renderBlock(b, opts)).join('\n')}</dd>`;
+          return `${dt}\n${dd}`;
+        })
+        .join('\n');
+      return `<dl class="pkc-definition-list"${lineAttr}>${items}</dl>`;
+    }
+    case 'opaque-block':
+      // PR-2JJ v2 final(2026-05-13、ChatGPT review 反映):未知構文 preserve。
+      if (block.sourceFormat === 'html') return block.original;
+      return `<pre class="pkc-opaque-block" data-pkc-source-format="${escapeAttr(block.sourceFormat)}"${lineAttr}>${escapeHtml(block.original)}</pre>`;
     default: {
       const unreachable: never = block;
       void unreachable;

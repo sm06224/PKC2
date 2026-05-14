@@ -410,7 +410,11 @@ function findCloseIdx(tokens: readonly Token[], openIdx: number, closeType: stri
 let defaultMd: MarkdownIt | null = null;
 function getDefaultMd(): MarkdownIt {
   if (defaultMd) return defaultMd;
-  defaultMd = new MarkdownIt({ html: false, linkify: true, breaks: false, typographer: false });
+  // PR-2JJ v2 final hotfix(2026-05-13、ChatGPT review feedback 実装中):
+  // linkify を OFF。`{{vars.name}}` 等の PKC 拡張 pattern の中に含まれる
+  // `vars.name` のような **domain 風 token** を markdown-it が auto-link 化
+  // して link node に壊すため。明示的 link は `[text](url)` で書く方針。
+  defaultMd = new MarkdownIt({ html: false, linkify: false, breaks: false, typographer: false });
   defaultMd.enable(['table', 'strikethrough']);
   return defaultMd;
 }
@@ -424,13 +428,52 @@ function getDefaultMd(): MarkdownIt {
  * @param opts ParseOptions(vars / md instance override)
  * @returns AstDocument
  */
+/**
+ * `[^id]` / `[^id]:` を markdown-it の reference-link 機構から守る pre-process。
+ *
+ * markdown-it は `[label]` を reference link、`[label]: url` を link
+ * definition として認識する。`[^foot]` も同パターンに引っかかって link 化
+ * されてしまう(href=URL-encoded text)。
+ *
+ * 解決:body を md.parse する前に footnote pattern を sentinel に置換、
+ * 後段 decompose-pkc で sentinel を AstFootnoteRef / footnote definition に
+ * 戻す。
+ *
+ * 使う sentinel:
+ *   `[^id]` → `\u{E150}fnref:id\u{E151}`  (inline ref)
+ *   `[^id]: text` → `\u{E152}fndef:id|text\u{E153}` (definition、行頭 only)
+ *
+ * 後段 decompose-pkc の scanInlineMarkers が sentinel を見つけて AST node 化。
+ */
+function shieldFootnotes(body: string): string {
+  let out = body;
+  // definition 形(行頭、`[^id]:` で始まる、行末まで body)を sentinel に
+  out = out.replace(
+    /^\[\^([A-Za-z_][\w-]*)\]:\s*(.*)$/gm,
+    (_m, id: string, def: string) => `\u{E152}fndef:${id}|${def}\u{E153}`,
+  );
+  // ref 形(`[^id]` で `[^id]:` でない、ref 末尾は ``]` の直後が `:` でない`)
+  out = out.replace(
+    /\[\^([A-Za-z_][\w-]*)\](?!:)/g,
+    (_m, id: string) => `\u{E150}fnref:${id}\u{E151}`,
+  );
+  return out;
+}
+
 export function parseMarkdownToAst(text: string, opts: ParseOptions = {}): AstDocument {
   const { body, globals } = extractFrontmatter(text);
+  // PR-2JJ v2 final hotfix(2026-05-13、Gemini review feedback 反映):
+  // footnote pattern を markdown-it から shield。後段で AST node 化する。
+  const shieldedBody = shieldFootnotes(body);
   const md = opts.md ?? getDefaultMd();
-  const tokens = md.parse(body, {});
+  const tokens = md.parse(shieldedBody, {});
   const children = walkBlocks(tokens);
   const doc: AstDocument = {
     kind: 'document',
+    // ChatGPT review(2026-05-13)推奨:document payload に astVersion を
+    // 埋め込む。serialized AST 保存 / postMessage / remote AI / cache / DB
+    // persistence が始まったとき schema migration が機能する基盤。
+    astVersion: '2.0',
     children,
   };
   if (globals.writing) doc.writing = globals.writing;
