@@ -2378,22 +2378,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'export-entry-pandoc-json': {
         // PR-2JJ v2(2026-05-13):Pandoc Native JSON を .pandoc.json として
         // download。docx / pptx 化は user 側 `pandoc --from json -o out.docx <file>`
-        // を実行する。ファイル名に target hint を含めて何用かを示す。
+        // を実行する経路だった(2-step)。
+        //
+        // PR-V13(2026-05-14、U3+U4):pandocTarget が `docx` / `pptx` の場合は
+        // **直接 .docx / .pptx Blob を生成して 1-click download**。これまでの
+        // 2-step を解消、user 側で pandoc CLI 起動不要に。
         if (!lid) break;
         const pandocTarget = target.getAttribute('data-pkc-pandoc-target') ?? 'generic';
         const st = dispatcher.getState();
         const ent = st.container?.entries.find((en) => en.lid === lid);
         if (!ent) break;
         const src = entryToMarkdownSource(ent);
-        try {
-          const api = getAstApi();
-          const ast = api.parseMarkdown(src);
-          const pandoc = api.toPandocJson(ast);
-          const json = JSON.stringify(pandoc, null, 2);
-          const safeTitle = (ent.title || ent.lid).replace(/[^a-zA-Z0-9\-_]/g, '_').slice(0, 60);
-          const filename = `${safeTitle}.${pandocTarget}.pandoc.json`;
-          // browser file download via Blob URL
-          const blob = new Blob([json], { type: 'application/json' });
+        const safeTitle = (ent.title || ent.lid).replace(/[^a-zA-Z0-9\-_]/g, '_').slice(0, 60);
+        const triggerDownload = (blob: Blob, filename: string): void => {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
@@ -2402,8 +2399,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           a.click();
           document.body.removeChild(a);
           setTimeout(() => URL.revokeObjectURL(url), 0);
-        } catch (e) {
-          console.warn('[PKC2] export-entry-pandoc-json failed', e);
+        };
+        const api = getAstApi();
+        const ast = api.parseMarkdown(src);
+        if (pandocTarget === 'docx') {
+          // U3:Word direct generation(docx package 経由)。lazy import で
+          // bundle 起動時のサイズを抑制、Data... menu の docx target が
+          // 押されるまで loader しない。
+          void (async () => {
+            try {
+              const { astToDocxBlob } = await import('../../features/ast/export-docx');
+              const blob = await astToDocxBlob(ast);
+              triggerDownload(blob, `${safeTitle}.docx`);
+            } catch (e) {
+              console.warn('[PKC2] export-entry docx failed', e);
+            }
+          })();
+        } else if (pandocTarget === 'pptx') {
+          // U4:PowerPoint direct generation(pptxgenjs 経由、同じく lazy)
+          void (async () => {
+            try {
+              const { astToPptxBlob } = await import('../../features/ast/export-pptx');
+              const blob = await astToPptxBlob(ast, { title: ent.title || safeTitle });
+              triggerDownload(blob, `${safeTitle}.pptx`);
+            } catch (e) {
+              console.warn('[PKC2] export-entry pptx failed', e);
+            }
+          })();
+        } else {
+          try {
+            const pandoc = api.toPandocJson(ast);
+            const json = JSON.stringify(pandoc, null, 2);
+            const filename = `${safeTitle}.${pandocTarget}.pandoc.json`;
+            triggerDownload(new Blob([json], { type: 'application/json' }), filename);
+          } catch (e) {
+            console.warn('[PKC2] export-entry-pandoc-json failed', e);
+          }
         }
         break;
       }
