@@ -51,9 +51,9 @@ v2.3.0 の主題は **AST を中央集権 IR に固定した可換世界の確�
 - **`spanKind` discriminator**(`semantic` / `style` / `opaque`):ChatGPT 推奨だが class 用途が現状 3 種(`lead` / `caption` / `pkc-em-dot`)で安定、Phase 4 で混乱が始まれば導入。
 - **Layout 属性**(2-column / float / page-break role):~~core AST は semantic 中心、target lowering 層で吸収する方針~~ → **v2.3.x stack PR-V3(2026-05-14)で着地**。`AstLayoutHint` interface を `AstNodeBase.layout?` に追加、`columns` / `float` / `pageBreakRole` / `region` / `textAlign` / `slideLayout` の 6 key を semantic kvs と名前空間分離。HTML は `data-pkc-layout-*` attribute、PKC MD は `:::section{role=R layout-columns=2}` round-trip、GFM MD は drop、semanticHash に組み込み。
 
-## v2.3.x stack PR(2026-05-14 着地予定、`claude/v23-stack-2026-05-14` branch)
+## v2.3.x stack PR(2026-05-14〜15 着地、PR #433、`claude/v23-stack-2026-05-14` branch)
 
-v2.3.0 リリース後の reform-2026-05 Phase 11 stack PR で以下を順次着地:
+v2.3.0 リリース後の reform-2026-05 Phase 11 stack PR で以下を順次着地。**2026-05-15 に PR #433 で main 着地**(CI 3 checks all green:typecheck+test+build / Playwright smoke / scan):
 
 - **PR-V1 doc archive(reform-2026-05 Phase 6)**:Phase 3 完了 docs を `docs/development/completed/` に 7 件移動、cross-link 修正、SUMMARY 表に登録。
 - **PR-V2 AstCitation 専用 node**(上記、Gemini 推奨着地)
