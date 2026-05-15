@@ -62,6 +62,13 @@ v2.3.0 リリース後の reform-2026-05 Phase 11 stack PR で以下を順次着
   - Slice β:空 `> ` 行 + Enter → exit blockquote(line range を `\n` 置換)
   - Slice β / 2:Mod+Shift+. で選択範囲の `> ` prefix を一括 toggle
   - Slice γ:entry-window child の inline JS に親 helper を mirror、Enter 継続 / exit と Mod+Shift+. が child でも parity 動作
+- **PR-V18〜V22 U3/U4 Word/PPT 出力 + 致命 hotfix 群**(2026-05-14〜05-15):
+  - PR-V18:U3/U4 docx/pptx 直接出力の出力時致命 bug fix(Buffer base64 / 画像 ref 解決 / pageBreakBefore)+ CI smoke timeout bump
+  - PR-V19:docx/pptx 全面 rewrite(user audit 14 項目 — 既定 font 統一 / 表ヘッダー薄 shading / 水平線罫線 / CSV → table / GFM task list checkbox / pageBreakBefore / 画像実機 embed / 内部リンク 上付き + appendix / PKC 拡張 4 種書式化 / 変数展開 / 日本語ファイル名維持)
+  - PR-V20 hotfix:filename 日本語維持 + pkc:// image asset 解決 + PDF auto-print + TEXTLOG deep-link smoke
+  - PR-V21 hotfix:**H4-H6 を箇条書き化**(heading style 不使用、(1)(2)/アイウ/a.b.c prefix + 360/720/1080 twip indent)+ 変数展開 + TEXTLOG body JSON 露出 fix
+  - PR-V22 致命 hotfix:**画像埋め込み実機動作**(`Buffer.from(b64,'base64')` は browser bundle 非対応 → `atob` + Uint8Array)+ **H1 なし時の見出し numbering**(0.0.X → 1.1.X、暗黙の親 = 1 で auto-bump)
+- **PR-V23 視覚 verification pipeline**(2026-05-15、`scripts/vtest.sh` + `scripts/vtest_struct.py` + `docs/development/visual-docx-verification-pipeline.md`):docx → LibreOffice headless PDF → pdftoppm @150dpi PNG → Claude が画像 Read で実機 render 確認 +(並列で)`word/document.xml` 構造検査(headings / pageBreaks / tables / images / varResidue / pkcExtensionResidue を JSON)。reform-2026-05 §6 visual-state-parity-testing の docx 版。PR-V22 audit 全 8 項目を 4 PNG 実機で確認(0 residue / 6 headings / 3 pageBreaks / 2 tables both with header shading / 1 image embedded)。
 
 ---
 
