@@ -187,7 +187,7 @@ function extractEntryLidFromHref(href: string): string | null {
     return hashIdx === -1 ? rest : rest.slice(0, hashIdx);
   }
   if (href.startsWith('pkc://')) {
-    const m = /^pkc:\/\/[^\/]+\/entry\/([^/?#]+)/.exec(href);
+    const m = /^pkc:\/\/[^/]+\/entry\/([^/?#]+)/.exec(href);
     if (m) return m[1] ?? null;
   }
   return null;
