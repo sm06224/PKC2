@@ -39,10 +39,37 @@ import type {
   AstBlock,
   AstDocument,
   AstInline,
+  AstLink,
+  AstTable,
 } from '@core/ast/index';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import { detectCsvLang, parseCsv, isHeaderDisabled } from '@features/markdown/csv-table';
+
+/** PR-V24:slide 内で 1 paragraph を構成する run(文字単位の formatting)。 */
+interface PptxRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  strike?: boolean;
+  underline?: boolean;
+  fontFace?: string;
+  /** Mark = yellow background。 */
+  highlight?: string;
+  /** 内部リンク(slide 番号で jump)or 外部 URL。 */
+  hyperlink?: { url?: string; slide?: number; tooltip?: string };
+  superscript?: boolean;
+  subscript?: boolean;
+}
+
+/** PR-V24:inline rendering 用 export context。docx と同等の vars / container / 内部リンク appendix を持つ。 */
+interface PptxExportContext {
+  vars: Record<string, string>;
+  assets: Record<string, string>;
+  entriesByLid: Map<string, Entry>;
+  /** 内部リンク appendix(slide 末尾に「リンク先一覧」として追加)。 */
+  internalLinks: Array<{ num: number; label: string; href: string; targetTitle?: string }>;
+}
 
 /** Slide 単位の中間 representation。 */
 interface SlideDraft {
@@ -61,7 +88,10 @@ interface SlideDraft {
 }
 
 interface SlideLine {
+  /** 旧:plain text(fallback、heading 用)。 */
   text: string;
+  /** PR-V24:AST 由来 formatted runs。あれば text より優先。 */
+  runs?: PptxRun[];
   bold?: boolean;
   italic?: boolean;
   fontFace?: string;
@@ -70,7 +100,8 @@ interface SlideLine {
   /** PR-V19:Task list の状態('open' = `☐`、'done' = `☑`)。 */
   taskState?: 'open' | 'done';
   /** PR-V19:Code block from CSV/TSV/PSV → 2D table データ。これがあれば
-   *  slide.addTable で render する(他 line と独立、bullet 等は無視)。 */
+   *  slide.addTable で render する(他 line と独立、bullet 等は無視)。
+   *  PR-V24:AstTable(markdown pipe table)もここに集約。 */
   tableRows?: string[][];
   /** Table の 1 行目を header 扱いするか(`noheader` 無しなら true)。 */
   tableHeader?: boolean;
@@ -150,8 +181,10 @@ function inlinesToPlainText(inlines: readonly AstInline[]): string {
       case 'link':
       case 'card':
       case 'embed':
-      case 'comment-inline':
         out.push(inlinesToPlainText(n.children));
+        break;
+      case 'comment-inline':
+        // PR-V24:%%hidden%% は drop。pptx 表面に出さない。
         break;
       case 'ruby': out.push(`${n.base}(${n.rt})`); break;
       case 'image': out.push(`[${n.alt || 'image'}]`); break;
@@ -168,12 +201,119 @@ function inlinesToPlainText(inlines: readonly AstInline[]): string {
   return out.join('');
 }
 
+/**
+ * PR-V24:AstInline → PptxRun[](docx の inlinesToRuns と同等)。
+ * vars 展開 / mark highlight / em-dot italic / link hyperlink / comment drop。
+ */
+function inlinesToRuns(
+  inlines: readonly AstInline[],
+  ctx: PptxExportContext,
+  base: Partial<PptxRun> = {},
+): PptxRun[] {
+  const out: PptxRun[] = [];
+  for (const n of inlines) out.push(...inlineToRuns(n, ctx, base));
+  return out;
+}
+
+function inlineToRuns(
+  n: AstInline,
+  ctx: PptxExportContext,
+  base: Partial<PptxRun>,
+): PptxRun[] {
+  switch (n.kind) {
+    case 'text':
+      return n.value === '' ? [] : [{ ...base, text: n.value }];
+    case 'inline-code':
+      return [{ ...base, text: n.value, fontFace: 'Consolas' }];
+    case 'strong':
+      return inlinesToRuns(n.children, ctx, { ...base, bold: true });
+    case 'emphasis':
+      return inlinesToRuns(n.children, ctx, { ...base, italic: true });
+    case 'strike':
+      return inlinesToRuns(n.children, ctx, { ...base, strike: true });
+    case 'mark':
+      // PR-V24:==mark== → yellow highlight
+      return inlinesToRuns(n.children, ctx, { ...base, highlight: 'FFFF00' });
+    case 'em-dot':
+      // PR-V24:..em-dot.. → italic(docx と同じ)
+      return inlinesToRuns(n.children, ctx, { ...base, italic: true });
+    case 'sup':
+      return inlinesToRuns(n.children, ctx, { ...base, superscript: true });
+    case 'sub':
+      return inlinesToRuns(n.children, ctx, { ...base, subscript: true });
+    case 'ruby':
+      return [{ ...base, text: `${n.base}(${n.rt})` }];
+    case 'link':
+      return linkToRuns(n, ctx, base);
+    case 'image':
+      // image は別 SlideLine で出すため、ここでは alt の fallback も出さない(重複防止)
+      return [];
+    case 'card':
+    case 'embed':
+    case 'span':
+      return inlinesToRuns(n.children, ctx, base);
+    case 'auto-ref':
+      return [{ ...base, text: `@${n.id}` }];
+    case 'citation':
+      return [{ ...base, text: `@${n.id}`, italic: true }];
+    case 'var': {
+      // PR-V24:vars 展開(docx と同じロジック、未定義は literal fallback)
+      const path = n.path;
+      const key = path.startsWith('vars.') ? path.slice('vars.'.length) : path;
+      const value = ctx.vars[key];
+      if (typeof value === 'string') return [{ ...base, text: value }];
+      return [{ ...base, text: `{{${path}}}` }];
+    }
+    case 'math-inline':
+      return [{ ...base, text: n.src }];
+    case 'comment-inline':
+      // PR-V24:%%hidden%% drop
+      return [];
+    case 'footnote-ref':
+      return [{ ...base, text: `[^${n.id}]`, superscript: true }];
+    case 'opaque-inline':
+      return [{ ...base, text: n.original }];
+    default: {
+      const _exhaustive: never = n;
+      void _exhaustive;
+      return [];
+    }
+  }
+}
+
+function linkToRuns(
+  link: AstLink,
+  ctx: PptxExportContext,
+  base: Partial<PptxRun>,
+): PptxRun[] {
+  const href = link.href;
+  const isInternal = href.startsWith('entry:') || href.startsWith('pkc://') || href.startsWith('#');
+  const labelText = inlinesToPlainText(link.children);
+  if (isInternal) {
+    // PR-V24:内部リンク → 上付き番号 + appendix slide 末尾に「リンク先一覧」
+    const num = ctx.internalLinks.length + 1;
+    let targetTitle: string | undefined;
+    const m = /^entry:([^/?#]+)/.exec(href);
+    const lid = m ? m[1] : null;
+    if (lid) {
+      const entry = ctx.entriesByLid.get(lid);
+      if (entry) targetTitle = entry.title || entry.lid;
+    }
+    ctx.internalLinks.push({ num, label: labelText, href, targetTitle });
+    return [
+      { ...base, text: labelText },
+      { ...base, text: `(${num})`, superscript: true },
+    ];
+  }
+  // 外部リンク:hyperlink option 付き run
+  return [{ ...base, text: labelText || href, hyperlink: { url: href }, underline: true }];
+}
+
 /** PR-V22:inline 配列内の image を SlideLine.imageData として抽出。 */
 function extractImageLines(
   inlines: readonly AstInline[],
-  ctx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> } | null,
+  ctx: PptxExportContext,
 ): SlideLine[] {
-  if (!ctx) return [];
   const out: SlideLine[] = [];
   const walk = (nodes: readonly AstInline[]): void => {
     for (const n of nodes) {
@@ -191,25 +331,30 @@ function extractImageLines(
 
 function blockToSlideLines(
   block: AstBlock,
-  indent = 0,
-  imgCtx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> } | null = null,
+  indent: number,
+  ctx: PptxExportContext,
 ): SlideLine[] {
   switch (block.kind) {
     case 'heading':
-      return [{ text: inlinesToPlainText(block.children), bold: true, indent }];
+      return [{ text: inlinesToPlainText(block.children), runs: inlinesToRuns(block.children, ctx), bold: true, indent }];
     case 'paragraph': {
       // PR-V22:paragraph 内 image を抽出 → 別 SlideLine として並列出力
       const out: SlideLine[] = [];
+      const runs = inlinesToRuns(block.children, ctx);
       const text = inlinesToPlainText(block.children);
-      if (text.trim() !== '') {
-        out.push({ text, indent });
+      if (runs.length > 0 && text.trim() !== '') {
+        out.push({ text, runs, indent });
       }
-      out.push(...extractImageLines(block.children, imgCtx));
+      out.push(...extractImageLines(block.children, ctx));
       return out;
     }
     case 'quote': {
-      const inner = block.children.flatMap((b) => blockToSlideLines(b, indent + 1, imgCtx));
-      return inner.map((l) => ({ ...l, italic: true }));
+      const inner = block.children.flatMap((b) => blockToSlideLines(b, indent + 1, ctx));
+      return inner.map((l) => ({
+        ...l,
+        italic: true,
+        runs: l.runs?.map((r) => ({ ...r, italic: true })),
+      }));
     }
     case 'list': {
       const out: SlideLine[] = [];
@@ -229,14 +374,24 @@ function blockToSlideLines(
               };
             }
           }
-          const lines = blockToSlideLines(effectiveChild, indent + 1, imgCtx);
+          const lines = blockToSlideLines(effectiveChild, indent + 1, ctx);
           for (const line of lines) {
             if (taskState) {
               const prefix = taskState === 'done' ? '☑ ' : '☐ ';
-              out.push({ ...line, text: prefix + line.text, taskState });
+              out.push({
+                ...line,
+                text: prefix + line.text,
+                runs: line.runs ? [{ text: prefix }, ...line.runs] : undefined,
+                taskState,
+              });
             } else if (block.listKind === 'task') {
               const prefix = item.state === 'done' ? '☑ ' : '☐ ';
-              out.push({ ...line, text: prefix + line.text, taskState: item.state ?? 'open' });
+              out.push({
+                ...line,
+                text: prefix + line.text,
+                runs: line.runs ? [{ text: prefix }, ...line.runs] : undefined,
+                taskState: item.state ?? 'open',
+              });
             } else {
               out.push({ ...line, bullet: true });
             }
@@ -271,7 +426,7 @@ function blockToSlideLines(
     case 'figure':
     case 'section':
     case 'if-block':
-      return block.children.flatMap((b) => blockToSlideLines(b, indent, imgCtx));
+      return block.children.flatMap((b) => blockToSlideLines(b, indent, ctx));
     case 'comment-block':
       return [];
     case 'blank':
@@ -281,18 +436,16 @@ function blockToSlideLines(
     case 'definition-list': {
       const out: SlideLine[] = [];
       for (const item of block.items) {
-        out.push({ text: inlinesToPlainText(item.term), bold: true, indent });
+        out.push({ text: inlinesToPlainText(item.term), runs: inlinesToRuns(item.term, ctx), bold: true, indent });
         for (const desc of item.description) {
-          out.push(...blockToSlideLines(desc, indent + 1, imgCtx));
+          out.push(...blockToSlideLines(desc, indent + 1, ctx));
         }
       }
       return out;
     }
     case 'table': {
-      const rows = block.rows.map((r) =>
-        r.cells.map((c) => inlinesToPlainText(c.children)).join(' | '),
-      );
-      return rows.map((row) => ({ text: '| ' + row + ' |', fontFace: 'Consolas', indent }));
+      // PR-V24:markdown pipe table も slide.addTable に集約(raw `| ... |` text を撤回)
+      return [tableBlockToLine(block, ctx)];
     }
     case 'opaque-block':
       return [{ text: block.original, indent }];
@@ -302,6 +455,70 @@ function blockToSlideLines(
       return [];
     }
   }
+}
+
+/** PR-V24:AstTable を slide.addTable 形式に変換。 */
+function tableBlockToLine(block: AstTable, ctx: PptxExportContext): SlideLine {
+  void ctx;
+  const rows = block.rows.map((r) =>
+    r.cells.map((c) => inlinesToPlainText(c.children)),
+  );
+  return { text: '', tableRows: rows, tableHeader: true };
+}
+
+/**
+ * PR-V24:SlideLine[] を pptxgenjs の addText() に渡せる text-object 配列に flatten。
+ *
+ * 各 line は 1 paragraph として扱い、最後の run に breakLine: true を付ける(line 間改行)。
+ * line.runs があれば各 run を別 text-object として emit、無ければ line.text 全体を 1 run に。
+ * line.bullet なら先頭に `• ` prefix run を追加(line 全体に bullet が掛かる)。
+ */
+function linesToTextObjects(
+  lines: SlideLine[],
+  baseFontSize: number,
+): Array<{ text: string; options?: Record<string, unknown> }> {
+  const out: Array<{ text: string; options?: Record<string, unknown> }> = [];
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li]!;
+    const isLastLine = li === lines.length - 1;
+    let runs: PptxRun[];
+    if (line.runs && line.runs.length > 0) {
+      runs = line.runs;
+    } else {
+      runs = [{ text: line.text }];
+    }
+    // bullet prefix(plain text、formatting なし)
+    if (line.bullet) {
+      runs = [{ text: '• ' }, ...runs];
+    }
+    for (let ri = 0; ri < runs.length; ri++) {
+      const run = runs[ri]!;
+      const isLastRun = ri === runs.length - 1;
+      const breakLine = isLastRun && !isLastLine;
+      const opts: Record<string, unknown> = {
+        fontSize: baseFontSize,
+        // line-level
+        bold: run.bold ?? line.bold,
+        italic: run.italic ?? line.italic,
+        fontFace: run.fontFace ?? line.fontFace,
+        indentLevel: line.indent ?? 0,
+        // run-level(PR-V24)
+        highlight: run.highlight,
+        strike: run.strike,
+        underline: run.underline ? { style: 'sng' } : undefined,
+        superscript: run.superscript,
+        subscript: run.subscript,
+        hyperlink: run.hyperlink,
+        breakLine,
+      };
+      // undefined を整理(pptxgenjs は undefined を素直に無視するが、test の strict 比較対策)
+      for (const k of Object.keys(opts)) {
+        if (opts[k] === undefined) delete opts[k];
+      }
+      out.push({ text: run.text, options: opts });
+    }
+  }
+  return out;
 }
 
 /**
@@ -316,7 +533,7 @@ function blockToSlideLines(
 function splitIntoSlides(
   ast: AstDocument,
   fallbackTitle: string,
-  imgCtx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> } | null,
+  ctx: PptxExportContext,
 ): SlideDraft[] {
   const slides: SlideDraft[] = [];
   let current: SlideDraft | null = null;
@@ -376,7 +593,7 @@ function splitIntoSlides(
     }
     // それ以外:本文 lines に追加
     const slide = ensureCurrent();
-    slide.lines.push(...blockToSlideLines(block, 0, imgCtx));
+    slide.lines.push(...blockToSlideLines(block, 0, ctx));
   }
   if (slides.length === 0) {
     slides.push({ kind: 'content', title: fallbackTitle, lines: [] });
@@ -396,14 +613,16 @@ export async function astToPptxBlob(
   opts: { title?: string; container?: Container; entry?: Entry } = {},
 ): Promise<Blob> {
   const fallbackTitle = opts.title ?? 'PKC2 Export';
-  // PR-V22:image embed 用 ctx を構築
+  // PR-V24:export context(vars + image asset + 内部リンク appendix を統合)
   const entriesByLid = new Map<string, Entry>();
   for (const e of opts.container?.entries ?? []) entriesByLid.set(e.lid, e);
-  const imgCtx = {
+  const ctx: PptxExportContext = {
+    vars: ast.vars ?? {},
     assets: opts.container?.assets ?? {},
     entriesByLid,
+    internalLinks: [],
   };
-  const slides = splitIntoSlides(ast, fallbackTitle, imgCtx);
+  const slides = splitIntoSlides(ast, fallbackTitle, ctx);
   const pres = new PptxGenJS();
   pres.layout = 'LAYOUT_WIDE';
   pres.title = fallbackTitle;
@@ -436,19 +655,9 @@ export async function astToPptxBlob(
       }
       // 扉スライドにも本文があれば下部に表示(spec 外だが、loss を防ぐ)
       if (draft.lines.length > 0) {
-        const nonEmpty = draft.lines.filter((l) => l.text !== '');
+        const nonEmpty = draft.lines.filter((l) => l.text !== '' || (l.runs && l.runs.length > 0));
         if (nonEmpty.length > 0) {
-          const textObjects = nonEmpty.map((line, idx) => ({
-            text: line.bullet ? '• ' + line.text : line.text,
-            options: {
-              fontSize: 16,
-              bold: line.bold,
-              italic: line.italic,
-              fontFace: line.fontFace,
-              indentLevel: line.indent ?? 0,
-              breakLine: idx < nonEmpty.length - 1,
-            },
-          }));
+          const textObjects = linesToTextObjects(nonEmpty, 16);
           slide.addText(textObjects, {
             x: 0.5,
             y: 5.5,
@@ -474,20 +683,10 @@ export async function astToPptxBlob(
       // PR-V19:tableRows を持つ line は slide.addTable で別途 render
       const tableLines = draft.lines.filter((l) => l.tableRows);
       const imageLines = draft.lines.filter((l) => l.imageData);
-      const textLines = draft.lines.filter((l) => !l.tableRows && !l.imageData && l.text !== '');
+      const textLines = draft.lines.filter((l) => !l.tableRows && !l.imageData && (l.text !== '' || (l.runs && l.runs.length > 0)));
       const tableTop = draft.title ? 1.3 : 0.5;
       if (textLines.length > 0) {
-        const textObjects = textLines.map((line, idx) => ({
-          text: line.bullet ? '• ' + line.text : line.text,
-          options: {
-            fontSize: 18,
-            bold: line.bold,
-            italic: line.italic,
-            fontFace: line.fontFace,
-            indentLevel: line.indent ?? 0,
-            breakLine: idx < textLines.length - 1,
-          },
-        }));
+        const textObjects = linesToTextObjects(textLines, 18);
         slide.addText(textObjects, {
           x: 0.5,
           y: tableTop,
@@ -532,6 +731,24 @@ export async function astToPptxBlob(
         curY += 4.2;
       }
     }
+  }
+
+  // PR-V24:内部リンクが 1 件以上あれば appendix slide「リンク先一覧」を末尾に追加。
+  if (ctx.internalLinks.length > 0) {
+    const appendix = pres.addSlide();
+    appendix.addText('リンク先一覧', {
+      x: 0.5, y: 0.3, w: 12.0, h: 0.8, fontSize: 32, bold: true,
+    });
+    const items = ctx.internalLinks.map((l, idx) => ({
+      text: `(${l.num}) ${l.label} → ${l.targetTitle ?? '[未解決]'} [${l.href}]`,
+      options: {
+        fontSize: 16,
+        breakLine: idx < ctx.internalLinks.length - 1,
+      },
+    }));
+    appendix.addText(items, {
+      x: 0.5, y: 1.3, w: 12.0, h: 6.0, valign: 'top',
+    });
   }
 
   const blob = (await pres.write({ outputType: 'blob' })) as unknown as Blob;

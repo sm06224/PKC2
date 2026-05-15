@@ -85,7 +85,10 @@ describe('PR-V19 PPT slide split logic', () => {
   it('Task list → ☐ / ☑ prefix で render', async () => {
     const md = '### Tasks\n\n- [ ] open task\n- [x] done task';
     const xmls = await gen(md, 'pptx-v19-task');
-    expect(xmls[0]).toContain('☐ open task');
-    expect(xmls[0]).toContain('☑ done task');
+    // PR-V24:run 分割が増えたため、prefix と本文が別 <a:t> に。両方の存在を assert。
+    expect(xmls[0]).toContain('☐ ');
+    expect(xmls[0]).toContain('open task');
+    expect(xmls[0]).toContain('☑ ');
+    expect(xmls[0]).toContain('done task');
   });
 });

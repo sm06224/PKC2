@@ -264,6 +264,9 @@ describe('PR-V13 U4 — astToPptxBlob', () => {
     const root = await unzipBlob(blob, 'pptx-test-fallback');
     const s1 = readXml(`${root}/ppt/slides/slide1.xml`);
     expect(s1).toContain('Fallback'); // title から fallback
-    expect(s1).toContain('Just a paragraph and bold.'); // body の text
+    // PR-V24:**bold** が独立 run に分離されるため、串刺し連結 string では無く
+    // 各 run の text fragment 単位で存在確認する。
+    expect(s1).toContain('Just a paragraph and');
+    expect(s1).toContain('bold');
   });
 });
