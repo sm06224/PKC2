@@ -37,7 +37,12 @@ jobs:
   smoke:
     name: Playwright smoke (chromium)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # PKC2 の smoke は v2.3.x stack(PR-V13 で docx + pptxgenjs を bundle に
+    # 同梱、+725KB)+ wave-10 系の追加 spec で 250 件超に拡大。
+    # CI runner は local より遅く、本体 npm ci + playwright install + 3 種
+    # build で約 3min を消費するため、smoke 実行に 15-17min は必要。元の
+    # 15min cap だと smoke 完了前に job が timeout-kill される。
+    timeout-minutes: 25
 
     steps:
       - name: Checkout

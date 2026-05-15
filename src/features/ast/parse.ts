@@ -2,7 +2,7 @@
  * PR-2Y(2026-05-12、reform Phase 3 Block C 1/4):markdown-it Token →
  * `AstDocument` parse 実装。可換世界拡大の起点。
  *
- * 設計(`docs/development/ir-migration-plan-2026-05.md`):
+ * 設計(`docs/development/completed/ir-migration-plan-2026-05.md`):
  *   - frontmatter(YAML)→ `globals` + `vars`
  *   - `MarkdownIt` で `md.parse(text, env)` → flat Token[] を取得
  *   - Token walker で nested AstBlock[] を build(`heading_open` / `paragraph_open`

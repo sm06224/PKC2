@@ -28,6 +28,14 @@
 import type { MessageEnvelope, MessageType } from '../../core/model/message';
 import type { PongProfile } from './profile';
 import { validateEnvelope, isPkcMessage, formatRejectReasons } from './envelope';
+import {
+  isV2Envelope,
+  validateEnvelopeV2,
+  buildResponseSuccess,
+  buildResponseError,
+} from './envelope-v2';
+import { createHeartbeatHandler } from './heartbeat-handler-v2';
+import { JSON_RPC_ERROR_CODES } from '../../core/model/message-v2';
 
 // ── Types ────────────────────────
 
@@ -151,8 +159,19 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     return allowedOrigins;
   }
 
+  // PR-V15(2026-05-14、A3 minimum):v2 heartbeat handler を bridge 構築時に
+  // 1 回だけ生成、receiver の container_id を bind。
+  const heartbeatHandler = createHeartbeatHandler({ containerId });
+
   function handleMessage(event: MessageEvent): void {
-    // 1. Quick filter: skip non-PKC messages silently
+    // PR-V15(2026-05-14、A3):v2 envelope(JSON-RPC 2.0)を先に discriminate。
+    // jsonrpc: '2.0' field を持つ message は新 path で処理し、handler が無い
+    // method は Method not found error を返す。
+    if (isV2Envelope(event.data)) {
+      handleV2Message(event);
+      return;
+    }
+    // 1. Quick filter: skip non-PKC messages silently(v1 path)
     if (!isPkcMessage(event.data)) return;
 
     const currentAllowed = resolveAllowedOrigins();
@@ -210,6 +229,68 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     if (onMessage && event.source) {
       onMessage(envelope, event.origin, event.source as Window);
     }
+  }
+
+  /**
+   * PR-V15(2026-05-14、A3 minimum):JSON-RPC 2.0 envelope の処理。
+   *
+   * 現時点 v2.0 minimum で受け付ける method:
+   *   - `pkc.heartbeat`(request → result echo / notification → noop)
+   *
+   * 未知 method は JSON-RPC 標準の Method not found(-32601)error response。
+   * Notification 形(id 無し)は response を返さない(spec 通り)。
+   */
+  function handleV2Message(event: MessageEvent): void {
+    const currentAllowed = resolveAllowedOrigins();
+    const acceptAllOrigins =
+      currentAllowed.length === 0 || currentAllowed.includes('*');
+    if (event.origin === 'null' && !currentAllowed.includes('null')) {
+      onReject?.(event.data, 'Origin rejected: null (explicit opt-in required)');
+      return;
+    }
+    if (!acceptAllOrigins && !currentAllowed.includes(event.origin)) {
+      onReject?.(event.data, `Origin rejected: ${event.origin}`);
+      return;
+    }
+    const result = validateEnvelopeV2(event.data);
+    if (!result.valid) {
+      onReject?.(event.data, `v2 invalid: ${result.error.message}`);
+      // Per JSON-RPC 2.0 §5.1、parse / shape error の id は不明なので null で返す
+      if (event.source && typeof (event.source as Window).postMessage === 'function') {
+        const resp = buildResponseError(null, result.error.code, result.error.message);
+        (event.source as Window).postMessage(resp, '*');
+      }
+      return;
+    }
+    const { envelope, form } = result;
+    if (form === 'request') {
+      const req = envelope as import('../../core/model/message-v2').MessageRequestV2;
+      if (req.method === 'pkc.heartbeat') {
+        const result = heartbeatHandler(req);
+        if (event.source) {
+          const resp = buildResponseSuccess(req.id, result);
+          (event.source as Window).postMessage(resp, '*');
+        }
+        return;
+      }
+      // 未知 method:Method not found error
+      if (event.source) {
+        const resp = buildResponseError(
+          req.id,
+          JSON_RPC_ERROR_CODES.METHOD_NOT_FOUND,
+          `Method not found: ${req.method}`,
+        );
+        (event.source as Window).postMessage(resp, '*');
+      }
+      return;
+    }
+    if (form === 'notification') {
+      const note = envelope as import('../../core/model/message-v2').MessageNotificationV2;
+      // notification 形:response 不要、heartbeat notification も無視(spec 通り)
+      void note;
+      return;
+    }
+    // response-success / response-error は v2 caller がいないので無視
   }
 
   window.addEventListener('message', handleMessage);

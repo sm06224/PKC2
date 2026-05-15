@@ -3,7 +3,7 @@
  * 実装。PR-2Y parse の出力面。`renderMarkdown` の equivalence test の
  * 対比対象。
  *
- * 設計(`docs/development/ir-migration-plan-2026-05.md` §3 PR-2Z):
+ * 設計(`docs/development/completed/ir-migration-plan-2026-05.md` §3 PR-2Z):
  *   - AstDocument を再帰的に traverse
  *   - 各 kind を HTML element にマップ
  *   - globals を `data-pkc-*` attr で root に転記(本 PR では document 全体
@@ -23,6 +23,7 @@ import type {
   AstBlock,
   AstDocument,
   AstInline,
+  AstLayoutHint,
   AstListItem,
   AstTableRow,
 } from '@core/ast/index';
@@ -56,6 +57,25 @@ function attrsToString(attrs: AstAttrs | undefined): string {
 function sourceLineAttr(block: AstBlock, opts: RenderOptions): string {
   if (!opts.sourceLineAnchors || !block.pos) return '';
   return ` data-pkc-source-line="${block.pos.line - 1}"`; // 0-based に戻す(既存 renderMarkdown と合わせる)
+}
+
+/**
+ * PR-V3(2026-05-14):AstLayoutHint を `data-pkc-layout-*` attribute 列に展開。
+ * semantic attrs と分離した layout 名前空間として HTML へ落とす。
+ */
+function layoutAttrsToString(layout: AstLayoutHint | undefined): string {
+  if (!layout) return '';
+  const parts: string[] = [];
+  if (layout.columns !== undefined) parts.push(`data-pkc-layout-columns="${layout.columns}"`);
+  if (layout.float !== undefined) parts.push(`data-pkc-layout-float="${escapeAttr(layout.float)}"`);
+  if (layout.pageBreakRole !== undefined)
+    parts.push(`data-pkc-layout-page-break-role="${escapeAttr(layout.pageBreakRole)}"`);
+  if (layout.region !== undefined) parts.push(`data-pkc-layout-region="${escapeAttr(layout.region)}"`);
+  if (layout.textAlign !== undefined)
+    parts.push(`data-pkc-layout-text-align="${escapeAttr(layout.textAlign)}"`);
+  if (layout.slideLayout !== undefined)
+    parts.push(`data-pkc-layout-slide="${escapeAttr(layout.slideLayout)}"`);
+  return parts.length === 0 ? '' : ' ' + parts.join(' ');
 }
 
 function renderInline(inlines: readonly AstInline[]): string {
@@ -118,6 +138,15 @@ function renderInlineNode(node: AstInline): string {
       // escape して `<span data-pkc-opaque>` で wrap)。
       if (node.sourceFormat === 'html') return node.original;
       return `<span class="pkc-opaque" data-pkc-source-format="${escapeAttr(node.sourceFormat)}">${escapeHtml(node.original)}</span>`;
+    case 'citation': {
+      // PR-V2(2026-05-14、Gemini review 反映):学術 / 書誌的 inline citation。
+      // `<cite class="pkc-citation" data-pkc-cite-id="...">` で BibTeX 連携 +
+      // Pandoc citation processor が認識できる minimal HTML。
+      const prefix = node.prefix ? escapeHtml(node.prefix) + ' ' : '';
+      const suffix = node.suffix ? ' ' + escapeHtml(node.suffix) : '';
+      const modeClass = node.mode ? ` pkc-citation-${escapeAttr(node.mode)}` : '';
+      return `<cite class="pkc-citation${modeClass}" data-pkc-cite-id="${escapeAttr(node.id)}">${prefix}@${escapeHtml(node.id)}${suffix}</cite>`;
+    }
     default: {
       const unreachable: never = node;
       void unreachable;
@@ -138,22 +167,23 @@ function renderTableRow(row: AstTableRow): string {
 
 function renderBlock(block: AstBlock, opts: RenderOptions): string {
   const lineAttr = sourceLineAttr(block, opts);
+  const layoutAttr = layoutAttrsToString(block.layout);
   switch (block.kind) {
     case 'heading': {
       const tag = `h${block.level}`;
       const inner = renderInline(block.children);
-      return `<${tag}${attrsToString(block.attrs)}${lineAttr}>${inner}</${tag}>`;
+      return `<${tag}${attrsToString(block.attrs)}${lineAttr}${layoutAttr}>${inner}</${tag}>`;
     }
     case 'paragraph': {
       const inner = renderInline(block.children);
       const alignAttr = block.align ? ` data-pkc-align="${escapeAttr(block.align)}"` : '';
       const indentAttr = block.indent ? ` data-pkc-indent="${block.indent}"` : '';
-      return `<p${attrsToString(block.attrs)}${lineAttr}${alignAttr}${indentAttr}>${inner}</p>`;
+      return `<p${attrsToString(block.attrs)}${lineAttr}${alignAttr}${indentAttr}${layoutAttr}>${inner}</p>`;
     }
     case 'quote': {
       const inner = block.children.map((c) => renderBlock(c, opts)).join('\n');
       // citation attrs は将来 figure caption 経路で expose(本 PR は children のみ)
-      return `<blockquote${lineAttr}>${inner}</blockquote>`;
+      return `<blockquote${lineAttr}${layoutAttr}>${inner}</blockquote>`;
     }
     case 'list': {
       const tag = block.listKind === 'ordered' ? 'ol' : 'ul';
@@ -187,15 +217,15 @@ function renderBlock(block: AstBlock, opts: RenderOptions): string {
     case 'figure': {
       const inner = block.children.map((c) => renderBlock(c, opts)).join('\n');
       const captionHtml = block.caption ? `<figcaption>${renderInline(block.caption)}</figcaption>` : '';
-      return `<figure class="pkc-figure"${lineAttr}>${inner}${captionHtml}</figure>`;
+      return `<figure class="pkc-figure"${lineAttr}${layoutAttr}>${inner}${captionHtml}</figure>`;
     }
     case 'section': {
       const inner = block.children.map((c) => renderBlock(c, opts)).join('\n');
-      return `<section class="pkc-section-callout pkc-section-${escapeAttr(block.role)}" data-pkc-role="${escapeAttr(block.role)}"${lineAttr}>${inner}</section>`;
+      return `<section class="pkc-section-callout pkc-section-${escapeAttr(block.role)}" data-pkc-role="${escapeAttr(block.role)}"${lineAttr}${layoutAttr}>${inner}</section>`;
     }
     case 'if-block': {
       const inner = block.children.map((c) => renderBlock(c, opts)).join('\n');
-      return `<div class="pkc-if-block" data-pkc-if-format="${escapeAttr(block.format)}"${lineAttr}>${inner}</div>`;
+      return `<div class="pkc-if-block" data-pkc-if-format="${escapeAttr(block.format)}"${lineAttr}${layoutAttr}>${inner}</div>`;
     }
     case 'comment-block':
       return ''; // render に出ない

@@ -33,6 +33,32 @@ export interface AstPosition {
   endColumn?: number;
 }
 
+/**
+ * Layout hint(`AstNodeBase.layout`)— PR-V3 で追加(Gemini review 2026-05-13
+ * 推奨「Word 変換器を作る際 layout 属性が AST レベルで必要」)。
+ *
+ * core AST は **semantic 中心** のまま、layout 指示は分離した layout 名前空間
+ * に持つことで attrs(semantic id / classes / kvs)との衝突を避ける。Word /
+ * PPT / PDF / LaTeX 直接出力時に各 target lowering が消費する。
+ *
+ * Phase 1:基本 hint(columns / float / pageBreakRole / textAlign 等)のみ
+ * を提供、PPT slide layout 等の format 固有指示は Phase 2 以降。
+ */
+export interface AstLayoutHint {
+  /** 段組数(1〜N)。1 / undefined は通常 1 段。 */
+  columns?: number;
+  /** float 配置(`left` / `right` / `none`)。figure / image / sidebar 用途。 */
+  float?: 'left' | 'right' | 'none';
+  /** 改ページ semantic role(`cover` / `section` / `appendix` / `bibliography` 等)。 */
+  pageBreakRole?: string;
+  /** Word / PPT で region anchor(本文 / sidebar / header / footer 等)を指定。 */
+  region?: string;
+  /** Text alignment(段落 align とは別、wrap context での text-align)。 */
+  textAlign?: 'left' | 'right' | 'center' | 'justify';
+  /** PPT slide layout 名(`title-content` / `two-content` / 等)。Phase 2。 */
+  slideLayout?: string;
+}
+
 /** すべての AST node の base type。 */
 export interface AstNodeBase {
   /** Discriminator。switch case / 型絞り込みに使う。 */
@@ -41,6 +67,8 @@ export interface AstNodeBase {
   attrs?: AstAttrs;
   /** Source 位置(parser が stamp、renderer は無視可)。 */
   pos?: AstPosition;
+  /** Layout hint(PR-V3、target lowering 用)。 */
+  layout?: AstLayoutHint;
 }
 
 // ── Inline nodes ────────────────────────────────────────
@@ -189,6 +217,34 @@ export interface AstOpaqueInline extends AstNodeBase {
   original: string;
 }
 
+/**
+ * Citation(学術 / 書誌的参照)— PR-V2 で **AstQuote.citation 属性から
+ * 専用 node に格上げ**(Gemini review 2026-05-13 推奨)。
+ *
+ * BibTeX / docx export / Pandoc citation processor 連携の起点。Pandoc は
+ * `Cite { citationId, citationPrefix, citationSuffix, citationMode, ... }`
+ * を持つので、本 node はそれに対応する semantic 表現を最小限抱える。
+ *
+ * 既存 `AstQuote.citation: Record<string, string>` は backward-compat の
+ * ため維持(block-level の attribution chip 用)、本 node は inline-level
+ * 参照(本文中の `[@smith2020]` 等)に使う。
+ *
+ * 入力 syntax:`[@id]` を `AstAutoRef` ではなく `AstCitation` に振り分け
+ * るかは canonicalize で判定(`id` が `figure-` / `table-` プレフィックス
+ * を含まない場合は citation 扱い)。
+ */
+export interface AstCitation extends AstNodeBase {
+  kind: 'citation';
+  /** Citation ID(BibTeX key 相当、例:`smith2020`)。 */
+  id: string;
+  /** 引用 prefix(例:「see also」)。 */
+  prefix?: string;
+  /** 引用 suffix(例:「p. 42」)。 */
+  suffix?: string;
+  /** Citation mode:`'normal'`(本文内)/ `'parenthetical'`(括弧)/ `'narrative'`(著者名のみ)。 */
+  mode?: 'normal' | 'parenthetical' | 'narrative';
+}
+
 /** Inline union(parser 結果 / renderer 入力の中身)。 */
 export type AstInline =
   | AstText
@@ -211,7 +267,8 @@ export type AstInline =
   | AstMathInline
   | AstCommentInline
   | AstFootnoteRef
-  | AstOpaqueInline;
+  | AstOpaqueInline
+  | AstCitation;
 
 // ── Block nodes ─────────────────────────────────────────
 

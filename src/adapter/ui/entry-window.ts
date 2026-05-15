@@ -2278,7 +2278,115 @@ document.addEventListener('keydown', function(e) {
       return;
     }
   }
+  /* B-3 Slice γ (2026-05-14, PR-V3 wave): quote-assist parity in the
+   * entry-window child. Inline mirror of features/markdown/quote-assist
+   * because the child runs as a standalone document with no module
+   * graph. Two behaviours: Enter on a non-empty quote line continues,
+   * Enter on an empty quote line exits; Mod+Shift+. bulk-toggles the
+   * "> " prefix on selected lines. */
+  if (currentMode !== 'edit') return;
+  var tgt = e.target;
+  if (!(tgt && tgt.tagName === 'TEXTAREA')) return;
+  if (mod && e.shiftKey && !e.altKey && !e.isComposing && (e.key === '.' || e.key === '>')) {
+    var resQT = computeQuoteToggleChild(tgt.value, tgt.selectionStart || 0, tgt.selectionEnd || 0);
+    if (resQT) {
+      e.preventDefault();
+      applyQuoteToggleChild(tgt, resQT);
+    }
+    return;
+  }
+  if (e.key === 'Enter' && !mod && !e.shiftKey && !e.altKey && !e.isComposing) {
+    var s = tgt.selectionStart || 0;
+    var en = tgt.selectionEnd != null ? tgt.selectionEnd : s;
+    if (s !== en) return;
+    var act = computeQuoteAssistEnterChild(tgt.value, s);
+    if (!act) return;
+    e.preventDefault();
+    if (act.type === 'continue') {
+      insertAtCursor(act.insert);
+    } else {
+      replaceRangeChild(tgt, act.rangeStart, act.rangeEnd, act.replacement);
+    }
+  }
 });
+
+/* B-3 Slice γ (2026-05-14): child-side inline mirror of
+ * features/markdown/quote-assist.computeQuoteAssistOnEnter. Same
+ * contract — caret at end of a non-empty quote line returns continue,
+ * empty quote line returns exit, anything else null. Kept hand-mirrored
+ * because the child cannot import the features module. */
+function computeQuoteAssistEnterChild(value, caretPos) {
+  if (caretPos < 0 || caretPos > value.length) return null;
+  if (caretPos < value.length && value[caretPos] !== '\\n') return null;
+  var lineStart = value.lastIndexOf('\\n', caretPos - 1) + 1;
+  var line = value.slice(lineStart, caretPos);
+  var m = /^>[ \\t]?(.*)$/.exec(line);
+  if (!m) return null;
+  var afterPrefix = m[1] || '';
+  if (afterPrefix === '') {
+    return { type: 'exit', rangeStart: lineStart, rangeEnd: caretPos, replacement: '\\n' };
+  }
+  return { type: 'continue', insert: '\\n> ' };
+}
+
+/* B-3 Slice γ: child-side mirror of computeQuoteToggleOnSelection.
+ * Toggles the leading "> " marker across all lines covered by the
+ * selection (or the caret line). */
+function computeQuoteToggleChild(value, selStart, selEnd) {
+  if (selStart < 0 || selEnd < 0 || selStart > value.length || selEnd > value.length) return null;
+  if (selStart > selEnd) { var tmp = selStart; selStart = selEnd; selEnd = tmp; }
+  var blockStart = value.lastIndexOf('\\n', selStart - 1) + 1;
+  var blockEndExclusive = selEnd;
+  if (selEnd > selStart && value[selEnd - 1] === '\\n') blockEndExclusive = selEnd - 1;
+  var nlAfter = value.indexOf('\\n', blockEndExclusive);
+  var blockEnd = nlAfter === -1 ? value.length : nlAfter;
+  var block = value.slice(blockStart, blockEnd);
+  if (block.length === 0 && selStart === selEnd) {
+    var nb = '> ';
+    return {
+      value: value.slice(0, blockStart) + nb + value.slice(blockEnd),
+      selStart: blockStart,
+      selEnd: blockStart + nb.length,
+    };
+  }
+  var lines = block.split('\\n');
+  var allQuoted = lines.length > 0 && lines.every(function(l) { return /^>[ \\t]?/.test(l); });
+  var newLines = allQuoted
+    ? lines.map(function(l) { return l.replace(/^>[ \\t]?/, ''); })
+    : lines.map(function(l) { return l === '' ? '>' : '> ' + l; });
+  var newBlock = newLines.join('\\n');
+  if (newBlock === block) return null;
+  return {
+    value: value.slice(0, blockStart) + newBlock + value.slice(blockEnd),
+    selStart: blockStart,
+    selEnd: blockStart + newBlock.length,
+  };
+}
+
+function applyQuoteToggleChild(ta, result) {
+  ta.focus();
+  ta.setSelectionRange(0, ta.value.length);
+  var inserted = false;
+  try { inserted = document.execCommand('insertText', false, result.value); } catch (_) {}
+  if (!inserted) {
+    ta.value = result.value;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  ta.setSelectionRange(result.selStart, result.selEnd);
+}
+
+function replaceRangeChild(ta, rangeStart, rangeEnd, replacement) {
+  ta.focus();
+  ta.setSelectionRange(rangeStart, rangeEnd);
+  var replaced = false;
+  try { replaced = document.execCommand('insertText', false, replacement); } catch (_) {}
+  if (!replaced) {
+    ta.value = ta.value.slice(0, rangeStart) + replacement + ta.value.slice(rangeEnd);
+    var newCaret = rangeStart + replacement.length;
+    ta.selectionStart = ta.selectionEnd = newCaret;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+}
 /* Inline date/time helpers — duplicates features/datetime because the
  * child runs as a standalone document with no module graph. Kept
  * compact; each formatter's output matches the main-shell spec

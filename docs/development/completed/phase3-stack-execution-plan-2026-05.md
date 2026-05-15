@@ -13,7 +13,7 @@
 - Block E 新機能 foundation:**PR-2EE / 2FF** / #425 / #426
 - Block F 最終:**PR-2GG**(AST 公開 API + bundle dedup 同時着地)/ #427、PR-2HH(本 PR)/ PR-2II が後続
 
-詳細は [`docs/release/CHANGELOG_v2.2.0.md`](../release/CHANGELOG_v2.2.0.md) の reform-2026-05 Phase 3 section 参照。
+詳細は [`docs/release/CHANGELOG_v2.2.0.md`](../../release/CHANGELOG_v2.2.0.md) の reform-2026-05 Phase 3 section 参照。
 
 実装結果は実 PR への移行で固まったため、**本計画 doc は archive 候補**(`docs/development/archived/reform-2026-05/SUMMARY.md` への移動を Phase 3 wave クローズ後に検討)。
 
@@ -100,7 +100,7 @@ Phase 2 wave(2026-05-10、PR-2A〜PR-2Q、計 17 PR)着地により、PKC2 markd
   - mermaid:`window.matchMedia('(prefers-color-scheme: dark)')` listener で theme 動的切替
   - 右ペイン TOC:CSS `prefers-color-scheme` media query で `--c-fg` / `--c-bg` を再定義
   - PIP popup:postMessage で parent theme を継承、または popup 内で `matchMedia` listen
-- **詳細**:`docs/development/theme-switching-consistency-audit.md` 参照
+- **詳細**:`docs/development/completed/theme-switching-consistency-audit.md` 参照
 
 ### PR-2T — WCAG AA コントラスト探索
 
@@ -109,7 +109,7 @@ Phase 2 wave(2026-05-10、PR-2A〜PR-2Q、計 17 PR)着地により、PKC2 markd
   - WCAG コントラスト計算(`getContrastRatio(fg, bg)`)を実装
   - default 4.5:1 未達なら同系色 shift で達成、deterministic(同色 → 同 shift)
   - Tier 0 flag `theme.wcag_auto_shift`(default `true`、Flag で OFF = 設定通り)
-- **詳細**:`docs/development/wcag-contrast-resolver-spec.md` 参照
+- **詳細**:`docs/development/completed/wcag-contrast-resolver-spec.md` 参照
 
 ### PR-2Y/2Z/2AA/2BB — IR Phase Z migration(可換世界拡大)
 
@@ -120,7 +120,7 @@ Phase 2 wave(2026-05-10、PR-2A〜PR-2Q、計 17 PR)着地により、PKC2 markd
   - PR-2Z:AstDocument → HTML(renderer layer)、既存 renderMarkdown と byte-equivalent
   - PR-2AA:renderMarkdown internal を IR 経由に置換、public API は不変、equivalence test で regression guard
   - PR-2BB:Canonicalize(simple → formal)+ Pandoc JSON export 雛形
-- **詳細**:`docs/development/ir-migration-plan-2026-05.md` 参照
+- **詳細**:`docs/development/completed/ir-migration-plan-2026-05.md` 参照
 
 ### PR-2HH — Doc archival sweep(古 doc 統廃合)
 
@@ -178,8 +178,8 @@ user direction「AI と人向けの手引書を先に整備」+「古いドキ�
 ## 6. 関連 doc
 
 - canonical AI 規約書:`docs/spec/markdown-dialect-for-ai-authors-v3.md`(本 PR で起草)
-- IR migration plan:`docs/development/ir-migration-plan-2026-05.md`(本 PR で起草)
-- WCAG resolver spec:`docs/development/wcag-contrast-resolver-spec.md`(本 PR で起草)
-- Theme switching audit:`docs/development/theme-switching-consistency-audit.md`(本 PR で起草)
+- IR migration plan:`docs/development/completed/ir-migration-plan-2026-05.md`(本 PR で起草)
+- WCAG resolver spec:`docs/development/completed/wcag-contrast-resolver-spec.md`(本 PR で起草)
+- Theme switching audit:`docs/development/completed/theme-switching-consistency-audit.md`(本 PR で起草)
 - Phase 2 完了 record:`docs/release/CHANGELOG_v2.2.0.md` reform-2026-05 Phase 2 section
 - Phase 2 INDEX entry:`docs/development/INDEX.md` COMPLETED — reform-2026-05 Phase 2 wave

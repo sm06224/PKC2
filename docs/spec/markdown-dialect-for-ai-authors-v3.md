@@ -201,21 +201,21 @@ page.on('console', (msg) => {
 - 背景 × 前景の組合せが AA(4.5:1)未達なら、同系色 shift で自動補正
 - deterministic(同じ組合せ → 同じ shift)
 - 設定通りの色にしたいなら Flag で OFF
-- 詳細:`docs/development/wcag-contrast-resolver-spec.md`
+- 詳細:`docs/development/completed/wcag-contrast-resolver-spec.md`
 
 ### 3.2 theme 切替整合(PR-2S 予定)
 
 - system theme 切替(`prefers-color-scheme`)で mermaid graph / 右ペイン TOC / PIP popup が全部追従
 - `:root` で `color-scheme: light dark` + `@media (prefers-color-scheme: dark)` で variable override
 - popup は opener から theme 継承 + 自身でも matchMedia listen
-- 詳細:`docs/development/theme-switching-consistency-audit.md`
+- 詳細:`docs/development/completed/theme-switching-consistency-audit.md`
 
 ### 3.3 IR migration(PR-2Y/2Z/2AA/2BB 予定、可換世界拡大)
 
 - `parseMarkdownToAst()` + `renderAstToHtml()` 整備、`renderMarkdown()` 内部を IR 経由に置換
 - canonicalize(simple → formal、idempotent)
 - Pandoc filter JSON 出力 → Word / PPT / PDF / LaTeX / ePub 経路
-- 詳細:`docs/development/ir-migration-plan-2026-05.md`
+- 詳細:`docs/development/completed/ir-migration-plan-2026-05.md`
 
 ### 3.4 `:::toc` / `:::frontmatter` / `:::body` 正式実装(PR-2V/2W 予定)
 
@@ -249,10 +249,10 @@ page.on('console', (msg) => {
 | 設計議論 / IR / 業界事例 / OQ / Phase 計画 | [`../development/notation-redesign-2026-05/`](../development/notation-redesign-2026-05/)(12 章 doc set)|
 | simple → canonical formal 写像 spec | [`../development/notation-redesign-2026-05/11-canonicalization-spec.md`](../development/notation-redesign-2026-05/11-canonicalization-spec.md) |
 | 寛容 parse doctrine | [`../development/parser-recovery-spec.md`](../development/parser-recovery-spec.md) |
-| **IR migration plan**(Phase 3、本 wave で起草)| [`../development/ir-migration-plan-2026-05.md`](../development/ir-migration-plan-2026-05.md) |
-| **WCAG resolver spec**(Phase 3)| [`../development/wcag-contrast-resolver-spec.md`](../development/wcag-contrast-resolver-spec.md) |
-| **theme 切替 audit**(Phase 3)| [`../development/theme-switching-consistency-audit.md`](../development/theme-switching-consistency-audit.md) |
-| **Phase 3 stack 計画**(本 wave 起点)| [`../development/phase3-stack-execution-plan-2026-05.md`](../development/phase3-stack-execution-plan-2026-05.md) |
+| **IR migration plan**(Phase 3、本 wave で起草)| [`../development/completed/ir-migration-plan-2026-05.md`](../development/completed/ir-migration-plan-2026-05.md) |
+| **WCAG resolver spec**(Phase 3)| [`../development/completed/wcag-contrast-resolver-spec.md`](../development/completed/wcag-contrast-resolver-spec.md) |
+| **theme 切替 audit**(Phase 3)| [`../development/completed/theme-switching-consistency-audit.md`](../development/completed/theme-switching-consistency-audit.md) |
+| **Phase 3 stack 計画**(本 wave 起点)| [`../development/completed/phase3-stack-execution-plan-2026-05.md`](../development/completed/phase3-stack-execution-plan-2026-05.md) |
 | Phase 別 wave 進捗 | [`../development/feature-requests-2026-04-28-roadmap.md`](../development/feature-requests-2026-04-28-roadmap.md) |
 | リリース履歴 | [`../release/CHANGELOG_v2.2.0.md`](../release/CHANGELOG_v2.2.0.md) |
 

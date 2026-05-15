@@ -216,6 +216,12 @@ spec / policy として記録して「将来具体的な pain / 要求が出た�
 横断的に抜粋。いずれも **こちら側が明示的に decline / defer した** 項目で、
 ユーザーから改めて明示要望が来るまで未完ではない。
 
+**2026-05-14 trigger 再評価（v2.3.x stack PR-V9 / C3）**: H-1 / H-2 / H-5 / H-9 の
+4 残置項目について trigger 条件成立を確認 → いずれも該当 user 要望 / 痛みの
+報告は v2.3.0 リリース後 1 日では発生していないため deferred 継続。次回再評価
+trigger:H-1(多言語ユーザー要望) / H-2(entry 1000+ 痛み再報告) / H-5(複数
+container 並立 UI 要求) / H-9(P2P / WebRTC 同期要望 = D-3 wave 起こし時)。
+
 | ID | 項目 | HANDOVER 参照 | 重複する §3 候補 | 昇格条件 |
 |----|------|--------------|-----------------|---------|
 | H-1 | **i18n 基盤**（日英文言統一） | §7.1 / §18.4.2 | — | 多言語ユーザーからの要望 |
@@ -231,15 +237,20 @@ spec / policy として記録して「将来具体的な pain / 要求が出た�
 
 ### 3.6 `docs/development/INDEX.md` CANDIDATE 節の保留候補
 
+**2026-05-14 trigger 再評価（v2.3.x stack PR-V9 / C3）**: 7 件全項目について
+trigger 条件の現状を確認 → いずれも v2.3.0 release 後の新規 user 報告 / 痛みは
+発生しておらず deferred 継続。`領域 10-1 entry-window split editor 同期スクロール`
+は user 報告頻度の傾向次第で次 wave 起こし候補(直近の使用感の変化を観察)。
+
 | 項目 | 保留理由 | 再評価 trigger(2026-05-03 追加) |
 |------|---------|----|
 | Calendar Phase 2（month wrap, empty cell cursor） | 必要性が薄い。Phase 1 で主要操作は完了 | user が calendar 操作で具体的不満を再持込 / month boundary の bug 報告 |
 | Shift+Arrow range selection | Phase 2-D 未解決、前提が未整備 | Phase 2-D 解消 / sidebar の selection 設計変更 |
 | Phase 2-D: SELECT_RANGE 表示順対応 | Ctrl+click で代替可能、設計負債だが実害小 | range select の頻度が増えた user 報告 / Ctrl+click 限界の体感不満 |
 | Sidebar multi-DnD | structural relation の cycle detection 複雑化、BULK_MOVE で代替 | cycle detection 設計の breakthrough / BULK_MOVE の UX 限界報告 |
-| TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突、設計変更議論が先 | **trigger 解消(2026-05-03)**:textlog-viewer-and-linkability-redesign の Stage 3(Loop 風 drag-to-reorder)wave 起こし時、storage 不変条件の見直し議論を含めて再活性化 |
+| TEXTLOG drag-to-reorder | oldest-first storage 不変条件と衝突、設計変更議論が先 | **trigger 解消(2026-05-03)**:textlog-viewer-and-linkability-redesign の Stage 3(Loop 風 drag-to-reorder)wave 起こし時、storage 不変条件の見直し議論を含めて再活性化。**2026-05-14 audit(C3 + U2)**:v2.3.x stack で当初宣言 U2 として実装試行したが、storage 不変条件の見直しは 1-PR slice では収まらず(spec §4.1 / §5 / I-TL01 全体に影響)、design 起こし wave が前提。本 stack では U1 §4.5 context-relative ref(PR-V17)を着地、U2 本体は spec design phase に分離。 |
 | 領域 9 Phase 4 — Per-archetype palette(`insertRule` 経路) | 元 user direction「**実行時にデータタイプや画面タイプに合わせて自動生成**」の「データタイプ」軸が未定義のまま、私(Claude)が「archetype palette 切替 via `insertRule`」と勝手に具体化していたものを 2026-05-05 user 確認で寝かせ判定。Phase 1+2+3 で user 要望は実質充足、Phase 4 は YAGNI 認定 | 以下のいずれか具体要件が出現した時に再 open(`docs/development/css-architecture-audit-2026-05.md` §6 Phase 4 deferred section に詳細記載):(a) container ごとに独立 palette + export 同伴で共有、(b) PKC-extension(領域 10-5)から palette を programmatic 注入、(c) archetype ごとに selector 構造そのものを差し替え、(d) user / device 単位で複数 theme 並走(work / personal / accessibility)、(e) palette を spec として export / import |
-| 領域 10-1 — entry-window split editor 同期スクロール | 2026-05-05 PR 2 で center pane split editor は着地したが、entry-window(別 document context、`window.opener` 経由の cross-window IPC)は未対応のまま分離。child window 側に `selectionchange` / `click` listener を独自に張り直す必要があり、source-preview-sync.ts のスコープ外 | 以下の trigger で再 open:(a) entry-window でテキストを編集する user 頻度が高まる旨の報告、(b) entry-window 経由でしか到達できない workflow(マルチモニタ等)で sync が欲しいという声、(c) 領域 10-8 sandbox iframe / マルチウィンドウ controller 着手時に同期 sync 機構を共通化する要件浮上 |
+| ~~領域 10-1 — entry-window split editor 同期スクロール~~ | **完了(wave-10-9、commit 3072e79、2026-05-07 着地済)** | entry-window child の inline JS に `pkcSyncEnabled` / `pkcCaretSourceLine` / `pkcFindPreviewElementForLine` / `pkcRefreshSyncMarker` を実装、`pkc2.split-sync-enabled` localStorage key で center pane と sync 状態共有。本 §3.6 の deferred 記述は stale だったため 2026-05-14 audit(C3)で訂正 |
 
 ### 3.7 §3 全体の合計
 

@@ -189,3 +189,69 @@ describe('isValidEntryRef', () => {
     expect(isValidEntryRef('asset:k')).toBe(false);
   });
 });
+
+// PR-V17 U1(2026-05-14、TEXTLOG redesign Phase 1 §4.5):context-relative
+// fragment-only ref。`#log/...` / `#day/...` を opts.currentLid 経由で同
+// entry 内 ref として parse。
+describe('parseEntryRef — context-relative fragment(PR-V17)', () => {
+  it('#log/<id> with currentLid → log kind same entry', () => {
+    const r = parseEntryRef('#log/abc', { currentLid: 'my-entry' });
+    expect(r.kind).toBe('log');
+    if (r.kind === 'log') {
+      expect(r.lid).toBe('my-entry');
+      expect(r.logId).toBe('abc');
+    }
+  });
+
+  it('#day/2026-04-12 with currentLid → day kind same entry', () => {
+    const r = parseEntryRef('#day/2026-04-12', { currentLid: 'tl-1' });
+    expect(r.kind).toBe('day');
+    if (r.kind === 'day') {
+      expect(r.lid).toBe('tl-1');
+      expect(r.dateKey).toBe('2026-04-12');
+    }
+  });
+
+  it('#log/<a>..<b> with currentLid → range kind same entry', () => {
+    const r = parseEntryRef('#log/a..b', { currentLid: 'cur' });
+    expect(r.kind).toBe('range');
+    if (r.kind === 'range') expect(r.lid).toBe('cur');
+  });
+
+  it('#log/<id>/<slug> with currentLid → heading kind same entry', () => {
+    const r = parseEntryRef('#log/x/section-1', { currentLid: 'tl' });
+    expect(r.kind).toBe('heading');
+    if (r.kind === 'heading') expect(r.slug).toBe('section-1');
+  });
+
+  it('#<legacy-id> with currentLid → legacy kind same entry', () => {
+    const r = parseEntryRef('#log-12345', { currentLid: 'cur' });
+    expect(r.kind).toBe('legacy');
+  });
+
+  it('#frag without currentLid → invalid(prefix 必須)', () => {
+    const r = parseEntryRef('#log/abc');
+    expect(r.kind).toBe('invalid');
+  });
+
+  it('#frag with empty currentLid → invalid', () => {
+    const r = parseEntryRef('#log/abc', { currentLid: '' });
+    expect(r.kind).toBe('invalid');
+  });
+
+  it('entry:lid#... is unaffected by currentLid(explicit prefix wins)', () => {
+    const r = parseEntryRef('entry:explicit#log/abc', { currentLid: 'other' });
+    expect(r.kind).toBe('log');
+    if (r.kind === 'log') expect(r.lid).toBe('explicit');
+  });
+
+  it('malformed currentLid:invalid lid token in opts → invalid', () => {
+    const r = parseEntryRef('#log/abc', { currentLid: 'bad lid with spaces' });
+    expect(r.kind).toBe('invalid');
+  });
+
+  it('#day/<invalid-date> → invalid even with currentLid', () => {
+    const r = parseEntryRef('#day/2026-13-99', { currentLid: 'cur' });
+    expect(r.kind).toBe('invalid');
+  });
+});

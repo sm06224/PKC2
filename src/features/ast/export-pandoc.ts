@@ -2,7 +2,7 @@
  * PR-2BB(2026-05-12、reform Phase 3 Block C 4/4):AstDocument → Pandoc
  * Native JSON 雛形。可換世界拡大の出口。
  *
- * 設計(`docs/development/ir-migration-plan-2026-05.md` §3 PR-2BB):
+ * 設計(`docs/development/completed/ir-migration-plan-2026-05.md` §3 PR-2BB):
  *   - `AstDocument` を Pandoc AST(`Pandoc` / `Meta` / `Block` / `Inline`)に変換
  *   - 出力 JSON は `pandoc --from json --to docx/pptx/pdf/latex/...` で消費可能
  *   - 本 PR は **最頻使用 kind のみ網羅**、完全実装は future wave
@@ -162,6 +162,28 @@ function inlineToPandoc(node: AstInline): PandocNode[] {
       // Pandoc raw inline:`{ t: 'RawInline', c: [format, raw] }`。
       // sourceFormat が 'html' なら Pandoc も HTML として認識。
       return [{ t: 'RawInline', c: [node.sourceFormat, node.original] }];
+    case 'citation':
+      // Pandoc Cite:`{ t: 'Cite', c: [[Citation...], [Inline...]] }`。
+      // Pandoc citation processor が BibTeX を引いて render する。
+      // 最小限の Citation struct:id / prefix / suffix / mode 相当を組む。
+      return [
+        {
+          t: 'Cite',
+          c: [
+            [
+              {
+                citationId: node.id,
+                citationPrefix: node.prefix ? [{ t: 'Str', c: node.prefix }] : [],
+                citationSuffix: node.suffix ? [{ t: 'Str', c: node.suffix }] : [],
+                citationMode: { t: node.mode === 'parenthetical' ? 'NormalCitation' : node.mode === 'narrative' ? 'AuthorInText' : 'NormalCitation' },
+                citationNoteNum: 0,
+                citationHash: 0,
+              },
+            ],
+            [{ t: 'Str', c: `@${node.id}` }],
+          ],
+        },
+      ];
     default: {
       const _exhaustive: never = node;
       void _exhaustive;

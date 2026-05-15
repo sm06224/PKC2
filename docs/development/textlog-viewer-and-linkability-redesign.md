@@ -382,8 +382,13 @@ A-1（readability hardening）/ A-3（TOC）は flat list 前提のまま表層�
   / `#heading/<slug>` による TEXT 部分参照・部分 embed。
 - **backlink index**：`semantic` relation を用いた逆引きインデックス
   と、右ペインでの「参照元」表示。
-- **TOC の可視範囲 highlight**：スクロール位置に応じて現在見ている
-  day / log を TOC 上で強調。
+- ~~**TOC の可視範囲 highlight**：スクロール位置に応じて現在見ている
+  day / log を TOC 上で強調。~~ → **v2.3.x stack PR-V8（2026-05-14）で着地**。
+  `src/adapter/ui/textlog-toc-viewport.ts` の `attachTocViewportTracker`
+  が IntersectionObserver で article / day section を観測、最上位可視要素に
+  対応する TOC ボタンに `data-pkc-toc-current="true"` を attach、
+  `.pkc-toc-link[data-pkc-toc-current="true"]` で強調表示。
+  `tests/adapter/textlog-toc-viewport.test.ts`（7 件）で固定。
 - **URL bar への fragment 反映**：`location.hash` 同期による share URL
   化。既存 `navigate-entry-ref` は同じ resolver を使えるよう設計済み。
 - **range embed の highlight 表示**：範囲埋め込みに対する視覚的

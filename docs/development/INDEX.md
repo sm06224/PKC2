@@ -115,6 +115,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`debug-privacy-philosophy.md`](./debug-privacy-philosophy.md) | debug 機能の 4 原則(Local-only / Privacy by default / Graduated opt-in / Schema versioning)。`debug-via-url-flag-protocol.md` の上位規約 |
 | [`debug-via-url-flag-protocol.md`](./debug-via-url-flag-protocol.md) | `?pkc-debug=<feature>` URL flag による feature 別 overlay + 🐞 Report ダウンロード規約 |
 | [`visual-state-parity-testing.md`](./visual-state-parity-testing.md) | 描画と状態の一致を保証する parity test methodology(real OS event + elementFromPoint 規約) |
+| [`visual-docx-verification-pipeline.md`](./visual-docx-verification-pipeline.md) | PR-V23(2026-05-15)導入の .docx 視覚検証 pipeline。LibreOffice headless → PDF → pdftoppm PNG → Claude が画像 Read で実機 render 確認 +(並列で)`scripts/vtest_struct.py` による word/document.xml 構造検査(headings / pageBreaks / tables / images / varResidue / pkcExtensionResidue を JSON 出力)|
 | [`intermediate-representation-audit.md`](./intermediate-representation-audit.md) | 領域 10-3 IR 導入の audit doc draft。markdown source ↔ rendered HTML が N:M 関係であること、IR 経由でしか解けない問題、Phase 1〜5 段階移行計画、業界事例調査(VS Code / Joplin / Codebraid 等 30+ 出典)を整理 |
 | [`filer-view-and-folder-display-profile-audit-2026-05.md`](./filer-view-and-folder-display-profile-audit-2026-05.md) | 領域 10-6 発展版 audit(**ζ'' 確定 by user 2026-05-05**)。TEXT atom + Hybrid Z(frontmatter / tag / relation の責務 3 分離)+ filer view 第 4 view-mode + graph view(vanilla TS、PKC1 force config 流用)+ subset profile + 入力負担減 sub-wave(ISBN/oEmbed auto-fill)+ folder ZIP export 拡張(subgraph reachability)。archetype 増設ゼロ / 新 schema ゼロ / dep ゼロ で PKC2 invariants 6/6 整合、~12 PR / ~3 ヶ月 wave |
 | [`handover-2026-05-01.md`](./handover-2026-05-01.md) | reform-2026-05 session context snapshot(2026-05-01 引き継ぎ memo) |
@@ -503,10 +504,10 @@ All 42 historical docs passed strict close audit (2026-04-11).
 
 Phase 2 完了直後の継続 wave。critical UX(theme / WCAG / bold-in-if)+ spec 完成度(`:::toc` / `:::frontmatter` / `:::body` / `%%%` LineMap)+ IR migration(可換世界拡大)+ 新機能 foundation + 最終 audit + doc finalize を計 16 PR で着地(計画 18 から最適化)。
 
-canonical plan:[`docs/development/phase3-stack-execution-plan-2026-05.md`](./phase3-stack-execution-plan-2026-05.md)(本 wave の起点 doc、wave 完了 status 反映済)
-retrospective:[`docs/development/reform-2026-05-phase3-wave-retrospective.md`](./reform-2026-05-phase3-wave-retrospective.md)(2026-05-12、wave 全 16 PR の deliverable / doctrine / archive 候補一覧)
-final audit:[`docs/development/reform-2026-05-phase3-final-audit.md`](./reform-2026-05-phase3-final-audit.md)(2026-05-12、PR-2II、17 PR 全件 ship-readiness 8 項目 audit + user direction 達成度 + bundle / test growth 集計)
-visual audit:[`docs/development/reform-2026-05-phase3-visual-audit-report.md`](./reform-2026-05-phase3-visual-audit-report.md)(2026-05-12、user 指摘「視覚テストしましたか?」の後付け対応、5 件 smoke + UX 課題 4 件 + 開発規律違反の謝罪)
+canonical plan:[`docs/development/completed/phase3-stack-execution-plan-2026-05.md`](./completed/phase3-stack-execution-plan-2026-05.md)(本 wave の起点 doc、wave 完了 status 反映済)
+retrospective:[`docs/development/completed/reform-2026-05-phase3-wave-retrospective.md`](./completed/reform-2026-05-phase3-wave-retrospective.md)(2026-05-12、wave 全 16 PR の deliverable / doctrine / archive 候補一覧)
+final audit:[`docs/development/completed/reform-2026-05-phase3-final-audit.md`](./completed/reform-2026-05-phase3-final-audit.md)(2026-05-12、PR-2II、17 PR 全件 ship-readiness 8 項目 audit + user direction 達成度 + bundle / test growth 集計)
+visual audit:[`docs/development/completed/reform-2026-05-phase3-visual-audit-report.md`](./completed/reform-2026-05-phase3-visual-audit-report.md)(2026-05-12、user 指摘「視覚テストしましたか?」の後付け対応、5 件 smoke + UX 課題 4 件 + 開発規律違反の謝罪)
 
 | # | PR | Block | scope | Status |
 |---|----|------|------|------|

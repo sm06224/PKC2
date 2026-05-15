@@ -1,7 +1,7 @@
 /**
  * PR-2AA(2026-05-12、reform Phase 3 Block C 3/4):IR migration scaffolding。
  *
- * 設計(`docs/development/ir-migration-plan-2026-05.md` §3 PR-2AA):
+ * 設計(`docs/development/completed/ir-migration-plan-2026-05.md` §3 PR-2AA):
  *   - `renderMarkdownViaIR(text, opts)` を新規 export(`renderMarkdown` の
  *     IR 経由版)
  *   - Tier 0 flag `markdown.use_ir`(default OFF)で opt-in

@@ -6412,6 +6412,59 @@ interface GraphNodeView {
  * Opt-in source of truth は AttachmentBody.registered_as_app。
  * Icon は AttachmentBody.app_icon(emoji 1 字、空なら 🌐 default)。
  */
+/**
+ * PR-V5(2026-05-14):attachment-presenter が出す App icon select の option を、
+ * container 内の image attachment 一覧で埋める。presenter は container access が
+ * 無いので renderer 経路でここで hydrate する。
+ *
+ * 探す対象:`select[data-pkc-needs-image-options="true"]`(attachment-presenter の
+ * renderViewBody 内、HTML attachment + registered checkbox 区間で生成)。
+ */
+function hydrateAppIconAssetOptions(view: HTMLElement, container: Container): void {
+  const selects = view.querySelectorAll<HTMLSelectElement>(
+    'select[data-pkc-needs-image-options="true"]',
+  );
+  if (selects.length === 0) return;
+  const imageAttachments: { assetKey: string; label: string }[] = [];
+  for (const e of container.entries) {
+    if (e.archetype !== 'attachment') continue;
+    const ea = parseAttachmentBody(e.body);
+    if (!ea.asset_key) continue;
+    if (!ea.mime?.startsWith('image/')) continue;
+    if (container.assets[ea.asset_key] == null) continue;
+    imageAttachments.push({
+      assetKey: ea.asset_key,
+      label: e.title || ea.name || ea.asset_key,
+    });
+  }
+  for (const sel of selects) {
+    const current = sel.getAttribute('data-pkc-current-asset-key') ?? '';
+    // presenter が暫定で挿入した「現在の選択」option(value=current asset_key)
+    // を一度消して、container の真実の image 一覧で置き換える。
+    while (sel.options.length > 1) sel.remove(1);
+    let matched = false;
+    for (const ia of imageAttachments) {
+      const opt = document.createElement('option');
+      opt.value = ia.assetKey;
+      opt.textContent = ia.label;
+      if (ia.assetKey === current) {
+        opt.selected = true;
+        matched = true;
+      }
+      sel.appendChild(opt);
+    }
+    if (current && !matched) {
+      // 元の asset が container から消えている stale 参照:reminder option を残す
+      const stale = document.createElement('option');
+      stale.value = current;
+      stale.textContent = '⚠ 未解決 (' + current.slice(0, 14) + '…)';
+      stale.selected = true;
+      sel.appendChild(stale);
+    }
+    sel.removeAttribute('data-pkc-needs-image-options');
+  }
+}
+
 function renderLauncherView(state: AppState): HTMLElement {
   const view = createElement('section', 'pkc-launcher-view');
   view.setAttribute('data-pkc-region', 'launcher-view');
@@ -6425,16 +6478,39 @@ function renderLauncherView(state: AppState): HTMLElement {
   header.appendChild(hint);
   view.appendChild(header);
 
-  const registered: { lid: string; name: string; icon: string }[] = [];
+  const assets = state.container?.assets ?? {};
+  // PR-V5(2026-05-14):image asset_key の resolve helper。
+  // container.assets[K] は raw base64、attachment-presenter.resolveImageDataUrl と
+  // 同 contract で data: URL を組み立てる。MIME が不明な image attachment は
+  // image/* と仮定して `image/*` ではなく `image/png` を default 仮定する。
+  const resolveAppIconDataUrl = (assetKey: string): string | null => {
+    const base64 = assets[assetKey];
+    if (!base64) return null;
+    if (base64.startsWith('data:')) return base64;
+    // asset_key を持つ image attachment の MIME を逆引き
+    for (const e of state.container?.entries ?? []) {
+      if (e.archetype !== 'attachment') continue;
+      const ea = parseAttachmentBody(e.body);
+      if (ea.asset_key === assetKey && ea.mime?.startsWith('image/')) {
+        return `data:${ea.mime};base64,${base64}`;
+      }
+    }
+    return null;
+  };
+  const registered: { lid: string; name: string; iconText: string; iconImageUrl: string | null }[] = [];
   for (const entry of state.container?.entries ?? []) {
     if (entry.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(entry.body);
     if (att.registered_as_app !== true) continue;
     if (classifyPreviewType(att.mime) !== 'html') continue;
+    const iconImageUrl = att.app_icon_asset_key
+      ? resolveAppIconDataUrl(att.app_icon_asset_key)
+      : null;
     registered.push({
       lid: entry.lid,
       name: entry.title || att.name || '(untitled)',
-      icon: typeof att.app_icon === 'string' && att.app_icon.length > 0 ? att.app_icon : '🌐',
+      iconText: typeof att.app_icon === 'string' && att.app_icon.length > 0 ? att.app_icon : '🌐',
+      iconImageUrl,
     });
   }
 
@@ -6467,7 +6543,18 @@ function renderLauncherView(state: AppState): HTMLElement {
     tile.setAttribute('title', `${app.name} を新規ウィンドウで起動`);
 
     const iconEl = createElement('span', 'pkc-launcher-tile-icon');
-    iconEl.textContent = app.icon;
+    if (app.iconImageUrl) {
+      // PR-V5(2026-05-14):image asset_key 指定時は <img> で render。alt は
+      // tile name と重複するので decorative 扱い(`alt=""`)、tile aria-label が
+      // 既に「Launch <name>」を持つ。
+      const img = document.createElement('img');
+      img.src = app.iconImageUrl;
+      img.alt = '';
+      img.className = 'pkc-launcher-tile-icon-image';
+      iconEl.appendChild(img);
+    } else {
+      iconEl.textContent = app.iconText;
+    }
     iconEl.setAttribute('aria-hidden', 'true');
     tile.appendChild(iconEl);
 
@@ -7290,6 +7377,10 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   const presenter = getPresenter(entry.archetype);
   if (entry.archetype === 'attachment' && container?.assets) {
     view.appendChild(presenter.renderBody(entry, container.assets));
+    // PR-V5(2026-05-14):App icon image select の option を container 内の
+    // image attachment から hydrate。presenter 単体では container に access
+    // できないため、ここで補完する。
+    hydrateAppIconAssetOptions(view, container);
   } else if (container?.assets) {
     const mimeByKey = buildAssetMimeMap(container);
     const nameByKey = buildAssetNameMap(container);
@@ -7845,6 +7936,118 @@ function renderMetaPaneImpl(
     });
 
     meta.appendChild(picker);
+  }
+
+  // PR-V6 + PR-V14(2026-05-14、U7 branch tree 視覚化):derived-branches。
+  // provenance を逆引きして「この entry から派生した branches」を **多階層
+  // tree** として render。元 entry → branch → 孫 branch まで再帰展開、
+  // 「ある版から派生してさらに派生した」系譜が一目で見える。
+  //
+  // PR-V6 では flat list だったが、user 宣言「branch tree 視覚化」に対する
+  // 不足だったため PR-V14 で nested 構造に拡張。
+  //
+  // revisions セクションの外に置く:branches は元 entry の revision が
+  // compact / consolidate されて 0 件になった後も(provenance metadata に
+  // source_revision_id が記録されているため)表示し続けるべき。
+  interface BranchNode {
+    lid: string;
+    title: string;
+    branchedAt?: string;
+    sourceRevisionId?: string;
+    children: BranchNode[];
+  }
+  const collectChildren = (parentLid: string, seen: Set<string>): BranchNode[] => {
+    const out: BranchNode[] = [];
+    for (const rel of container.relations) {
+      if (rel.kind !== 'provenance') continue;
+      if (rel.to !== parentLid) continue;
+      const md = rel.metadata as Record<string, unknown> | undefined;
+      if (!md) continue;
+      const branchSource = md.branch_source ?? md.conversion_kind;
+      if (branchSource !== 'revision' && branchSource !== 'revision-branch') continue;
+      const branchEntry = container.entries.find((e) => e.lid === rel.from);
+      if (!branchEntry) continue;
+      if (seen.has(branchEntry.lid)) continue; // cycle 防御
+      const childSeen = new Set(seen);
+      childSeen.add(branchEntry.lid);
+      out.push({
+        lid: branchEntry.lid,
+        title: branchEntry.title || '(untitled)',
+        branchedAt: typeof md.branched_at === 'string'
+          ? md.branched_at
+          : typeof md.converted_at === 'string'
+            ? md.converted_at
+            : undefined,
+        sourceRevisionId: typeof md.source_revision_id === 'string'
+          ? md.source_revision_id
+          : undefined,
+        children: collectChildren(branchEntry.lid, childSeen),
+      });
+    }
+    return out;
+  };
+  const tree = collectChildren(entry.lid, new Set([entry.lid]));
+  const countNodes = (nodes: BranchNode[]): number => {
+    let n = 0;
+    for (const node of nodes) n += 1 + countNodes(node.children);
+    return n;
+  };
+  const renderBranchRow = (b: BranchNode, depth: number): HTMLElement => {
+    const row = createElement('div', 'pkc-derived-branch-row');
+    row.setAttribute('data-pkc-branch-lid', b.lid);
+    row.setAttribute('data-pkc-branch-depth', String(depth));
+    // tree guide marker:depth ごとに「└──」style indent
+    if (depth > 0) {
+      const guide = createElement('span', 'pkc-derived-branch-guide');
+      guide.setAttribute('aria-hidden', 'true');
+      guide.textContent = '└── ';
+      row.appendChild(guide);
+    }
+    const link = createElement('button', 'pkc-derived-branch-link');
+    link.setAttribute('type', 'button');
+    link.setAttribute('data-pkc-action', 'select-entry');
+    link.setAttribute('data-pkc-lid', b.lid);
+    link.textContent = b.title;
+    link.setAttribute('title', `Jump to ${b.title}`);
+    row.appendChild(link);
+    if (b.branchedAt) {
+      const ts = createElement('span', 'pkc-derived-branch-ts');
+      ts.textContent = formatTimestamp(b.branchedAt);
+      row.appendChild(ts);
+    }
+    if (b.sourceRevisionId) {
+      const rid = createElement('span', 'pkc-derived-branch-source-rev');
+      rid.textContent = '@ ' + b.sourceRevisionId.slice(0, 8);
+      rid.setAttribute('title', `Source revision: ${b.sourceRevisionId}`);
+      row.appendChild(rid);
+    }
+    return row;
+  };
+  const renderBranchSubtree = (
+    nodes: BranchNode[],
+    parent: HTMLElement,
+    depth: number,
+  ): void => {
+    for (const b of nodes) {
+      parent.appendChild(renderBranchRow(b, depth));
+      if (b.children.length > 0) {
+        const wrapper = createElement('div', 'pkc-derived-branch-children');
+        wrapper.setAttribute('data-pkc-branch-parent-lid', b.lid);
+        renderBranchSubtree(b.children, wrapper, depth + 1);
+        parent.appendChild(wrapper);
+      }
+    }
+  };
+  if (tree.length > 0) {
+    const total = countNodes(tree);
+    const branches = createElement('details', 'pkc-derived-branches');
+    branches.setAttribute('data-pkc-region', 'derived-branches');
+    branches.setAttribute('open', '');
+    const bsum = createElement('summary', 'pkc-derived-branches-summary');
+    bsum.textContent = `Derived branches (${total})`;
+    branches.appendChild(bsum);
+    renderBranchSubtree(tree, branches, 0);
+    meta.appendChild(branches);
   }
 
   // Unified References umbrella (v1, Option E) — groups the two distinct

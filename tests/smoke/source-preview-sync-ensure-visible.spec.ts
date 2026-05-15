@@ -39,7 +39,7 @@ async function bootSeed(page: Page): Promise<void> {
     try { window.localStorage.setItem('pkc2.split-sync-enabled', 'true'); } catch { /* localStorage unavailable */ }
   });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
-  await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 15_000 });
+  await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 30_000 });
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
@@ -284,7 +284,7 @@ test.describe('ensureRectVisible parity — minimum-amount scroll, both directio
     // Sync OFF state for this scenario — gates are CSS / handler
     // level, independent of sync-enabled flag.
     await page.goto('/pkc2.html', { waitUntil: 'load' });
-    await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 15_000 });
+    await page.locator('#pkc-root[data-pkc-phase="ready"]').first().waitFor({ timeout: 30_000 });
     await page
       .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
       .first()

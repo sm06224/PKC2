@@ -261,4 +261,4 @@ canonical AstDocument
 - AST skeleton:`src/core/ast/index.ts`(PR-2I)
 - Canonicalization spec:`docs/development/notation-redesign-2026-05/11-canonicalization-spec.md`(PR-2I)
 - Warning code 体系:`src/features/notation/warnings.ts`(PR-2I)
-- Phase 3 stack 全体:`docs/development/phase3-stack-execution-plan-2026-05.md`(PR-2R)
+- Phase 3 stack 全体:`docs/development/completed/phase3-stack-execution-plan-2026-05.md`(PR-2R)

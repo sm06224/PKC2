@@ -86,7 +86,10 @@ import {
   refreshEditorActiveLine,
 } from './source-preview-sync';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
-import { computeQuoteAssistOnEnter } from '../../features/markdown/quote-assist';
+import {
+  computeQuoteAssistOnEnter,
+  computeQuoteToggleOnSelection,
+} from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
@@ -2356,41 +2359,46 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'export-entry-pdf': {
-        // PR-2JJ v2(2026-05-13、PR #432 stack):browser native print dialog
-        // 経由で PDF 出力。既存の rendered-viewer popup を開いて、user は
-        // popup 内の Print ボタン or Ctrl+P で「PDF として保存」を選択。
-        // 0 dependency / 0 KB bundle 増。
+        // PR-V19 hotfix(2026-05-14、user audit「PDF 出力は機能してない」):
+        // 旧実装は DOM 上の `open-rendered-viewer` button を click していたが、
+        // Data… menu open 中などで button が viewport から消えている / 未 render の
+        // archetype だと silent fail だった。`openRenderedViewer` を直接呼ぶ。
         if (!lid) break;
-        const viewerBtn = document.querySelector(
-          `button[data-pkc-action="open-rendered-viewer"][data-pkc-lid="${CSS.escape(lid)}"]`,
-        ) as HTMLButtonElement | null;
-        if (viewerBtn) {
-          viewerBtn.click();
-        } else {
-          // viewer ボタンが UI 上に無い entry archetype(folder 等)では何もしない。
-          console.warn('[PKC2] export-entry-pdf: no Viewer button found for this entry');
+        const st = dispatcher.getState();
+        const ent = st.container?.entries.find((en) => en.lid === lid);
+        if (!ent) {
+          console.warn('[PKC2] export-entry-pdf: entry not found', lid);
+          break;
         }
+        if (!st.container) break;
+        // PR-V20:autoPrint で print dialog を自動 trigger(user は「Save as
+        // PDF」を browser dialog から選ぶ、1 click 経路)
+        openRenderedViewer(ent, st.container, { autoPrint: true });
         break;
       }
       case 'export-entry-pandoc-json': {
         // PR-2JJ v2(2026-05-13):Pandoc Native JSON を .pandoc.json として
         // download。docx / pptx 化は user 側 `pandoc --from json -o out.docx <file>`
-        // を実行する。ファイル名に target hint を含めて何用かを示す。
+        // を実行する経路だった(2-step)。
+        //
+        // PR-V13(2026-05-14、U3+U4):pandocTarget が `docx` / `pptx` の場合は
+        // **直接 .docx / .pptx Blob を生成して 1-click download**。これまでの
+        // 2-step を解消、user 側で pandoc CLI 起動不要に。
         if (!lid) break;
         const pandocTarget = target.getAttribute('data-pkc-pandoc-target') ?? 'generic';
         const st = dispatcher.getState();
         const ent = st.container?.entries.find((en) => en.lid === lid);
         if (!ent) break;
         const src = entryToMarkdownSource(ent);
-        try {
-          const api = getAstApi();
-          const ast = api.parseMarkdown(src);
-          const pandoc = api.toPandocJson(ast);
-          const json = JSON.stringify(pandoc, null, 2);
-          const safeTitle = (ent.title || ent.lid).replace(/[^a-zA-Z0-9\-_]/g, '_').slice(0, 60);
-          const filename = `${safeTitle}.${pandocTarget}.pandoc.json`;
-          // browser file download via Blob URL
-          const blob = new Blob([json], { type: 'application/json' });
+        // PR-V20 hotfix(2026-05-14、user audit「出力ファイル名直ってない」):
+        // 日本語タイトル → `_` 置換だった旧実装を撤回、Windows / macOS / Linux
+        // 共通禁止文字(`\ / : * ? " < > |` + 制御文字)のみ置換、日本語維持。
+        const sanitizeFilename = (raw: string): string => {
+          // eslint-disable-next-line no-control-regex
+          return raw.replace(/[\x00-\x1f\\/:*?"<>|]/g, '_').trim().slice(0, 80);
+        };
+        const safeTitle = sanitizeFilename(ent.title || ent.lid);
+        const triggerDownload = (blob: Blob, filename: string): void => {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
@@ -2399,8 +2407,48 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           a.click();
           document.body.removeChild(a);
           setTimeout(() => URL.revokeObjectURL(url), 0);
-        } catch (e) {
-          console.warn('[PKC2] export-entry-pandoc-json failed', e);
+        };
+        const api = getAstApi();
+        const ast = api.parseMarkdown(src);
+        // PR-V22 hotfix(2026-05-14、user audit「画像が埋め込まれてない」):
+        // PR-V19 で `astToDocxBlob(ast, { container })` の API を作ったが、
+        // ここで container を **渡してなかった** ため image 解決の入口に
+        // assets が届かず literal text fallback になっていた致命的見落とし。
+        // container を渡して image / internal link target title を解決。
+        const exportContainer = st.container ?? undefined;
+        if (pandocTarget === 'docx') {
+          // U3:Word direct generation(docx package 経由)。lazy import で
+          // bundle 起動時のサイズを抑制、Data... menu の docx target が
+          // 押されるまで loader しない。
+          void (async () => {
+            try {
+              const { astToDocxBlob } = await import('../../features/ast/export-docx');
+              const blob = await astToDocxBlob(ast, { container: exportContainer, entry: ent });
+              triggerDownload(blob, `${safeTitle}.docx`);
+            } catch (e) {
+              console.warn('[PKC2] export-entry docx failed', e);
+            }
+          })();
+        } else if (pandocTarget === 'pptx') {
+          // U4:PowerPoint direct generation(pptxgenjs 経由、同じく lazy)
+          void (async () => {
+            try {
+              const { astToPptxBlob } = await import('../../features/ast/export-pptx');
+              const blob = await astToPptxBlob(ast, { title: ent.title || safeTitle });
+              triggerDownload(blob, `${safeTitle}.pptx`);
+            } catch (e) {
+              console.warn('[PKC2] export-entry pptx failed', e);
+            }
+          })();
+        } else {
+          try {
+            const pandoc = api.toPandocJson(ast);
+            const json = JSON.stringify(pandoc, null, 2);
+            const filename = `${safeTitle}.${pandocTarget}.pandoc.json`;
+            triggerDownload(new Blob([json], { type: 'application/json' }), filename);
+          } catch (e) {
+            console.warn('[PKC2] export-entry-pandoc-json failed', e);
+          }
         }
         break;
       }
@@ -4302,21 +4350,82 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (action) {
           e.preventDefault();
           ta.focus();
-          ta.setSelectionRange(start, start);
-          let inserted = false;
+          if (action.type === 'continue') {
+            ta.setSelectionRange(start, start);
+            let inserted = false;
+            try {
+              inserted = document.execCommand('insertText', false, action.insert);
+            } catch {
+              /* execCommand may not exist in non-browser test envs */
+            }
+            if (!inserted) {
+              ta.value = ta.value.slice(0, start) + action.insert + ta.value.slice(start);
+              const newCaret = start + action.insert.length;
+              ta.selectionStart = ta.selectionEnd = newCaret;
+              ta.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            return;
+          }
+          // Slice β:空 `> ` 行 + Enter → exit blockquote。
+          // 現在行の `> ` 区間を選択して `\n` で置換、native undo を保つために
+          // 可能なら execCommand 経路を取る。
+          ta.setSelectionRange(action.rangeStart, action.rangeEnd);
+          let replaced = false;
           try {
-            inserted = document.execCommand('insertText', false, action.insert);
+            replaced = document.execCommand('insertText', false, action.replacement);
           } catch {
             /* execCommand may not exist in non-browser test envs */
           }
-          if (!inserted) {
-            ta.value = ta.value.slice(0, start) + action.insert + ta.value.slice(start);
-            const newCaret = start + action.insert.length;
+          if (!replaced) {
+            ta.value =
+              ta.value.slice(0, action.rangeStart) +
+              action.replacement +
+              ta.value.slice(action.rangeEnd);
+            const newCaret = action.rangeStart + action.replacement.length;
             ta.selectionStart = ta.selectionEnd = newCaret;
             ta.dispatchEvent(new Event('input', { bubbles: true }));
           }
           return;
         }
+      }
+    }
+
+    // Slice β / 2(2026-05-14):Mod+Shift+. で `> ` prefix を一括 toggle。
+    // 選択行が全て quote → 剥がす、1 行でも non-quote → 全行に追加。
+    // Mod+Shift+. を選んだ理由:Mod+. は Slack 等で既に「次の予測」shortcut で
+    // 衝突しやすいが、Shift を絡めれば PKC editor の専用 binding として確保
+    // できる(Mod+Shift+> でも同 keystroke、層が変わらない)。
+    if (
+      mod
+      && e.shiftKey
+      && !e.altKey
+      && !e.isComposing
+      && (e.key === '.' || e.key === '>')
+      && e.target instanceof HTMLTextAreaElement
+      && isSlashEligible(e.target)
+    ) {
+      const ta = e.target;
+      const start = ta.selectionStart ?? 0;
+      const end = ta.selectionEnd ?? start;
+      const result = computeQuoteToggleOnSelection(ta.value, start, end);
+      if (result) {
+        e.preventDefault();
+        ta.focus();
+        // 既存 native undo stack に乗せるため、まず full-range を選択して
+        // execCommand 経路で置換 → fallback で直接代入。
+        ta.setSelectionRange(0, ta.value.length);
+        let replaced = false;
+        try {
+          replaced = document.execCommand('insertText', false, result.value);
+        } catch {
+          /* execCommand may not exist in non-browser test envs */
+        }
+        if (!replaced) {
+          ta.value = result.value;
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        ta.setSelectionRange(result.selStart, result.selEnd);
+        return;
       }
     }
 
@@ -4823,7 +4932,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             return;
           }
         }
-        return; // no more dates with todos in direction → no-op
+        // PR-V12(2026-05-14、Calendar Phase 2 §1):month boundary に到達した
+        // とき、月を ±1 月送り(year wrap 込み)、新月の最初/最後の todo に
+        // jump。これまでは edge no-op だったが、user が「月跨ぎで navigation
+        // 止まる」体感を改善。新月で todo が無ければそのまま no-op(無限 loop
+        // 防止のため 1 月だけ進める)。
+        const delta = e.key === 'ArrowLeft' ? -1 : 1;
+        const next = shiftCalendarMonth(state.calendarYear, state.calendarMonth, delta);
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'SET_CALENDAR_MONTH', year: next.year, month: next.month });
+        // 次 frame で新月の cell を query して、最初の todo を select
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => {
+            const newCal = root.querySelector('[data-pkc-region="calendar-view"]');
+            if (!newCal) return;
+            const newCells = Array.from(newCal.querySelectorAll<HTMLElement>('[data-pkc-date]'));
+            const scanOrder = delta === 1 ? newCells : newCells.slice().reverse();
+            for (const cell of scanOrder) {
+              const items = cell.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
+              const lids = Array.from(items)
+                .map((el) => el.getAttribute('data-pkc-lid')!)
+                .filter((lid) => containerLids.has(lid));
+              if (lids.length > 0) {
+                dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: lids[0]! });
+                return;
+              }
+            }
+            // 新月に todo 無し → caret 維持(selectedLid 不変)
+          });
+        }
+        return;
       }
 
       // Kanban mode: cross-column navigation
@@ -5257,6 +5395,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           const updatedBody = serializeAttachmentBody({
             ...att,
             app_icon: icon.length > 0 ? icon : undefined,
+          });
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
+        }
+      }
+      return;
+    }
+    if (action === 'set-attachment-app-icon-asset') {
+      // PR-V5(2026-05-14):App icon を container 内 image attachment の asset_key
+      // で指定。`<select>` change で発火、value === '' なら asset_key を消去して
+      // emoji fallback に戻す。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (lid && target instanceof HTMLSelectElement) {
+        const curState = dispatcher.getState();
+        const curEntry = curState.container?.entries.find((e) => e.lid === lid);
+        if (curEntry && curEntry.archetype === 'attachment') {
+          const att = parseAttachmentBody(curEntry.body);
+          const key = target.value.trim();
+          const updatedBody = serializeAttachmentBody({
+            ...att,
+            app_icon_asset_key: key.length > 0 ? key : undefined,
           });
           dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
         }
@@ -7933,7 +8091,48 @@ export function flashEntry(root: HTMLElement, lid: string): void {
  * accidentally routed here falls back to the raw body verbatim.
  */
 function entryToMarkdownSource(entry: Entry): string {
+  // PR-V21 hotfix(2026-05-14、user audit「textlog の word 出力で JSON が
+  // そのまま出る」):TEXTLOG archetype の body は JSON 形式の log 集合。
+  // markdown に変換して export パイプライン(parseMarkdownToAst → docx /
+  // pandoc 等)に渡せるよう、ここで day grouping + log header + body の
+  // markdown 文字列に展開する。
+  if (entry.archetype === 'textlog') {
+    return textlogBodyToMarkdown(entry.body ?? '');
+  }
   return entry.body ?? '';
+}
+
+/**
+ * PR-V21:TEXTLOG body(JSON)を markdown source に変換。
+ *
+ * 規則:
+ *   - 各 log を `## <ISO timestamp>` heading + body(text)で出力
+ *   - ログ間に空行を挿入
+ *   - 空 body の log は skip
+ *   - 日付グルーピングは export-docx の heading numbering と相性が悪い
+ *     ため、ここでは flat list(timestamp = H2)で展開、user は viewer
+ *     popup から rendered HTML を別途見るのが主動線
+ */
+function textlogBodyToMarkdown(jsonBody: string): string {
+  try {
+    const parsed = JSON.parse(jsonBody) as { entries?: Array<{ id?: string; text?: string; createdAt?: string }> };
+    const entries = parsed?.entries ?? [];
+    if (entries.length === 0) return '';
+    const lines: string[] = [];
+    for (const log of entries) {
+      const ts = typeof log.createdAt === 'string' ? log.createdAt : '';
+      const text = typeof log.text === 'string' ? log.text : '';
+      if (!text.trim()) continue;
+      lines.push(`## ${ts}`);
+      lines.push('');
+      lines.push(text);
+      lines.push('');
+    }
+    return lines.join('\n');
+  } catch {
+    // JSON parse 失敗 → fallback で raw を返す(下流で plain text として処理)
+    return jsonBody;
+  }
 }
 
 /**

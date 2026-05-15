@@ -241,8 +241,8 @@ DevTools console / iframe / postMessage / 他 AI から呼べる。
 - [`docs/spec/public-ast-api-for-ai.md`](./public-ast-api-for-ai.md) — `window.PKC.ast` API surface
 - [`docs/spec/markdown-dialect-for-ai-authors-v3.md`](./markdown-dialect-for-ai-authors-v3.md) — PKC MD spec(AI 向け規約書)
 - [`docs/development/notation-redesign-2026-05/`](../development/notation-redesign-2026-05/) — reform-2026-05 設計シリーズ
-- [`docs/development/ir-migration-plan-2026-05.md`](../development/ir-migration-plan-2026-05.md) — IR migration plan
-- [`docs/development/reform-2026-05-phase3-wave-retrospective.md`](../development/reform-2026-05-phase3-wave-retrospective.md) — Phase 3 wave 反省
+- [`docs/development/completed/ir-migration-plan-2026-05.md`](../development/completed/ir-migration-plan-2026-05.md) — IR migration plan
+- [`docs/development/completed/reform-2026-05-phase3-wave-retrospective.md`](../development/completed/reform-2026-05-phase3-wave-retrospective.md) — Phase 3 wave 反省
 
 ## 11. 他 AI へのレビュー依頼ポイント
 

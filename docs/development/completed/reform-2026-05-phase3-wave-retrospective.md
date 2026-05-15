@@ -61,7 +61,7 @@ canonical AstDocument
 - `markdownToPandoc(text, opts?) → object`
 - `version: '1.0.0'`
 
-他の AI(DevTools console / iframe / postMessage caller)から markdown → AST / Pandoc JSON への変換が可能に。詳細:[`docs/spec/public-ast-api-for-ai.md`](../spec/public-ast-api-for-ai.md)。
+他の AI(DevTools console / iframe / postMessage caller)から markdown → AST / Pandoc JSON への変換が可能に。詳細:[`docs/spec/public-ast-api-for-ai.md`](../../spec/public-ast-api-for-ai.md)。
 
 ### 2.3 critical UX 解消(Block A)
 
@@ -124,10 +124,10 @@ CLAUDE.md Phase 10 §10「preprocessor pipeline で LineMap thread」を逐一�
 
 | doc | 状態 | 推奨アクション |
 |-----|------|---------------|
-| `docs/development/phase3-stack-execution-plan-2026-05.md` | wave 完了 | 2026-08 quarterly で `docs/development/archived/reform-2026-05/SUMMARY.md` に集約 |
-| `docs/development/ir-migration-plan-2026-05.md` | wave 完了 | 同上 |
-| `docs/development/wcag-contrast-resolver-spec.md` | 実装着地 | 同上 |
-| `docs/development/theme-switching-consistency-audit.md` | 実装着地 | 同上 |
+| `docs/development/completed/phase3-stack-execution-plan-2026-05.md` | wave 完了 | 2026-08 quarterly で `docs/development/archived/reform-2026-05/SUMMARY.md` に集約 |
+| `docs/development/completed/ir-migration-plan-2026-05.md` | wave 完了 | 同上 |
+| `docs/development/completed/wcag-contrast-resolver-spec.md` | 実装着地 | 同上 |
+| `docs/development/completed/theme-switching-consistency-audit.md` | 実装着地 | 同上 |
 | `docs/spec/markdown-dialect-for-ai-authors-v2.md` | superseded by v3 | 2026-08 quarterly で `docs/spec/archived/` |
 
 本 PR では **status marker 設置のみ**(物理移動なし)、dead-link / orphan check の安定を優先。次 quarterly review で `git mv` 実行。
@@ -136,7 +136,7 @@ CLAUDE.md Phase 10 §10「preprocessor pipeline で LineMap thread」を逐一�
 
 ## 6. 関連 doc
 
-- [`docs/release/CHANGELOG_v2.2.0.md`](../release/CHANGELOG_v2.2.0.md) — reform-2026-05 Phase 3 section に各 PR 詳細
-- [`docs/spec/markdown-dialect-for-ai-authors-v3.md`](../spec/markdown-dialect-for-ai-authors-v3.md) — canonical AI 規約書(v3 promoted)
-- [`docs/spec/public-ast-api-for-ai.md`](../spec/public-ast-api-for-ai.md) — 公開 AST API(PR-2GG で着地)
-- [`docs/development/INDEX.md`](./INDEX.md) Phase 3 stack table — 16 PR 全件 ready-to-merge ✅
+- [`docs/release/CHANGELOG_v2.2.0.md`](../../release/CHANGELOG_v2.2.0.md) — reform-2026-05 Phase 3 section に各 PR 詳細
+- [`docs/spec/markdown-dialect-for-ai-authors-v3.md`](../../spec/markdown-dialect-for-ai-authors-v3.md) — canonical AI 規約書(v3 promoted)
+- [`docs/spec/public-ast-api-for-ai.md`](../../spec/public-ast-api-for-ai.md) — 公開 AST API(PR-2GG で着地)
+- [`docs/development/INDEX.md`](../INDEX.md) Phase 3 stack table — 16 PR 全件 ready-to-merge ✅

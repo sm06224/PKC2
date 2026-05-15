@@ -47,7 +47,7 @@ async function bootSeed(page: Page): Promise<void> {
   await page
     .locator('#pkc-root[data-pkc-phase="ready"]')
     .first()
-    .waitFor({ timeout: 15_000 });
+    .waitFor({ timeout: 30_000 });
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()

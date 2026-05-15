@@ -1,26 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { computeQuoteAssistOnEnter } from '@features/markdown/quote-assist';
+import {
+  computeQuoteAssistOnEnter,
+  computeQuoteToggleOnSelection,
+} from '@features/markdown/quote-assist';
 
 /**
- * USER_REQUEST_LEDGER S-17 (2026-04-14, B-3 Slice α) — pure unit
- * coverage for the markdown quote-continuation helper. The
- * action-binder integration (Enter keydown → execCommand insertText)
- * is pinned separately in tests/adapter/quote-assist-handler.test.ts.
+ * USER_REQUEST_LEDGER S-17(B-3)pure unit coverage。
+ * Slice α(continuation):2026-04-14 着地。
+ * Slice β(exit / bulk toggle):2026-05-14 PR-V3 wave 着地。
  *
- * Pinned contract (Slice α, continuation only):
- *   - Returns `{ type: 'continue', insert: '\n> ' }` when:
- *       1. caret is at the END of a line (next char is `\n` or EOF), AND
- *       2. that line matches `^>[ \t]?(.+)$` — single-level `>` /
- *          `> ` / `>\t` prefix followed by at least one non-whitespace
- *          character (we strip ONLY the optional single space/tab
- *          right after `>`; trailing content matters for non-empty)
- *   - Returns null otherwise (mid-line caret, empty quote line, no
- *     `>` prefix, nested `>>`, out-of-range caret, etc.).
- *
- * Slice β / γ (still CONDITIONAL): exit on empty `> `, bulk prefix
- * shortcut, entry-window mirror. Those will return `{ type: 'exit' }`
- * etc. as additional union members; until then this helper says
- * null and the textarea's native behaviour runs.
+ * action-binder integration は tests/adapter/quote-assist-handler.test.ts、
+ * entry-window child の inline mirror は tests/adapter/entry-window-quote-
+ * assist.test.ts。
  */
 
 describe('computeQuoteAssistOnEnter — continuation success cases', () => {
@@ -32,14 +23,14 @@ describe('computeQuoteAssistOnEnter — continuation success cases', () => {
 
   it('continues at end of `> X` line followed by another line', () => {
     const value = '> first\nrest';
-    const caret = '> first'.length; // right before the \n
+    const caret = '> first'.length;
     const result = computeQuoteAssistOnEnter(value, caret);
     expect(result).toEqual({ type: 'continue', insert: '\n> ' });
   });
 
   it('continues across multiple existing quote lines', () => {
     const value = '> line1\n> line2';
-    const caret = value.length; // end of "> line2"
+    const caret = value.length;
     const result = computeQuoteAssistOnEnter(value, caret);
     expect(result).toEqual({ type: 'continue', insert: '\n> ' });
   });
@@ -53,26 +44,42 @@ describe('computeQuoteAssistOnEnter — continuation success cases', () => {
   it('treats no separator after `>` as also valid (>X)', () => {
     const value = '>hello';
     const result = computeQuoteAssistOnEnter(value, value.length);
-    // `>hello` has no separator; the regex `^>[ \t]?(.+)$` allows
-    // zero or one separator, so `hello` matches as the captured
-    // non-empty group.
     expect(result).toEqual({ type: 'continue', insert: '\n> ' });
   });
 });
 
-describe('computeQuoteAssistOnEnter — null cases', () => {
-  it('returns null on an empty quote line `> ` (deferred to Slice β)', () => {
+describe('computeQuoteAssistOnEnter — Slice β exit (empty `> ` line)', () => {
+  it('exits on `> ` empty line (caret at EOF)', () => {
     const value = '> ';
-    const result = computeQuoteAssistOnEnter(value, value.length);
-    expect(result).toBeNull();
+    const r = computeQuoteAssistOnEnter(value, value.length);
+    expect(r).toEqual({ type: 'exit', rangeStart: 0, rangeEnd: 2, replacement: '\n' });
   });
 
-  it('returns null on a bare `>` line (also empty, deferred)', () => {
+  it('exits on bare `>` line (caret at EOF)', () => {
     const value = '>';
-    const result = computeQuoteAssistOnEnter(value, value.length);
-    expect(result).toBeNull();
+    const r = computeQuoteAssistOnEnter(value, value.length);
+    expect(r).toEqual({ type: 'exit', rangeStart: 0, rangeEnd: 1, replacement: '\n' });
   });
 
+  it('exits on `prefix\\n> ` empty trailing line', () => {
+    const value = 'prefix\n> ';
+    const r = computeQuoteAssistOnEnter(value, value.length);
+    expect(r).toEqual({ type: 'exit', rangeStart: 7, rangeEnd: 9, replacement: '\n' });
+  });
+
+  it('exits on `> first\\n> second\\n> ` empty trailing line', () => {
+    const value = '> first\n> second\n> ';
+    const r = computeQuoteAssistOnEnter(value, value.length);
+    expect(r).toEqual({
+      type: 'exit',
+      rangeStart: '> first\n> second\n'.length,
+      rangeEnd: value.length,
+      replacement: '\n',
+    });
+  });
+});
+
+describe('computeQuoteAssistOnEnter — null cases', () => {
   it('returns null when the line does not start with `>`', () => {
     const value = 'hello';
     const result = computeQuoteAssistOnEnter(value, value.length);
@@ -81,25 +88,14 @@ describe('computeQuoteAssistOnEnter — null cases', () => {
 
   it('returns null when caret is mid-line (next char is not \\n)', () => {
     const value = '> hello world';
-    // caret right after "> hello" — there's still " world" after.
     const caret = '> hello'.length;
     const result = computeQuoteAssistOnEnter(value, caret);
     expect(result).toBeNull();
   });
 
-  it('returns null for nested `>> X` (Slice α handles single level only)', () => {
+  it('still returns continue for nested `>> X` (single-level rule, captures as text)', () => {
     const value = '>> nested';
     const result = computeQuoteAssistOnEnter(value, value.length);
-    // `>>` does not match `^>[ \t]?` followed by non-empty content
-    // (the second `>` is consumed as the captured "rest"). Wait —
-    // actually `^>[ \t]?(.+)$` would match `>` then no separator
-    // then `> nested` as the captured group. So the rule WOULD say
-    // continue. We must check: is that desirable?
-    //
-    // For Slice α the rule is "single level only" — but the regex
-    // does match. This test pins the CURRENT behaviour so changes
-    // are explicit. If we later want to reject `>> X` as nested,
-    // the helper needs a tighter regex.
     expect(result).toEqual({ type: 'continue', insert: '\n> ' });
   });
 
@@ -109,10 +105,78 @@ describe('computeQuoteAssistOnEnter — null cases', () => {
   });
 
   it('returns null on previous-line context when current line is plain', () => {
-    // `> quoted\nplain` with caret at end of "plain" — the current
-    // line is "plain", not the previous quote.
     const value = '> quoted\nplain';
     const result = computeQuoteAssistOnEnter(value, value.length);
     expect(result).toBeNull();
+  });
+});
+
+describe('computeQuoteToggleOnSelection — bulk add `> `', () => {
+  it('adds `> ` to a single non-quote line via caret-only selection', () => {
+    const value = 'hello';
+    const r = computeQuoteToggleOnSelection(value, 0, value.length);
+    expect(r?.value).toBe('> hello');
+    expect(r?.selStart).toBe(0);
+    expect(r?.selEnd).toBe('> hello'.length);
+  });
+
+  it('adds `> ` to all selected lines when one is non-quote', () => {
+    const value = '> first\nsecond\n> third';
+    const r = computeQuoteToggleOnSelection(value, 0, value.length);
+    expect(r?.value).toBe('> > first\n> second\n> > third');
+  });
+
+  it('adds `> ` to caret-only selection on a non-quote line', () => {
+    const value = 'plain';
+    const r = computeQuoteToggleOnSelection(value, 3, 3);
+    expect(r?.value).toBe('> plain');
+  });
+
+  it('adds `> ` on an empty caret-only line (creates `> `)', () => {
+    const value = '';
+    const r = computeQuoteToggleOnSelection(value, 0, 0);
+    expect(r?.value).toBe('> ');
+    expect(r?.selStart).toBe(0);
+    expect(r?.selEnd).toBe('> '.length);
+  });
+});
+
+describe('computeQuoteToggleOnSelection — bulk strip `> `', () => {
+  it('strips `> ` from a single quoted line', () => {
+    const value = '> hello';
+    const r = computeQuoteToggleOnSelection(value, 0, value.length);
+    expect(r?.value).toBe('hello');
+  });
+
+  it('strips `> ` from all selected quoted lines', () => {
+    const value = '> first\n> second\n> third';
+    const r = computeQuoteToggleOnSelection(value, 0, value.length);
+    expect(r?.value).toBe('first\nsecond\nthird');
+  });
+
+  it('strips `>\\t` (tab separator)', () => {
+    const value = '>\tfirst\n>\tsecond';
+    const r = computeQuoteToggleOnSelection(value, 0, value.length);
+    expect(r?.value).toBe('first\nsecond');
+  });
+});
+
+describe('computeQuoteToggleOnSelection — edge cases', () => {
+  it('selection ending at start-of-line does not include the next line', () => {
+    const value = 'first\nsecond\nthird';
+    // selection covers "first\n" exactly
+    const r = computeQuoteToggleOnSelection(value, 0, 'first\n'.length);
+    expect(r?.value).toBe('> first\nsecond\nthird');
+  });
+
+  it('returns null for out-of-range positions', () => {
+    expect(computeQuoteToggleOnSelection('hi', -1, 1)).toBeNull();
+    expect(computeQuoteToggleOnSelection('hi', 0, 999)).toBeNull();
+  });
+
+  it('handles `selStart > selEnd` by swapping', () => {
+    const value = 'hello';
+    const r = computeQuoteToggleOnSelection(value, value.length, 0);
+    expect(r?.value).toBe('> hello');
   });
 });

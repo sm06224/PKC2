@@ -62,7 +62,9 @@
 
 import type {
   AstAttrs,
+  AstLayoutHint,
   AstAutoRef,
+  AstCitation,
   AstFootnoteRef,
   AstBlock,
   AstCommentBlock,
@@ -429,16 +431,66 @@ function makeParagraphFromText(text: string): AstParagraph {
  * role / attrs / 内部 block から具体的な AST node を構築。未知 role は
  * AstSection で wrap(forward compatibility)。
  */
+/**
+ * `AstAttrs` から layout hint を抽出して `AstLayoutHint` に分離。
+ * 主要 key:`layout-columns` / `layout-float` / `layout-page-break-role` /
+ * `layout-region` / `layout-text-align` / `slide-layout`。
+ *
+ * 抽出した key は元の attrs.kvs から **除去**(semantic attrs と layout hint を
+ * 名前空間として分離、target lowering での衝突防止)。
+ */
+function extractLayoutHint(attrs?: AstAttrs): { layout?: AstLayoutHint; attrs?: AstAttrs } {
+  if (!attrs) return {};
+  const layout: AstLayoutHint = {};
+  const remaining: Record<string, string | boolean> = {};
+  let captured = false;
+  for (const [k, v] of Object.entries(attrs.kvs)) {
+    if (k === 'layout-columns' || k === 'columns') {
+      const n = typeof v === 'string' ? parseInt(v, 10) : NaN;
+      if (Number.isFinite(n) && n >= 1) { layout.columns = n; captured = true; continue; }
+    }
+    if (k === 'layout-float' || k === 'float') {
+      if (v === 'left' || v === 'right' || v === 'none') {
+        layout.float = v; captured = true; continue;
+      }
+    }
+    if (k === 'layout-page-break-role' || k === 'page-break-role') {
+      if (typeof v === 'string') { layout.pageBreakRole = v; captured = true; continue; }
+    }
+    if (k === 'layout-region' || k === 'region') {
+      if (typeof v === 'string') { layout.region = v; captured = true; continue; }
+    }
+    if (k === 'layout-text-align' || k === 'text-align') {
+      if (v === 'left' || v === 'right' || v === 'center' || v === 'justify') {
+        layout.textAlign = v; captured = true; continue;
+      }
+    }
+    if (k === 'slide-layout') {
+      if (typeof v === 'string') { layout.slideLayout = v; captured = true; continue; }
+    }
+    remaining[k] = v;
+  }
+  if (!captured) return { attrs };
+  const result: { layout?: AstLayoutHint; attrs?: AstAttrs } = { layout };
+  if (attrs.id || attrs.classes.length > 0 || Object.keys(remaining).length > 0) {
+    result.attrs = { id: attrs.id, classes: attrs.classes, kvs: remaining };
+  }
+  return result;
+}
+
 function buildBlockNode(
   role: string,
   attrs: AstAttrs | undefined,
   children: AstBlock[],
 ): AstBlock | null {
+  // PR-V3(2026-05-14):layout hint を attrs から分離(semantic / layout 名前空間切り分け)
+  const { layout, attrs: cleanAttrs } = extractLayoutHint(attrs);
   switch (role) {
     case 'section': {
-      const sectionRole = (attrs?.kvs.role as string | undefined) ?? 'section';
+      const sectionRole = (cleanAttrs?.kvs.role as string | undefined) ?? 'section';
       const node: AstSection = { kind: 'section', role: sectionRole, children };
-      if (attrs && !isEmptyAttrs(attrs)) node.attrs = attrs;
+      if (cleanAttrs && !isEmptyAttrs(cleanAttrs)) node.attrs = cleanAttrs;
+      if (layout) node.layout = layout;
       return node;
     }
     case 'comment': {
@@ -451,35 +503,38 @@ function buildBlockNode(
     }
     case 'figure': {
       const figureKind: 'figure' | 'table' | 'equation' =
-        ((attrs?.kvs.kind as string | undefined) === 'table'
+        ((cleanAttrs?.kvs.kind as string | undefined) === 'table'
           ? 'table'
-          : (attrs?.kvs.kind as string | undefined) === 'equation'
+          : (cleanAttrs?.kvs.kind as string | undefined) === 'equation'
             ? 'equation'
             : 'figure');
       const node: AstFigure = { kind: 'figure', figureKind, children };
-      if (attrs && !isEmptyAttrs(attrs)) node.attrs = attrs;
+      if (cleanAttrs && !isEmptyAttrs(cleanAttrs)) node.attrs = cleanAttrs;
+      if (layout) node.layout = layout;
       return node;
     }
     case 'if': {
-      const format = (attrs?.kvs.format as string | undefined) ?? 'html';
+      const format = (cleanAttrs?.kvs.format as string | undefined) ?? 'html';
       const node: AstIfBlock = { kind: 'if-block', format, children };
+      if (layout) node.layout = layout;
       return node;
     }
     case 'quote': {
       const citation: Record<string, string> = {};
-      if (attrs) {
-        for (const [k, v] of Object.entries(attrs.kvs)) {
+      if (cleanAttrs) {
+        for (const [k, v] of Object.entries(cleanAttrs.kvs)) {
           if (typeof v === 'string') citation[k] = v;
         }
       }
       const node: AstQuote = { kind: 'quote', children };
       if (Object.keys(citation).length > 0) node.citation = citation;
+      if (layout) node.layout = layout;
       return node;
     }
     case 'paragraph': {
       // children が複数 paragraph なら最初の paragraph のみ採用。align を attach。
       const first = children[0];
-      const align = attrs?.kvs.align as
+      const align = cleanAttrs?.kvs.align as
         | 'left'
         | 'right'
         | 'center'
@@ -491,6 +546,7 @@ function buildBlockNode(
       if (first && first.kind === 'paragraph') {
         const node: AstParagraph = { ...first };
         if (align) node.align = align;
+        if (layout) node.layout = layout;
         return node;
       }
       return null;
@@ -498,7 +554,8 @@ function buildBlockNode(
     default: {
       // 未知 role:AstSection で wrap(role 名そのまま、forward compatibility)
       const node: AstSection = { kind: 'section', role, children };
-      if (attrs && !isEmptyAttrs(attrs)) node.attrs = attrs;
+      if (cleanAttrs && !isEmptyAttrs(cleanAttrs)) node.attrs = cleanAttrs;
+      if (layout) node.layout = layout;
       return node;
     }
   }
@@ -749,13 +806,46 @@ function tryInlinePattern(
     };
   }
 
-  // 5. [@id] auto-ref
+  // 5. [@id] auto-ref vs citation(PR-V2 2026-05-14、Gemini review 反映)
+  //
+  // 同じ `[@id]` syntax を 2 用途に分岐:
+  //   - 図表参照(`fig-X` / `table-X` / `eq-X` / `eqn-X` プレフィックス)→
+  //     AstAutoRef(本文中の図番号 reference)
+  //   - 書誌的引用(その他、`smith2020` / `kuhn1962` 等)→ AstCitation
+  //     (Pandoc / BibTeX 互換)
+  //
+  // また `[prefix @id suffix]` 形式の citation も認識(Pandoc syntax)。
   m = /^\[@([A-Za-z_][\w-]*)\]/.exec(slice);
   if (m) {
+    const id = m[1]!;
+    const consumed = start + m[0].length;
+    if (/^(fig|figure|table|tbl|eq|eqn|equation)-/i.test(id)) {
+      return {
+        nodes: [{ kind: 'auto-ref', id } as AstAutoRef],
+        consumed,
+      };
+    }
+    // Pandoc citation syntax(書誌的 id、`figure-` 等の prefix 無し)
     return {
-      nodes: [{ kind: 'auto-ref', id: m[1]! } as AstAutoRef],
-      consumed: start + m[0].length,
+      nodes: [{ kind: 'citation', id } as AstCitation],
+      consumed,
     };
+  }
+  // 5b. `[prefix @id, suffix]` 形式の Pandoc citation
+  m = /^\[([^@\]]+?)@([A-Za-z_][\w-]*)(?:,\s*([^\]]+?))?\]/.exec(slice);
+  if (m) {
+    const prefix = m[1]!.trim();
+    const id = m[2]!;
+    const suffix = m[3]?.trim();
+    if (!/^(fig|figure|table|tbl|eq|eqn|equation)-/i.test(id)) {
+      const citation: AstCitation = { kind: 'citation', id };
+      if (prefix) citation.prefix = prefix;
+      if (suffix) citation.suffix = suffix;
+      return {
+        nodes: [citation],
+        consumed: start + m[0].length,
+      };
+    }
   }
 
   // 5b. footnote reference(Gemini review、2026-05-13 推奨)

@@ -4,16 +4,18 @@
  * PR-2JJ v2(2026-05-13、PR #432 stack):編集画面 選択部 追従 PKC MD
  * フォーマットパネルの test。
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   mountFormatPanel,
   _resetFormatPanelForTests,
+  resetFormatPanelDismiss,
 } from '@adapter/ui/format-panel';
 
 describe('PR-2JJ v2 format panel', () => {
   beforeEach(() => {
     _resetFormatPanelForTests();
     document.body.innerHTML = '';
+    try { localStorage.removeItem('pkc2.formatPanelDismissed'); } catch { /* ignore */ }
   });
 
   it('mount は idempotent(2 回呼んでも 1 つだけ)', () => {
@@ -135,5 +137,75 @@ describe('PR-2JJ v2 format panel', () => {
     const close = panel!.querySelector<HTMLButtonElement>('.pkc-format-panel-close');
     close!.click();
     expect(panel!.style.display).toBe('none');
+  });
+});
+
+describe('PR-V10 C4: format panel dismiss persistence', () => {
+  beforeEach(() => {
+    // 順序重要:localStorage を先にクリアしてから reset(reset は
+    // localStorage を読みに行くため)。
+    try { localStorage.removeItem('pkc2.formatPanelDismissed'); } catch { /* ignore */ }
+    _resetFormatPanelForTests();
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    try { localStorage.removeItem('pkc2.formatPanelDismissed'); } catch { /* ignore */ }
+    _resetFormatPanelForTests();
+    document.body.innerHTML = '';
+  });
+
+  it('close click は localStorage に dismissal を persist する', () => {
+    mountFormatPanel();
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'text-edit-body');
+    ta.value = 'test';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.setSelectionRange(0, 4);
+    document.dispatchEvent(new Event('selectionchange'));
+    const panel = document.querySelector<HTMLElement>('[data-pkc-region="format-panel"]');
+    const close = panel!.querySelector<HTMLButtonElement>('.pkc-format-panel-close');
+    close!.click();
+    expect(localStorage.getItem('pkc2.formatPanelDismissed')).toBe('true');
+  });
+
+  it('localStorage に dismissed=true なら mount 直後の selection でも panel 出ない', () => {
+    // 前 session の dismiss 状態を模擬:localStorage を set してから reset
+    // (reset が読み込んで sessionClosed=true にする)
+    localStorage.setItem('pkc2.formatPanelDismissed', 'true');
+    _resetFormatPanelForTests();
+    mountFormatPanel();
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'text-edit-body');
+    ta.value = 'test';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.setSelectionRange(0, 4);
+    document.dispatchEvent(new Event('selectionchange'));
+    // panel は dismiss されているので表示されない
+    const panel = document.querySelector<HTMLElement>('[data-pkc-region="format-panel"]');
+    // panel 要素自体が無いか、あっても display:none
+    if (panel) expect(panel.style.display).toBe('none');
+  });
+
+  it('resetFormatPanelDismiss() で dismiss が解除されて panel が再び出る', () => {
+    // 注:`sessionClosed` の初期値は module import 時に固定。
+    // dismiss=true で reset 後に resetFormatPanelDismiss を呼んだ場合の挙動を検証。
+    localStorage.setItem('pkc2.formatPanelDismissed', 'true');
+    _resetFormatPanelForTests();
+    mountFormatPanel();
+    resetFormatPanelDismiss();
+    expect(localStorage.getItem('pkc2.formatPanelDismissed')).toBeNull();
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'text-edit-body');
+    ta.value = 'test';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.setSelectionRange(0, 4);
+    document.dispatchEvent(new Event('selectionchange'));
+    const panel = document.querySelector<HTMLElement>('[data-pkc-region="format-panel"]');
+    expect(panel).not.toBeNull();
+    expect(panel!.style.display).toBe('flex');
   });
 });

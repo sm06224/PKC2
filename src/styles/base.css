@@ -3045,6 +3045,17 @@ mark.pkc-search-mark {
   color: var(--c-accent);
 }
 
+/* PR-V8(2026-05-14、textlog-viewer-and-linkability-redesign §8 future
+   enhancement):TOC viewport highlight。scroll 位置に応じて「現在見ている
+   day/log」を強調表示。`textlog-toc-viewport.ts` の IntersectionObserver が
+   data-pkc-toc-current="true" を attach。 */
+.pkc-toc-link[data-pkc-toc-current="true"] {
+  background: var(--c-accent-bg, var(--c-border));
+  color: var(--c-accent);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--c-accent);
+}
+
 /*
  * Light-mode hard overrides — belt-and-braces against any cascade edge
  * case (`all: unset` interaction, specificity quirks, future refactors)
@@ -3488,6 +3499,61 @@ mark.pkc-search-mark {
   font-size: var(--fs-base);
   color: var(--c-fg);
   font-style: italic;
+}
+
+/* PR-V6(2026-05-14、v1.x §9.2):derived-branches。元 entry の meta pane に
+   その entry から派生した branch entries を逆引きで list 表示。 */
+.pkc-derived-branches {
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+}
+.pkc-derived-branches-summary {
+  font-weight: 600;
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  color: var(--c-fg);
+}
+.pkc-derived-branch-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-1) 0;
+  border-top: 1px dotted var(--c-border);
+  font-size: var(--fs-sm);
+}
+.pkc-derived-branches > .pkc-derived-branch-row:first-of-type { border-top: none; }
+.pkc-derived-branch-link {
+  background: none;
+  border: none;
+  color: var(--c-accent);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+}
+.pkc-derived-branch-link:hover { color: var(--c-accent-strong, var(--c-accent)); }
+.pkc-derived-branch-ts { color: var(--c-muted); font-size: var(--fs-xs); }
+.pkc-derived-branch-source-rev {
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+/* PR-V14(2026-05-14、U7 branch tree 視覚化):多階層派生 branch の
+   indent + tree guide("└──")。depth 1 以上に inset を効かせ系譜が見える。 */
+.pkc-derived-branch-children {
+  padding-left: var(--space-3);
+  border-left: 1px dashed var(--c-border);
+  margin-left: var(--space-1);
+}
+.pkc-derived-branch-guide {
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  margin-right: var(--space-1);
 }
 
 /* ── Todo presenter ── */
@@ -9579,7 +9645,15 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
 }
-.pkc-launcher-tile-icon { font-size: 2.4rem; line-height: 1; }
+.pkc-launcher-tile-icon { font-size: 2.4rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 2.4rem; }
+/* PR-V5(2026-05-14):image asset_key 指定時の <img> アイコン。
+   emoji 同等のサイズ感に揃え、aspect ratio を保ったまま正方枠に収める。 */
+.pkc-launcher-tile-icon-image {
+  width: 2.4rem;
+  height: 2.4rem;
+  object-fit: contain;
+  border-radius: 4px;
+}
 .pkc-launcher-tile-label {
   font-weight: 600;
   font-size: var(--fs-base);
@@ -9747,4 +9821,32 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   padding: var(--space-1) var(--space-2);
   min-height: 1.2em;
 }
+
+/* ── PR-V2(2026-05-14):footnote + citation ── */
+.pkc-footnote-ref {
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+}
+.pkc-footnote-ref a {
+  color: var(--c-accent);
+  text-decoration: none;
+  padding: 0 0.15em;
+}
+.pkc-footnote-ref a::before { content: "["; }
+.pkc-footnote-ref a::after { content: "]"; }
+.pkc-footnote-ref a:hover { text-decoration: underline; }
+
+.pkc-citation {
+  font-style: italic;
+  color: var(--c-text-dim);
+  cursor: help;
+  padding: 0 0.1em;
+  border-bottom: 1px dotted var(--c-accent-dim);
+}
+.pkc-citation:hover {
+  color: var(--c-text);
+  border-bottom-color: var(--c-accent);
+}
+.pkc-citation-narrative { border-bottom: none; }
 
