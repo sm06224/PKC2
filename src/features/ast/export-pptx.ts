@@ -587,22 +587,85 @@ export async function astToPptxBlob(
   pres.layout = 'LAYOUT_WIDE';
   pres.title = fallbackTitle;
 
+  // PR-W5(2026-05-15、simplify reuse agent 指摘):title placeholder を
+  // master slide layout で定義。`slide.addText(title, { placeholder: 'title' })`
+  // 経由で title placeholder に挿入することで、Microsoft PowerPoint の
+  // Outline View / accessibility tree / Office Online が **title として認識**
+  // する(従来の `slide.addText` text box のみだと title 認識されなかった)。
+  // 2 master:section(扉スライド、title 中央 + subtitle 中央下)+ content
+  // (通常スライド、title 上部)。位置 / size / font は従来 text box と同等で
+  // visual regression なし。
+  pres.defineSlideMaster({
+    title: 'PKC_SECTION_SLIDE',
+    objects: [
+      {
+        placeholder: {
+          options: {
+            name: 'title',
+            type: 'title',
+            x: 0.5,
+            y: 2.5,
+            w: 12.0,
+            h: 1.5,
+            fontSize: 48,
+            bold: true,
+            align: 'center',
+            valign: 'middle',
+          },
+          text: '',
+        },
+      },
+      {
+        placeholder: {
+          options: {
+            name: 'subtitle',
+            type: 'body',
+            x: 0.5,
+            y: 4.2,
+            w: 12.0,
+            h: 1.0,
+            fontSize: 28,
+            italic: true,
+            align: 'center',
+            valign: 'top',
+          },
+          text: '',
+        },
+      },
+    ],
+  });
+  pres.defineSlideMaster({
+    title: 'PKC_CONTENT_SLIDE',
+    objects: [
+      {
+        placeholder: {
+          options: {
+            name: 'title',
+            type: 'title',
+            x: 0.5,
+            y: 0.3,
+            w: 12.0,
+            h: 0.8,
+            fontSize: 32,
+            bold: true,
+          },
+          text: '',
+        },
+      },
+    ],
+  });
+
   for (const draft of slides) {
-    const slide = pres.addSlide();
+    const masterName = draft.kind === 'section'
+      ? 'PKC_SECTION_SLIDE'
+      : 'PKC_CONTENT_SLIDE';
+    const slide = pres.addSlide({ masterName });
     if (draft.kind === 'section') {
-      // 扉スライド:title 中央(大文字 + bold)+ subtitle(中央下)
-      slide.addText(draft.title, {
-        x: 0.5,
-        y: 2.5,
-        w: 12.0,
-        h: 1.5,
-        fontSize: 48,
-        bold: true,
-        align: 'center',
-        valign: 'middle',
-      });
+      // 扉スライド:title placeholder に挿入(Outline View 認識のため)
+      slide.addText(draft.title, { placeholder: 'title' });
       if (draft.subtitle) {
         slide.addText(draft.subtitle, {
+          placeholder: 'subtitle',
           x: 0.5,
           y: 4.2,
           w: 12.0,
@@ -629,16 +692,9 @@ export async function astToPptxBlob(
         }
       }
     } else {
-      // 通常スライド:上部 title + 下部 body
+      // 通常スライド:title placeholder に挿入(Outline View 認識のため)+ 下部 body
       if (draft.title) {
-        slide.addText(draft.title, {
-          x: 0.5,
-          y: 0.3,
-          w: 12.0,
-          h: 0.8,
-          fontSize: 32,
-          bold: true,
-        });
+        slide.addText(draft.title, { placeholder: 'title' });
       }
       // tableRows / tableRowsRuns / imageData / 通常 text の 4 種を 1 pass で振り分け。
       const tableLines: SlideLine[] = [];
