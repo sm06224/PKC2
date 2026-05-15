@@ -198,6 +198,11 @@ function imageRunForAssetSrc(src: string, ctx: ExportContext): ImageRun | null {
   let mime: string | null = null;
   if (src.startsWith('asset:')) {
     key = src.slice('asset:'.length);
+  } else if (src.startsWith('pkc://')) {
+    // PR-V20 hotfix(2026-05-14、user audit「画像埋め込めてない」):
+    // PKC2 が emit する `pkc://<cid>/asset/<key>` 形式の asset 参照を解決。
+    const m = /^pkc:\/\/[^/]+\/asset\/([^/?#]+)/.exec(src);
+    if (m) key = m[1] ?? null;
   } else if (src.startsWith('data:image/')) {
     const m = /^data:(image\/[^;]+);base64,(.+)$/.exec(src);
     if (m) {

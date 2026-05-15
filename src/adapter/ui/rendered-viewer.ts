@@ -939,6 +939,7 @@ export function buildRenderedViewerHtml(
 export function openRenderedViewer(
   entry: Entry,
   container: Container | null,
+  opts: { autoPrint?: boolean } = {},
 ): Window | null {
   const html = buildRenderedViewerHtml(entry, container);
   const win = window.open('', '_blank');
@@ -946,6 +947,15 @@ export function openRenderedViewer(
   win.document.open();
   win.document.write(html);
   win.document.close();
+  if (opts.autoPrint) {
+    // PR-V20 hotfix(2026-05-14、user audit「PDF 出力できない」):
+    // PDF action は viewer 開きっぱなしで Print 手動操作だったが、ブラウザの
+    // print dialog を自動 trigger することで「Save as PDF」までを 1 click に。
+    // `setTimeout` で `document.close()` の rAF / layout を 1 tick 待ち。
+    win.setTimeout(() => {
+      try { win.print(); } catch (_e) { /* popup focus 失敗 / browser block */ }
+    }, 600);
+  }
   return win;
 }
 

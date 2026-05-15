@@ -2371,7 +2371,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           break;
         }
         if (!st.container) break;
-        openRenderedViewer(ent, st.container);
+        // PR-V20:autoPrint で print dialog を自動 trigger(user は「Save as
+        // PDF」を browser dialog から選ぶ、1 click 経路)
+        openRenderedViewer(ent, st.container, { autoPrint: true });
         break;
       }
       case 'export-entry-pandoc-json': {
@@ -2388,7 +2390,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const ent = st.container?.entries.find((en) => en.lid === lid);
         if (!ent) break;
         const src = entryToMarkdownSource(ent);
-        const safeTitle = (ent.title || ent.lid).replace(/[^a-zA-Z0-9\-_]/g, '_').slice(0, 60);
+        // PR-V20 hotfix(2026-05-14、user audit「出力ファイル名直ってない」):
+        // 日本語タイトル → `_` 置換だった旧実装を撤回、Windows / macOS / Linux
+        // 共通禁止文字(`\ / : * ? " < > |` + 制御文字)のみ置換、日本語維持。
+        const sanitizeFilename = (raw: string): string => {
+          // eslint-disable-next-line no-control-regex
+          return raw.replace(/[\x00-\x1f\\/:*?"<>|]/g, '_').trim().slice(0, 80);
+        };
+        const safeTitle = sanitizeFilename(ent.title || ent.lid);
         const triggerDownload = (blob: Blob, filename: string): void => {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
