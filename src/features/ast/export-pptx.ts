@@ -40,6 +40,8 @@ import type {
   AstDocument,
   AstInline,
 } from '@core/ast/index';
+import type { Container } from '@core/model/container';
+import type { Entry } from '@core/model/record';
 import { detectCsvLang, parseCsv, isHeaderDisabled } from '@features/markdown/csv-table';
 
 /** Slide 単位の中間 representation。 */
@@ -72,6 +74,42 @@ interface SlideLine {
   tableRows?: string[][];
   /** Table の 1 行目を header 扱いするか(`noheader` 無しなら true)。 */
   tableHeader?: boolean;
+  /** PR-V22:画像 base64 data + mime(slide.addImage で render)。 */
+  imageData?: string;
+  imageMime?: string;
+}
+
+/** PR-V22:image src(asset: / pkc:// / data:)を container.assets から解決。 */
+function resolveImageSrc(
+  src: string,
+  ctx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> },
+): { data: string; mime: string } | null {
+  let key: string | null = null;
+  let mime: string | null = null;
+  if (src.startsWith('asset:')) {
+    key = src.slice('asset:'.length);
+  } else if (src.startsWith('pkc://')) {
+    const m = /^pkc:\/\/[^/]+\/asset\/([^/?#]+)/.exec(src);
+    if (m) key = m[1] ?? null;
+  } else if (src.startsWith('data:image/')) {
+    const m = /^data:(image\/[^;]+);base64,(.+)$/.exec(src);
+    if (m) return { data: m[2] ?? '', mime: m[1] ?? 'image/png' };
+  }
+  if (!key) return null;
+  const data = ctx.assets[key];
+  if (!data) return null;
+  for (const e of ctx.entriesByLid.values()) {
+    if (e.archetype === 'attachment') {
+      try {
+        const body = JSON.parse(e.body) as { asset_key?: string; mime?: string };
+        if (body.asset_key === key && typeof body.mime === 'string') {
+          mime = body.mime;
+          break;
+        }
+      } catch { /* ignore */ }
+    }
+  }
+  return { data, mime: mime ?? 'image/png' };
 }
 
 /** PR-V19:GFM task list 検出。docx と同 ロジック。 */
@@ -130,15 +168,47 @@ function inlinesToPlainText(inlines: readonly AstInline[]): string {
   return out.join('');
 }
 
-function blockToSlideLines(block: AstBlock, indent = 0): SlideLine[] {
+/** PR-V22:inline 配列内の image を SlideLine.imageData として抽出。 */
+function extractImageLines(
+  inlines: readonly AstInline[],
+  ctx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> } | null,
+): SlideLine[] {
+  if (!ctx) return [];
+  const out: SlideLine[] = [];
+  const walk = (nodes: readonly AstInline[]): void => {
+    for (const n of nodes) {
+      if (n.kind === 'image') {
+        const r = resolveImageSrc(n.src, ctx);
+        if (r) out.push({ text: '', imageData: r.data, imageMime: r.mime });
+      } else if ('children' in n && Array.isArray(n.children)) {
+        walk(n.children as readonly AstInline[]);
+      }
+    }
+  };
+  walk(inlines);
+  return out;
+}
+
+function blockToSlideLines(
+  block: AstBlock,
+  indent = 0,
+  imgCtx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> } | null = null,
+): SlideLine[] {
   switch (block.kind) {
     case 'heading':
-      // H4-H6 は現スライド内の section header。H1-H3 は呼出側で処理済。
       return [{ text: inlinesToPlainText(block.children), bold: true, indent }];
-    case 'paragraph':
-      return [{ text: inlinesToPlainText(block.children), indent }];
+    case 'paragraph': {
+      // PR-V22:paragraph 内 image を抽出 → 別 SlideLine として並列出力
+      const out: SlideLine[] = [];
+      const text = inlinesToPlainText(block.children);
+      if (text.trim() !== '') {
+        out.push({ text, indent });
+      }
+      out.push(...extractImageLines(block.children, imgCtx));
+      return out;
+    }
     case 'quote': {
-      const inner = block.children.flatMap((b) => blockToSlideLines(b, indent + 1));
+      const inner = block.children.flatMap((b) => blockToSlideLines(b, indent + 1, imgCtx));
       return inner.map((l) => ({ ...l, italic: true }));
     }
     case 'list': {
@@ -159,7 +229,7 @@ function blockToSlideLines(block: AstBlock, indent = 0): SlideLine[] {
               };
             }
           }
-          const lines = blockToSlideLines(effectiveChild, indent + 1);
+          const lines = blockToSlideLines(effectiveChild, indent + 1, imgCtx);
           for (const line of lines) {
             if (taskState) {
               const prefix = taskState === 'done' ? '☑ ' : '☐ ';
@@ -201,7 +271,7 @@ function blockToSlideLines(block: AstBlock, indent = 0): SlideLine[] {
     case 'figure':
     case 'section':
     case 'if-block':
-      return block.children.flatMap((b) => blockToSlideLines(b, indent));
+      return block.children.flatMap((b) => blockToSlideLines(b, indent, imgCtx));
     case 'comment-block':
       return [];
     case 'blank':
@@ -213,7 +283,7 @@ function blockToSlideLines(block: AstBlock, indent = 0): SlideLine[] {
       for (const item of block.items) {
         out.push({ text: inlinesToPlainText(item.term), bold: true, indent });
         for (const desc of item.description) {
-          out.push(...blockToSlideLines(desc, indent + 1));
+          out.push(...blockToSlideLines(desc, indent + 1, imgCtx));
         }
       }
       return out;
@@ -243,7 +313,11 @@ function blockToSlideLines(block: AstBlock, indent = 0): SlideLine[] {
  * - AstBreak(page / rule)→ 現スライド close、次のコンテンツから新スライド
  * - H4-H6 / paragraph / list / 等は現スライド本文
  */
-function splitIntoSlides(ast: AstDocument, fallbackTitle: string): SlideDraft[] {
+function splitIntoSlides(
+  ast: AstDocument,
+  fallbackTitle: string,
+  imgCtx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> } | null,
+): SlideDraft[] {
   const slides: SlideDraft[] = [];
   let current: SlideDraft | null = null;
   const ensureCurrent = (): SlideDraft => {
@@ -302,7 +376,7 @@ function splitIntoSlides(ast: AstDocument, fallbackTitle: string): SlideDraft[] 
     }
     // それ以外:本文 lines に追加
     const slide = ensureCurrent();
-    slide.lines.push(...blockToSlideLines(block));
+    slide.lines.push(...blockToSlideLines(block, 0, imgCtx));
   }
   if (slides.length === 0) {
     slides.push({ kind: 'content', title: fallbackTitle, lines: [] });
@@ -319,10 +393,17 @@ function splitIntoSlides(ast: AstDocument, fallbackTitle: string): SlideDraft[] 
  */
 export async function astToPptxBlob(
   ast: AstDocument,
-  opts: { title?: string } = {},
+  opts: { title?: string; container?: Container; entry?: Entry } = {},
 ): Promise<Blob> {
   const fallbackTitle = opts.title ?? 'PKC2 Export';
-  const slides = splitIntoSlides(ast, fallbackTitle);
+  // PR-V22:image embed 用 ctx を構築
+  const entriesByLid = new Map<string, Entry>();
+  for (const e of opts.container?.entries ?? []) entriesByLid.set(e.lid, e);
+  const imgCtx = {
+    assets: opts.container?.assets ?? {},
+    entriesByLid,
+  };
+  const slides = splitIntoSlides(ast, fallbackTitle, imgCtx);
   const pres = new PptxGenJS();
   pres.layout = 'LAYOUT_WIDE';
   pres.title = fallbackTitle;
@@ -392,7 +473,8 @@ export async function astToPptxBlob(
       }
       // PR-V19:tableRows を持つ line は slide.addTable で別途 render
       const tableLines = draft.lines.filter((l) => l.tableRows);
-      const textLines = draft.lines.filter((l) => !l.tableRows && l.text !== '');
+      const imageLines = draft.lines.filter((l) => l.imageData);
+      const textLines = draft.lines.filter((l) => !l.tableRows && !l.imageData && l.text !== '');
       const tableTop = draft.title ? 1.3 : 0.5;
       if (textLines.length > 0) {
         const textObjects = textLines.map((line, idx) => ({
@@ -435,6 +517,19 @@ export async function astToPptxBlob(
           border: { type: 'solid', pt: 0.5, color: '888888' },
         });
         curY += Math.min(0.4 * tl.tableRows.length + 0.2, 4.0);
+      }
+      // PR-V22:image 埋め込み
+      for (const il of imageLines) {
+        if (!il.imageData) continue;
+        const dataUri = `data:${il.imageMime ?? 'image/png'};base64,${il.imageData}`;
+        slide.addImage({
+          data: dataUri,
+          x: 0.5,
+          y: curY,
+          w: 6.0,
+          h: 4.0,
+        });
+        curY += 4.2;
       }
     }
   }

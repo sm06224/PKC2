@@ -2410,6 +2410,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         };
         const api = getAstApi();
         const ast = api.parseMarkdown(src);
+        // PR-V22 hotfix(2026-05-14、user audit「画像が埋め込まれてない」):
+        // PR-V19 で `astToDocxBlob(ast, { container })` の API を作ったが、
+        // ここで container を **渡してなかった** ため image 解決の入口に
+        // assets が届かず literal text fallback になっていた致命的見落とし。
+        // container を渡して image / internal link target title を解決。
+        const exportContainer = st.container ?? undefined;
         if (pandocTarget === 'docx') {
           // U3:Word direct generation(docx package 経由)。lazy import で
           // bundle 起動時のサイズを抑制、Data... menu の docx target が
@@ -2417,7 +2423,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           void (async () => {
             try {
               const { astToDocxBlob } = await import('../../features/ast/export-docx');
-              const blob = await astToDocxBlob(ast);
+              const blob = await astToDocxBlob(ast, { container: exportContainer, entry: ent });
               triggerDownload(blob, `${safeTitle}.docx`);
             } catch (e) {
               console.warn('[PKC2] export-entry docx failed', e);

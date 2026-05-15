@@ -152,12 +152,25 @@ function newContext(ast: AstDocument, opts: AstToDocxOptions): ExportContext {
   };
 }
 
-/** Heading 番号 prefix を計算 + state 更新。 */
+/**
+ * Heading 番号 prefix を計算 + state 更新。
+ *
+ * PR-V22 hotfix(user audit「0.0. になってる」):H1 なしで H3 が来た場合
+ * `${c[0]}.${c[1]}.${c[2]}` = `0.0.1` という醜い prefix が出ていた。
+ * 親 counter が 0 のままなら **暗黙の章スタートとして 1 に bump**、結果
+ * `1.1.1` で開始。後で本物の H1 が来たら `第2章` から続く。
+ */
 function nextHeadingPrefix(ctx: ExportContext, level: number): string {
   if (level < 1 || level > 6) return '';
-  // 自分より下の level は reset
+  // 自分より下の counter は reset(子は親更新で fresh)
   for (let i = level; i < 6; i++) ctx.headingCounters[i] = 0;
-  // 自 level を +1
+  // 親 counter が 0 のままなら 1 に bump(暗黙の親 heading)
+  for (let i = 0; i < level - 1; i++) {
+    if ((ctx.headingCounters[i] ?? 0) === 0) {
+      ctx.headingCounters[i] = 1;
+    }
+  }
+  // 自分を +1
   ctx.headingCounters[level - 1] = (ctx.headingCounters[level - 1] ?? 0) + 1;
   const c = ctx.headingCounters;
   switch (level) {
@@ -196,6 +209,20 @@ function extractEntryLidFromHref(href: string): string | null {
   return null;
 }
 
+function base64ToUint8Array(b64: string): Uint8Array {
+  // PR-V22 hotfix(user audit「画像埋め込めてない」 root cause):
+  // `Buffer.from(b64, 'base64')` は Node API でブラウザでは未定義。vite の
+  // single-HTML bundle で実行する場合、`Buffer` がない → catch して null
+  // fallback → image 埋め込みが silent fail していた。
+  // ブラウザ標準 `atob` + Uint8Array で書き直す(node でも動く)。
+  const binStr = typeof atob === 'function'
+    ? atob(b64)
+    : (typeof Buffer !== 'undefined' ? Buffer.from(b64, 'base64').toString('binary') : '');
+  const arr = new Uint8Array(binStr.length);
+  for (let i = 0; i < binStr.length; i++) arr[i] = binStr.charCodeAt(i);
+  return arr;
+}
+
 function imageRunForAssetSrc(src: string, ctx: ExportContext): ImageRun | null {
   let key: string | null = null;
   let mime: string | null = null;
@@ -212,8 +239,8 @@ function imageRunForAssetSrc(src: string, ctx: ExportContext): ImageRun | null {
       mime = m[1] ?? null;
       const base64 = m[2] ?? '';
       try {
-        const buf = Buffer.from(base64, 'base64');
-        return buildImageRun(buf, mime ?? 'image/png');
+        const arr = base64ToUint8Array(base64);
+        return buildImageRun(arr, mime ?? 'image/png');
       } catch { return null; }
     }
   }
@@ -234,12 +261,12 @@ function imageRunForAssetSrc(src: string, ctx: ExportContext): ImageRun | null {
   }
   if (!mime) mime = 'image/png';
   try {
-    const buf = Buffer.from(base64, 'base64');
-    return buildImageRun(buf, mime);
+    const arr = base64ToUint8Array(base64);
+    return buildImageRun(arr, mime);
   } catch { return null; }
 }
 
-function buildImageRun(data: Buffer, mime: string): ImageRun | null {
+function buildImageRun(data: Uint8Array, mime: string): ImageRun | null {
   const t = mimeToType(mime);
   const base = { data, transformation: { width: 480, height: 360 } };
   if (t === 'svg') {

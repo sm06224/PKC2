@@ -94,6 +94,21 @@ describe('PR-V21 docx 追加 audit', () => {
     expect(xml).not.toContain('%%');
   });
 
+  it('H1 なしで H3 が来ても 0.0.X にならない(暗黙の親 = 1)', async () => {
+    const xml = await gen('### Heading 3 no parent', {}, 'docx-v21-orphan');
+    expect(xml).not.toContain('0.0');
+    expect(xml).toContain('1.1.1');
+  });
+
+  it('H1 → H2 → H3 → H1 → H2 → H3 の二章で counter が reset(2.1.1)', async () => {
+    const md = '# Chap1\n\n## Sec\n\n### Sub\n\n# Chap2\n\n## Sec\n\n### Sub';
+    const xml = await gen(md, {}, 'docx-v21-chapters');
+    expect(xml).toContain('第1章');
+    expect(xml).toContain('第2章');
+    expect(xml).toContain('1.1.1');
+    expect(xml).toContain('2.1.1');
+  });
+
   it('画像 pkc://<cid>/asset/<key> も埋め込みされる', async () => {
     const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
     const container: Container = {
