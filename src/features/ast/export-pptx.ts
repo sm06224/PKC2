@@ -595,6 +595,10 @@ export async function astToPptxBlob(
   // 2 master:section(扉スライド、title 中央 + subtitle 中央下)+ content
   // (通常スライド、title 上部)。位置 / size / font は従来 text box と同等で
   // visual regression なし。
+  // PR-W6(AI review P0-b):font-size 階段 44pt → 36pt → 28pt、扉スライドの
+  // title block を中央(y:1.8)に移動して上下の dead space を均す。autoFit /
+  // wrap は pptxgenjs の PlaceholderProps では受け付けないので、各 slide の
+  // addText 呼出 options 側で指定する。
   pres.defineSlideMaster({
     title: 'PKC_SECTION_SLIDE',
     objects: [
@@ -604,10 +608,10 @@ export async function astToPptxBlob(
             name: 'title',
             type: 'title',
             x: 0.5,
-            y: 2.5,
+            y: 1.8,
             w: 12.0,
-            h: 1.5,
-            fontSize: 48,
+            h: 2.0,
+            fontSize: 44,
             bold: true,
             align: 'center',
             valign: 'middle',
@@ -621,10 +625,10 @@ export async function astToPptxBlob(
             name: 'subtitle',
             type: 'body',
             x: 0.5,
-            y: 4.2,
+            y: 4.0,
             w: 12.0,
-            h: 1.0,
-            fontSize: 28,
+            h: 1.2,
+            fontSize: 36,
             italic: true,
             align: 'center',
             valign: 'top',
@@ -645,8 +649,8 @@ export async function astToPptxBlob(
             x: 0.5,
             y: 0.3,
             w: 12.0,
-            h: 0.8,
-            fontSize: 32,
+            h: 1.0,
+            fontSize: 28,
             bold: true,
           },
           text: '',
@@ -661,22 +665,33 @@ export async function astToPptxBlob(
       : 'PKC_CONTENT_SLIDE';
     const slide = pres.addSlide({ masterName });
     if (draft.kind === 'section') {
-      // 扉スライド:title placeholder に挿入(Outline View 認識のため)
-      slide.addText(draft.title, { placeholder: 'title' });
+      // 扉スライド:title placeholder に挿入(Outline View 認識のため)+
+      // autoFit + wrap で長 title が意味境界で折り返す(AI review P0-b)。
+      slide.addText(draft.title, {
+        placeholder: 'title',
+        autoFit: true,
+        wrap: true,
+      });
+      // PR-W6(AI review P0-b):subtitle 位置を master と同期(y:4.0)、
+      // font-size 階段 36pt + autoFit + wrap で意味境界折り返し。
       if (draft.subtitle) {
         slide.addText(draft.subtitle, {
           placeholder: 'subtitle',
           x: 0.5,
-          y: 4.2,
+          y: 4.0,
           w: 12.0,
-          h: 1.0,
-          fontSize: 28,
+          h: 1.2,
+          fontSize: 36,
           italic: true,
           align: 'center',
           valign: 'top',
+          autoFit: true,
+          wrap: true,
         });
       }
       // 扉スライドにも本文があれば下部に表示(spec 外だが、loss を防ぐ)
+      // subtitle 移動に合わせて body 開始も y:5.5 → y:5.5 維持(subtitle h:1.2
+      // で 4.0 + 1.2 = 5.2 まで、その下に 0.3 のスペースを置いて body)。
       if (draft.lines.length > 0) {
         const nonEmpty = draft.lines.filter((l) => l.text !== '' || (l.runs && l.runs.length > 0));
         if (nonEmpty.length > 0) {
@@ -692,9 +707,14 @@ export async function astToPptxBlob(
         }
       }
     } else {
-      // 通常スライド:title placeholder に挿入(Outline View 認識のため)+ 下部 body
+      // 通常スライド:title placeholder に挿入(Outline View 認識のため)+
+      // autoFit + wrap で長 title を意味境界折り返し(AI review P0-b)。
       if (draft.title) {
-        slide.addText(draft.title, { placeholder: 'title' });
+        slide.addText(draft.title, {
+          placeholder: 'title',
+          autoFit: true,
+          wrap: true,
+        });
       }
       // tableRows / tableRowsRuns / imageData / 通常 text の 4 種を 1 pass で振り分け。
       const tableLines: SlideLine[] = [];
@@ -705,7 +725,9 @@ export async function astToPptxBlob(
         else if (l.imageData) imageLines.push(l);
         else if (l.text !== '' || (l.runs && l.runs.length > 0)) textLines.push(l);
       }
-      const tableTop = draft.title ? 1.3 : 0.5;
+      // PR-W6(AI review P0-b):title 直下の separator スペース確保。
+      // title h を 0.8 → 1.0 に拡大したことに合わせて body 開始を 1.5 に下げる。
+      const tableTop = draft.title ? 1.5 : 0.5;
       if (textLines.length > 0) {
         const textObjects = linesToTextObjects(textLines, 18);
         slide.addText(textObjects, {

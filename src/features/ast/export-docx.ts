@@ -172,15 +172,55 @@ function newContext(ast: AstDocument, opts: AstToDocxOptions): ExportContext {
 }
 
 /**
- * Heading 番号 prefix を計算 + state 更新。
+ * Heading text 内に既に numbering prefix が手書きされているか判定。
  *
- * PR-V22 hotfix(user audit「0.0. になってる」):H1 なしで H3 が来た場合
- * `${c[0]}.${c[1]}.${c[2]}` = `0.0.1` という醜い prefix が出ていた。
+ * PR-W6(2026-05-15、AI review P0-a):auto-numbering と manual title が
+ * 両方生きていると「第1章 第一章 …」のような二重表記が出る。markdown 側で
+ * `# 第一章 …` / `## 1.1 …` / `### 1.2.3 …` のような prefix が既にある場合
+ * は auto-numbering を skip して text そのまま使う。counter 自体は引き続き
+ * bump(後続 sub-heading 番号の連続性を保つため)。
+ *
+ * 検出 pattern:
+ * - L1:`第N章 ` / `第〇章 ` / `Chapter N. ` / `N章 `
+ * - L2:`N.N ` / `N章N節 ` / `Section N.N ` / `N. ` の冒頭
+ * - L3:`N.N.N ` / `N項 `
+ * - L4:`(N) ` / `（N） `(全角)
+ * - L5:カタカナ 1 字 + 空白 / `第N項 `
+ * - L6:`a. ` `b. ` 等(a-z + ピリオド + 空白)
+ */
+function hasExistingHeadingPrefix(text: string, level: number): boolean {
+  const trimmed = text.trimStart();
+  switch (level) {
+    case 1:
+      return /^(第[一二三四五六七八九十百千0-90-9]+章|Chapter\s+\d+[.\s])/.test(trimmed);
+    case 2:
+      return /^\d+\.\d+\s/.test(trimmed);
+    case 3:
+      return /^\d+\.\d+\.\d+\s/.test(trimmed);
+    case 4:
+      return /^[((][0-90-9]+[))]\s/.test(trimmed);
+    case 5:
+      return /^[アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン]\s/.test(trimmed);
+    case 6:
+      return /^[a-zA-Z]\.\s/.test(trimmed);
+    default:
+      return false;
+  }
+}
+
+/**
+ * Heading counter を bump(prefix 文字列は formatHeadingPrefix で別途生成)。
+ *
+ * PR-W6 で `nextHeadingPrefix` から counter 操作部分を分離。markdown 側で
+ * 既に prefix が手書きされている場合でも counter は bump する必要がある
+ * (後続 sub-heading の連番を維持するため)。
+ *
+ * PR-V22 hotfix:H1 なしで H3 が来た場合 `0.0.1` という醜い prefix が出ていた。
  * 親 counter が 0 のままなら **暗黙の章スタートとして 1 に bump**、結果
  * `1.1.1` で開始。後で本物の H1 が来たら `第2章` から続く。
  */
-function nextHeadingPrefix(ctx: ExportContext, level: number): string {
-  if (level < 1 || level > 6) return '';
+function bumpHeadingCounter(ctx: ExportContext, level: number): void {
+  if (level < 1 || level > 6) return;
   // 自分より下の counter は reset(子は親更新で fresh)
   for (let i = level; i < 6; i++) ctx.headingCounters[i] = 0;
   // 親 counter が 0 のままなら 1 に bump(暗黙の親 heading)
@@ -191,6 +231,11 @@ function nextHeadingPrefix(ctx: ExportContext, level: number): string {
   }
   // 自分を +1
   ctx.headingCounters[level - 1] = (ctx.headingCounters[level - 1] ?? 0) + 1;
+}
+
+/** Counter 現在値から prefix 文字列を生成(side-effect なし)。 */
+function formatHeadingPrefix(ctx: ExportContext, level: number): string {
+  if (level < 1 || level > 6) return '';
   const c = ctx.headingCounters;
   switch (level) {
     case 1: return `第${c[0]}章 `;
@@ -202,6 +247,7 @@ function nextHeadingPrefix(ctx: ExportContext, level: number): string {
     default: return '';
   }
 }
+
 
 // ── Inline → docx Run ─────────────────────────────────────
 
@@ -366,11 +412,20 @@ function inlinesFlatText(inlines: readonly AstInline[]): string {
 function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragraph | Table> {
   switch (block.kind) {
     case 'heading': {
-      const prefix = nextHeadingPrefix(ctx, block.level);
-      const headingRuns: TextRun[] = [
-        new TextRun({ text: prefix, bold: true }),
-        ...inlinesToRuns(block.children, ctx, { bold: true }).filter((r): r is TextRun => r instanceof TextRun),
-      ];
+      // PR-W6(AI review P0-a 章番号二重表記対応):heading text 内に既に
+      // numbering prefix が手書きされている場合(`# 第一章 …` 等)は
+      // auto-prefix を skip。counter は引き続き bump(後続 sub-heading の連番)。
+      const flat = inlinesFlatText(block.children);
+      bumpHeadingCounter(ctx, block.level);
+      const prefix = hasExistingHeadingPrefix(flat, block.level)
+        ? ''
+        : formatHeadingPrefix(ctx, block.level);
+      const headingRuns: TextRun[] = prefix === ''
+        ? inlinesToRuns(block.children, ctx, { bold: true }).filter((r): r is TextRun => r instanceof TextRun)
+        : [
+          new TextRun({ text: prefix, bold: true }),
+          ...inlinesToRuns(block.children, ctx, { bold: true }).filter((r): r is TextRun => r instanceof TextRun),
+        ];
       // PR-V21 user audit「H4 以降は数字 hierarchy ではなく箇条書きとして
       // (1) / アイウ / abc」:H4-H6 は heading style を使わず、bullet list 風
       // 段落として render(prefix + bold + 段落 indent)。H1-H3 は heading
@@ -379,10 +434,18 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         const level = HEADING_LEVELS[block.level] ?? HeadingLevel.HEADING_3;
         const isFirstH1 = block.level === 1 && !ctx.seenFirstH1;
         if (block.level === 1) ctx.seenFirstH1 = true;
+        // PR-W6(AI review P0-c 見出し spacing 明示):H1 前 24pt / 後 12pt、
+        // H2 前 18pt / 後 8pt、H3 前 12pt / 後 6pt(twip = pt × 20)。
+        // 旧 240/120, 200/100, 160/80 から段階を強化。
+        const spacingByLevel: Record<number, { before: number; after: number }> = {
+          1: { before: 480, after: 240 }, // 24pt / 12pt
+          2: { before: 360, after: 160 }, // 18pt / 8pt
+          3: { before: 240, after: 120 }, // 12pt / 6pt
+        };
         const opts: IParagraphOptions = {
           heading: level,
           children: headingRuns,
-          spacing: { before: 240, after: 120 },
+          spacing: spacingByLevel[block.level] ?? { before: 240, after: 120 },
         };
         if (block.level === 1 && !isFirstH1) {
           return [new Paragraph({ ...opts, pageBreakBefore: true })];
@@ -661,17 +724,22 @@ export async function astToDocxBlob(
             size: 22, // 11pt
           },
         },
+        // PR-W6(AI review P0-c):H1/H2/H3 のサイズ階段を強化、spacing も
+        // before 24/18/12pt + after 12/8/6pt を明示(twip = pt × 20)。
+        // H1 size 40(20pt)/ H2 size 32(16pt)/ H3 size 26(13pt)で
+        // H1↔H2 の差を 4pt → 4pt、H2↔H3 の差を 1pt → 3pt に広げて階層が
+        // 一目で読めるようにする。
         heading1: {
-          run: { font: DEFAULT_FONT, size: 32, bold: true }, // 16pt
-          paragraph: { spacing: { before: 240, after: 120 } },
+          run: { font: DEFAULT_FONT, size: 40, bold: true }, // 20pt
+          paragraph: { spacing: { before: 480, after: 240 } }, // 24pt / 12pt
         },
         heading2: {
-          run: { font: DEFAULT_FONT, size: 28, bold: true }, // 14pt
-          paragraph: { spacing: { before: 200, after: 100 } },
+          run: { font: DEFAULT_FONT, size: 32, bold: true }, // 16pt
+          paragraph: { spacing: { before: 360, after: 160 } }, // 18pt / 8pt
         },
         heading3: {
           run: { font: DEFAULT_FONT, size: 26, bold: true }, // 13pt
-          paragraph: { spacing: { before: 160, after: 80 } },
+          paragraph: { spacing: { before: 240, after: 120 } }, // 12pt / 6pt
         },
         heading4: {
           run: { font: DEFAULT_FONT, size: 24, bold: true }, // 12pt
