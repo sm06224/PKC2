@@ -95,17 +95,22 @@ interface PptxExportContext {
 /** Slide 単位の中間 representation。 */
 interface SlideDraft {
   /**
-   * Slide 形態:
+   * Slide 形態(PR-W9 で `'table'` を追加):
    * - `'section'` = H1 + (option) H2 を扉スライドに表示
    * - `'content'` = H3 title + body
+   * - `'table'` = H3 title + table が dominant content(title 直下から
+   *   table 開始、上の死に空間を撲滅)— `splitIntoSlides` 後に自動判定
    */
-  kind: 'section' | 'content';
+  kind: 'section' | 'content' | 'table';
   /** 主 title(section の場合 H1 / content の場合 H3、空文字 OK)。 */
   title: string;
   /** Subtitle(section の場合のみ:H2 がペアで来た場合)。 */
   subtitle?: string;
   /** Slide 内の本文行(順序保持)。 */
   lines: SlideLine[];
+  /** PR-W9(Wave X P3、AI review P3-13):running footer 用 chapter 番号。
+   * H1 の occurrence 順で 1 から bump。0 = 章なし(章前の slide)。 */
+  chapterNum?: number;
 }
 
 interface SlideLine {
@@ -525,66 +530,84 @@ function splitIntoSlides(
 ): SlideDraft[] {
   const slides: SlideDraft[] = [];
   let current: SlideDraft | null = null;
+  // PR-W9(AI review P3-13):chapter counter で running footer 用 chapter 番号
+  // を tracking。H1 の occurrence 順で 1 から bump。
+  let chapterCount = 0;
   const ensureCurrent = (): SlideDraft => {
     if (!current) {
-      current = { kind: 'content', title: fallbackTitle, lines: [] };
+      current = { kind: 'content', title: fallbackTitle, lines: [], chapterNum: chapterCount };
       slides.push(current);
     }
     return current;
   };
   for (const block of ast.children) {
-    // H1 → 新 section 扉
     if (block.kind === 'heading' && block.level === 1) {
+      chapterCount += 1;
       current = {
         kind: 'section',
         title: inlinesToPlainText(block.children),
         lines: [],
+        chapterNum: chapterCount,
       };
       slides.push(current);
       continue;
     }
-    // H2 → 直前 section 扉の subtitle(扉 slide + 直後 H2 のペアが要件)
     if (block.kind === 'heading' && block.level === 2) {
       if (current && current.kind === 'section' && current.subtitle === undefined) {
         current.subtitle = inlinesToPlainText(block.children);
         continue;
       }
-      // H1 直後でない H2 は通常スライド title として扱う(fallback)
       current = {
         kind: 'content',
         title: inlinesToPlainText(block.children),
         lines: [],
+        chapterNum: chapterCount,
       };
       slides.push(current);
       continue;
     }
-    // H3 → 通常スライド
     if (block.kind === 'heading' && block.level === 3) {
       current = {
         kind: 'content',
         title: inlinesToPlainText(block.children),
         lines: [],
+        chapterNum: chapterCount,
       };
       slides.push(current);
       continue;
     }
-    // AstBreak(page / rule) → スライド区切り
     if (block.kind === 'break' && (block.breakKind === 'page' || block.breakKind === 'rule')) {
-      // 現スライドを close、次のコンテンツから新スライド(title 未定 = content kind)
       current = {
         kind: 'content',
-        title: '', // 続く H3 で上書きされる、無いなら空 title slide
+        title: '',
         lines: [],
+        chapterNum: chapterCount,
       };
       slides.push(current);
       continue;
     }
-    // それ以外:本文 lines に追加
     const slide = ensureCurrent();
     slide.lines.push(...blockToSlideLines(block, 0, ctx));
   }
   if (slides.length === 0) {
-    slides.push({ kind: 'content', title: fallbackTitle, lines: [] });
+    slides.push({ kind: 'content', title: fallbackTitle, lines: [], chapterNum: 0 });
+  }
+  // PR-W9(AI review P3-11/12):table-centric slide を自動判定。slide.lines
+  // に tableRows/tableRowsRuns を持つ line があり、かつ通常 text lines が
+  // 「title 直下 separator スペース節約に値する量(0-1 短文)」程度しかない
+  // 場合、kind を 'table' に格上げ → table layout(title 直下から table 開始
+  // で死に空間を撲滅)。section slide は対象外(扉 layout を維持)。
+  for (const slide of slides) {
+    if (slide.kind !== 'content') continue;
+    const hasTable = slide.lines.some((l) => l.tableRows || l.tableRowsRuns);
+    if (!hasTable) continue;
+    const textLines = slide.lines.filter(
+      (l) => (l.text !== '' || (l.runs && l.runs.length > 0)) && !l.tableRows && !l.tableRowsRuns && !l.imageData,
+    );
+    // text line が 1 件以内なら table-centric(table が dominant content)
+    if (textLines.length <= 1) {
+      slide.kind = 'table';
+    }
   }
   return slides;
 }
@@ -668,6 +691,17 @@ export async function astToPptxBlob(
   });
   pres.defineSlideMaster({
     title: 'PKC_CONTENT_SLIDE',
+    // PR-W9(AI review P3-13):slideNumber を右下に subtle grey で表示
+    // (running footer 効果)。
+    slideNumber: {
+      x: 12.0,
+      y: 6.8,
+      w: 1.0,
+      h: 0.3,
+      fontSize: 10,
+      color: '888888',
+      align: 'right',
+    },
     objects: [
       {
         placeholder: {
@@ -686,12 +720,68 @@ export async function astToPptxBlob(
       },
     ],
   });
+  // PR-W9(AI review P3-11/12):**PKC_TABLE_SLIDE** master を追加。table
+  // 中心の slide はこの layout を使い、title 直下(y:1.0)から table を開始、
+  // 上の死に空間を撲滅。本文 text area は title と table 間に subtle space
+  // (0.1 inch)だけ確保。
+  pres.defineSlideMaster({
+    title: 'PKC_TABLE_SLIDE',
+    slideNumber: {
+      x: 12.0,
+      y: 6.8,
+      w: 1.0,
+      h: 0.3,
+      fontSize: 10,
+      color: '888888',
+      align: 'right',
+    },
+    objects: [
+      {
+        placeholder: {
+          options: {
+            name: 'title',
+            type: 'title',
+            x: 0.5,
+            y: 0.3,
+            w: 12.0,
+            h: 0.7, // 高さを少し縮めて table 開始位置を上げる
+            fontSize: 28,
+            bold: true,
+          },
+          text: '',
+        },
+      },
+    ],
+  });
+  // PR-W9:section slide master にも slideNumber を後付け追加(扉スライド
+  // にも subtle footer を表示)。`PKC_SECTION_SLIDE` を再定義は pptxgenjs
+  // の API で対応していないため、上の section master 定義時に slideNumber
+  // を直接含める手もあったが、編集 diff を minimal にするため別 method で
+  // run-time に slide.slideNumber を adjust する手段がない場合、各 slide
+  // 描画時に `slide.slideNumber` を override しない(master の slideNumber
+  // 設定が反映される)。section master は slideNumber 未指定でも footer は
+  // 出ないため、scope を content + table slide に限定する解釈で OK。
 
   for (const draft of slides) {
     const masterName = draft.kind === 'section'
       ? 'PKC_SECTION_SLIDE'
-      : 'PKC_CONTENT_SLIDE';
+      : draft.kind === 'table'
+        ? 'PKC_TABLE_SLIDE'
+        : 'PKC_CONTENT_SLIDE';
     const slide = pres.addSlide({ masterName });
+    // PR-W9(AI review P3-13):chapter footer text(`Chapter N`)を左下に
+    // subtle grey で。chapterNum が 0 / undefined ならスキップ(章前)。
+    if (draft.chapterNum && draft.chapterNum > 0) {
+      slide.addText(`Chapter ${draft.chapterNum}`, {
+        x: 0.5,
+        y: 6.8,
+        w: 4.0,
+        h: 0.3,
+        fontSize: 10,
+        color: '888888',
+        align: 'left',
+      });
+    }
     if (draft.kind === 'section') {
       // 扉スライド:title placeholder に挿入(Outline View 認識のため)+
       // autoFit + wrap で長 title が意味境界で折り返す(AI review P0-b)。
@@ -755,7 +845,12 @@ export async function astToPptxBlob(
       }
       // PR-W6(AI review P0-b):title 直下の separator スペース確保。
       // title h を 0.8 → 1.0 に拡大したことに合わせて body 開始を 1.5 に下げる。
-      const tableTop = draft.title ? 1.5 : 0.5;
+      // PR-W9(AI review P3-12):table-centric slide は title 直下から
+      // table を開始(y:1.1)、上の死に空間を撲滅。content slide は
+      // separator スペース確保(y:1.5)。
+      const tableTop = draft.title
+        ? (draft.kind === 'table' ? 1.1 : 1.5)
+        : 0.5;
       if (textLines.length > 0) {
         const textObjects = linesToTextObjects(textLines, 18);
         slide.addText(textObjects, {

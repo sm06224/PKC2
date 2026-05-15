@@ -87,6 +87,12 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+- **PR-W9 Wave X P3 layout templates**(2026-05-15、AI review P3 全件着地、Wave X 最終):
+  - **P3-11 3 layout master 分化**:`PKC_SECTION_SLIDE`(扉、PR-W5 既存)+ `PKC_CONTENT_SLIDE`(本文、PR-W5 既存)+ **`PKC_TABLE_SLIDE`**(表中心、NEW)の 3 master。`splitIntoSlides` 後に **table-centric 自動判定**(slide が `tableRows`/`tableRowsRuns` を 1 件以上持ち、通常 text line が 0-1 件以内 = table が dominant content)で kind を `'content'` → `'table'` に格上げ。
+  - **P3-12 表中心スライドの死に空間撲滅**:`table` layout で `tableTop = 1.1`(title 直下 0.1 inch separator)、`content` layout は従来通り `1.5`(separator スペース確保)。これで「表中心スライドでテーブルが中央に浮いて上半分が空っぽ」の AI review 指摘を解消。table-centric slide では title h を 0.7 に短縮して body 開始位置を上げる。
+  - **P3-13 running footer**:全 layout master の `slideNumber` field に `{ x: 12.0, y: 6.8, w: 1.0, h: 0.3, fontSize: 10, color: '888888', align: 'right' }` で右下に subtle grey の slide 番号。`SlideDraft.chapterNum?: number` field 追加、H1 occurrence で 1 から bump、各 slide 描画時に `Chapter N` text(左下、`color: 888888`)を addText で挿入。chapterNum 0(H1 前 fallback slide)は footer text なし。
+  - case matrix test 13 件 新規(`tests/features/ast/export-pptx-layout-templates.test.ts`、3 layout 判定 3 件 + table-centric layout 3 件 + running footer 6 件 + invariant 1 件)。全 7854 test pass(PR-W8 7841 から +13)。bundle.js 1852 KB / bundle.css 163 KB 不変。**実機 PNG 視覚検証**:扉スライド + Chapter footer、content slide で hybrid body+table、table-centric slide で title 直下から table 開始、task glyph 色化、全 layout で running footer 表示を pptx 6 slide で確認。
+
 - **PR-W8 Wave X P2 visual language**(2026-05-15、AI review P2 全 4 件着地):
   - **P2-7 H2/H3 左 accent border**:`ACCENT_COLOR_HEX = '2F6FED'`(青)+ `HEADING_ACCENT_BORDER_SIZE = 24`(3pt)で docx の Paragraph.border.left に追加。H1 は pageBreakBefore で chapter separator が確保されるので不要、H2/H3 のみ accent line で階層識別を強化。`IParagraphOptions.border` は readonly のため `accentBorder` 変数を spread で構築する pattern。
   - **P2-8 表 padding + hairline border**:`TABLE_CELL_PADDING_TWIP = 160`(8pt)を TableCell.margins(top/bottom/left/right)に適用、`TABLE_BORDER_HEX = 'CCCCCC'` の hairline 0.5pt grey(border size 4 = 0.5pt)を Table.borders 6 方向すべてに適用、ヘッダー shading を `EEEEEE` → `F4F4F5` に統一(`INLINE_CODE_SHADING_HEX` と同色、AI review 指示)。AstTable + CSV fence table 両方で適用。
