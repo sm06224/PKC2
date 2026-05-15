@@ -28,6 +28,29 @@ NS_PPT = {
     'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
 }
 
+# Module-scope compiled regex(構造検査で繰り返し使うため)
+_RE_VAR = re.compile(r'\{\{[a-zA-Z0-9_.-]+\}\}')
+_RE_MARK = re.compile(r'==[^=\n]+==')
+_RE_EM_DOT = re.compile(r'\.\.[^.\n]+\.\.')
+_RE_HIDDEN = re.compile(r'%%[^%\n]+%%')
+_RE_RUBY = re.compile(r'\[\[ruby:')
+_RE_SLIDE_NUM = re.compile(r'slide(\d+)\.xml$')
+
+
+def compute_residue(joined_text: str) -> tuple[int, dict[str, int]]:
+    """Var literal 残数 + PKC 拡張記法 4 種の残数を JSON friendly に返す。"""
+    var_residue = len(_RE_VAR.findall(joined_text))
+    pkc_residue = {
+        'mark': len(_RE_MARK.findall(joined_text)),
+        'em_dot': len(_RE_EM_DOT.findall(joined_text)),
+        'hidden_comment': len(_RE_HIDDEN.findall(joined_text)),
+        'ruby': len(_RE_RUBY.findall(joined_text)),
+    }
+    return var_residue, pkc_residue
+
+
+_RE_DIGIT = re.compile(r'(\d+)')
+
 
 def collect_docx(wdir: str) -> dict:
     doc_path = os.path.join(wdir, 'document.xml')
@@ -38,27 +61,23 @@ def collect_docx(wdir: str) -> dict:
     headings = []
     page_breaks = 0
     hyperlinks = 0
-    var_residue = 0
     body_text = []
     for p in root.iter(f'{{{NS["w"]}}}p'):
-        # pStyle
         pstyle_el = p.find('.//w:pStyle', NS)
         style = pstyle_el.get(f'{{{NS["w"]}}}val') if pstyle_el is not None else ''
         text = ''.join(t.text or '' for t in p.iter(f'{{{NS["w"]}}}t'))
         body_text.append(text)
         if style.startswith('Heading'):
-            level = int(re.search(r'(\d+)', style).group(1)) if re.search(r'(\d+)', style) else 0
+            m = _RE_DIGIT.search(style)
+            level = int(m.group(1)) if m else 0
             headings.append({'level': level, 'style': style, 'text': text})
-        # page break
         for br in p.iter(f'{{{NS["w"]}}}br'):
             if br.get(f'{{{NS["w"]}}}type') == 'page':
                 page_breaks += 1
-        # pageBreakBefore prop
         if p.find('.//w:pageBreakBefore', NS) is not None:
             page_breaks += 1
-    for hl in root.iter(f'{{{NS["w"]}}}hyperlink'):
+    for _ in root.iter(f'{{{NS["w"]}}}hyperlink'):
         hyperlinks += 1
-    # tables
     tables = []
     for tbl in root.iter(f'{{{NS["w"]}}}tbl'):
         rows = len(list(tbl.iter(f'{{{NS["w"]}}}tr')))
@@ -71,20 +90,10 @@ def collect_docx(wdir: str) -> dict:
                     has_header_shading = True
                     break
         tables.append({'rows': rows, 'hasHeaderShading': has_header_shading})
-    # images
     drawings = list(root.iter(f'{{{NS["w"]}}}drawing'))
     media_dir = os.path.join(wdir, 'media')
     media_files = sorted(os.listdir(media_dir)) if os.path.isdir(media_dir) else []
-    # var residue
-    joined = '\n'.join(body_text)
-    var_residue = len(re.findall(r'\{\{[a-zA-Z0-9_.-]+\}\}', joined))
-    # PKC ext residue
-    pkc_residue = {
-        'mark': len(re.findall(r'==[^=\n]+==', joined)),
-        'em_dot': len(re.findall(r'\.\.[^.\n]+\.\.', joined)),
-        'hidden_comment': len(re.findall(r'%%[^%\n]+%%', joined)),
-        'ruby': len(re.findall(r'\[\[ruby:', joined)),
-    }
+    var_residue, pkc_residue = compute_residue('\n'.join(body_text))
     return {
         'headings': headings,
         'pageBreaks': page_breaks,
@@ -96,14 +105,19 @@ def collect_docx(wdir: str) -> dict:
     }
 
 
+def _slide_index(filename: str) -> int:
+    m = _RE_SLIDE_NUM.match(filename)
+    return int(m.group(1)) if m else 0
+
+
 def collect_pptx(pdir: str) -> dict:
     slides_dir = os.path.join(pdir, 'slides')
     media_dir = os.path.join(pdir, 'media')
     if not os.path.isdir(slides_dir):
         return {'error': f'missing {slides_dir}'}
     slide_files = sorted(
-        [f for f in os.listdir(slides_dir) if re.match(r'slide\d+\.xml$', f)],
-        key=lambda x: int(re.search(r'(\d+)', x).group(1)),
+        [f for f in os.listdir(slides_dir) if _RE_SLIDE_NUM.match(f)],
+        key=_slide_index,
     )
     slides = []
     all_text: list[str] = []
@@ -111,13 +125,11 @@ def collect_pptx(pdir: str) -> dict:
         sp = os.path.join(slides_dir, sf)
         tree = ET.parse(sp)
         root = tree.getroot()
-        # placeholder texts: spTree > sp > nvSpPr > nvPr > ph type
         titles: list[str] = []
         body_chunks: list[str] = []
         for sp_el in root.iter(f'{{{NS_PPT["p"]}}}sp'):
             ph = sp_el.find('.//p:nvSpPr/p:nvPr/p:ph', NS_PPT)
             ph_type = ph.get('type') if ph is not None else None
-            # collect all text inside this sp (a:t)
             texts = [t.text or '' for t in sp_el.iter(f'{{{NS_PPT["a"]}}}t')]
             joined_sp = '\n'.join(t for t in texts if t)
             if not joined_sp:
@@ -126,12 +138,10 @@ def collect_pptx(pdir: str) -> dict:
                 titles.append(joined_sp)
             else:
                 body_chunks.append(joined_sp)
-        # table detect
         has_table = root.find('.//a:tbl', NS_PPT) is not None
-        # image refs: <p:pic> count + blipFill
         pic_count = len(list(root.iter(f'{{{NS_PPT["p"]}}}pic')))
         slides.append({
-            'index': int(re.search(r'(\d+)', sf).group(1)),
+            'index': _slide_index(sf),
             'titles': titles,
             'bodyChunks': body_chunks,
             'hasTable': has_table,
@@ -139,14 +149,7 @@ def collect_pptx(pdir: str) -> dict:
         })
         all_text.append('\n'.join(titles + body_chunks))
     media_files = sorted(os.listdir(media_dir)) if os.path.isdir(media_dir) else []
-    joined = '\n'.join(all_text)
-    var_residue = len(re.findall(r'\{\{[a-zA-Z0-9_.-]+\}\}', joined))
-    pkc_residue = {
-        'mark': len(re.findall(r'==[^=\n]+==', joined)),
-        'em_dot': len(re.findall(r'\.\.[^.\n]+\.\.', joined)),
-        'hidden_comment': len(re.findall(r'%%[^%\n]+%%', joined)),
-        'ruby': len(re.findall(r'\[\[ruby:', joined)),
-    }
+    var_residue, pkc_residue = compute_residue('\n'.join(all_text))
     return {
         'kind': 'pptx',
         'slideCount': len(slides),

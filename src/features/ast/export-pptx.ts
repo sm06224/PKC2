@@ -281,32 +281,56 @@ function inlineToRuns(
   }
 }
 
+function isInternalLink(href: string): boolean {
+  return (
+    href.startsWith('entry:')
+    || href.startsWith('pkc://')
+    || href.startsWith('#log/')
+    || href.startsWith('#day/')
+    || href.startsWith('#')
+  );
+}
+
+function extractEntryLidFromHref(href: string): string | null {
+  if (href.startsWith('entry:')) {
+    const rest = href.slice('entry:'.length);
+    const hashIdx = rest.indexOf('#');
+    return hashIdx === -1 ? rest : rest.slice(0, hashIdx);
+  }
+  if (href.startsWith('pkc://')) {
+    const m = /^pkc:\/\/[^/]+\/entry\/([^/?#]+)/.exec(href);
+    if (m) return m[1] ?? null;
+  }
+  return null;
+}
+
 function linkToRuns(
   link: AstLink,
   ctx: PptxExportContext,
   base: Partial<PptxRun>,
 ): PptxRun[] {
   const href = link.href;
-  const isInternal = href.startsWith('entry:') || href.startsWith('pkc://') || href.startsWith('#');
-  const labelText = inlinesToPlainText(link.children);
-  if (isInternal) {
-    // PR-V24:内部リンク → 上付き番号 + appendix slide 末尾に「リンク先一覧」
+  // label に nested formatting(bold / italic 等)を保持(inlinesToPlainText flatten を廃止)
+  const labelRuns = inlinesToRuns(link.children, ctx, base);
+  const labelText = labelRuns.map((r) => r.text).join('');
+  if (isInternalLink(href)) {
     const num = ctx.internalLinks.length + 1;
     let targetTitle: string | undefined;
-    const m = /^entry:([^/?#]+)/.exec(href);
-    const lid = m ? m[1] : null;
+    const lid = extractEntryLidFromHref(href);
     if (lid) {
       const entry = ctx.entriesByLid.get(lid);
       if (entry) targetTitle = entry.title || entry.lid;
     }
     ctx.internalLinks.push({ num, label: labelText, href, targetTitle });
     return [
-      { ...base, text: labelText },
+      ...labelRuns,
       { ...base, text: `(${num})`, superscript: true },
     ];
   }
-  // 外部リンク:hyperlink option 付き run
-  return [{ ...base, text: labelText || href, hyperlink: { url: href }, underline: true }];
+  if (labelRuns.length === 0) {
+    return [{ ...base, text: href, hyperlink: { url: href }, underline: true }];
+  }
+  return labelRuns.map((r) => ({ ...r, hyperlink: { url: href }, underline: true }));
 }
 
 /** PR-V22:inline 配列内の image を SlideLine.imageData として抽出。 */
@@ -467,54 +491,38 @@ function tableBlockToLine(block: AstTable, ctx: PptxExportContext): SlideLine {
 }
 
 /**
- * PR-V24:SlideLine[] を pptxgenjs の addText() に渡せる text-object 配列に flatten。
- *
- * 各 line は 1 paragraph として扱い、最後の run に breakLine: true を付ける(line 間改行)。
- * line.runs があれば各 run を別 text-object として emit、無ければ line.text 全体を 1 run に。
- * line.bullet なら先頭に `• ` prefix run を追加(line 全体に bullet が掛かる)。
+ * SlideLine[] を pptxgenjs addText() の text-object 配列に flatten。各 line は 1 paragraph
+ * として扱い、line 内最後の run に breakLine: true を付けて次の line に改行する。
+ * line.bullet なら先頭に bullet glyph run を prepend。
  */
 function linesToTextObjects(
   lines: SlideLine[],
   baseFontSize: number,
-): Array<{ text: string; options?: Record<string, unknown> }> {
-  const out: Array<{ text: string; options?: Record<string, unknown> }> = [];
+): Array<{ text: string; options: Record<string, unknown> }> {
+  const out: Array<{ text: string; options: Record<string, unknown> }> = [];
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]!;
     const isLastLine = li === lines.length - 1;
-    let runs: PptxRun[];
-    if (line.runs && line.runs.length > 0) {
-      runs = line.runs;
-    } else {
-      runs = [{ text: line.text }];
-    }
-    // bullet prefix(plain text、formatting なし)
-    if (line.bullet) {
-      runs = [{ text: '• ' }, ...runs];
-    }
+    let runs: PptxRun[] = line.runs && line.runs.length > 0 ? line.runs : [{ text: line.text }];
+    if (line.bullet) runs = [{ text: '• ' }, ...runs];
     for (let ri = 0; ri < runs.length; ri++) {
       const run = runs[ri]!;
       const isLastRun = ri === runs.length - 1;
-      const breakLine = isLastRun && !isLastLine;
-      const opts: Record<string, unknown> = {
-        fontSize: baseFontSize,
-        // line-level
-        bold: run.bold ?? line.bold,
-        italic: run.italic ?? line.italic,
-        fontFace: run.fontFace ?? line.fontFace,
-        indentLevel: line.indent ?? 0,
-        // run-level(PR-V24)
-        highlight: run.highlight,
-        strike: run.strike,
-        underline: run.underline ? { style: 'sng' } : undefined,
-        superscript: run.superscript,
-        subscript: run.subscript,
-        hyperlink: run.hyperlink,
-        breakLine,
-      };
-      // undefined を整理(pptxgenjs は undefined を素直に無視するが、test の strict 比較対策)
-      for (const k of Object.keys(opts)) {
-        if (opts[k] === undefined) delete opts[k];
-      }
+      const opts: Record<string, unknown> = { fontSize: baseFontSize };
+      const bold = run.bold ?? line.bold;
+      const italic = run.italic ?? line.italic;
+      const fontFace = run.fontFace ?? line.fontFace;
+      if (bold) opts.bold = true;
+      if (italic) opts.italic = true;
+      if (fontFace) opts.fontFace = fontFace;
+      if (line.indent) opts.indentLevel = line.indent;
+      if (run.highlight) opts.highlight = run.highlight;
+      if (run.strike) opts.strike = true;
+      if (run.underline) opts.underline = { style: 'sng' };
+      if (run.superscript) opts.superscript = true;
+      if (run.subscript) opts.subscript = true;
+      if (run.hyperlink) opts.hyperlink = run.hyperlink;
+      if (isLastRun && !isLastLine) opts.breakLine = true;
       out.push({ text: run.text, options: opts });
     }
   }
@@ -680,10 +688,15 @@ export async function astToPptxBlob(
           bold: true,
         });
       }
-      // PR-V19:tableRows を持つ line は slide.addTable で別途 render
-      const tableLines = draft.lines.filter((l) => l.tableRows);
-      const imageLines = draft.lines.filter((l) => l.imageData);
-      const textLines = draft.lines.filter((l) => !l.tableRows && !l.imageData && (l.text !== '' || (l.runs && l.runs.length > 0)));
+      // tableRows / imageData / 通常 text の 3 種を 1 pass で振り分け。
+      const tableLines: SlideLine[] = [];
+      const imageLines: SlideLine[] = [];
+      const textLines: SlideLine[] = [];
+      for (const l of draft.lines) {
+        if (l.tableRows) tableLines.push(l);
+        else if (l.imageData) imageLines.push(l);
+        else if (l.text !== '' || (l.runs && l.runs.length > 0)) textLines.push(l);
+      }
       const tableTop = draft.title ? 1.3 : 0.5;
       if (textLines.length > 0) {
         const textObjects = linesToTextObjects(textLines, 18);
