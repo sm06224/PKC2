@@ -73,6 +73,13 @@ v2.3.0 リリース後の reform-2026-05 Phase 11 stack PR で以下を順次着
 - **PR-V24 hardening: simplify レビュー反映**(2026-05-15):`linkToRuns` で label を `inlinesToPlainText` で flatten していたため link 内 nested formatting(bold / italic 等)が消えていた latent bug を fix。`astToPptxBlob` 内 `draft.lines.filter()` 3 連を single for-loop で 3 array partition。`linesToTextObjects` の `Object.keys+delete` を条件付き代入に置換。pptx の internal-link 判定を docx parity に引き上げ(`#log/` / `#day/` prefix + `pkc://<cid>/entry/<lid>` 形式の lid 抽出をサポート、旧 3 prefix hardcode で漏れていた)。`vtest_struct.py` の residue 4 種 regex を docx / pptx で重複していたのを `compute_residue()` helper + module-scope `re.compile` に統合。
 - **PR-V23 wave 着地手順 + branch cleanup**(2026-05-15、`docs/release/v23-stack-close-and-branch-cleanup-2026-05-15.md`):PR #433 集約 32 commit の merge 手順 + 14 件 stale branch cleanup の手順 3 種(GitHub Web UI / `gh` CLI / `scripts/close-stack-prs-v2.sh`)を集約。本 session の git proxy 制約のため実行 phase は user 環境に分離、本 doc が C2 deliverable の後続 wave。
 
+### v2.3.x stack follow-up wave(精度向上 wave、2026-05-15、PR-W1〜W5)
+
+PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5 PR stack で着地予定:
+
+- **PR-W1 docs reconcile**(2026-05-15、PR #434):reform-2026-05 Phase 3 wave 20 PR は #432 で main 着地済、v2.3.x stack PR-V1..V24 + hardening は #433 で main 着地済の状況を INDEX に反映(`### IN-PROGRESS` → `### COMPLETED` section 移動 + PR-2II / PR-2JJ v2 final / docs(release)の row 追加 + AST commutative IR canonical refs 追加)。Last updated を 2026-05-15 に更新、CHANGELOG の「着地予定」表現を「着地、PR #433」に修正。docs-only(src / dist / bundle / test 不変、7711/7711 pass 維持)。
+- **PR-W2 docx↔pptx 共通 helper 抽出**(2026-05-15):`src/features/ast/export-runs-common.ts`(NEW)に `isInternalLink` / `extractEntryLidFromHref` / `detectTaskState` / `stripTaskPrefix` / `base64ToUint8Array` / `resolveImageData` の 6 helper を集約。docx 側で `imageRunForAssetSrc` の asset 解決部分を共通 helper の `resolveImageData` + `buildImageRun` の 2 段構成にリファクタ、pptx 側で `resolveImageSrc` → `resolveImageData` import に置換。bit-identical 振る舞いを保証(全 7711 test pass)、新 helper の case matrix unit test 55 件(`tests/features/ast/export-runs-common.test.ts`、wave 規律 §4 の 10 件以上を 5 系統で satisfy)。**bundle.js 1849 → 1848 KB**(差は minify 後で微小、source line は docx -92 + pptx -66 = -158 行削減)。drift gap が今は閉じていても将来 PDF / LaTeX / ePub export 追加時に同じ helper をコピペする誘因を構造的に阻止。
+
 ---
 
 ## Schema migration

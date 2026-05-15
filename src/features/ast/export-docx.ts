@@ -63,6 +63,14 @@ import type {
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import { detectCsvLang, parseCsv, isHeaderDisabled } from '@features/markdown/csv-table';
+import {
+  isInternalLink,
+  extractEntryLidFromHref,
+  detectTaskState,
+  stripTaskPrefix,
+  base64ToUint8Array,
+  resolveImageData,
+} from '@features/ast/export-runs-common';
 
 /** PKC2 HTML が使う default font(`base.css --font-sans` 1st choice)。 */
 const DEFAULT_FONT = 'BIZ UDGothic';
@@ -186,83 +194,12 @@ function nextHeadingPrefix(ctx: ExportContext, level: number): string {
 
 // ── Inline → docx Run ─────────────────────────────────────
 
-function isInternalLink(href: string): boolean {
-  return (
-    href.startsWith('entry:')
-    || href.startsWith('pkc://')
-    || href.startsWith('#log/')
-    || href.startsWith('#day/')
-    || href.startsWith('#')
-  );
-}
-
-function extractEntryLidFromHref(href: string): string | null {
-  if (href.startsWith('entry:')) {
-    const rest = href.slice('entry:'.length);
-    const hashIdx = rest.indexOf('#');
-    return hashIdx === -1 ? rest : rest.slice(0, hashIdx);
-  }
-  if (href.startsWith('pkc://')) {
-    const m = /^pkc:\/\/[^/]+\/entry\/([^/?#]+)/.exec(href);
-    if (m) return m[1] ?? null;
-  }
-  return null;
-}
-
-function base64ToUint8Array(b64: string): Uint8Array {
-  // PR-V22 hotfix(user audit「画像埋め込めてない」 root cause):
-  // `Buffer.from(b64, 'base64')` は Node API でブラウザでは未定義。vite の
-  // single-HTML bundle で実行する場合、`Buffer` がない → catch して null
-  // fallback → image 埋め込みが silent fail していた。
-  // ブラウザ標準 `atob` + Uint8Array で書き直す(node でも動く)。
-  const binStr = typeof atob === 'function'
-    ? atob(b64)
-    : (typeof Buffer !== 'undefined' ? Buffer.from(b64, 'base64').toString('binary') : '');
-  const arr = new Uint8Array(binStr.length);
-  for (let i = 0; i < binStr.length; i++) arr[i] = binStr.charCodeAt(i);
-  return arr;
-}
-
 function imageRunForAssetSrc(src: string, ctx: ExportContext): ImageRun | null {
-  let key: string | null = null;
-  let mime: string | null = null;
-  if (src.startsWith('asset:')) {
-    key = src.slice('asset:'.length);
-  } else if (src.startsWith('pkc://')) {
-    // PR-V20 hotfix(2026-05-14、user audit「画像埋め込めてない」):
-    // PKC2 が emit する `pkc://<cid>/asset/<key>` 形式の asset 参照を解決。
-    const m = /^pkc:\/\/[^/]+\/asset\/([^/?#]+)/.exec(src);
-    if (m) key = m[1] ?? null;
-  } else if (src.startsWith('data:image/')) {
-    const m = /^data:(image\/[^;]+);base64,(.+)$/.exec(src);
-    if (m) {
-      mime = m[1] ?? null;
-      const base64 = m[2] ?? '';
-      try {
-        const arr = base64ToUint8Array(base64);
-        return buildImageRun(arr, mime ?? 'image/png');
-      } catch { return null; }
-    }
-  }
-  if (!key) return null;
-  const base64 = ctx.assets[key];
-  if (!base64) return null;
-  // mime を asset を所有する attachment entry から探す
-  for (const e of ctx.entriesByLid.values()) {
-    if (e.archetype === 'attachment') {
-      try {
-        const body = JSON.parse(e.body) as { asset_key?: string; mime?: string };
-        if (body.asset_key === key && typeof body.mime === 'string') {
-          mime = body.mime;
-          break;
-        }
-      } catch { /* ignore */ }
-    }
-  }
-  if (!mime) mime = 'image/png';
+  const resolved = resolveImageData(src, ctx);
+  if (!resolved) return null;
   try {
-    const arr = base64ToUint8Array(base64);
-    return buildImageRun(arr, mime);
+    const arr = base64ToUint8Array(resolved.data);
+    return buildImageRun(arr, resolved.mime);
   } catch { return null; }
 }
 
@@ -396,31 +333,6 @@ function linkToRuns(link: AstLink, ctx: ExportContext, base: InlineStyle): RunOr
     textRuns.push(new TextRun(applyStyle({ text: link.href }, base)));
   }
   return [new ExternalHyperlink({ link: link.href, children: textRuns })];
-}
-
-/**
- * PR-V19:GFM task list の検出。bullet list 内の paragraph 本文 head が
- * `[ ]` / `[x]` / `[X]` で始まれば task list item と認識(markdown-it に
- * plugin が無いため AST 上では bullet として現れる、それを補正)。
- */
-function detectTaskState(inlines: readonly AstInline[]): 'open' | 'done' | null {
-  if (inlines.length === 0) return null;
-  const first = inlines[0];
-  if (!first || first.kind !== 'text') return null;
-  const m = /^\[([ xX])\]\s/.exec(first.value);
-  if (!m) return null;
-  return m[1] === ' ' ? 'open' : 'done';
-}
-
-function stripTaskPrefix(inlines: readonly AstInline[]): AstInline[] {
-  if (inlines.length === 0) return [...inlines];
-  const first = inlines[0];
-  if (!first || first.kind !== 'text') return [...inlines];
-  const stripped = first.value.replace(/^\[[ xX]\]\s/, '');
-  return [
-    { kind: 'text', value: stripped } as AstInline,
-    ...inlines.slice(1),
-  ];
 }
 
 function inlinesFlatText(inlines: readonly AstInline[]): string {

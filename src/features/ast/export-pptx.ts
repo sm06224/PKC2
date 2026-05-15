@@ -45,6 +45,13 @@ import type {
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import { detectCsvLang, parseCsv, isHeaderDisabled } from '@features/markdown/csv-table';
+import {
+  isInternalLink,
+  extractEntryLidFromHref,
+  detectTaskState,
+  stripTaskPrefix,
+  resolveImageData,
+} from '@features/ast/export-runs-common';
 
 /** PR-V24:slide 内で 1 paragraph を構成する run(文字単位の formatting)。 */
 interface PptxRun {
@@ -108,60 +115,6 @@ interface SlideLine {
   /** PR-V22:画像 base64 data + mime(slide.addImage で render)。 */
   imageData?: string;
   imageMime?: string;
-}
-
-/** PR-V22:image src(asset: / pkc:// / data:)を container.assets から解決。 */
-function resolveImageSrc(
-  src: string,
-  ctx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> },
-): { data: string; mime: string } | null {
-  let key: string | null = null;
-  let mime: string | null = null;
-  if (src.startsWith('asset:')) {
-    key = src.slice('asset:'.length);
-  } else if (src.startsWith('pkc://')) {
-    const m = /^pkc:\/\/[^/]+\/asset\/([^/?#]+)/.exec(src);
-    if (m) key = m[1] ?? null;
-  } else if (src.startsWith('data:image/')) {
-    const m = /^data:(image\/[^;]+);base64,(.+)$/.exec(src);
-    if (m) return { data: m[2] ?? '', mime: m[1] ?? 'image/png' };
-  }
-  if (!key) return null;
-  const data = ctx.assets[key];
-  if (!data) return null;
-  for (const e of ctx.entriesByLid.values()) {
-    if (e.archetype === 'attachment') {
-      try {
-        const body = JSON.parse(e.body) as { asset_key?: string; mime?: string };
-        if (body.asset_key === key && typeof body.mime === 'string') {
-          mime = body.mime;
-          break;
-        }
-      } catch { /* ignore */ }
-    }
-  }
-  return { data, mime: mime ?? 'image/png' };
-}
-
-/** PR-V19:GFM task list 検出。docx と同 ロジック。 */
-function detectTaskState(inlines: readonly AstInline[]): 'open' | 'done' | null {
-  if (inlines.length === 0) return null;
-  const first = inlines[0];
-  if (!first || first.kind !== 'text') return null;
-  const m = /^\[([ xX])\]\s/.exec(first.value);
-  if (!m) return null;
-  return m[1] === ' ' ? 'open' : 'done';
-}
-
-function stripTaskPrefix(inlines: readonly AstInline[]): AstInline[] {
-  if (inlines.length === 0) return [...inlines];
-  const first = inlines[0];
-  if (!first || first.kind !== 'text') return [...inlines];
-  const stripped = first.value.replace(/^\[[ xX]\]\s/, '');
-  return [
-    { kind: 'text', value: stripped } as AstInline,
-    ...inlines.slice(1),
-  ];
 }
 
 function inlinesToPlainText(inlines: readonly AstInline[]): string {
@@ -281,29 +234,6 @@ function inlineToRuns(
   }
 }
 
-function isInternalLink(href: string): boolean {
-  return (
-    href.startsWith('entry:')
-    || href.startsWith('pkc://')
-    || href.startsWith('#log/')
-    || href.startsWith('#day/')
-    || href.startsWith('#')
-  );
-}
-
-function extractEntryLidFromHref(href: string): string | null {
-  if (href.startsWith('entry:')) {
-    const rest = href.slice('entry:'.length);
-    const hashIdx = rest.indexOf('#');
-    return hashIdx === -1 ? rest : rest.slice(0, hashIdx);
-  }
-  if (href.startsWith('pkc://')) {
-    const m = /^pkc:\/\/[^/]+\/entry\/([^/?#]+)/.exec(href);
-    if (m) return m[1] ?? null;
-  }
-  return null;
-}
-
 function linkToRuns(
   link: AstLink,
   ctx: PptxExportContext,
@@ -342,7 +272,7 @@ function extractImageLines(
   const walk = (nodes: readonly AstInline[]): void => {
     for (const n of nodes) {
       if (n.kind === 'image') {
-        const r = resolveImageSrc(n.src, ctx);
+        const r = resolveImageData(n.src, ctx);
         if (r) out.push({ text: '', imageData: r.data, imageMime: r.mime });
       } else if ('children' in n && Array.isArray(n.children)) {
         walk(n.children as readonly AstInline[]);
