@@ -87,6 +87,12 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+- **PR-W7 Wave X P1 typography**(2026-05-15、AI review P1 全 3 件着地):
+  - **P1-4 bilingual font stack**:`DEFAULT_FONT = 'BIZ UDGothic'` 単一指定 → docx の `IFontAttributesProperties` で `{ ascii: 'Inter', hAnsi: 'Inter', eastAsia: 'Noto Sans CJK JP', cs: 'Noto Sans CJK JP' }`(BILINGUAL_BODY_FONT)+ monospace は `{ ascii: 'JetBrains Mono', eastAsia: 'Source Han Code JP' }`(BILINGUAL_MONOSPACE_FONT)に分離。Word / LibreOffice が region に応じて欧文 / 和文を自動選択、受信環境に install が無い場合は font fallback。pptx は API 単一 `fontFace` のため `MONOSPACE_FONT_LATIN = 'JetBrains Mono'` 欧文主体で指定(CJK は PowerPoint / LibreOffice の自動 fallback)。
+  - **P1-5 本文 line-height 1.5**:docx の default paragraph `spacing: { line: 360, lineRule: 'auto' }` を設定。twip 240 = 1.0、360 = 1.5。和文混在文書で読みやすさ向上。
+  - **P1-6 inline code `#F4F4F5` shading**:docx は `applyStyle` で `code: true` の TextRun に `shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'F4F4F5' }` を追加、pptx は `highlight: 'F4F4F5'` で灰色擬似ボックス化(mark `==X==` の `#FFFF00` yellow とは別 hex で意味分離)。新 constant `INLINE_CODE_SHADING_HEX` を `export-constants.ts` に追加、既存 `CODE_BLOCK_SHADING_HEX = 'F5F5F5'`(block の薄灰)と別管理。
+  - case matrix test 14 件 新規(`tests/features/ast/export-typography-bilingual.test.ts`、bilingual font 5 + line-height 2 + docx inline code shading 3 + pptx inline code 4)、全 7823 test pass(PR-W6 7810 から +13、PR-V19 の `BIZ UDGothic` assertion + PR-W4 の `Consolas` assertion 計 3 件を新 font 名に follow)。bundle.js 1850 KB / bundle.css 163 KB 不変。**実機 PNG 視覚検証**:同 fixture を PR-W7 で出力、line-height 1.5 で行間が広がり、inline code の灰色擬似ボックス化、長 title の autoFit + wrap、扉スライドの中央寄せをすべて confirm。
+
 - **PR-W6 Wave X P0 構造整流**(2026-05-15、AI review P0 全 3 件着地):
   - **P0-a 章番号二重表記**:従来 `nextHeadingPrefix` が機械的に "第1章 " / "1.1 " を prepend していたため、markdown 側に "# 第一章 …" / "## 1.1 …" を書くと「第1章 第一章 …」「1.1 1.1 …」の二重表記が出ていた。`hasExistingHeadingPrefix(text, level)` で L1〜L6 全段の manual prefix を検出(L1 = 第N章 / 第〇章 / Chapter N、L2 = N.N、L3 = N.N.N、L4 = (N) / (N)、L5 = カタカナ 1 字 + 空白、L6 = `a. ` 等)、auto-prefix を skip(counter は引き続き bump して後続 sub-heading の連番を保つ)。`bumpHeadingCounter` + `formatHeadingPrefix` の 2 関数に分離。
   - **P0-c 見出し spacing + size 階段強化**:H1 spacing before 480 / after 240 twip(24pt / 12pt)+ size 40(20pt)、H2 spacing before 360 / after 160(18pt / 8pt)+ size 32(16pt)、H3 spacing before 240 / after 120(12pt / 6pt)+ size 26(13pt 維持)。旧 H1 size 32 → 40、H2 size 28 → 32 で H1↔H2 差を 2pt → 4pt に広げ、階層が一目で読める。

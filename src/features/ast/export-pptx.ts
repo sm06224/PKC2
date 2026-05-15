@@ -56,8 +56,9 @@ import {
   MARK_HIGHLIGHT_HEX,
   TABLE_HEADER_SHADING_HEX,
   TABLE_BORDER_HEX,
-  MONOSPACE_FONT,
+  MONOSPACE_FONT_LATIN,
   MATH_FONT,
+  INLINE_CODE_SHADING_HEX,
   PPTX_TABLE_BORDER_PT,
 } from '@features/ast/export-constants';
 
@@ -192,7 +193,15 @@ function inlineToRuns(
     case 'text':
       return n.value === '' ? [] : [{ ...base, text: n.value }];
     case 'inline-code':
-      return [{ ...base, text: n.value, fontFace: MONOSPACE_FONT }];
+      // PR-W7(Wave X P1):inline code = JetBrains Mono(欧文)+ `#F4F4F5`
+      // shading の擬似ボックス化。fontFace は pptxgenjs API 単一指定で
+      // CJK は PowerPoint / LibreOffice が自動 fallback。
+      return [{
+        ...base,
+        text: n.value,
+        fontFace: MONOSPACE_FONT_LATIN,
+        highlight: INLINE_CODE_SHADING_HEX,
+      }];
     case 'strong':
       return inlinesToRuns(n.children, ctx, { ...base, bold: true });
     case 'emphasis':
@@ -382,12 +391,12 @@ function blockToSlideLines(
       }
       return block.code.split('\n').map((line) => ({
         text: line,
-        fontFace: MONOSPACE_FONT,
+        fontFace: MONOSPACE_FONT_LATIN,
         indent,
       }));
     }
     case 'code-render':
-      return [{ text: block.source, fontFace: MONOSPACE_FONT, indent }];
+      return [{ text: block.source, fontFace: MONOSPACE_FONT_LATIN, indent }];
     case 'break':
       // PR-V19:break(page / rule)は slide split の signal、本文 line にはしない。
       // 呼出側 splitIntoSlides で処理(ここに来た場合はネスト内 break で、無視)

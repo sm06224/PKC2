@@ -60,11 +60,11 @@ describe('docx: AstTable cell 内 inline formatting 保持(PR-W4)', () => {
     expect(xml).toContain('<w:i/>');
   });
 
-  it('inline code cell renders Consolas font', async () => {
+  it('inline code cell renders monospace bilingual font(PR-W7 で JetBrains Mono に更新)', async () => {
     const md = '| h |\n| --- |\n| `code cell` |\n';
     const xml = await docxToXml(md);
     expect(xml).toContain('code cell');
-    expect(xml).toContain('Consolas');
+    expect(xml).toContain('JetBrains Mono');
   });
 
   it('strike cell renders `<w:strike/>`', async () => {
@@ -100,12 +100,12 @@ describe('pptx: AstTable cell 内 inline formatting 保持(PR-W4)', () => {
     expect(all).toMatch(/i="1"/);
   });
 
-  it('inline code cell renders Consolas font', async () => {
+  it('inline code cell renders monospace font(PR-W7 で JetBrains Mono に更新)', async () => {
     const md = '| h |\n| --- |\n| `code cell` |\n';
     const slides = await pptxToSlideXmls(md);
     const all = slides.join('\n');
     expect(all).toContain('code cell');
-    expect(all).toContain('Consolas');
+    expect(all).toContain('JetBrains Mono');
   });
 
   it('strike cell renders strike marker', async () => {

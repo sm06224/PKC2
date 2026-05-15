@@ -72,19 +72,40 @@ import {
   resolveImageData,
 } from '@features/ast/export-runs-common';
 import {
-  DEFAULT_FONT,
-  MONOSPACE_FONT,
+  FONT_LATIN,
+  FONT_EASTASIA,
+  MONOSPACE_FONT_LATIN,
+  MONOSPACE_FONT_EASTASIA,
   MATH_FONT,
   MARK_HIGHLIGHT_NAMED,
   TABLE_HEADER_SHADING_HEX,
   CODE_BLOCK_SHADING_HEX,
   CODE_BLOCK_LEFT_BORDER_HEX,
   HORIZONTAL_RULE_BORDER_HEX,
+  INLINE_CODE_SHADING_HEX,
+  BODY_LINE_HEIGHT_TWIP,
   DOCX_BORDER_SIZE_DEFAULT,
   DOCX_BORDER_SPACE_DEFAULT,
   DOCX_HEADING_INDENT_UNIT_TWIP,
   DOCX_QUOTE_INDENT_TWIP,
 } from '@features/ast/export-constants';
+
+/** PR-W7:bilingual font stack(欧文 ascii + 和文 eastAsia)を docx の
+ * `IFontAttributesProperties` で表現。`hAnsi` は欧文と同じ、`cs` は CJK と
+ * 同じにして High-ANSI + complex script で挙動を揃える。 */
+const BILINGUAL_BODY_FONT = {
+  ascii: FONT_LATIN,
+  hAnsi: FONT_LATIN,
+  eastAsia: FONT_EASTASIA,
+  cs: FONT_EASTASIA,
+} as const;
+
+const BILINGUAL_MONOSPACE_FONT = {
+  ascii: MONOSPACE_FONT_LATIN,
+  hAnsi: MONOSPACE_FONT_LATIN,
+  eastAsia: MONOSPACE_FONT_EASTASIA,
+  cs: MONOSPACE_FONT_EASTASIA,
+} as const;
 
 /** Heading 1〜6 の Word HeadingLevel mapping。 */
 const HEADING_LEVELS: Record<number, typeof HeadingLevel[keyof typeof HeadingLevel]> = {
@@ -137,7 +158,15 @@ function applyStyle(base: IRunOptions, style: InlineStyle): IRunOptions {
     ...(style.highlight ? { highlight: style.highlight } : {}),
     ...(style.superScript ? { superScript: true } : {}),
     // 色は指定しない(default = 自動 = 黒)
-    ...(style.code ? { font: MONOSPACE_FONT } : {}),
+    // PR-W7(Wave X P1):inline code = monospace bilingual font(欧文
+    // JetBrains Mono + 和文 Source Han Code JP)+ `#F4F4F5` shading で
+    // GitHub / Notion 風の擬似ボックス化。
+    ...(style.code
+      ? {
+        font: BILINGUAL_MONOSPACE_FONT,
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: INLINE_CODE_SHADING_HEX },
+      }
+      : {}),
   };
 }
 
@@ -594,7 +623,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       return lines.map(
         (line) =>
           new Paragraph({
-            children: [new TextRun({ text: line, font: MONOSPACE_FONT })],
+            children: [new TextRun({ text: line, font: BILINGUAL_MONOSPACE_FONT })],
             shading: { type: ShadingType.CLEAR, color: 'auto', fill: CODE_BLOCK_SHADING_HEX },
             border: {
               left: {
@@ -609,7 +638,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
     }
     case 'code-render':
       return [new Paragraph({
-        children: [new TextRun({ text: block.source, font: MONOSPACE_FONT })],
+        children: [new TextRun({ text: block.source, font: BILINGUAL_MONOSPACE_FONT })],
       })];
     case 'break': {
       if (block.breakKind === 'page') {
@@ -715,42 +744,50 @@ export async function astToDocxBlob(
   }
 
   const doc = new Document({
-    // PR-V19 user audit 3:default font を HTML(BIZ UDGothic)に合わせる
     styles: {
       default: {
         document: {
+          // PR-W7(Wave X P1、AI review feedback):欧文 / 和文を bilingual
+          // で分離(Inter + Noto Sans CJK JP)。`IFontAttributesProperties`
+          // で `{ ascii, hAnsi, eastAsia, cs }` を渡すことで Word/LibreOffice
+          // が region に応じて正しい font を選ぶ。受信環境に install が無い
+          // 場合は自動 fallback。**line-height** は 1.5(twip 360)に設定、
+          // 和文 1.5〜1.6 の読みやすさを satisfy。
           run: {
-            font: DEFAULT_FONT,
+            font: BILINGUAL_BODY_FONT,
             size: 22, // 11pt
+          },
+          paragraph: {
+            spacing: { line: BODY_LINE_HEIGHT_TWIP, lineRule: 'auto' },
           },
         },
         // PR-W6(AI review P0-c):H1/H2/H3 のサイズ階段を強化、spacing も
         // before 24/18/12pt + after 12/8/6pt を明示(twip = pt × 20)。
         // H1 size 40(20pt)/ H2 size 32(16pt)/ H3 size 26(13pt)で
-        // H1↔H2 の差を 4pt → 4pt、H2↔H3 の差を 1pt → 3pt に広げて階層が
-        // 一目で読めるようにする。
+        // H1↔H2 の差を 4pt、H2↔H3 の差を 3pt に広げて階層が一目で読める。
+        // PR-W7:font も bilingual に置換。
         heading1: {
-          run: { font: DEFAULT_FONT, size: 40, bold: true }, // 20pt
+          run: { font: BILINGUAL_BODY_FONT, size: 40, bold: true }, // 20pt
           paragraph: { spacing: { before: 480, after: 240 } }, // 24pt / 12pt
         },
         heading2: {
-          run: { font: DEFAULT_FONT, size: 32, bold: true }, // 16pt
+          run: { font: BILINGUAL_BODY_FONT, size: 32, bold: true }, // 16pt
           paragraph: { spacing: { before: 360, after: 160 } }, // 18pt / 8pt
         },
         heading3: {
-          run: { font: DEFAULT_FONT, size: 26, bold: true }, // 13pt
+          run: { font: BILINGUAL_BODY_FONT, size: 26, bold: true }, // 13pt
           paragraph: { spacing: { before: 240, after: 120 } }, // 12pt / 6pt
         },
         heading4: {
-          run: { font: DEFAULT_FONT, size: 24, bold: true }, // 12pt
+          run: { font: BILINGUAL_BODY_FONT, size: 24, bold: true }, // 12pt
           paragraph: { spacing: { before: 120, after: 60 } },
         },
         heading5: {
-          run: { font: DEFAULT_FONT, size: 22, bold: true },
+          run: { font: BILINGUAL_BODY_FONT, size: 22, bold: true },
           paragraph: { spacing: { before: 100, after: 60 } },
         },
         heading6: {
-          run: { font: DEFAULT_FONT, size: 22, bold: true },
+          run: { font: BILINGUAL_BODY_FONT, size: 22, bold: true },
           paragraph: { spacing: { before: 80, after: 60 } },
         },
       },

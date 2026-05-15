@@ -49,18 +49,60 @@ export const TABLE_BORDER_HEX = '888888';
 // ── Font tokens ───────────────────────────────────────────
 
 /**
- * PKC2 HTML が使う default font。`base.css --font-sans` の 1st choice。
- *
- * docx の `Document.styles.default.document.run.font` で全文書 default として
- * 適用。HTML / Web 表示と Word 出力でフォント統一感を出すため。
+ * PR-W7(Wave X P1、AI review feedback):欧文 / 和文を **bilingual font
+ * stack** で分離。Word/PPTX 両方で「欧文は Inter、和文は Noto Sans CJK JP」
+ * を渡し、受信環境に install が無い場合は LibreOffice / Word が fallback
+ * 解決する。AI review 推奨の和文 Noto Sans JP / 欧文 Inter / コード
+ * JetBrains Mono / コード和文 Source Han Code JP を踏襲。
+ */
+
+/** 欧文 default body font。 */
+export const FONT_LATIN = 'Inter';
+
+/** 和文 default body font(CJK)。 */
+export const FONT_EASTASIA = 'Noto Sans CJK JP';
+
+/** 欧文 monospace。 */
+export const MONOSPACE_FONT_LATIN = 'JetBrains Mono';
+
+/** 和文 monospace(CJK)。 */
+export const MONOSPACE_FONT_EASTASIA = 'Source Han Code JP';
+
+/**
+ * @deprecated PR-W7 で bilingual 分離。docx は `IFontAttributesProperties`
+ * で `{ ascii, eastAsia }` を渡す、pptx は `fontFace: FONT_LATIN` で欧文
+ * 主体(CJK は LibreOffice / Word の自動 fallback に任せる)。互換のため
+ * 既存 import 名を残すが新規 site では使わない。
  */
 export const DEFAULT_FONT = 'BIZ UDGothic';
 
-/** Inline code / code block の monospace font。docx / pptx 共通。 */
+/**
+ * @deprecated PR-W7 で `MONOSPACE_FONT_LATIN` / `MONOSPACE_FONT_EASTASIA` に
+ * 分離。pptx は `fontFace: MONOSPACE_FONT_LATIN` で十分(LibreOffice が CJK
+ * fallback)。docx は `{ ascii, eastAsia }` で両方指定。
+ */
 export const MONOSPACE_FONT = 'Consolas';
 
 /** 数式(math-inline / math-block)用 font。docx / pptx 共通。 */
 export const MATH_FONT = 'Cambria Math';
+
+// ── Spacing tokens(line-height / inline code shading)─────
+
+/**
+ * PR-W7(Wave X P1、AI review feedback):本文 line-height を 1.5(twip
+ * line 360)に明示。docx 単位 = 240 twip = 1.0、360 twip = 1.5、384 twip =
+ * 1.6。和文では 1.5〜1.6 が読みやすい。`lineRule: 'auto'` で複数行 line
+ * spacing は font size に応じて auto 計算。
+ */
+export const BODY_LINE_HEIGHT_TWIP = 360;
+
+/**
+ * PR-W7(Wave X P1、AI review feedback):inline code 背景。`#F4F4F5` は
+ * GitHub / Notion / Obsidian で慣習的に使われる中性灰。`CODE_BLOCK_SHADING_HEX`
+ * (= `F5F5F5`)とは別管理(inline と block で意味が異なる + 将来別 token に
+ * 分岐する余地を残す)。
+ */
+export const INLINE_CODE_SHADING_HEX = 'F4F4F5';
 
 // ── Numeric tokens(現状 docx 側のみ。pptx は inch ベースで分離)────────
 
