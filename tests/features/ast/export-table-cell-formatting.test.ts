@@ -116,23 +116,22 @@ describe('pptx: AstTable cell 内 inline formatting 保持(PR-W4)', () => {
     expect(all).toMatch(/strike="(sngStrike|dblStrike)"|<a:strikethrough/);
   });
 
-  it('mark cell renders yellow highlight FFFF00', async () => {
+  it('mark cell renders soft yellow highlight FFF3A0(PR-W8 で FFFF00 から tone-down)', async () => {
     const md = '| h |\n| --- |\n| ==marked text== |\n';
     const slides = await pptxToSlideXmls(md);
     const all = slides.join('\n');
     expect(all).toContain('marked text');
-    expect(all).toMatch(/FFFF00|highlight/);
+    expect(all).toMatch(/FFF3A0|highlight/);
   });
 
-  it('header row cells get bold + EEEEEE fill', async () => {
+  it('header row cells get bold + F4F4F5 fill(PR-W8 で EEEEEE から統一)', async () => {
     const md = '| Header A | Header B |\n| --- | --- |\n| body | body |\n';
     const slides = await pptxToSlideXmls(md);
     const all = slides.join('\n');
     expect(all).toContain('Header A');
     expect(all).toContain('Header B');
-    // bold marker(b="1")and shading(EEEEEE)
     expect(all).toMatch(/b="1"/);
-    expect(all).toContain('EEEEEE');
+    expect(all).toContain('F4F4F5');
   });
 });
 

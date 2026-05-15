@@ -26,25 +26,72 @@
  * pptx は free-form HEX を期待するため、両者で値が一致しない。
  * pptx 側で `MARK_HIGHLIGHT_HEX`、docx 側で `MARK_HIGHLIGHT_NAMED` を export。
  */
-export const MARK_HIGHLIGHT_HEX = 'FFFF00';
+/**
+ * PR-W8(Wave X P2、AI review feedback):従来 yellow `#FFFF00` ベタ塗りは
+ * スライド / 印刷で **威圧的** と AI review 指摘。`#FFF3A0`(soft yellow)に
+ * tone-down、印刷 / 紙面でも目に優しい彩度に。docx は named token から
+ * `shading.fill` の hex 経路に切替。
+ */
+export const MARK_HIGHLIGHT_HEX = 'FFF3A0';
 
-/** docx の named highlight(`'yellow'`)。`MARK_HIGHLIGHT_HEX` の docx 対応値。 */
+/**
+ * @deprecated PR-W8 で named 'yellow' から shading.fill hex 経路に移行。
+ * 旧 import 名は残置するが、新規 site では `MARK_HIGHLIGHT_HEX` を使う。
+ */
 export const MARK_HIGHLIGHT_NAMED = 'yellow' as const;
 
-/** 表のヘッダー行 shading(灰色、薄)。docx / pptx で共通。 */
-export const TABLE_HEADER_SHADING_HEX = 'EEEEEE';
+/**
+ * 表のヘッダー行 shading(docx / pptx で共通)。
+ *
+ * PR-W8(Wave X P2):従来 `EEEEEE` → `F4F4F5` に統一(`INLINE_CODE_SHADING_HEX`
+ * と同色)、AI review「ヘッダー行背景 `#F4F4F5`」指示に追従。
+ */
+export const TABLE_HEADER_SHADING_HEX = 'F4F4F5';
 
 /** Code block の背景 shading(灰色、より薄)。docx 専用(pptx は背景 fill 未実装)。 */
 export const CODE_BLOCK_SHADING_HEX = 'F5F5F5';
 
-/** Code block の左 border 色(docx)/ 表の罫線色(pptx)。 */
+/** Code block の左 border 色(docx)。 */
 export const CODE_BLOCK_LEFT_BORDER_HEX = '888888';
 
 /** Horizontal rule(`AstBreak(rule)`)の border-bottom 罫線色。docx 専用。 */
 export const HORIZONTAL_RULE_BORDER_HEX = '666666';
 
-/** 表の罫線色(pptx の `slide.addTable` border)。`CODE_BLOCK_LEFT_BORDER_HEX` と一致するが意味は異なる。 */
-export const TABLE_BORDER_HEX = '888888';
+/**
+ * 表の罫線色。
+ *
+ * PR-W8(Wave X P2、AI review feedback):従来 `888888` → `CCCCCC` の
+ * hairline 0.5pt grey に変更。AI review「罫線 hairline 0.5pt grey」指示。
+ */
+export const TABLE_BORDER_HEX = 'CCCCCC';
+
+/**
+ * PR-W8(Wave X P2):**theme accent color**。H2/H3 の左 border / footer
+ * 横線などで使う 1 色のアクセント。`#2F6FED`(青系)= modern productivity
+ * tool で広く使われる accent。User が将来 theme 変更する時は本 constant を
+ * 差し替えるだけで全 surface に伝播。
+ */
+export const ACCENT_COLOR_HEX = '2F6FED';
+
+/**
+ * PR-W8(Wave X P2):**task list glyph 色**。AI review が「未完 grey ☐、
+ * 完 緑 ☑」と指示。
+ */
+export const TASK_OPEN_GLYPH_COLOR_HEX = '888888';
+export const TASK_DONE_GLYPH_COLOR_HEX = '22C55E';
+
+/**
+ * PR-W8(Wave X P2):**table cell padding**。AI review「cell padding 8pt」
+ * 指示。docx の twip 単位:160 twip = 8pt。
+ */
+export const TABLE_CELL_PADDING_TWIP = 160;
+
+/**
+ * PR-W8(Wave X P2):**heading accent left border**。H2/H3 の左に 3pt
+ * width(docx 単位 24 = 3pt)の accent line。AI review「H2/H3 に左 border
+ * 3pt のアクセントライン」指示。
+ */
+export const HEADING_ACCENT_BORDER_SIZE = 24; // 3pt
 
 // ── Font tokens ───────────────────────────────────────────
 

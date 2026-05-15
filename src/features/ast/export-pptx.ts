@@ -60,6 +60,8 @@ import {
   MATH_FONT,
   INLINE_CODE_SHADING_HEX,
   PPTX_TABLE_BORDER_PT,
+  TASK_OPEN_GLYPH_COLOR_HEX,
+  TASK_DONE_GLYPH_COLOR_HEX,
 } from '@features/ast/export-constants';
 
 /** PR-V24:slide 内で 1 paragraph を構成する run(文字単位の formatting)。 */
@@ -70,8 +72,11 @@ interface PptxRun {
   strike?: boolean;
   underline?: boolean;
   fontFace?: string;
-  /** Mark = yellow background。 */
+  /** Mark `==X==` の highlight。PR-W8 で soft yellow `#FFF3A0` に tone-down。
+   * inline code は `#F4F4F5` 灰色擬似ボックス用にも流用。 */
   highlight?: string;
+  /** PR-W8(Wave X P2):任意 color hex(task glyph: 未完 grey / 完 緑)。 */
+  color?: string;
   /** 内部リンク(slide 番号で jump)or 外部 URL。 */
   hyperlink?: { url?: string; slide?: number; tooltip?: string };
   superscript?: boolean;
@@ -355,19 +360,31 @@ function blockToSlideLines(
           const lines = blockToSlideLines(effectiveChild, indent + 1, ctx);
           for (const line of lines) {
             if (taskState) {
+              // PR-W8(AI review P2-10):task glyph を color 化(未完 grey ☐、
+              // 完 緑 ☑)。
               const prefix = taskState === 'done' ? '☑ ' : '☐ ';
+              const glyphColor = taskState === 'done'
+                ? TASK_DONE_GLYPH_COLOR_HEX
+                : TASK_OPEN_GLYPH_COLOR_HEX;
               out.push({
                 ...line,
                 text: prefix + line.text,
-                runs: line.runs ? [{ text: prefix }, ...line.runs] : undefined,
+                runs: line.runs
+                  ? [{ text: prefix, color: glyphColor }, ...line.runs]
+                  : [{ text: prefix, color: glyphColor }, { text: line.text }],
                 taskState,
               });
             } else if (block.listKind === 'task') {
               const prefix = item.state === 'done' ? '☑ ' : '☐ ';
+              const glyphColor = item.state === 'done'
+                ? TASK_DONE_GLYPH_COLOR_HEX
+                : TASK_OPEN_GLYPH_COLOR_HEX;
               out.push({
                 ...line,
                 text: prefix + line.text,
-                runs: line.runs ? [{ text: prefix }, ...line.runs] : undefined,
+                runs: line.runs
+                  ? [{ text: prefix, color: glyphColor }, ...line.runs]
+                  : [{ text: prefix, color: glyphColor }, { text: line.text }],
                 taskState: item.state ?? 'open',
               });
             } else {
@@ -483,6 +500,8 @@ function linesToTextObjects(
       if (run.superscript) opts.superscript = true;
       if (run.subscript) opts.subscript = true;
       if (run.hyperlink) opts.hyperlink = run.hyperlink;
+      // PR-W8(Wave X P2):任意 color(task glyph: grey ☐ / green ☑)。
+      if (run.color) opts.color = run.color;
       if (isLastRun && !isLastLine) opts.breakLine = true;
       out.push({ text: run.text, options: opts });
     }

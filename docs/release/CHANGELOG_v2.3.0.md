@@ -87,6 +87,13 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+- **PR-W8 Wave X P2 visual language**(2026-05-15、AI review P2 全 4 件着地):
+  - **P2-7 H2/H3 左 accent border**:`ACCENT_COLOR_HEX = '2F6FED'`(青)+ `HEADING_ACCENT_BORDER_SIZE = 24`(3pt)で docx の Paragraph.border.left に追加。H1 は pageBreakBefore で chapter separator が確保されるので不要、H2/H3 のみ accent line で階層識別を強化。`IParagraphOptions.border` は readonly のため `accentBorder` 変数を spread で構築する pattern。
+  - **P2-8 表 padding + hairline border**:`TABLE_CELL_PADDING_TWIP = 160`(8pt)を TableCell.margins(top/bottom/left/right)に適用、`TABLE_BORDER_HEX = 'CCCCCC'` の hairline 0.5pt grey(border size 4 = 0.5pt)を Table.borders 6 方向すべてに適用、ヘッダー shading を `EEEEEE` → `F4F4F5` に統一(`INLINE_CODE_SHADING_HEX` と同色、AI review 指示)。AstTable + CSV fence table 両方で適用。
+  - **P2-9 marker tone-down**:`MARK_HIGHLIGHT_HEX` を `'FFFF00'` → `'FFF3A0'`(soft yellow)に変更、docx は named highlight `'yellow'` から `shading.fill` hex 経路に切替(`InlineStyle.highlight` → `InlineStyle.mark: boolean` field 変更)、pptx は `PptxRun.highlight` の hex 値を新値に。「印刷物 / プレゼンで威圧的」AI review 指摘を解消。
+  - **P2-10 task list glyph 色化**:`TASK_OPEN_GLYPH_COLOR_HEX = '888888'`(grey)/ `TASK_DONE_GLYPH_COLOR_HEX = '22C55E'`(green)を `InlineStyle.color` / `PptxRun.color` 経由で TextRun に適用、未完 ☐ が grey、完 ☑ が green で **状態の意味が色で伝わる**。
+  - case matrix test 18 件 新規(`tests/features/ast/export-visual-language-p2.test.ts`、accent border 4 + table 4 + marker 3 + task 5 + invariant 2)、既存 test 4 件を新色に follow(EEEEEE → F4F4F5、FFFF00 → FFF3A0、yellow named → shading.fill hex)。全 7841 test pass(PR-W7 7823 から +18)。bundle.js 1851 KB(+1 KB)/ bundle.css 163 KB 不変。**実機 PNG 視覚検証**:H2/H3 左 accent border の青ライン、table cell padding + hairline 罫線、marker の soft yellow、task glyph の grey ☐ / green ☑ 色化を docx + pptx 両方で confirm。
+
 - **PR-W7 Wave X P1 typography**(2026-05-15、AI review P1 全 3 件着地):
   - **P1-4 bilingual font stack**:`DEFAULT_FONT = 'BIZ UDGothic'` 単一指定 → docx の `IFontAttributesProperties` で `{ ascii: 'Inter', hAnsi: 'Inter', eastAsia: 'Noto Sans CJK JP', cs: 'Noto Sans CJK JP' }`(BILINGUAL_BODY_FONT)+ monospace は `{ ascii: 'JetBrains Mono', eastAsia: 'Source Han Code JP' }`(BILINGUAL_MONOSPACE_FONT)に分離。Word / LibreOffice が region に応じて欧文 / 和文を自動選択、受信環境に install が無い場合は font fallback。pptx は API 単一 `fontFace` のため `MONOSPACE_FONT_LATIN = 'JetBrains Mono'` 欧文主体で指定(CJK は PowerPoint / LibreOffice の自動 fallback)。
   - **P1-5 本文 line-height 1.5**:docx の default paragraph `spacing: { line: 360, lineRule: 'auto' }` を設定。twip 240 = 1.0、360 = 1.5。和文混在文書で読みやすさ向上。

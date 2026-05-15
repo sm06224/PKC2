@@ -138,11 +138,10 @@ describe('PR-W7 P1-6: pptx inline code shading', () => {
     expect(all).toContain('JetBrains Mono');
   });
 
-  it('mark(==X==)は `#FFFF00` highlight、inline code とは別の色', async () => {
+  it('mark(==X==)は `#FFF3A0` soft yellow(PR-W8 tone-down)、inline code `#F4F4F5` とは別の色', async () => {
     const slides = await pptxToSlideXmls('### Slide\n\n==marked== と `code` 両方。\n');
     const all = slides.join('\n');
-    // mark は yellow FFFF00、inline code は F4F4F5、両方 emit
-    expect(all).toContain('FFFF00');
-    expect(all).toContain('F4F4F5');
+    expect(all).toContain('FFF3A0'); // mark soft yellow
+    expect(all).toContain('F4F4F5'); // inline code grey
   });
 });

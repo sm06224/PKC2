@@ -77,13 +77,19 @@ import {
   MONOSPACE_FONT_LATIN,
   MONOSPACE_FONT_EASTASIA,
   MATH_FONT,
-  MARK_HIGHLIGHT_NAMED,
+  MARK_HIGHLIGHT_HEX,
   TABLE_HEADER_SHADING_HEX,
+  TABLE_BORDER_HEX,
   CODE_BLOCK_SHADING_HEX,
   CODE_BLOCK_LEFT_BORDER_HEX,
   HORIZONTAL_RULE_BORDER_HEX,
   INLINE_CODE_SHADING_HEX,
   BODY_LINE_HEIGHT_TWIP,
+  ACCENT_COLOR_HEX,
+  TASK_OPEN_GLYPH_COLOR_HEX,
+  TASK_DONE_GLYPH_COLOR_HEX,
+  TABLE_CELL_PADDING_TWIP,
+  HEADING_ACCENT_BORDER_SIZE,
   DOCX_BORDER_SIZE_DEFAULT,
   DOCX_BORDER_SPACE_DEFAULT,
   DOCX_HEADING_INDENT_UNIT_TWIP,
@@ -142,22 +148,36 @@ interface InlineStyle {
   strike?: boolean;
   /** Inline code = monospace font + 灰色 shading(default 色は touch しない)。 */
   code?: boolean;
-  /** Mark = 黄色 highlight。 */
-  highlight?: 'yellow' | 'green' | 'cyan' | 'magenta';
+  /**
+   * Mark `==text==` highlight。
+   *
+   * PR-W8(Wave X P2):従来 named token `'yellow'` → hex shading `#FFF3A0`
+   * に切替(soft yellow tone-down)。boolean flag に変更、true なら applyStyle
+   * 内で `shading: { fill: MARK_HIGHLIGHT_HEX }` を付与。
+   */
+  mark?: boolean;
   /** Superscript(リンク連番表示用)。 */
   superScript?: boolean;
+  /** PR-W8:任意 color hex 指定(task glyph 用、grey ☐ / green ☑)。 */
+  color?: string;
 }
 
 function applyStyle(base: IRunOptions, style: InlineStyle): IRunOptions {
-  // IRunOptions の field は readonly なので spread で組み直す
+  // IRunOptions の field は readonly なので spread で組み直す。
+  // PR-W8(Wave X P2):mark / code 両方が同時に shading 競合する場合は code
+  // が優先(applyStyle 順序通り)。実用上は両立しないので問題なし。
   return {
     ...base,
     ...(style.bold ? { bold: true } : {}),
     ...(style.italics ? { italics: true } : {}),
     ...(style.strike ? { strike: true } : {}),
-    ...(style.highlight ? { highlight: style.highlight } : {}),
     ...(style.superScript ? { superScript: true } : {}),
-    // 色は指定しない(default = 自動 = 黒)
+    ...(style.color ? { color: style.color } : {}),
+    // PR-W8:mark `==X==` の shading を soft yellow `#FFF3A0` に tone-down
+    // (旧 named `'yellow'` = `#FFFF00` ベタ塗りは威圧的だった)。
+    ...(style.mark
+      ? { shading: { type: ShadingType.CLEAR, color: 'auto', fill: MARK_HIGHLIGHT_HEX } }
+      : {}),
     // PR-W7(Wave X P1):inline code = monospace bilingual font(欧文
     // JetBrains Mono + 和文 Source Han Code JP)+ `#F4F4F5` shading で
     // GitHub / Notion 風の擬似ボックス化。
@@ -339,7 +359,8 @@ function inlineToRuns(
       return [new TextRun(applyStyle({ text: node.value }, { ...base, code: true }))];
     }
     case 'mark':
-      return inlinesToRuns(node.children, ctx, { ...base, highlight: MARK_HIGHLIGHT_NAMED });
+      // PR-W8(Wave X P2、AI review feedback):shading.fill #FFF3A0 経路
+      return inlinesToRuns(node.children, ctx, { ...base, mark: true });
     case 'em-dot':
       return inlinesToRuns(node.children, ctx, { ...base, italics: true });
     case 'sup':
@@ -465,16 +486,32 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         if (block.level === 1) ctx.seenFirstH1 = true;
         // PR-W6(AI review P0-c 見出し spacing 明示):H1 前 24pt / 後 12pt、
         // H2 前 18pt / 後 8pt、H3 前 12pt / 後 6pt(twip = pt × 20)。
-        // 旧 240/120, 200/100, 160/80 から段階を強化。
         const spacingByLevel: Record<number, { before: number; after: number }> = {
-          1: { before: 480, after: 240 }, // 24pt / 12pt
-          2: { before: 360, after: 160 }, // 18pt / 8pt
-          3: { before: 240, after: 120 }, // 12pt / 6pt
+          1: { before: 480, after: 240 },
+          2: { before: 360, after: 160 },
+          3: { before: 240, after: 120 },
         };
+        // PR-W8(AI review P2-7):H2/H3 に左 accent border 3pt(blue
+        // `#2F6FED`)。H1 は pageBreakBefore で chapter separator が確保
+        // されるので不要。`IParagraphOptions.border` は readonly のため
+        // spread で構築する。
+        const accentBorder = block.level === 2 || block.level === 3
+          ? {
+            border: {
+              left: {
+                style: BorderStyle.SINGLE,
+                color: ACCENT_COLOR_HEX,
+                size: HEADING_ACCENT_BORDER_SIZE,
+                space: 8,
+              },
+            },
+          }
+          : {};
         const opts: IParagraphOptions = {
           heading: level,
           children: headingRuns,
           spacing: spacingByLevel[block.level] ?? { before: 240, after: 120 },
+          ...accentBorder,
         };
         if (block.level === 1 && !isFirstH1) {
           return [new Paragraph({ ...opts, pageBreakBefore: true })];
@@ -532,9 +569,17 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
             const inlines = inlinesToRuns(inlinesInput, ctx);
             let opts: IParagraphOptions;
             if (taskState) {
+              // PR-W8(AI review P2-10):task glyph を color 化(未完 grey ☐、
+              // 完 緑 ☑)。状態が text 周辺で伝わる視覚言語に。
               const prefix = taskState === 'done' ? '☑ ' : '☐ ';
+              const glyphColor = taskState === 'done'
+                ? TASK_DONE_GLYPH_COLOR_HEX
+                : TASK_OPEN_GLYPH_COLOR_HEX;
               opts = {
-                children: [new TextRun({ text: prefix }), ...inlines.filter((r): r is TextRun => r instanceof TextRun)],
+                children: [
+                  new TextRun({ text: prefix, color: glyphColor }),
+                  ...inlines.filter((r): r is TextRun => r instanceof TextRun),
+                ],
                 indent: { left: DOCX_HEADING_INDENT_UNIT_TWIP },
               };
             } else if (block.listKind === 'ordered') {
@@ -542,8 +587,14 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
             } else if (block.listKind === 'task') {
               // AST 直接の task(rare、parser plugin 経路)
               const prefix = item.state === 'done' ? '☑ ' : '☐ ';
+              const glyphColor = item.state === 'done'
+                ? TASK_DONE_GLYPH_COLOR_HEX
+                : TASK_OPEN_GLYPH_COLOR_HEX;
               opts = {
-                children: [new TextRun({ text: prefix }), ...inlines.filter((r): r is TextRun => r instanceof TextRun)],
+                children: [
+                  new TextRun({ text: prefix, color: glyphColor }),
+                  ...inlines.filter((r): r is TextRun => r instanceof TextRun),
+                ],
                 bullet: { level: 0 },
               };
             } else {
@@ -559,16 +610,13 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       return items;
     }
     case 'table': {
-      // PR-W4 fix(2026-05-15、simplify reuse agent 指摘):cell 内 inline
-      // formatting(bold / italic / code / strike / mark / em-dot / sup /
-      // sub / link)を保持。Paragraph.children は ParagraphChild union
-      // で TextRun + ExternalHyperlink を直接受け取れる。ImageRun は
-      // ParagraphChild ではないため filter で TextRun + ExternalHyperlink
-      // のみ残す(画像は cell 内に出さない)。
+      // PR-W4:cell 内 inline formatting 保持(filter で TextRun +
+      // ExternalHyperlink)。PR-W8(AI review P2-8):cell padding 8pt
+      // (twip 160)+ ヘッダー shading `#F4F4F5` + 罫線 hairline `#CCCCCC`。
       const rows = block.rows.map(
         (r) =>
           new TableRow({
-            tableHeader: r.isHeader, // ヘッダー行 marker
+            tableHeader: r.isHeader,
             children: r.cells.map(
               (c) =>
                 new TableCell({
@@ -578,15 +626,32 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
                         x instanceof TextRun || x instanceof ExternalHyperlink,
                     ),
                   })],
-                  // PR-V19 user audit 9:ヘッダー薄 shading(`EEEEEE`)
                   shading: r.isHeader
                     ? { type: ShadingType.CLEAR, color: 'auto', fill: TABLE_HEADER_SHADING_HEX }
                     : undefined,
+                  margins: {
+                    top: TABLE_CELL_PADDING_TWIP,
+                    bottom: TABLE_CELL_PADDING_TWIP,
+                    left: TABLE_CELL_PADDING_TWIP,
+                    right: TABLE_CELL_PADDING_TWIP,
+                  },
                 }),
             ),
           }),
       );
-      return [new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } })];
+      return [new Table({
+        rows,
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        // PR-W8:罫線 hairline 0.5pt grey(size 4 = 0.5pt)。
+        borders: {
+          top: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+          bottom: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+          left: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+          right: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+          insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+          insideVertical: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+        },
+      })];
     }
     case 'code-block': {
       // PR-V19 user audit「コードブロックの csv とかがレンダリングされてない」:
@@ -611,11 +676,30 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
                     shading: rIdx === 0 && !noHeader
                       ? { type: ShadingType.CLEAR, color: 'auto', fill: TABLE_HEADER_SHADING_HEX }
                       : undefined,
+                    // PR-W8(AI review P2-8):cell padding 8pt
+                    margins: {
+                      top: TABLE_CELL_PADDING_TWIP,
+                      bottom: TABLE_CELL_PADDING_TWIP,
+                      left: TABLE_CELL_PADDING_TWIP,
+                      right: TABLE_CELL_PADDING_TWIP,
+                    },
                   }),
               ),
             }),
           );
-          return [new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } })];
+          return [new Table({
+            rows,
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            // PR-W8:罫線 hairline 0.5pt grey
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+              left: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+              right: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+              insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+              insideVertical: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
+            },
+          })];
         }
       }
       // 通常 code block:等幅 + 左 border + 薄 shading

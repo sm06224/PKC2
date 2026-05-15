@@ -87,10 +87,10 @@ describe('PR-V19 user audit 全 12 項目検証', () => {
     expect(rels).toContain('https://github.com');
   });
 
-  it('(9) 表ヘッダーに薄 shading(EEEEEE)', async () => {
+  it('(9) 表ヘッダーに薄 shading(PR-W8 で `EEEEEE` → `F4F4F5` 統一)', async () => {
     const md = '| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |';
     const xml = await gen(md, {}, 'docx-v19-table');
-    expect(xml).toMatch(/<w:shd[^>]+w:fill="EEEEEE"/);
+    expect(xml).toMatch(/<w:shd[^>]+w:fill="F4F4F5"/);
   });
 
   it('(10) ページ区切り AstBreak(kind=page)→ PageBreak', async () => {

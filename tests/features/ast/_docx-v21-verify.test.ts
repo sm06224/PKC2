@@ -66,10 +66,10 @@ describe('PR-V21 docx 追加 audit', () => {
     expect(xml).toContain('{{vars.undefined_key}}');
   });
 
-  it('PKC 拡張:==mark== が highlight 付き run', async () => {
+  it('PKC 拡張:==mark== が shading 付き run(PR-W8 で named yellow → hex `#FFF3A0` に tone-down)', async () => {
     const xml = await gen('text ==marker== text', {}, 'docx-v21-mark');
-    // mark = yellow highlight
-    expect(xml).toMatch(/<w:highlight w:val="yellow"\/>/);
+    // PR-W8(Wave X P2、AI review feedback):shading.fill = FFF3A0 経路
+    expect(xml).toMatch(/<w:shd[^>]+w:fill="FFF3A0"/);
     expect(xml).toContain('marker');
     expect(xml).not.toContain('==marker==');
   });
