@@ -52,6 +52,14 @@ import {
   stripTaskPrefix,
   resolveImageData,
 } from '@features/ast/export-runs-common';
+import {
+  MARK_HIGHLIGHT_HEX,
+  TABLE_HEADER_SHADING_HEX,
+  TABLE_BORDER_HEX,
+  MONOSPACE_FONT,
+  MATH_FONT,
+  PPTX_TABLE_BORDER_PT,
+} from '@features/ast/export-constants';
 
 /** PR-V24:slide 内で 1 paragraph を構成する run(文字単位の formatting)。 */
 interface PptxRun {
@@ -177,7 +185,7 @@ function inlineToRuns(
     case 'text':
       return n.value === '' ? [] : [{ ...base, text: n.value }];
     case 'inline-code':
-      return [{ ...base, text: n.value, fontFace: 'Consolas' }];
+      return [{ ...base, text: n.value, fontFace: MONOSPACE_FONT }];
     case 'strong':
       return inlinesToRuns(n.children, ctx, { ...base, bold: true });
     case 'emphasis':
@@ -186,7 +194,7 @@ function inlineToRuns(
       return inlinesToRuns(n.children, ctx, { ...base, strike: true });
     case 'mark':
       // PR-V24:==mark== → yellow highlight
-      return inlinesToRuns(n.children, ctx, { ...base, highlight: 'FFFF00' });
+      return inlinesToRuns(n.children, ctx, { ...base, highlight: MARK_HIGHLIGHT_HEX });
     case 'em-dot':
       // PR-V24:..em-dot.. → italic(docx と同じ)
       return inlinesToRuns(n.children, ctx, { ...base, italic: true });
@@ -367,12 +375,12 @@ function blockToSlideLines(
       }
       return block.code.split('\n').map((line) => ({
         text: line,
-        fontFace: 'Consolas',
+        fontFace: MONOSPACE_FONT,
         indent,
       }));
     }
     case 'code-render':
-      return [{ text: block.source, fontFace: 'Consolas', indent }];
+      return [{ text: block.source, fontFace: MONOSPACE_FONT, indent }];
     case 'break':
       // PR-V19:break(page / rule)は slide split の signal、本文 line にはしない。
       // 呼出側 splitIntoSlides で処理(ここに来た場合はネスト内 break で、無視)
@@ -386,7 +394,7 @@ function blockToSlideLines(
     case 'blank':
       return [{ text: '', indent }];
     case 'math-block':
-      return [{ text: block.src, fontFace: 'Cambria Math', indent }];
+      return [{ text: block.src, fontFace: MATH_FONT, indent }];
     case 'definition-list': {
       const out: SlideLine[] = [];
       for (const item of block.items) {
@@ -646,7 +654,7 @@ export async function astToPptxBlob(
             text: cell,
             options: {
               bold: rIdx === 0 && tl.tableHeader,
-              fill: rIdx === 0 && tl.tableHeader ? { color: 'EEEEEE' } : undefined,
+              fill: rIdx === 0 && tl.tableHeader ? { color: TABLE_HEADER_SHADING_HEX } : undefined,
               fontSize: 14,
             },
           })),
@@ -656,7 +664,7 @@ export async function astToPptxBlob(
           y: curY,
           w: 12.0,
           colW: tl.tableRows[0]?.map(() => 12.0 / (tl.tableRows![0]!.length)),
-          border: { type: 'solid', pt: 0.5, color: '888888' },
+          border: { type: 'solid', pt: PPTX_TABLE_BORDER_PT, color: TABLE_BORDER_HEX },
         });
         curY += Math.min(0.4 * tl.tableRows.length + 0.2, 4.0);
       }

@@ -71,9 +71,20 @@ import {
   base64ToUint8Array,
   resolveImageData,
 } from '@features/ast/export-runs-common';
-
-/** PKC2 HTML が使う default font(`base.css --font-sans` 1st choice)。 */
-const DEFAULT_FONT = 'BIZ UDGothic';
+import {
+  DEFAULT_FONT,
+  MONOSPACE_FONT,
+  MATH_FONT,
+  MARK_HIGHLIGHT_NAMED,
+  TABLE_HEADER_SHADING_HEX,
+  CODE_BLOCK_SHADING_HEX,
+  CODE_BLOCK_LEFT_BORDER_HEX,
+  HORIZONTAL_RULE_BORDER_HEX,
+  DOCX_BORDER_SIZE_DEFAULT,
+  DOCX_BORDER_SPACE_DEFAULT,
+  DOCX_HEADING_INDENT_UNIT_TWIP,
+  DOCX_QUOTE_INDENT_TWIP,
+} from '@features/ast/export-constants';
 
 /** Heading 1〜6 の Word HeadingLevel mapping。 */
 const HEADING_LEVELS: Record<number, typeof HeadingLevel[keyof typeof HeadingLevel]> = {
@@ -126,7 +137,7 @@ function applyStyle(base: IRunOptions, style: InlineStyle): IRunOptions {
     ...(style.highlight ? { highlight: style.highlight } : {}),
     ...(style.superScript ? { superScript: true } : {}),
     // 色は指定しない(default = 自動 = 黒)
-    ...(style.code ? { font: 'Consolas' } : {}),
+    ...(style.code ? { font: MONOSPACE_FONT } : {}),
   };
 }
 
@@ -253,7 +264,7 @@ function inlineToRuns(
       return [new TextRun(applyStyle({ text: node.value }, { ...base, code: true }))];
     }
     case 'mark':
-      return inlinesToRuns(node.children, ctx, { ...base, highlight: 'yellow' });
+      return inlinesToRuns(node.children, ctx, { ...base, highlight: MARK_HIGHLIGHT_NAMED });
     case 'em-dot':
       return inlinesToRuns(node.children, ctx, { ...base, italics: true });
     case 'sup':
@@ -380,7 +391,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       }
       // H4 / H5 / H6 → 箇条書き形式(段落 indent + prefix + bold)。
       // H4=360 twip(0.25 inch)/ H5=720 / H6=1080 で階層 indent。
-      const indentLeft = 360 * (block.level - 3);
+      const indentLeft = DOCX_HEADING_INDENT_UNIT_TWIP * (block.level - 3);
       return [new Paragraph({
         children: headingRuns,
         indent: { left: indentLeft },
@@ -404,7 +415,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         if (child.kind === 'paragraph') {
           out.push(new Paragraph({
             children: inlinesToRuns(child.children, ctx),
-            indent: { left: 720 },
+            indent: { left: DOCX_QUOTE_INDENT_TWIP },
             style: 'Quote',
           }));
           continue;
@@ -432,7 +443,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
               const prefix = taskState === 'done' ? '☑ ' : '☐ ';
               opts = {
                 children: [new TextRun({ text: prefix }), ...inlines.filter((r): r is TextRun => r instanceof TextRun)],
-                indent: { left: 360 },
+                indent: { left: DOCX_HEADING_INDENT_UNIT_TWIP },
               };
             } else if (block.listKind === 'ordered') {
               opts = { children: inlines, numbering: { reference: 'pkc-ordered', level: 0 } };
@@ -468,7 +479,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
                   })],
                   // PR-V19 user audit 9:ヘッダー薄 shading(`EEEEEE`)
                   shading: r.isHeader
-                    ? { type: ShadingType.CLEAR, color: 'auto', fill: 'EEEEEE' }
+                    ? { type: ShadingType.CLEAR, color: 'auto', fill: TABLE_HEADER_SHADING_HEX }
                     : undefined,
                 }),
             ),
@@ -497,7 +508,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
                       children: [new TextRun({ text: cellText })],
                     })],
                     shading: rIdx === 0 && !noHeader
-                      ? { type: ShadingType.CLEAR, color: 'auto', fill: 'EEEEEE' }
+                      ? { type: ShadingType.CLEAR, color: 'auto', fill: TABLE_HEADER_SHADING_HEX }
                       : undefined,
                   }),
               ),
@@ -511,17 +522,22 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       return lines.map(
         (line) =>
           new Paragraph({
-            children: [new TextRun({ text: line, font: 'Consolas' })],
-            shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'F5F5F5' },
+            children: [new TextRun({ text: line, font: MONOSPACE_FONT })],
+            shading: { type: ShadingType.CLEAR, color: 'auto', fill: CODE_BLOCK_SHADING_HEX },
             border: {
-              left: { style: BorderStyle.SINGLE, color: '888888', size: 6, space: 4 },
+              left: {
+                style: BorderStyle.SINGLE,
+                color: CODE_BLOCK_LEFT_BORDER_HEX,
+                size: DOCX_BORDER_SIZE_DEFAULT,
+                space: DOCX_BORDER_SPACE_DEFAULT,
+              },
             },
           }),
       );
     }
     case 'code-render':
       return [new Paragraph({
-        children: [new TextRun({ text: block.source, font: 'Consolas' })],
+        children: [new TextRun({ text: block.source, font: MONOSPACE_FONT })],
       })];
     case 'break': {
       if (block.breakKind === 'page') {
@@ -532,7 +548,12 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       return [new Paragraph({
         children: [],
         border: {
-          bottom: { style: BorderStyle.SINGLE, color: '666666', size: 6, space: 4 },
+          bottom: {
+            style: BorderStyle.SINGLE,
+            color: HORIZONTAL_RULE_BORDER_HEX,
+            size: DOCX_BORDER_SIZE_DEFAULT,
+            space: DOCX_BORDER_SPACE_DEFAULT,
+          },
         },
         spacing: { before: 60, after: 60 },
       })];
@@ -546,7 +567,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
     case 'blank':
       return [new Paragraph('')];
     case 'math-block':
-      return [new Paragraph({ children: [new TextRun({ text: block.src, font: 'Cambria Math' })] })];
+      return [new Paragraph({ children: [new TextRun({ text: block.src, font: MATH_FONT })] })];
     case 'definition-list': {
       const out: Paragraph[] = [];
       for (const item of block.items) {
@@ -557,7 +578,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
           if (desc.kind === 'paragraph') {
             out.push(new Paragraph({
               children: inlinesToRuns(desc.children, ctx),
-              indent: { left: 720 },
+              indent: { left: DOCX_QUOTE_INDENT_TWIP },
             }));
             continue;
           }
@@ -616,7 +637,7 @@ export async function astToDocxBlob(
         ` [${link.href}]`;
       children.push(new Paragraph({
         children: [new TextRun({ text: lineText })],
-        indent: { left: 360 },
+        indent: { left: DOCX_HEADING_INDENT_UNIT_TWIP },
       }));
     }
   }
