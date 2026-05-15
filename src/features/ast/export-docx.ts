@@ -467,6 +467,12 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       return items;
     }
     case 'table': {
+      // PR-W4 fix(2026-05-15、simplify reuse agent 指摘):cell 内 inline
+      // formatting(bold / italic / code / strike / mark / em-dot / sup /
+      // sub / link)を保持。Paragraph.children は ParagraphChild union
+      // で TextRun + ExternalHyperlink を直接受け取れる。ImageRun は
+      // ParagraphChild ではないため filter で TextRun + ExternalHyperlink
+      // のみ残す(画像は cell 内に出さない)。
       const rows = block.rows.map(
         (r) =>
           new TableRow({
@@ -475,7 +481,10 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
               (c) =>
                 new TableCell({
                   children: [new Paragraph({
-                    children: inlinesToRuns(c.children, ctx).filter((x): x is TextRun => x instanceof TextRun),
+                    children: inlinesToRuns(c.children, ctx).filter(
+                      (x): x is TextRun | ExternalHyperlink =>
+                        x instanceof TextRun || x instanceof ExternalHyperlink,
+                    ),
                   })],
                   // PR-V19 user audit 9:ヘッダー薄 shading(`EEEEEE`)
                   shading: r.isHeader

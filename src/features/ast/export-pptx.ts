@@ -118,6 +118,13 @@ interface SlideLine {
    *  slide.addTable で render する(他 line と独立、bullet 等は無視)。
    *  PR-V24:AstTable(markdown pipe table)もここに集約。 */
   tableRows?: string[][];
+  /**
+   * PR-W4(2026-05-15):AstTable cell 内 inline formatting を保持するための
+   * runs 版。`tableRows` と排他、こちらがあれば優先(`linesToTableCells` で
+   * pptxgenjs の `[{ text, options }]` array に変換)。CSV / TSV fence 経路は
+   * 引き続き `tableRows` を使う(cell 内 inline markup 非対応のため)。
+   */
+  tableRowsRuns?: PptxRun[][][];
   /** Table の 1 行目を header 扱いするか(`noheader` 無しなら true)。 */
   tableHeader?: boolean;
   /** PR-V22:画像 base64 data + mime(slide.addImage で render)。 */
@@ -419,13 +426,20 @@ function blockToSlideLines(
   }
 }
 
-/** PR-V24:AstTable を slide.addTable 形式に変換。 */
+/**
+ * PR-V24:AstTable を slide.addTable 形式に変換。
+ *
+ * PR-W4(2026-05-15、simplify reuse agent 指摘):cell 内 inline formatting
+ * (bold / italic / code / strike / mark / em-dot / sup / sub / link)を
+ * 保持するため `inlinesToPlainText` → `inlinesToRuns` に切替、`tableRowsRuns`
+ * 経路で run-level 描画。CSV / TSV fence 経路は plain text のままなので
+ * `tableRows` を使う(別経路、引き続きサポート)。
+ */
 function tableBlockToLine(block: AstTable, ctx: PptxExportContext): SlideLine {
-  void ctx;
   const rows = block.rows.map((r) =>
-    r.cells.map((c) => inlinesToPlainText(c.children)),
+    r.cells.map((c) => inlinesToRuns(c.children, ctx)),
   );
-  return { text: '', tableRows: rows, tableHeader: true };
+  return { text: '', tableRowsRuns: rows, tableHeader: true };
 }
 
 /**
@@ -626,12 +640,12 @@ export async function astToPptxBlob(
           bold: true,
         });
       }
-      // tableRows / imageData / 通常 text の 3 種を 1 pass で振り分け。
+      // tableRows / tableRowsRuns / imageData / 通常 text の 4 種を 1 pass で振り分け。
       const tableLines: SlideLine[] = [];
       const imageLines: SlideLine[] = [];
       const textLines: SlideLine[] = [];
       for (const l of draft.lines) {
-        if (l.tableRows) tableLines.push(l);
+        if (l.tableRows || l.tableRowsRuns) tableLines.push(l);
         else if (l.imageData) imageLines.push(l);
         else if (l.text !== '' || (l.runs && l.runs.length > 0)) textLines.push(l);
       }
@@ -648,25 +662,61 @@ export async function astToPptxBlob(
       }
       let curY = tableTop + (textLines.length > 0 ? 2.7 : 0);
       for (const tl of tableLines) {
-        if (!tl.tableRows) continue;
-        const rows = tl.tableRows.map((row, rIdx) =>
-          row.map((cell) => ({
-            text: cell,
-            options: {
-              bold: rIdx === 0 && tl.tableHeader,
-              fill: rIdx === 0 && tl.tableHeader ? { color: TABLE_HEADER_SHADING_HEX } : undefined,
-              fontSize: 14,
-            },
-          })),
-        );
-        slide.addTable(rows, {
+        // PR-W4(2026-05-15):AstTable は tableRowsRuns 経由(cell 内 inline
+        // formatting を保持)、CSV/TSV fence は tableRows 経由(plain text)。
+        // 両 path を一致した cell shape に正規化してから addTable に渡す。
+        let normalized: Array<Array<{ text: string | Array<{ text: string; options?: Record<string, unknown> }>; options: Record<string, unknown> }>> | null = null;
+        let colCount = 0;
+        if (tl.tableRowsRuns) {
+          normalized = tl.tableRowsRuns.map((row, rIdx) =>
+            row.map((cellRuns) => {
+              const isHeader = rIdx === 0 && (tl.tableHeader ?? false);
+              const cellOptions: Record<string, unknown> = { fontSize: 14 };
+              if (isHeader) cellOptions.fill = { color: TABLE_HEADER_SHADING_HEX };
+              if (cellRuns.length === 0) {
+                return { text: '', options: cellOptions };
+              }
+              // pptxgenjs の text-object array で cell text を構成、各 run の
+              // bold / italic / underline / strike / sup / sub / fontFace /
+              // highlight / hyperlink を保持。header 行 default で bold。
+              const textObjects = cellRuns.map((r) => {
+                const opts: Record<string, unknown> = {};
+                if (r.bold || isHeader) opts.bold = true;
+                if (r.italic) opts.italic = true;
+                if (r.strike) opts.strike = true;
+                if (r.underline) opts.underline = { style: 'sng' };
+                if (r.superscript) opts.superscript = true;
+                if (r.subscript) opts.subscript = true;
+                if (r.fontFace) opts.fontFace = r.fontFace;
+                if (r.highlight) opts.highlight = r.highlight;
+                if (r.hyperlink) opts.hyperlink = r.hyperlink;
+                return { text: r.text, options: opts };
+              });
+              return { text: textObjects, options: cellOptions };
+            }),
+          );
+          colCount = tl.tableRowsRuns[0]?.length ?? 0;
+        } else if (tl.tableRows) {
+          normalized = tl.tableRows.map((row, rIdx) =>
+            row.map((cell) => {
+              const isHeader = rIdx === 0 && (tl.tableHeader ?? false);
+              const cellOptions: Record<string, unknown> = { fontSize: 14 };
+              if (isHeader) cellOptions.bold = true;
+              if (isHeader) cellOptions.fill = { color: TABLE_HEADER_SHADING_HEX };
+              return { text: cell, options: cellOptions };
+            }),
+          );
+          colCount = tl.tableRows[0]?.length ?? 0;
+        }
+        if (!normalized || normalized.length === 0 || colCount === 0) continue;
+        slide.addTable(normalized, {
           x: 0.5,
           y: curY,
           w: 12.0,
-          colW: tl.tableRows[0]?.map(() => 12.0 / (tl.tableRows![0]!.length)),
+          colW: Array.from({ length: colCount }, () => 12.0 / colCount),
           border: { type: 'solid', pt: PPTX_TABLE_BORDER_PT, color: TABLE_BORDER_HEX },
         });
-        curY += Math.min(0.4 * tl.tableRows.length + 0.2, 4.0);
+        curY += Math.min(0.4 * normalized.length + 0.2, 4.0);
       }
       // PR-V22:image 埋め込み
       for (const il of imageLines) {
