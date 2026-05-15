@@ -135,9 +135,11 @@ interface ExportContext {
   entriesByLid: Map<string, Entry>;
   /** container.assets(image embed 用)。 */
   assets: Record<string, string>;
+  /** PR-V21:AstDocument.vars(変数展開用、`{{vars.x}}` → 値解決)。 */
+  vars: Record<string, string>;
 }
 
-function newContext(opts: AstToDocxOptions): ExportContext {
+function newContext(ast: AstDocument, opts: AstToDocxOptions): ExportContext {
   const entriesByLid = new Map<string, Entry>();
   for (const e of opts.container?.entries ?? []) entriesByLid.set(e.lid, e);
   return {
@@ -146,6 +148,7 @@ function newContext(opts: AstToDocxOptions): ExportContext {
     internalLinks: [],
     entriesByLid,
     assets: opts.container?.assets ?? {},
+    vars: ast.vars ?? {},
   };
 }
 
@@ -309,8 +312,18 @@ function inlineToRuns(
       return inlinesToRuns(node.children, ctx, base);
     case 'auto-ref':
       return [new TextRun(applyStyle({ text: `@${node.id}` }, base))];
-    case 'var':
-      return [new TextRun(applyStyle({ text: `{{${node.path}}}` }, base))];
+    case 'var': {
+      // PR-V21(2026-05-14、user audit「変数も展開されていない」):
+      // `ast.vars` から path を解決。`vars.X` 形式は `X` を key として
+      // ctx.vars[X] を引く。未定義なら literal `{{...}}` で fallback。
+      const path = node.path;
+      const key = path.startsWith('vars.') ? path.slice('vars.'.length) : path;
+      const value = ctx.vars[key];
+      if (typeof value === 'string') {
+        return [new TextRun(applyStyle({ text: value }, base))];
+      }
+      return [new TextRun(applyStyle({ text: `{{${path}}}` }, base))];
+    }
     case 'math-inline':
       return [new TextRun(applyStyle({ text: node.src }, base))];
     case 'comment-inline':
@@ -403,24 +416,37 @@ function inlinesFlatText(inlines: readonly AstInline[]): string {
 function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragraph | Table> {
   switch (block.kind) {
     case 'heading': {
-      const level = HEADING_LEVELS[block.level] ?? HeadingLevel.HEADING_6;
       const prefix = nextHeadingPrefix(ctx, block.level);
-      const children: RunOrLink[] = [
+      const headingRuns: TextRun[] = [
         new TextRun({ text: prefix, bold: true }),
-        ...inlinesToRuns(block.children, ctx, { bold: true }),
+        ...inlinesToRuns(block.children, ctx, { bold: true }).filter((r): r is TextRun => r instanceof TextRun),
       ];
-      // H1 は最初を除いて page break before
-      const isFirstH1 = block.level === 1 && !ctx.seenFirstH1;
-      if (block.level === 1) ctx.seenFirstH1 = true;
-      const opts: IParagraphOptions = {
-        heading: level,
-        children: children.filter((c): c is TextRun => c instanceof TextRun),
-        spacing: { before: 240, after: 120 }, // 縮小したぶら下げ
-      };
-      if (block.level === 1 && !isFirstH1) {
-        return [new Paragraph({ ...opts, pageBreakBefore: true })];
+      // PR-V21 user audit「H4 以降は数字 hierarchy ではなく箇条書きとして
+      // (1) / アイウ / abc」:H4-H6 は heading style を使わず、bullet list 風
+      // 段落として render(prefix + bold + 段落 indent)。H1-H3 は heading
+      // style のまま。
+      if (block.level <= 3) {
+        const level = HEADING_LEVELS[block.level] ?? HeadingLevel.HEADING_3;
+        const isFirstH1 = block.level === 1 && !ctx.seenFirstH1;
+        if (block.level === 1) ctx.seenFirstH1 = true;
+        const opts: IParagraphOptions = {
+          heading: level,
+          children: headingRuns,
+          spacing: { before: 240, after: 120 },
+        };
+        if (block.level === 1 && !isFirstH1) {
+          return [new Paragraph({ ...opts, pageBreakBefore: true })];
+        }
+        return [new Paragraph(opts)];
       }
-      return [new Paragraph(opts)];
+      // H4 / H5 / H6 → 箇条書き形式(段落 indent + prefix + bold)。
+      // H4=360 twip(0.25 inch)/ H5=720 / H6=1080 で階層 indent。
+      const indentLeft = 360 * (block.level - 3);
+      return [new Paragraph({
+        children: headingRuns,
+        indent: { left: indentLeft },
+        spacing: { before: 120, after: 60 },
+      })];
     }
     case 'paragraph': {
       const runs = inlinesToRuns(block.children, ctx);
@@ -632,7 +658,7 @@ export async function astToDocxBlob(
   ast: AstDocument,
   opts: AstToDocxOptions = {},
 ): Promise<Blob> {
-  const ctx = newContext(opts);
+  const ctx = newContext(ast, opts);
   const children: Array<Paragraph | Table> = ast.children.flatMap((b) =>
     blockToDocxElements(b, ctx),
   );

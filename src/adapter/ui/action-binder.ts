@@ -8085,7 +8085,48 @@ export function flashEntry(root: HTMLElement, lid: string): void {
  * accidentally routed here falls back to the raw body verbatim.
  */
 function entryToMarkdownSource(entry: Entry): string {
+  // PR-V21 hotfix(2026-05-14、user audit「textlog の word 出力で JSON が
+  // そのまま出る」):TEXTLOG archetype の body は JSON 形式の log 集合。
+  // markdown に変換して export パイプライン(parseMarkdownToAst → docx /
+  // pandoc 等)に渡せるよう、ここで day grouping + log header + body の
+  // markdown 文字列に展開する。
+  if (entry.archetype === 'textlog') {
+    return textlogBodyToMarkdown(entry.body ?? '');
+  }
   return entry.body ?? '';
+}
+
+/**
+ * PR-V21:TEXTLOG body(JSON)を markdown source に変換。
+ *
+ * 規則:
+ *   - 各 log を `## <ISO timestamp>` heading + body(text)で出力
+ *   - ログ間に空行を挿入
+ *   - 空 body の log は skip
+ *   - 日付グルーピングは export-docx の heading numbering と相性が悪い
+ *     ため、ここでは flat list(timestamp = H2)で展開、user は viewer
+ *     popup から rendered HTML を別途見るのが主動線
+ */
+function textlogBodyToMarkdown(jsonBody: string): string {
+  try {
+    const parsed = JSON.parse(jsonBody) as { entries?: Array<{ id?: string; text?: string; createdAt?: string }> };
+    const entries = parsed?.entries ?? [];
+    if (entries.length === 0) return '';
+    const lines: string[] = [];
+    for (const log of entries) {
+      const ts = typeof log.createdAt === 'string' ? log.createdAt : '';
+      const text = typeof log.text === 'string' ? log.text : '';
+      if (!text.trim()) continue;
+      lines.push(`## ${ts}`);
+      lines.push('');
+      lines.push(text);
+      lines.push('');
+    }
+    return lines.join('\n');
+  } catch {
+    // JSON parse 失敗 → fallback で raw を返す(下流で plain text として処理)
+    return jsonBody;
+  }
 }
 
 /**
