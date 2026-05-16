@@ -66,6 +66,7 @@ import type {
   AstAutoRef,
   AstCitation,
   AstFootnoteRef,
+  AstMathInline,
   AstBlock,
   AstCommentBlock,
   AstCommentInline,
@@ -873,6 +874,25 @@ function tryInlinePattern(
       nodes: [{ kind: 'footnote-ref', id: m[1]! } as AstFootnoteRef],
       consumed: start + m[0].length,
     };
+  }
+
+  // 5c. PR-W21:`$X$` math-inline / `$$X$$` math-block(LaTeX 互換)
+  // markdown-it は `$` を素通しするため decompose で拾う必要あり。`$$X$$`
+  // を先に試行(2 文字 marker、greedy 防止のため `$X$` より優先)、続いて
+  // `$X$`。content 端の whitespace は trim、空 math は drop。
+  m = /^\$\$([\s\S]+?)\$\$/.exec(slice);
+  if (m) {
+    const src = m[1]!.replace(/^\s+|\s+$/g, '');
+    if (src === '') return { nodes: [], consumed: start + m[0].length };
+    // math-block は本来 block 構造だが、inline scan で見つかった場合は
+    // math-inline に降格(block への昇格は decomposeBlocks 経路の責務)。
+    return { nodes: [{ kind: 'math-inline', src } as AstMathInline], consumed: start + m[0].length };
+  }
+  m = /^\$([^$\n]+?)\$/.exec(slice);
+  if (m) {
+    const src = m[1]!.replace(/^\s+|\s+$/g, '');
+    if (src === '') return { nodes: [], consumed: start + m[0].length };
+    return { nodes: [{ kind: 'math-inline', src } as AstMathInline], consumed: start + m[0].length };
   }
 
   // 6. ==text== mark

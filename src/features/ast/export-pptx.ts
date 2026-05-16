@@ -124,6 +124,14 @@ interface SlideLine {
   fontFace?: string;
   bullet?: boolean;
   indent?: number;
+  /**
+   * PR-W22:paragraph-level alignment。figure caption(center)/ quote
+   * author attribution(right)/ section role header(left)等で line ごとに
+   * 指定可能。pptxgenjs `align: 'left' | 'center' | 'right' | 'justify'`。
+   */
+  align?: 'left' | 'center' | 'right' | 'justify';
+  /** PR-W22:任意 color hex(`'2F6FED'` 等、section role header の icon 色)。 */
+  color?: string;
   /** PR-V19:Task list の状態('open' = `☐`、'done' = `☑`)。 */
   taskState?: 'open' | 'done';
   /** PR-V19:Code block from CSV/TSV/PSV → 2D table データ。これがあれば
@@ -230,7 +238,12 @@ function inlineToRuns(
     case 'sub':
       return inlinesToRuns(n.children, ctx, { ...base, subscript: true });
     case 'ruby':
-      return [{ ...base, text: `${n.base}(${n.rt})` }];
+      // PR-W23:pptx でも base + superscript rt の furigana 近似(docx と
+      // semantic 同等)。pptxgenjs は ruby native 非対応のため visual fallback。
+      return [
+        { ...base, text: n.base },
+        { ...base, text: n.rt, superscript: true },
+      ];
     case 'link':
       return linkToRuns(n, ctx, base);
     case 'image':
@@ -339,11 +352,29 @@ function blockToSlideLines(
     }
     case 'quote': {
       const inner = block.children.flatMap((b) => blockToSlideLines(b, indent + 1, ctx));
-      return inner.map((l) => ({
+      const out: SlideLine[] = inner.map((l) => ({
         ...l,
         italic: true,
         runs: l.runs?.map((r) => ({ ...r, italic: true })),
       }));
+      // PR-W22:`:::quote{author=…}` の citation.author を末尾の attribution
+      // 段落で italic + right align + dash prefix(`— Author, year, source`)。
+      // docx W14 と semantic 同等。
+      if (block.citation && Object.keys(block.citation).length > 0) {
+        const parts: string[] = [];
+        if (block.citation.author) parts.push(block.citation.author);
+        if (block.citation.year) parts.push(block.citation.year);
+        if (block.citation.source) parts.push(block.citation.source);
+        if (parts.length > 0) {
+          out.push({
+            text: `— ${parts.join(', ')}`,
+            italic: true,
+            align: 'right',
+            indent,
+          });
+        }
+      }
+      return out;
     }
     case 'list': {
       const out: SlideLine[] = [];
@@ -424,10 +455,65 @@ function blockToSlideLines(
       // PR-V19:break(page / rule)は slide split の signal、本文 line にはしない。
       // 呼出側 splitIntoSlides で処理(ここに来た場合はネスト内 break で、無視)
       return [];
-    case 'figure':
-    case 'section':
-    case 'if-block':
+    case 'figure': {
+      // PR-W22:`:::figure{id=X}` + caption + figureKind を native handling
+      // (docx W14 同等)。caption は italic + center align で「図 N: caption」
+      // 「表 N」「式 N」prefix を付与。caption は AstInline[] のため
+      // inlinesToPlainText で flatten。
+      const inner = block.children.flatMap((b) => blockToSlideLines(b, indent, ctx));
+      if (block.caption && block.caption.length > 0) {
+        const labelMap: Record<string, string> = {
+          figure: '図',
+          table: '表',
+          equation: '式',
+        };
+        const label = labelMap[block.figureKind] ?? '図';
+        const num = block.num ?? 1;
+        const captionText = inlinesToPlainText(block.caption);
+        inner.push({
+          text: `${label} ${num}: ${captionText}`,
+          italic: true,
+          align: 'center',
+          indent,
+        });
+      }
+      return inner;
+    }
+    case 'section': {
+      // PR-W22:`:::section{role=X}` を pptx で **icon prefix header line** で
+      // 可視化。docx W14 では callout box(border + shading)だが pptx
+      // SlideLine model に border / shading 概念無し、最小可視化として:
+      // - header line:`{ICON} {ROLE}` bold + role color
+      // - inner content:そのまま
+      const roleConfig: Record<string, { color: string; icon: string }> = {
+        warning: { color: 'FB923C', icon: '⚠️ ' },
+        caution: { color: 'F97316', icon: '⚠️ ' },
+        danger: { color: 'DC2626', icon: '🛑 ' },
+        important: { color: 'DC2626', icon: '❗ ' },
+        note: { color: '60A5FA', icon: '📝 ' },
+        info: { color: '3B82F6', icon: 'ℹ️ ' },
+        tip: { color: '10B981', icon: '💡 ' },
+        summary: { color: '8B5CF6', icon: '📋 ' },
+      };
+      const config = roleConfig[block.role] ?? { color: '888888', icon: '📌 ' };
+      const inner = block.children.flatMap((b) => blockToSlideLines(b, indent, ctx));
+      const header: SlideLine = {
+        text: `${config.icon}${block.role.toUpperCase()}`,
+        bold: true,
+        color: config.color,
+        indent,
+      };
+      return [header, ...inner];
+    }
+    case 'if-block': {
+      // PR-W22:`:::if{format=X}` で X !== 'pptx' を完全除外(可換性 critical、
+      // docx W14 と semantic 同等)。target 一致 + 空 + 'any' は通す。
+      const target = 'pptx';
+      if (block.format !== target && block.format !== '' && block.format !== 'any') {
+        return [];
+      }
       return block.children.flatMap((b) => blockToSlideLines(b, indent, ctx));
+    }
     case 'comment-block':
       return [];
     case 'blank':
@@ -500,6 +586,11 @@ function linesToTextObjects(
       if (italic) opts.italic = true;
       if (fontFace) opts.fontFace = fontFace;
       if (line.indent) opts.indentLevel = line.indent;
+      // PR-W22:line-level align / color。pptxgenjs は paragraph 内最初の run に
+      // 付与すれば段落全体に効く。複数 run でも同じ opts を渡せば pptxgenjs が
+      // 内部で line として正しく集約する。
+      if (line.align) opts.align = line.align;
+      if (line.color && !run.color) opts.color = line.color;
       if (run.highlight) opts.highlight = run.highlight;
       if (run.strike) opts.strike = true;
       if (run.underline) opts.underline = { style: 'sng' };

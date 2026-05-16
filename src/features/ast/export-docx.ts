@@ -175,6 +175,8 @@ interface InlineStyle {
   mark?: boolean;
   /** Superscript(リンク連番表示用)。 */
   superScript?: boolean;
+  /** Subscript(`:sub:[X]` AstSub 用)。PR-W20 で field 追加(旧 cast hack 廃止)。 */
+  subScript?: boolean;
   /** PR-W8:任意 color hex 指定(task glyph 用、grey ☐ / green ☑)。 */
   color?: string;
 }
@@ -189,6 +191,7 @@ function applyStyle(base: IRunOptions, style: InlineStyle): IRunOptions {
     ...(style.italics ? { italics: true } : {}),
     ...(style.strike ? { strike: true } : {}),
     ...(style.superScript ? { superScript: true } : {}),
+    ...(style.subScript ? { subScript: true } : {}),
     ...(style.color ? { color: style.color } : {}),
     // PR-W8:mark `==X==` の shading を soft yellow `#FFF3A0` に tone-down
     // (旧 named `'yellow'` = `#FFFF00` ベタ塗りは威圧的だった)。
@@ -400,9 +403,21 @@ function inlineToRuns(
     case 'sup':
       return inlinesToRuns(node.children, ctx, { ...base, superScript: true });
     case 'sub':
-      return [new TextRun(applyStyle({ text: inlinesFlatText(node.children) }, { ...base, subScript: true } as InlineStyle & { subScript?: boolean }))];
+      // PR-W20:旧 `as InlineStyle & { subScript?: boolean }` cast hack で
+      // applyStyle の type には合うが実装側で `subScript` を spread して
+      // いなかったため silently drop されていた重大 bug。`InlineStyle.subScript`
+      // を正式 field に昇格 + applyStyle で展開 + 再帰 inline 対応に揃える。
+      return inlinesToRuns(node.children, ctx, { ...base, subScript: true });
     case 'ruby':
-      return [new TextRun(applyStyle({ text: `${node.base}(${node.rt})` }, base))];
+      // PR-W23:旧 plain `base(rt)` 表記 → base + superscript rt 形式に
+      // 改善。Word の真の `<w:ruby>` element は docx package 未対応のため
+      // 視覚的近似(superscript fontSize 60% で base 直上に小さく rt 表示)。
+      // 印刷物 / 表示で「漢字 + ふりがな」の furigana 効果に近い。
+      // 将来 docx package が ruby element を support した時に native 化候補。
+      return [
+        new TextRun(applyStyle({ text: node.base }, base)),
+        new TextRun(applyStyle({ text: node.rt, superScript: true }, base)),
+      ];
     case 'link': {
       return linkToRuns(node, ctx, base);
     }
@@ -430,7 +445,13 @@ function inlineToRuns(
       return [new TextRun(applyStyle({ text: `{{${path}}}` }, base))];
     }
     case 'math-inline':
-      return [new TextRun(applyStyle({ text: node.src }, base))];
+      // PR-W21:旧 plain text → math font(Cambria Math)+ italic で
+      // 視覚的に math と本文を区別。**真の OMML(Office Math Markup Language)**
+      // は schema が複雑(`<m:oMath><m:r>...</m:r></m:oMath>`)で docx library
+      // でも未対応、後続 PR で OMML 直接 emit を検討。本 PR は font + italic
+      // による「math らしさ」可視化と AST 化(decompose-pkc で `$X$` を
+      // AstMathInline 化)が scope。
+      return [new TextRun(applyStyle({ text: node.src, font: MATH_FONT, italics: true }, base))];
     case 'comment-inline':
       return [];
     case 'footnote-ref': {
@@ -898,7 +919,12 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
     case 'blank':
       return [new Paragraph('')];
     case 'math-block':
-      return [new Paragraph({ children: [new TextRun({ text: block.src, font: MATH_FONT })] })];
+      // PR-W21:math-block を center-align + italic + math font で displayed
+      // equation 体裁に。block 単独行に置くことで本文との区別を強化。
+      return [new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: block.src, font: MATH_FONT, italics: true })],
+      })];
     case 'definition-list': {
       const out: Paragraph[] = [];
       for (const item of block.items) {
