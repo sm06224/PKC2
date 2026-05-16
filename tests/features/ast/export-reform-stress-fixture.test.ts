@@ -67,7 +67,7 @@ describe('PR-W24 v2 reform stress sample(Gemini 生成、文字化け 0 件 audi
     // bare `:::if` への言及は intentional content として許容。
     expect(text).not.toMatch(/:::[a-z-]+\{/);
     expect(text).not.toMatch(/:(strong|emphasis|code|strike|sup|sub|lead|caption|span):\[/); // formal
-    expect(text).not.toMatch(/:[^:\s\[\{]+:[a-z0-9_%,#-]+:/); // L-6 simple inline
+    expect(text).not.toMatch(/:[^:\s[{]+:[a-z0-9_%,#-]+:/); // L-6 simple inline
     expect(text).not.toMatch(/%%[^%]/);                 // %% inline comment
     expect(text).not.toMatch(/%%%/);                    // %%% block comment
     expect(text).not.toMatch(/^_3$|^_\d+$/);            // _N blank-line
