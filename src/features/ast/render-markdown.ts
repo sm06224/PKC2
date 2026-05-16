@@ -399,10 +399,15 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
       return '```' + block.lang + '\n' + block.source + (block.source.endsWith('\n') ? '' : '\n') + '```';
     }
     case 'break': {
+      // PR-W24 v4 round-trip fix:旧 `:::page-break` 形は decompose-pkc が
+      // role="page-break" の AstSection に変換してしまい round-trip 不安定。
+      // canonical PKC:`+++` simple form(role 付きなら `+++ {role=R}`)。
+      // GFM:`---` HR で近似。
       if (block.breakKind === 'page') {
-        return mode === 'pkc'
-          ? `:::page-break${block.role ? `{role=${block.role}}` : ''}`
-          : '---';
+        if (mode === 'pkc') {
+          return block.role ? `+++ {role=${block.role}}` : '+++';
+        }
+        return '---';
       }
       return '---';
     }
@@ -600,8 +605,10 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
       return `<span class="pkc-em-dot">${inner}</span>`;
     }
     case 'ruby':
-      if (mode === 'pkc') return `{${node.base}|${node.rt}}`;
-      // GFM:正しい `<ruby>` HTML(`<rt>` 単独は invalid、`<ruby>` で wrap 必要)
+      // PR-W24 v4 round-trip fix:旧 `{base|rt}` 形は decompose-pkc の
+      // ruby decompose pattern にマッチせず literal 化。canonical PKC:
+      // `[[ruby:base|rt]]` formal form。GFM:正しい `<ruby>` HTML。
+      if (mode === 'pkc') return `[[ruby:${node.base}|${node.rt}]]`;
       return `<ruby>${escapeText(node.base)}<rt>${escapeText(node.rt)}</rt></ruby>`;
     case 'sup': {
       const inner = renderInlines(node.children, mode);

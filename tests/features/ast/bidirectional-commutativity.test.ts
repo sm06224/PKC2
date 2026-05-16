@@ -102,9 +102,9 @@ describe('Bidirectional commutativity:Reverse(GFM → PKC AST node)', () => {
     expect(pkc).toContain('==重要==');
   });
 
-  it('HTML `<ruby>base<rt>rt</rt></ruby>` → AstRuby → PKC `{base|rt}`', () => {
+  it('HTML `<ruby>base<rt>rt</rt></ruby>` → AstRuby → PKC `[[ruby:base|rt]]`(PR-W24 v4:round-trip canonical)', () => {
     const pkc = R('<ruby>漢字<rt>かんじ</rt></ruby>', 'pkc');
-    expect(pkc).toContain('{漢字|かんじ}');
+    expect(pkc).toContain('[[ruby:漢字|かんじ]]');
   });
 
   it('HTML `<sup>X</sup>` → AstSup → PKC `:sup:[X]`', () => {
@@ -141,7 +141,7 @@ describe('Bidirectional commutativity:PKC → GFM → PKC で semantic 一致', 
     const pkc2 = R(gfm, 'pkc');
     expect(pkc2).toContain('==重要==');
     expect(pkc2).toContain('..新形..');  // ^^X^^ も AstEmDot に正規化されて ..X.. として出る
-    expect(pkc2).toContain('{漢字|かんじ}');
+    expect(pkc2).toContain('[[ruby:漢字|かんじ]]'); // PR-W24 v4:ruby canonical round-trip form
   });
 
   it(':sup:[2] が PKC → GFM → PKC で復元', () => {
