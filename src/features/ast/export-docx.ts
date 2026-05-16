@@ -629,7 +629,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
                   new TextRun({ text: prefix, color: glyphColor }),
                   ...inlines.filter((r): r is TextRun => r instanceof TextRun),
                 ],
-                bullet: { level: 0 },
+                numbering: { reference: 'pkc-bullet', level: 0 },
               };
             } else {
               opts = { children: inlines, bullet: { level: 0 } };
@@ -1014,9 +1014,27 @@ export async function astToDocxBlob(
               format: 'decimal',
               text: '%1.',
               alignment: AlignmentType.START,
-              // PR-W15(user「順序リストのぶら下げ余白大きい、ダサい」):
-              // Word default の hanging indent 720(0.5 inch)が広すぎる
-              // → 240(0.17 inch)に詰めて marker `1.` 直後から text 開始。
+              // PR-W15:Word default 720 → 240 詰め
+              style: {
+                paragraph: {
+                  indent: { left: 360, hanging: 240 },
+                },
+              },
+            },
+          ],
+        },
+        // PR-W16(user「箇条書きのぶら下げ目立つ、バレットサイズデカすぎ」):
+        // bullet list を自前 `pkc-bullet` numbering で制御。glyph を `·`
+        // (中点 U+00B7、小さめ)に + hanging 240 で marker→text tight に。
+        // 旧:docx default の `bullet: { level: 0 }` で巨大 `•`(U+2022)+ 広 hanging。
+        {
+          reference: 'pkc-bullet',
+          levels: [
+            {
+              level: 0,
+              format: 'bullet',
+              text: '·', // 中点 ·(小さい)
+              alignment: AlignmentType.START,
               style: {
                 paragraph: {
                   indent: { left: 360, hanging: 240 },
