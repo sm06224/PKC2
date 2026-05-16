@@ -69,7 +69,7 @@ describe('PR-W20 sup / sub docx', () => {
 describe('PR-W21 math-inline / math-block decompose + docx render', () => {
   it('`$X$` が math-inline AST に decompose', () => {
     const ast = parseMarkdownToAst('E = $mc^2$ です。\n');
-    const para = ast.children[0] as { children: Array<{ kind: string; src?: string }> };
+    const para = ast.children[0] as unknown as { children: Array<{ kind: string; src?: string }> };
     const math = para.children.find((n) => n.kind === 'math-inline');
     expect(math).toBeDefined();
     expect(math?.src).toBe('mc^2');
@@ -77,7 +77,7 @@ describe('PR-W21 math-inline / math-block decompose + docx render', () => {
 
   it('`$$X$$` も math-inline AST に decompose(inline scan で)', () => {
     const ast = parseMarkdownToAst('display: $$x^2 + y^2 = z^2$$ end\n');
-    const para = ast.children[0] as { children: Array<{ kind: string; src?: string }> };
+    const para = ast.children[0] as unknown as { children: Array<{ kind: string; src?: string }> };
     const math = para.children.find((n) => n.kind === 'math-inline');
     expect(math).toBeDefined();
     expect(math?.src).toBe('x^2 + y^2 = z^2');
@@ -95,7 +95,7 @@ describe('PR-W21 math-inline / math-block decompose + docx render', () => {
     const ast = parseMarkdownToAst('plain $$$ text\n');
     // `$$$` は `$$` 開いて closing も `$$` でない → 空ではないが parse fail
     // → text 維持。decompose-pkc が greedy match しない確認。
-    const para = ast.children[0] as { children: Array<{ kind: string }> };
+    const para = ast.children[0] as unknown as { children: Array<{ kind: string }> };
     expect(para.children.every((n) => n.kind !== 'math-inline')).toBe(true);
   });
 });
