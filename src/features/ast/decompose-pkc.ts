@@ -275,6 +275,79 @@ function matchBlockCloser(text: string): boolean {
  * AstParagraph(indent / align) に変換する。`\u{E168}fcap` は figure 内で
  * 拾うため別 path、ここでは text として残置。
  */
+/**
+ * Sentinel 文字列を AstBlock に変換するヘルパー。1 個の sentinel 文字列を
+ * 1 AstBlock(または null)に対応させる。
+ */
+function buildSentinelBlock(raw: string): AstBlock | null {
+  // section break sentinel
+  let m: RegExpExecArray | null;
+  m = /^\u{E160}sb:(\{[^}]*\})?\u{E161}$/u.exec(raw);
+  if (m) {
+    const attrs = m[1] ? parseAttrString(m[1]) : undefined;
+    const role = attrs?.kvs?.role as string | undefined;
+    return role
+      ? { kind: 'break', breakKind: 'page', role }
+      : { kind: 'break', breakKind: 'page' };
+  }
+  // blank-line marker sentinel
+  m = /^\u{E162}bl:(\d{1,3})\u{E163}$/u.exec(raw);
+  if (m) {
+    const r = parseInt(m[1]!, 10);
+    const capped = Math.min(Math.max(r, 1), 50);
+    const node: AstBlank = { kind: 'blank', count: capped };
+    if (capped !== r) node.cappedFrom = r;
+    return node;
+  }
+  // indent sentinel
+  m = /^\u{E164}ind:([\s\S]+?)\u{E165}$/u.exec(raw);
+  if (m) {
+    return {
+      kind: 'paragraph',
+      children: [{ kind: 'text', value: m[1]!.trim() }],
+      indent: 1,
+    };
+  }
+  // align sentinel
+  m = /^\u{E166}al:(center|end)\|([\s\S]+?)\u{E167}$/u.exec(raw);
+  if (m) {
+    return {
+      kind: 'paragraph',
+      children: [{ kind: 'text', value: m[2]!.trim() }],
+      align: m[1] as 'center' | 'end',
+    };
+  }
+  return null;
+}
+
+/**
+ * PR-W24:行頭 sentinel paragraph を AST block に decompose。markdown-it
+ * は連続行(blank line 無し)を 1 paragraph に結合するため、複数の sentinel
+ * が空白区切りで 1 paragraph 内に同居するケースが発生する。`splitSentinelParagraph`
+ * で paragraph text を sentinel 境界で split、各 sentinel を独立 block に変換。
+ */
+function splitSentinelParagraph(text: string): Array<{ kind: 'sentinel'; raw: string } | { kind: 'text'; raw: string }> {
+  // すべての sentinel(opener char \u{E160}-\u{E168}、closer char \u{E161}-\u{E169})を
+  // 1 回 scan で抽出。
+  const sentinelRe = /\u{E160}sb:(?:\{[^}]*\})?\u{E161}|\u{E162}bl:\d{1,3}\u{E163}|\u{E164}ind:[\s\S]+?\u{E165}|\u{E166}al:(?:center|end)\|[\s\S]+?\u{E167}/gu;
+  const out: Array<{ kind: 'sentinel'; raw: string } | { kind: 'text'; raw: string }> = [];
+  let pos = 0;
+  let m: RegExpExecArray | null;
+  while ((m = sentinelRe.exec(text)) !== null) {
+    if (m.index > pos) {
+      const between = text.slice(pos, m.index).trim();
+      if (between !== '') out.push({ kind: 'text', raw: between });
+    }
+    out.push({ kind: 'sentinel', raw: m[0] });
+    pos = m.index + m[0].length;
+  }
+  if (pos < text.length) {
+    const tail = text.slice(pos).trim();
+    if (tail !== '') out.push({ kind: 'text', raw: tail });
+  }
+  return out;
+}
+
 function decomposeLineLeadingSentinels(
   blocks: readonly AstBlock[],
 ): AstBlock[] {
@@ -285,8 +358,7 @@ function decomposeLineLeadingSentinels(
       continue;
     }
     const text = inlinesToText(block.children).trim();
-    // (z) `:::break{...}` self-closing block(R-2H formal)。content / closer 無し。
-    // expandSingleLineBlocks の opener/closer pair 検出ではなく、ここで先に処理。
+    // (z) `:::break{...}` self-closing block(R-2H formal)
     const breakMatch = /^:::break(\{[^}]*\})?\s*$/.exec(text);
     if (breakMatch) {
       const attrs = breakMatch[1] ? parseAttrString(breakMatch[1]) : undefined;
@@ -299,49 +371,20 @@ function decomposeLineLeadingSentinels(
       out.push(node);
       continue;
     }
-    // (a) `+++` section break sentinel
-    const sbMatch = /^\u{E160}sb:(\{[^}]*\})?\u{E161}$/u.exec(text);
-    if (sbMatch) {
-      const attrsStr = sbMatch[1];
-      const attrs = attrsStr ? parseAttrString(attrsStr) : undefined;
-      const role = (attrs?.kvs?.role as string | undefined);
-      const node: AstBreak = role
-        ? { kind: 'break', breakKind: 'page', role }
-        : { kind: 'break', breakKind: 'page' };
-      out.push(node);
-      continue;
-    }
-    // (b) `_N` blank-line marker sentinel
-    const blMatch = /^\u{E162}bl:(\d{1,2})\u{E163}$/u.exec(text);
-    if (blMatch) {
-      const raw = parseInt(blMatch[1]!, 10);
-      const capped = Math.min(Math.max(raw, 1), 50);
-      const node: AstBlank = { kind: 'blank', count: capped };
-      if (capped !== raw) node.cappedFrom = raw;
-      out.push(node);
-      continue;
-    }
-    // (c) `__` / `＿` paragraph indent sentinel
-    const indMatch = /^\u{E164}ind:([\s\S]+?)\u{E165}$/u.exec(text);
-    if (indMatch) {
-      const body = indMatch[1]!.trim();
-      out.push({
-        kind: 'paragraph',
-        children: [{ kind: 'text', value: body }],
-        indent: 1,
-      });
-      continue;
-    }
-    // (d) align prefix sentinel
-    const alMatch = /^\u{E166}al:(center|end)\|([\s\S]+?)\u{E167}$/u.exec(text);
-    if (alMatch) {
-      const align = alMatch[1] as 'center' | 'end';
-      const body = alMatch[2]!.trim();
-      out.push({
-        kind: 'paragraph',
-        children: [{ kind: 'text', value: body }],
-        align,
-      });
+    // PR-W24:複数 sentinel + plain text が混在する paragraph を split。
+    // markdown-it が `\u{E162}bl:3\u{E163} 3 行あけ` のように blank line 無しで
+    // 連結した場合に正しく分解する。
+    const parts = splitSentinelParagraph(text);
+    if (parts.length > 0 && parts.some((p) => p.kind === 'sentinel')) {
+      for (const part of parts) {
+        if (part.kind === 'sentinel') {
+          const node = buildSentinelBlock(part.raw);
+          if (node) out.push(node);
+        } else {
+          // plain text fragment は通常 paragraph として残置
+          out.push(makeParagraphFromText(part.raw));
+        }
+      }
       continue;
     }
     out.push(block);
@@ -987,6 +1030,31 @@ function tryInlinePattern(
     return { nodes: [node], consumed };
   }
 
+  // 2c. L-6 Simple inline `:text:attrs:` — `:text:` の attrs に装飾(bold,red,
+  // lg,1.5em 等)を colon 区切りで列挙。formal `:role:[X]` と区別するため
+  // `:text:attrs:` の text 部分は `[]` を含まない、attrs 部分は `[]` でも
+  // `{}` でも始まらない実用上の制約で formal と衝突しない。AI が hallucinate
+  // した時の寛容 parse として AstSpan(class=[attr1, attr2])で wrap。
+  // PR-W24:`:大きく背景黄:lg,bg-yellow:` 形を AST 化(L-6 spec)。
+  m = /^:([^:\n[{]+):([a-zA-Z0-9_.,#\s-]+):/.exec(slice);
+  if (m) {
+    const text = m[1]!.trim();
+    const attrStr = m[2]!.trim();
+    // formal `:role:[X]` / `:role:{...}` と衝突しないこと(text に `[` `{` を含まない)を確認済
+    const consumed = start + m[0].length;
+    if (text === '' || attrStr === '') {
+      return { nodes: [], consumed };
+    }
+    const classes = attrStr.split(/[,\s]+/).filter((s) => s !== '');
+    const innerNodes = scanInlineMarkers(text, vars);
+    const node: AstSpan = {
+      kind: 'span',
+      children: innerNodes,
+      attrs: { classes, kvs: {} },
+    };
+    return { nodes: [node], consumed };
+  }
+
   // 3. :role:{...} — attribution chip / hint / spacing / align
   m = /^:(quote|spacing|align|caption):(\{[^}]*\})/.exec(slice);
   if (m) {
@@ -1104,7 +1172,20 @@ function tryInlinePattern(
     return { nodes: [{ kind: 'math-inline', src } as AstMathInline], consumed: start + m[0].length };
   }
 
-  // 6. ==text== mark
+  // 6. ==text== mark / ==[color]text== color mark(L-2-a / L-2-a')
+  // PR-W24:`==[red]X==` `==[#fde68a]X==` の color 指定を AstMark.color に
+  // 抽出。color spec は `[color-spec]` 形、color-spec は named color or
+  // hex(`#abc` / `#abcdef`)。`==[label]X==` のような non-color label でも
+  // 一旦 color として記録(下流 renderer が valid color を判定 / fallback)。
+  m = /^==\[([^\]\n]+)\]([^=\n]+?)==/.exec(slice);
+  if (m) {
+    const color = m[1]!.trim();
+    const inner = scanInlineMarkers(m[2]!, vars);
+    return {
+      nodes: [{ kind: 'mark', children: inner, color } as AstMark],
+      consumed: start + m[0].length,
+    };
+  }
   m = /^==([^=\n]+?)==/.exec(slice);
   if (m) {
     const inner = scanInlineMarkers(m[1]!, vars);

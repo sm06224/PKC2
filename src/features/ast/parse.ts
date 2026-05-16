@@ -514,7 +514,7 @@ function shieldLineLeadingMarkers(body: string): string {
   //   行頭 `_` + 数字 OR 単独 `_` で次行までが構造記号。N>50 は cap される
   //   (decompose 側で cap)。行頭 ws 寛容。
   out = out.replace(
-    /^[ \t\u3000]*_(\d{1,2})?[ \t]*$/gm,
+    /^[ \t\u3000]*_(\d{1,3})?[ \t]*$/gm,
     (_m, n: string | undefined) => `\u{E162}bl:${n ?? '1'}\u{E163}`,
   );
   // (3) `__X` / `＿X` paragraph indent prefix。行頭で `__` or `＿` の直後に
