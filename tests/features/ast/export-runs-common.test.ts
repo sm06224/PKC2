@@ -128,8 +128,17 @@ describe('detectTaskState', () => {
     expect(detectTaskState([{ kind: 'strong', children: [textInline('[ ] inside')] } as AstInline])).toBeNull();
   });
 
-  it('returns null without trailing space `[x]xxx`(spec requires space)', () => {
+  it('returns null without trailing space `[x]xxx`(non-task plain text)', () => {
+    // `[x]xxx`(直後に普通 char)= 不正な task syntax、reject
     expect(detectTaskState([textInline('[x]no-space')])).toBeNull();
+  });
+
+  it('PR-W12 hotfix: empty task `[ ]`(末尾なし)を受理(空 GFM task)', () => {
+    expect(detectTaskState([textInline('[ ]')])).toBe('open');
+  });
+
+  it('PR-W12 hotfix: empty done task `[x]`(末尾なし)を受理', () => {
+    expect(detectTaskState([textInline('[x]')])).toBe('done');
   });
 
   it('returns null for malformed `[abc] xxx`', () => {

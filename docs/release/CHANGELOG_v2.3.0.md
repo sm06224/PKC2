@@ -87,6 +87,16 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+- **PR-W12 Wave Z.1 task list literal fix + font 10.5pt + line 1.0 + margin 2cm 統一**(2026-05-16、user 報告 cascading fix 続編):
+  - **task list `[ ]` literal 解消**:`detectTaskState` / `stripTaskPrefix` の regex を `/^\[([ xX])\]\s/` → `/^\[([ xX])\](?:\s|$)/` に変更、**空 task list `- [ ]`(trailing space なし)** も正しく ☐ glyph に置換。GFM 仕様も空 task を許容(mn 議事録の `- [ ]` 4 件で literal 残り → 完全 ☐ 化)
+  - **font size 11pt → 10.5pt**(twip 22 → 21):user「font 10.5pt かな」、Japanese technical writing 標準サイズ、heading も比例縮小(H1: 20pt→18pt / H2: 16pt→14pt / H3: 13pt→12pt / H4: 12pt→11pt)
+  - **line-height 1.15 → 1.0**(twip 276 → 240):user「行間はもっと詰めて」、真の 0pt 寄り(行送り = font size、文字 overlap は font 内蔵 leading で回避)
+  - **column gap 0.5 → 0.25 inch**(twip 720 → 360):user「2 段組の境界までの余白もっと攻めて」
+  - **margin 全方向 2cm 統一**(top/right/bottom/left = 1134 twip):user「綴じ代は 2cm で」、左綴じ代 + 全方向パンチホール対応 + 情報密度最大化
+  - heading spacing も比例縮小(H1: 24/12pt → 18/9pt、H2: 18/8pt → 14/7pt、H3: 12/6pt → 10/5pt)
+  - 既存 test 4 件 follow:`export-typography-bilingual` line 276→240、`export-heading-prefix-and-spacing` heading 480/360/240 → 360/280/200 + size 40/32 → 36/28、`export-runs-common` に空 task 2 件追加、`export-layout-2col` column space 720 → 360
+  - 全 **7887 test pass**(+2 件 = 空 task open / done)、bundle.js 1857 KB / bundle.css 163 KB 不変。**manual PNG 16 件 全部再生成**で新 default 反映。
+
 - **PR-W11 Wave Z.1 layout: a4-2col 段組組版 + 余白 / 行間 / 段落 spacing default 大改修**(2026-05-16、user 直接報告 cascading fix):
   - **段組組版 docx**:`Document.sections[].properties.column = { count, space, equalWidth }` を frontmatter `layout: a4-Xcol` から動的指定、用紙サイズ(A4 11906×16838 twip / B5 9979×14175 / Letter 12240×15840 / Legal 12240×20160)を `page.size` に反映。`<w:cols w:num="2">` で実機 2 段組が出る(従来 ignore で 1 段組のまま user 報告「2 段組じゃない」)
   - **段組組版 pptx**:slide body 領域を N column に水平 split、column gap 0.3 inch、各 column を独立 addText で配置(pptxgenjs は docx 同等の column API なしのため)

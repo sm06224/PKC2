@@ -136,8 +136,13 @@ export const MATH_FONT = 'Cambria Math';
 // ── Spacing tokens(line-height / inline code shading)─────
 
 /**
- * PR-W11 確定(2026-05-16):本文 line-height **1.15**(twip 276)= dense
- * web layout。
+ * PR-W12 確定(2026-05-16):本文 line-height **1.0**(twip 240)= 真の
+ * 0pt 寄り(行送り = font size、leading は font 内蔵に委ねる)。
+ *
+ * user 指示「行間はもっと詰めて」を最大限に反映。docx 単位 240 twip = 1.0、
+ * `lineRule: 'auto'` で font size に応じて auto 計算、文字 overlap は font
+ * 内蔵 leading で回避される(Noto Sans CJK JP は ascender / descender が
+ * 自然に間隔を作る)。
  *
  * user 指示「実際の web は line-height が 0pt に近い方、読みやすさは行間
  * でなく文章の構成で担保」を受けて方針確定:
@@ -158,7 +163,7 @@ export const MATH_FONT = 'Cambria Math';
  *
  * docx 単位 = 240 twip = 1.0。`lineRule: 'auto'` で font size に応じて auto 計算。
  */
-export const BODY_LINE_HEIGHT_TWIP = 276;
+export const BODY_LINE_HEIGHT_TWIP = 240;
 
 /**
  * PR-W7(Wave X P1、AI review feedback):inline code 背景。`#F4F4F5` は

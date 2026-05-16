@@ -108,23 +108,22 @@ describe('PR-W6 P0-a: docx heading 章番号二重表記対応', () => {
   });
 });
 
-describe('PR-W6 P0-c: docx heading spacing + size 階段強化', () => {
-  it('heading1 spacing before=480 (24pt)、size=40 (20pt)', async () => {
+describe('PR-W6 + W12: docx heading spacing + size 階段(W12 で body 10.5pt 基準に比例縮小)', () => {
+  it('heading1 spacing before=360 (18pt)、size=36 (18pt)', async () => {
     const styles = await docxToStyles('# H1\n');
-    // styles.xml に H1 spacing と size が定義されている
-    expect(styles).toMatch(/w:before="480"/);
-    expect(styles).toMatch(/w:val="40"/); // size 40 = 20pt
-  });
-
-  it('heading2 spacing before=360 (18pt)、size=32 (16pt)', async () => {
-    const styles = await docxToStyles('## H2\n');
     expect(styles).toMatch(/w:before="360"/);
-    expect(styles).toMatch(/w:val="32"/);
+    expect(styles).toMatch(/w:val="36"/); // 18pt
   });
 
-  it('heading3 spacing before=240 (12pt)、size=26 (13pt 維持)', async () => {
+  it('heading2 spacing before=280 (14pt)、size=28 (14pt)', async () => {
+    const styles = await docxToStyles('## H2\n');
+    expect(styles).toMatch(/w:before="280"/);
+    expect(styles).toMatch(/w:val="28"/);
+  });
+
+  it('heading3 spacing before=200 (10pt)', async () => {
     const styles = await docxToStyles('### H3\n');
-    expect(styles).toMatch(/w:before="240"/);
+    expect(styles).toMatch(/w:before="200"/);
   });
 });
 

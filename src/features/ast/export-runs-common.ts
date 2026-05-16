@@ -63,7 +63,11 @@ export function detectTaskState(inlines: readonly AstInline[]): 'open' | 'done' 
   if (inlines.length === 0) return null;
   const first = inlines[0];
   if (!first || first.kind !== 'text') return null;
-  const m = /^\[([ xX])\]\s/.exec(first.value);
+  // PR-W12 hotfix(user 報告 2026-05-16「チェックボックスがマークダウンの
+  // まま、なぞのカッコ」):`\s` だけだと **空 task list `- [ ]`(trailing
+  // space なし)** で match せず literal 残り。`(?:\s|$)` で trailing
+  // space ありなしどちらも受理。GFM 仕様も空 task を許容している。
+  const m = /^\[([ xX])\](?:\s|$)/.exec(first.value);
   if (!m) return null;
   return m[1] === ' ' ? 'open' : 'done';
 }
@@ -73,7 +77,8 @@ export function stripTaskPrefix(inlines: readonly AstInline[]): AstInline[] {
   if (inlines.length === 0) return [...inlines];
   const first = inlines[0];
   if (!first || first.kind !== 'text') return [...inlines];
-  const stripped = first.value.replace(/^\[[ xX]\]\s/, '');
+  // PR-W12 hotfix:空 task `[ ]`(末尾なし)も strip 対象。
+  const stripped = first.value.replace(/^\[[ xX]\](?:\s|$)/, '');
   return [
     { kind: 'text', value: stripped } as AstInline,
     ...inlines.slice(1),

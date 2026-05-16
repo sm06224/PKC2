@@ -99,10 +99,10 @@ describe('PR-W11: docx layout: a4-2col 段組組版', () => {
     expect(xml).not.toMatch(/<w:cols[^/]*w:num="[2-9]"/);
   });
 
-  it('column space が 720 twip(0.5 inch)で出る', async () => {
+  it('column space が 360 twip(0.25 inch、PR-W12 で 720 → 360 詰め)で出る', async () => {
     const md = '---\nlayout: a4-2col\n---\n\nbody\n';
     const xml = await docxToBodyXml(md);
-    expect(xml).toMatch(/<w:cols[^>]*w:space="720"/);
+    expect(xml).toMatch(/<w:cols[^>]*w:space="360"/);
   });
 });
 

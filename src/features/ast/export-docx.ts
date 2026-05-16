@@ -484,12 +484,13 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         const level = HEADING_LEVELS[block.level] ?? HeadingLevel.HEADING_3;
         const isFirstH1 = block.level === 1 && !ctx.seenFirstH1;
         if (block.level === 1) ctx.seenFirstH1 = true;
-        // PR-W6(AI review P0-c 見出し spacing 明示):H1 前 24pt / 後 12pt、
-        // H2 前 18pt / 後 8pt、H3 前 12pt / 後 6pt(twip = pt × 20)。
+        // PR-W12(user 指示 font 10.5pt 基準):heading spacing も比例縮小、
+        // 全体的に詰めて密度 up。
+        // H1: before 18pt / after 9pt、H2: 14/7、H3: 10/5
         const spacingByLevel: Record<number, { before: number; after: number }> = {
-          1: { before: 480, after: 240 },
-          2: { before: 360, after: 160 },
-          3: { before: 240, after: 120 },
+          1: { before: 360, after: 180 },
+          2: { before: 280, after: 140 },
+          3: { before: 200, after: 100 },
         };
         // PR-W8(AI review P2-7):H2/H3 に左 accent border 3pt(blue
         // `#2F6FED`)。H1 は pageBreakBefore で chapter separator が確保
@@ -844,8 +845,10 @@ export async function astToDocxBlob(
           // 場合は自動 fallback。**line-height** は 1.5(twip 360)に設定、
           // 和文 1.5〜1.6 の読みやすさを satisfy。
           run: {
+            // PR-W12(user 指示 2026-05-16「font 10.5pt かな」):body 11pt
+            // → 10.5pt(twip 21、Japanese technical writing 標準サイズ)。
             font: BILINGUAL_BODY_FONT,
-            size: 22, // 11pt
+            size: 21, // 10.5pt
           },
           paragraph: {
             // PR-W11(user 指摘「同一スタイルの段落の続きに余白が多く、行間が
@@ -866,29 +869,31 @@ export async function astToDocxBlob(
         // H1 size 40(20pt)/ H2 size 32(16pt)/ H3 size 26(13pt)で
         // H1↔H2 の差を 4pt、H2↔H3 の差を 3pt に広げて階層が一目で読める。
         // PR-W7:font も bilingual に置換。
+        // PR-W12(user 指示「font 10.5pt」):body 10.5pt 基準で heading 階段
+        // を再構築。階層性は維持しつつ全体的にコンパクト化。
         heading1: {
-          run: { font: BILINGUAL_BODY_FONT, size: 40, bold: true }, // 20pt
-          paragraph: { spacing: { before: 480, after: 240 } }, // 24pt / 12pt
+          run: { font: BILINGUAL_BODY_FONT, size: 36, bold: true }, // 18pt
+          paragraph: { spacing: { before: 360, after: 180 } }, // 18pt / 9pt
         },
         heading2: {
-          run: { font: BILINGUAL_BODY_FONT, size: 32, bold: true }, // 16pt
-          paragraph: { spacing: { before: 360, after: 160 } }, // 18pt / 8pt
+          run: { font: BILINGUAL_BODY_FONT, size: 28, bold: true }, // 14pt
+          paragraph: { spacing: { before: 280, after: 140 } }, // 14pt / 7pt
         },
         heading3: {
-          run: { font: BILINGUAL_BODY_FONT, size: 26, bold: true }, // 13pt
-          paragraph: { spacing: { before: 240, after: 120 } }, // 12pt / 6pt
+          run: { font: BILINGUAL_BODY_FONT, size: 24, bold: true }, // 12pt
+          paragraph: { spacing: { before: 200, after: 100 } }, // 10pt / 5pt
         },
         heading4: {
-          run: { font: BILINGUAL_BODY_FONT, size: 24, bold: true }, // 12pt
-          paragraph: { spacing: { before: 120, after: 60 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 22, bold: true }, // 11pt
+          paragraph: { spacing: { before: 100, after: 50 } },
         },
         heading5: {
-          run: { font: BILINGUAL_BODY_FONT, size: 22, bold: true },
-          paragraph: { spacing: { before: 100, after: 60 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true },
+          paragraph: { spacing: { before: 80, after: 40 } },
         },
         heading6: {
-          run: { font: BILINGUAL_BODY_FONT, size: 22, bold: true },
-          paragraph: { spacing: { before: 80, after: 60 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true },
+          paragraph: { spacing: { before: 60, after: 30 } },
         },
       },
     },
@@ -938,11 +943,14 @@ function resolveSectionProperties(layout?: string): Record<string, unknown> {
   // - 上(ホチキス):1440 twip(1.0 inch、文書冒頭の余白)
   // - 右 / 下:1080 twip(0.75 inch、印刷紙の余白を詰める)
   // 縦書き(`writing: vertical`)は右綴じだが現状未対応(別 PR)。
+  // PR-W12(user 指示 2026-05-16「綴じ代は 2cm で」):全方向 2.0 cm 統一
+  // (1134 twip = 0.79 inch)。左綴じ代 + パンチホール対応 + 上下も詰め
+  // で情報密度を最大化。
   const baseMargin = {
-    top: 1440,    // 1.0 inch:文書上端余白(ホチキス意識)
-    right: 1080,  // 0.75 inch:右余白詰め
-    bottom: 1080, // 0.75 inch:下余白詰め
-    left: 1440,   // 1.0 inch:左綴じ代
+    top: 1134,    // 2.0 cm
+    right: 1134,  // 2.0 cm
+    bottom: 1134, // 2.0 cm
+    left: 1134,   // 2.0 cm(綴じ代基準)
   };
   if (!layout) {
     return { page: { margin: baseMargin } };
@@ -965,9 +973,11 @@ function resolveSectionProperties(layout?: string): Record<string, unknown> {
     },
   };
   if (cols >= 2) {
+    // PR-W12(user「2 段組の境界までの余白ももっと攻められない?」):
+    // column gap を 720(0.5 inch)→ 360(0.25 inch)に詰めて段間を攻める。
     props.column = {
       count: cols,
-      space: 720,
+      space: 360,
       equalWidth: true,
     };
   }
