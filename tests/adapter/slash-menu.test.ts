@@ -181,8 +181,10 @@ describe('slash menu filtering', () => {
     openSlashMenu(ta, 0, root);
     filterSlashMenu('da');
     const items = root.querySelectorAll('.pkc-slash-menu-item');
-    // Should match "date" and "datetime"
-    expect(items.length).toBe(2);
+    // PR-W10(2026-05-16):layout template 8 件が default 同梱、うち rp /
+    // mn / ln / jl が body に `date:` frontmatter を持つため fuzzy match
+    // で hit。既存 "date" + "datetime" の 2 件 + layout 4 件 = 6 件。
+    expect(items.length).toBe(6);
   });
 
   it('shows empty state for no matches', () => {
@@ -713,9 +715,10 @@ describe('slash menu per-root isolation', () => {
     openSlashMenu(taB, 0, rootB);
 
     filterSlashMenu('da');
-    // Filter applied to rootB (2 matches: date, datetime).
+    // PR-W10(2026-05-16):layout template の rp/mn/ln/jl も `date:` で
+    // fuzzy match するため、date + datetime + 4 layout = 6 件。
     const bItems = rootB.querySelectorAll('.pkc-slash-menu-item');
-    expect(bItems.length).toBe(2);
+    expect(bItems.length).toBe(6);
     // rootA is empty.
     expect(rootA.querySelectorAll('.pkc-slash-menu-item').length).toBe(0);
   });
@@ -740,7 +743,9 @@ describe('slash menu per-root isolation', () => {
     // could leave `filteredCommands` stale on reopen.
     openSlashMenu(taA, 0, rootA);
     filterSlashMenu('da');
-    expect(rootA.querySelectorAll('.pkc-slash-menu-item').length).toBe(2);
+    // PR-W10(2026-05-16):layout template の 4 件(rp/mn/ln/jl)も
+    // `date:` frontmatter で fuzzy match。
+    expect(rootA.querySelectorAll('.pkc-slash-menu-item').length).toBe(6);
     closeSlashMenu();
 
     // Reopen — must show the full command list.

@@ -132,16 +132,32 @@ function extractFootnoteDefs(
 ): { remaining: AstBlock[]; footnotes: Record<string, readonly AstBlock[]> } {
   const remaining: AstBlock[] = [];
   const footnotes: Record<string, AstBlock[]> = {};
+  // PR-W18(2026-05-16):複数 footnote 定義 `[^a]: A\n[^b]: B\n[^c]: C`
+  // を連続行で書いた場合、markdown-it は blank-line 区切りが無いため
+  // 単一 paragraph に合成する。1 paragraph 中に sentinel が複数並ぶ
+  // パターンを matchAll で抽出して全件 ast.footnotes に格納する。
+  // 1 個も sentinel が無い場合は通常 paragraph として通過。
+  const fnPattern = /\u{E152}fndef:([A-Za-z_][\w-]*)\|([\s\S]*?)\u{E153}/gu;
   for (const block of blocks) {
     if (block.kind === 'paragraph') {
       const text = inlinesToText(block.children);
-      // sentinel(parse 段階で shieldFootnotes が置換)を匹配。
-      // 形式:`\u{E152}fndef:id|body\u{E153}`
-      const m = /^\u{E152}fndef:([A-Za-z_][\w-]*)\|([\s\S]*?)\u{E153}\s*$/u.exec(text.trim());
-      if (m) {
-        const id = m[1]!;
-        const body = m[2]!;
-        footnotes[id] = [makeParagraphFromText(body)];
+      const matches = [...text.matchAll(fnPattern)];
+      if (matches.length > 0) {
+        // text 中の sentinel 以外の部分が空(trim 後)なら定義 only paragraph
+        // → 全件抽出 + paragraph 自体は drop。それ以外は sentinel 部分だけ
+        // 取り出し、残り text を sanitized paragraph として残置。
+        let nonSentinelText = text;
+        for (const m of matches) {
+          nonSentinelText = nonSentinelText.replace(m[0], '');
+        }
+        for (const m of matches) {
+          const id = m[1]!;
+          const body = m[2]!;
+          footnotes[id] = [makeParagraphFromText(body)];
+        }
+        if (nonSentinelText.trim() === '') continue;
+        // sentinel 混在 paragraph(本文 + 末尾 def 等):本文残置
+        remaining.push(makeParagraphFromText(nonSentinelText));
         continue;
       }
     }

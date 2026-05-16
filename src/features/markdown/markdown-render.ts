@@ -24,6 +24,9 @@
 
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
+// PR-W18:HTML footnote plugin(`[^id]` → `<sup class="footnote-ref">`)。
+// CJS package だが exports map で `.mjs` を提供しているため ESM import OK。
+import footnotePlugin from 'markdown-it-footnote';
 import { renderMarkdownViaIR, useIrPipeline } from '../ast/render-markdown-via-ir';
 import { makeSlugCounter, extractHeadingsFromMarkdown } from './markdown-toc';
 import { highlightCode, isHighlightable } from './code-highlight';
@@ -58,6 +61,17 @@ const md = new MarkdownIt({
     return highlightCode(str, lang);
   },
 });
+
+// PR-W18(user「footnote 機能してない、前々から実装した気になって実装されて
+// ない機能の代表、HTML 側もできてない」):markdown-it-footnote plugin で
+// `[^id]` + 末尾 `[^id]: 本文` 定義を native HTML render(`<sup class=
+// "footnote-ref">` + 末尾 `<section class="footnotes">`)。AST 経路は
+// parse.ts で shield + decompose-pkc で AstFootnoteRef 化済(別経路、
+// docx export 用)。本 plugin は HTML render 専用。
+// PR-W19 hotfix:旧 `require('markdown-it-footnote')` は browser bundle
+// で `require is not defined` で boot 全体が死ぬ重大 regression(vitest
+// Node 環境では通っていたため気付かなかった)。ESM import に切替。
+md.use(footnotePlugin);
 
 // ── Link hardening ────────────────────────────────────
 //

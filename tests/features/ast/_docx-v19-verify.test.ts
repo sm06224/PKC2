@@ -23,14 +23,14 @@ async function gen(md: string, opts: { container?: Container } = {}, dirName = '
 }
 
 describe('PR-V19 user audit 全 12 項目検証', () => {
-  it('(2)(3) default font は BIZ UDGothic、色指定なし', async () => {
+  it('(2)(3) default font は bilingual stack(Inter + Noto Sans CJK JP)、色指定なし(PR-W7 で BIZ UDGothic から更新)', async () => {
     const xml = await gen('# Heading\n\nbody.');
-    // styles.xml に default font が定義(document.xml では heading run も font 指定があり)
     const stylesPath = '/tmp/docx-v19/u/word/styles.xml';
     const styles = readFileSync(stylesPath, 'utf-8');
-    expect(styles).toContain('BIZ UDGothic');
+    // PR-W7(Wave X P1):欧文 Inter + 和文 Noto Sans CJK JP の bilingual stack
+    expect(styles).toContain('Inter');
+    expect(styles).toContain('Noto Sans CJK JP');
     // 本文に色指定が無いことを確認(`<w:color w:val=...` が rPrDefault 以外で出ない)
-    // 厳密には任意 color を allow しないが、最小確認:固定色 363636 / 000000 等の hardcode 排除
     expect(xml).not.toContain('w:color w:val="363636"');
   });
 
@@ -87,10 +87,10 @@ describe('PR-V19 user audit 全 12 項目検証', () => {
     expect(rels).toContain('https://github.com');
   });
 
-  it('(9) 表ヘッダーに薄 shading(EEEEEE)', async () => {
+  it('(9) 表ヘッダーに薄 shading(PR-W8 で `EEEEEE` → `F4F4F5` 統一)', async () => {
     const md = '| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |';
     const xml = await gen(md, {}, 'docx-v19-table');
-    expect(xml).toMatch(/<w:shd[^>]+w:fill="EEEEEE"/);
+    expect(xml).toMatch(/<w:shd[^>]+w:fill="F4F4F5"/);
   });
 
   it('(10) ページ区切り AstBreak(kind=page)→ PageBreak', async () => {

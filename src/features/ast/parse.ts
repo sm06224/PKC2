@@ -64,6 +64,8 @@ function extractFrontmatter(text: string): {
     writing?: 'horizontal' | 'vertical';
     direction?: 'ltr' | 'rtl';
     align?: 'left' | 'right' | 'center' | 'top' | 'bottom';
+    /** PR-W11(2026-05-16):docx/pptx export で 2 段組を反映するため layout も抽出。 */
+    layout?: string;
     notation?: string;
     vars: Record<string, string>;
   };
@@ -78,9 +80,16 @@ function extractFrontmatter(text: string): {
     writing?: 'horizontal' | 'vertical';
     direction?: 'ltr' | 'rtl';
     align?: 'left' | 'right' | 'center' | 'top' | 'bottom';
+    layout?: string;
     notation?: string;
     vars: Record<string, string>;
   } = { vars: {} };
+  const VALID_LAYOUTS = new Set([
+    'a4-1col', 'a4-2col', 'a4-3col',
+    'b5-1col', 'b5-2col',
+    'letter-1col', 'letter-2col',
+    'legal-1col', 'legal-2col',
+  ]);
   // 単純な key: value parse(nested vars: 構造のみ)
   const lines = yaml.split('\n');
   let inVars = false;
@@ -110,6 +119,8 @@ function extractFrontmatter(text: string): {
       globals.align = value as 'left' | 'right' | 'center' | 'top' | 'bottom';
     } else if (key === 'notation') {
       globals.notation = value;
+    } else if (key === 'layout' && VALID_LAYOUTS.has(value)) {
+      globals.layout = value;
     }
   }
   return { body, globals };
@@ -479,6 +490,7 @@ export function parseMarkdownToAst(text: string, opts: ParseOptions = {}): AstDo
   if (globals.writing) doc.writing = globals.writing;
   if (globals.direction) doc.direction = globals.direction;
   if (globals.align) doc.align = globals.align;
+  if (globals.layout) doc.layout = globals.layout;
   if (globals.notation) doc.notation = globals.notation;
   if (Object.keys(globals.vars).length > 0) doc.vars = globals.vars;
   // PR-2JJ v2 final(2026-05-13、user direction「実装できるまでを終わりとします」):

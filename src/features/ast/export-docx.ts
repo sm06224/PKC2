@@ -48,7 +48,8 @@ import {
   ImageRun,
   ExternalHyperlink,
   ShadingType,
-  WidthType,
+  TableLayoutType,
+  FootnoteReferenceRun,
   type IParagraphOptions,
   type IRunOptions,
 } from 'docx';
@@ -63,9 +64,55 @@ import type {
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import { detectCsvLang, parseCsv, isHeaderDisabled } from '@features/markdown/csv-table';
+import {
+  isInternalLink,
+  extractEntryLidFromHref,
+  detectTaskState,
+  stripTaskPrefix,
+  base64ToUint8Array,
+  resolveImageData,
+} from '@features/ast/export-runs-common';
+import {
+  FONT_LATIN,
+  FONT_EASTASIA,
+  MONOSPACE_FONT_LATIN,
+  MONOSPACE_FONT_EASTASIA,
+  MATH_FONT,
+  MARK_HIGHLIGHT_HEX,
+  TABLE_HEADER_SHADING_HEX,
+  TABLE_BORDER_HEX,
+  CODE_BLOCK_SHADING_HEX,
+  CODE_BLOCK_LEFT_BORDER_HEX,
+  HORIZONTAL_RULE_BORDER_HEX,
+  INLINE_CODE_SHADING_HEX,
+  BODY_LINE_HEIGHT_TWIP,
+  ACCENT_COLOR_HEX,
+  TASK_OPEN_GLYPH_COLOR_HEX,
+  TASK_DONE_GLYPH_COLOR_HEX,
+  TABLE_CELL_PADDING_TWIP,
+  HEADING_ACCENT_BORDER_SIZE,
+  DOCX_BORDER_SIZE_DEFAULT,
+  DOCX_BORDER_SPACE_DEFAULT,
+  DOCX_HEADING_INDENT_UNIT_TWIP,
+  DOCX_QUOTE_INDENT_TWIP,
+} from '@features/ast/export-constants';
 
-/** PKC2 HTML が使う default font(`base.css --font-sans` 1st choice)。 */
-const DEFAULT_FONT = 'BIZ UDGothic';
+/** PR-W7:bilingual font stack(欧文 ascii + 和文 eastAsia)を docx の
+ * `IFontAttributesProperties` で表現。`hAnsi` は欧文と同じ、`cs` は CJK と
+ * 同じにして High-ANSI + complex script で挙動を揃える。 */
+const BILINGUAL_BODY_FONT = {
+  ascii: FONT_LATIN,
+  hAnsi: FONT_LATIN,
+  eastAsia: FONT_EASTASIA,
+  cs: FONT_EASTASIA,
+} as const;
+
+const BILINGUAL_MONOSPACE_FONT = {
+  ascii: MONOSPACE_FONT_LATIN,
+  hAnsi: MONOSPACE_FONT_LATIN,
+  eastAsia: MONOSPACE_FONT_EASTASIA,
+  cs: MONOSPACE_FONT_EASTASIA,
+} as const;
 
 /** Heading 1〜6 の Word HeadingLevel mapping。 */
 const HEADING_LEVELS: Record<number, typeof HeadingLevel[keyof typeof HeadingLevel]> = {
@@ -79,6 +126,22 @@ const HEADING_LEVELS: Record<number, typeof HeadingLevel[keyof typeof HeadingLev
 
 /** 半角全角カタカナ(H5 numbering 用、ア-ン 47 字)。 */
 const KATAKANA = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
+
+/**
+ * PR-W8 統一の `Table.borders`(hairline 0.5pt grey、6 方向同値)。
+ * AstTable / CSV fence table どちらの経路でも共通の罫線設定。
+ */
+function pkcHairlineTableBorders() {
+  const b = { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX };
+  return {
+    top: b,
+    bottom: b,
+    left: b,
+    right: b,
+    insideHorizontal: b,
+    insideVertical: b,
+  };
+}
 
 /** H6 numbering 用(a-z 26 字)。 */
 function lowerLatin(n: number): string {
@@ -102,23 +165,45 @@ interface InlineStyle {
   strike?: boolean;
   /** Inline code = monospace font + 灰色 shading(default 色は touch しない)。 */
   code?: boolean;
-  /** Mark = 黄色 highlight。 */
-  highlight?: 'yellow' | 'green' | 'cyan' | 'magenta';
+  /**
+   * Mark `==text==` highlight。
+   *
+   * PR-W8(Wave X P2):従来 named token `'yellow'` → hex shading `#FFF3A0`
+   * に切替(soft yellow tone-down)。boolean flag に変更、true なら applyStyle
+   * 内で `shading: { fill: MARK_HIGHLIGHT_HEX }` を付与。
+   */
+  mark?: boolean;
   /** Superscript(リンク連番表示用)。 */
   superScript?: boolean;
+  /** PR-W8:任意 color hex 指定(task glyph 用、grey ☐ / green ☑)。 */
+  color?: string;
 }
 
 function applyStyle(base: IRunOptions, style: InlineStyle): IRunOptions {
-  // IRunOptions の field は readonly なので spread で組み直す
+  // IRunOptions の field は readonly なので spread で組み直す。
+  // PR-W8(Wave X P2):mark / code 両方が同時に shading 競合する場合は code
+  // が優先(applyStyle 順序通り)。実用上は両立しないので問題なし。
   return {
     ...base,
     ...(style.bold ? { bold: true } : {}),
     ...(style.italics ? { italics: true } : {}),
     ...(style.strike ? { strike: true } : {}),
-    ...(style.highlight ? { highlight: style.highlight } : {}),
     ...(style.superScript ? { superScript: true } : {}),
-    // 色は指定しない(default = 自動 = 黒)
-    ...(style.code ? { font: 'Consolas' } : {}),
+    ...(style.color ? { color: style.color } : {}),
+    // PR-W8:mark `==X==` の shading を soft yellow `#FFF3A0` に tone-down
+    // (旧 named `'yellow'` = `#FFFF00` ベタ塗りは威圧的だった)。
+    ...(style.mark
+      ? { shading: { type: ShadingType.CLEAR, color: 'auto', fill: MARK_HIGHLIGHT_HEX } }
+      : {}),
+    // PR-W7(Wave X P1):inline code = monospace bilingual font(欧文
+    // JetBrains Mono + 和文 Source Han Code JP)+ `#F4F4F5` shading で
+    // GitHub / Notion 風の擬似ボックス化。
+    ...(style.code
+      ? {
+        font: BILINGUAL_MONOSPACE_FONT,
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: INLINE_CODE_SHADING_HEX },
+      }
+      : {}),
   };
 }
 
@@ -137,11 +222,27 @@ interface ExportContext {
   assets: Record<string, string>;
   /** PR-V21:AstDocument.vars(変数展開用、`{{vars.x}}` → 値解決)。 */
   vars: Record<string, string>;
+  /**
+   * PR-W18(user「footnote 機能してない、前々から実装した気になって実装され
+   * てない機能の代表、HTML 側もできてない」):footnote id(`[^id]` の id)
+   * → docx footnote 番号 map。`FootnoteReferenceRun(num)` の num は数値必須
+   * (文字列不可)+ Document.footnotes の key は同 num の文字列形式。
+   * docx 内部で連番 1..N を採番して superscript として render される。
+   */
+  footnoteIdMap: Map<string, number>;
 }
 
 function newContext(ast: AstDocument, opts: AstToDocxOptions): ExportContext {
   const entriesByLid = new Map<string, Entry>();
   for (const e of opts.container?.entries ?? []) entriesByLid.set(e.lid, e);
+  // PR-W18:footnote id → 番号(1..N、insertion 順)map を事前構築。
+  // ast.footnotes は Record<id, AstBlock[]> 形式(decompose-pkc が抽出)。
+  // 本文 walk 中に AstFootnoteRef → FootnoteReferenceRun(num) で参照する。
+  const footnoteIdMap = new Map<string, number>();
+  const footnoteIds = Object.keys(ast.footnotes ?? {});
+  for (let i = 0; i < footnoteIds.length; i++) {
+    footnoteIdMap.set(footnoteIds[i]!, i + 1);
+  }
   return {
     headingCounters: [0, 0, 0, 0, 0, 0],
     seenFirstH1: false,
@@ -149,19 +250,60 @@ function newContext(ast: AstDocument, opts: AstToDocxOptions): ExportContext {
     entriesByLid,
     assets: opts.container?.assets ?? {},
     vars: ast.vars ?? {},
+    footnoteIdMap,
   };
 }
 
 /**
- * Heading 番号 prefix を計算 + state 更新。
+ * Heading text 内に既に numbering prefix が手書きされているか判定。
  *
- * PR-V22 hotfix(user audit「0.0. になってる」):H1 なしで H3 が来た場合
- * `${c[0]}.${c[1]}.${c[2]}` = `0.0.1` という醜い prefix が出ていた。
+ * PR-W6(2026-05-15、AI review P0-a):auto-numbering と manual title が
+ * 両方生きていると「第1章 第一章 …」のような二重表記が出る。markdown 側で
+ * `# 第一章 …` / `## 1.1 …` / `### 1.2.3 …` のような prefix が既にある場合
+ * は auto-numbering を skip して text そのまま使う。counter 自体は引き続き
+ * bump(後続 sub-heading 番号の連続性を保つため)。
+ *
+ * 検出 pattern:
+ * - L1:`第N章 ` / `第〇章 ` / `Chapter N. ` / `N章 `
+ * - L2:`N.N ` / `N章N節 ` / `Section N.N ` / `N. ` の冒頭
+ * - L3:`N.N.N ` / `N項 `
+ * - L4:`(N) ` / `（N） `(全角)
+ * - L5:カタカナ 1 字 + 空白 / `第N項 `
+ * - L6:`a. ` `b. ` 等(a-z + ピリオド + 空白)
+ */
+function hasExistingHeadingPrefix(text: string, level: number): boolean {
+  const trimmed = text.trimStart();
+  switch (level) {
+    case 1:
+      return /^(第[一二三四五六七八九十百千0-90-9]+章|Chapter\s+\d+[.\s])/.test(trimmed);
+    case 2:
+      return /^\d+\.\d+\s/.test(trimmed);
+    case 3:
+      return /^\d+\.\d+\.\d+\s/.test(trimmed);
+    case 4:
+      return /^[((][0-90-9]+[))]\s/.test(trimmed);
+    case 5:
+      return /^[アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン]\s/.test(trimmed);
+    case 6:
+      return /^[a-zA-Z]\.\s/.test(trimmed);
+    default:
+      return false;
+  }
+}
+
+/**
+ * Heading counter を bump(prefix 文字列は formatHeadingPrefix で別途生成)。
+ *
+ * PR-W6 で `nextHeadingPrefix` から counter 操作部分を分離。markdown 側で
+ * 既に prefix が手書きされている場合でも counter は bump する必要がある
+ * (後続 sub-heading の連番を維持するため)。
+ *
+ * PR-V22 hotfix:H1 なしで H3 が来た場合 `0.0.1` という醜い prefix が出ていた。
  * 親 counter が 0 のままなら **暗黙の章スタートとして 1 に bump**、結果
  * `1.1.1` で開始。後で本物の H1 が来たら `第2章` から続く。
  */
-function nextHeadingPrefix(ctx: ExportContext, level: number): string {
-  if (level < 1 || level > 6) return '';
+function bumpHeadingCounter(ctx: ExportContext, level: number): void {
+  if (level < 1 || level > 6) return;
   // 自分より下の counter は reset(子は親更新で fresh)
   for (let i = level; i < 6; i++) ctx.headingCounters[i] = 0;
   // 親 counter が 0 のままなら 1 に bump(暗黙の親 heading)
@@ -172,6 +314,11 @@ function nextHeadingPrefix(ctx: ExportContext, level: number): string {
   }
   // 自分を +1
   ctx.headingCounters[level - 1] = (ctx.headingCounters[level - 1] ?? 0) + 1;
+}
+
+/** Counter 現在値から prefix 文字列を生成(side-effect なし)。 */
+function formatHeadingPrefix(ctx: ExportContext, level: number): string {
+  if (level < 1 || level > 6) return '';
   const c = ctx.headingCounters;
   switch (level) {
     case 1: return `第${c[0]}章 `;
@@ -184,85 +331,15 @@ function nextHeadingPrefix(ctx: ExportContext, level: number): string {
   }
 }
 
+
 // ── Inline → docx Run ─────────────────────────────────────
 
-function isInternalLink(href: string): boolean {
-  return (
-    href.startsWith('entry:')
-    || href.startsWith('pkc://')
-    || href.startsWith('#log/')
-    || href.startsWith('#day/')
-    || href.startsWith('#')
-  );
-}
-
-function extractEntryLidFromHref(href: string): string | null {
-  if (href.startsWith('entry:')) {
-    const rest = href.slice('entry:'.length);
-    const hashIdx = rest.indexOf('#');
-    return hashIdx === -1 ? rest : rest.slice(0, hashIdx);
-  }
-  if (href.startsWith('pkc://')) {
-    const m = /^pkc:\/\/[^/]+\/entry\/([^/?#]+)/.exec(href);
-    if (m) return m[1] ?? null;
-  }
-  return null;
-}
-
-function base64ToUint8Array(b64: string): Uint8Array {
-  // PR-V22 hotfix(user audit「画像埋め込めてない」 root cause):
-  // `Buffer.from(b64, 'base64')` は Node API でブラウザでは未定義。vite の
-  // single-HTML bundle で実行する場合、`Buffer` がない → catch して null
-  // fallback → image 埋め込みが silent fail していた。
-  // ブラウザ標準 `atob` + Uint8Array で書き直す(node でも動く)。
-  const binStr = typeof atob === 'function'
-    ? atob(b64)
-    : (typeof Buffer !== 'undefined' ? Buffer.from(b64, 'base64').toString('binary') : '');
-  const arr = new Uint8Array(binStr.length);
-  for (let i = 0; i < binStr.length; i++) arr[i] = binStr.charCodeAt(i);
-  return arr;
-}
-
 function imageRunForAssetSrc(src: string, ctx: ExportContext): ImageRun | null {
-  let key: string | null = null;
-  let mime: string | null = null;
-  if (src.startsWith('asset:')) {
-    key = src.slice('asset:'.length);
-  } else if (src.startsWith('pkc://')) {
-    // PR-V20 hotfix(2026-05-14、user audit「画像埋め込めてない」):
-    // PKC2 が emit する `pkc://<cid>/asset/<key>` 形式の asset 参照を解決。
-    const m = /^pkc:\/\/[^/]+\/asset\/([^/?#]+)/.exec(src);
-    if (m) key = m[1] ?? null;
-  } else if (src.startsWith('data:image/')) {
-    const m = /^data:(image\/[^;]+);base64,(.+)$/.exec(src);
-    if (m) {
-      mime = m[1] ?? null;
-      const base64 = m[2] ?? '';
-      try {
-        const arr = base64ToUint8Array(base64);
-        return buildImageRun(arr, mime ?? 'image/png');
-      } catch { return null; }
-    }
-  }
-  if (!key) return null;
-  const base64 = ctx.assets[key];
-  if (!base64) return null;
-  // mime を asset を所有する attachment entry から探す
-  for (const e of ctx.entriesByLid.values()) {
-    if (e.archetype === 'attachment') {
-      try {
-        const body = JSON.parse(e.body) as { asset_key?: string; mime?: string };
-        if (body.asset_key === key && typeof body.mime === 'string') {
-          mime = body.mime;
-          break;
-        }
-      } catch { /* ignore */ }
-    }
-  }
-  if (!mime) mime = 'image/png';
+  const resolved = resolveImageData(src, ctx);
+  if (!resolved) return null;
   try {
-    const arr = base64ToUint8Array(base64);
-    return buildImageRun(arr, mime);
+    const arr = base64ToUint8Array(resolved.data);
+    return buildImageRun(arr, resolved.mime);
   } catch { return null; }
 }
 
@@ -316,7 +393,8 @@ function inlineToRuns(
       return [new TextRun(applyStyle({ text: node.value }, { ...base, code: true }))];
     }
     case 'mark':
-      return inlinesToRuns(node.children, ctx, { ...base, highlight: 'yellow' });
+      // PR-W8(Wave X P2、AI review feedback):shading.fill #FFF3A0 経路
+      return inlinesToRuns(node.children, ctx, { ...base, mark: true });
     case 'em-dot':
       return inlinesToRuns(node.children, ctx, { ...base, italics: true });
     case 'sup':
@@ -355,8 +433,18 @@ function inlineToRuns(
       return [new TextRun(applyStyle({ text: node.src }, base))];
     case 'comment-inline':
       return [];
-    case 'footnote-ref':
+    case 'footnote-ref': {
+      // PR-W18(user「footnote 機能してない、HTML 側もできてない」):
+      // docx native `FootnoteReferenceRun(num)` で superscript 番号 + 末尾
+      // 自動 footnote 領域に link する。num は ast.footnotes の挿入順
+      // (1..N、`newContext` の footnoteIdMap)。
+      // 旧:`[^${id}]` を superscript text として literal 出力(参照リンク
+      // としては機能していなかった)。
+      const num = ctx.footnoteIdMap.get(node.id);
+      if (typeof num === 'number') return [new FootnoteReferenceRun(num)];
+      // 定義不在(orphan ref):literal fallback で source を保つ。
       return [new TextRun(applyStyle({ text: `[^${node.id}]` }, { ...base, superScript: true }))];
+    }
     case 'opaque-inline':
       return [new TextRun(applyStyle({ text: node.original }, base))];
     case 'citation':
@@ -398,31 +486,6 @@ function linkToRuns(link: AstLink, ctx: ExportContext, base: InlineStyle): RunOr
   return [new ExternalHyperlink({ link: link.href, children: textRuns })];
 }
 
-/**
- * PR-V19:GFM task list の検出。bullet list 内の paragraph 本文 head が
- * `[ ]` / `[x]` / `[X]` で始まれば task list item と認識(markdown-it に
- * plugin が無いため AST 上では bullet として現れる、それを補正)。
- */
-function detectTaskState(inlines: readonly AstInline[]): 'open' | 'done' | null {
-  if (inlines.length === 0) return null;
-  const first = inlines[0];
-  if (!first || first.kind !== 'text') return null;
-  const m = /^\[([ xX])\]\s/.exec(first.value);
-  if (!m) return null;
-  return m[1] === ' ' ? 'open' : 'done';
-}
-
-function stripTaskPrefix(inlines: readonly AstInline[]): AstInline[] {
-  if (inlines.length === 0) return [...inlines];
-  const first = inlines[0];
-  if (!first || first.kind !== 'text') return [...inlines];
-  const stripped = first.value.replace(/^\[[ xX]\]\s/, '');
-  return [
-    { kind: 'text', value: stripped } as AstInline,
-    ...inlines.slice(1),
-  ];
-}
-
 function inlinesFlatText(inlines: readonly AstInline[]): string {
   const out: string[] = [];
   for (const n of inlines) {
@@ -443,11 +506,20 @@ function inlinesFlatText(inlines: readonly AstInline[]): string {
 function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragraph | Table> {
   switch (block.kind) {
     case 'heading': {
-      const prefix = nextHeadingPrefix(ctx, block.level);
-      const headingRuns: TextRun[] = [
-        new TextRun({ text: prefix, bold: true }),
-        ...inlinesToRuns(block.children, ctx, { bold: true }).filter((r): r is TextRun => r instanceof TextRun),
-      ];
+      // PR-W6(AI review P0-a 章番号二重表記対応):heading text 内に既に
+      // numbering prefix が手書きされている場合(`# 第一章 …` 等)は
+      // auto-prefix を skip。counter は引き続き bump(後続 sub-heading の連番)。
+      const flat = inlinesFlatText(block.children);
+      bumpHeadingCounter(ctx, block.level);
+      const prefix = hasExistingHeadingPrefix(flat, block.level)
+        ? ''
+        : formatHeadingPrefix(ctx, block.level);
+      const headingRuns: TextRun[] = prefix === ''
+        ? inlinesToRuns(block.children, ctx, { bold: true }).filter((r): r is TextRun => r instanceof TextRun)
+        : [
+          new TextRun({ text: prefix, bold: true }),
+          ...inlinesToRuns(block.children, ctx, { bold: true }).filter((r): r is TextRun => r instanceof TextRun),
+        ];
       // PR-V21 user audit「H4 以降は数字 hierarchy ではなく箇条書きとして
       // (1) / アイウ / abc」:H4-H6 は heading style を使わず、bullet list 風
       // 段落として render(prefix + bold + 段落 indent)。H1-H3 は heading
@@ -456,10 +528,34 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         const level = HEADING_LEVELS[block.level] ?? HeadingLevel.HEADING_3;
         const isFirstH1 = block.level === 1 && !ctx.seenFirstH1;
         if (block.level === 1) ctx.seenFirstH1 = true;
+        // PR-W13(user 指示 h1-h6 = 16/14/12/10.5/10.5/10.5 pt):heading
+        // spacing も比例:H1 16/8pt、H2 14/7pt、H3 10/5pt。
+        const spacingByLevel: Record<number, { before: number; after: number }> = {
+          1: { before: 320, after: 160 },
+          2: { before: 280, after: 140 },
+          3: { before: 200, after: 100 },
+        };
+        // PR-W8(AI review P2-7):H2/H3 に左 accent border 3pt(blue
+        // `#2F6FED`)。H1 は pageBreakBefore で chapter separator が確保
+        // されるので不要。`IParagraphOptions.border` は readonly のため
+        // spread で構築する。
+        const accentBorder = block.level === 2 || block.level === 3
+          ? {
+            border: {
+              left: {
+                style: BorderStyle.SINGLE,
+                color: ACCENT_COLOR_HEX,
+                size: HEADING_ACCENT_BORDER_SIZE,
+                space: 8,
+              },
+            },
+          }
+          : {};
         const opts: IParagraphOptions = {
           heading: level,
           children: headingRuns,
-          spacing: { before: 240, after: 120 },
+          spacing: spacingByLevel[block.level] ?? { before: 240, after: 120 },
+          ...accentBorder,
         };
         if (block.level === 1 && !isFirstH1) {
           return [new Paragraph({ ...opts, pageBreakBefore: true })];
@@ -468,7 +564,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       }
       // H4 / H5 / H6 → 箇条書き形式(段落 indent + prefix + bold)。
       // H4=360 twip(0.25 inch)/ H5=720 / H6=1080 で階層 indent。
-      const indentLeft = 360 * (block.level - 3);
+      const indentLeft = DOCX_HEADING_INDENT_UNIT_TWIP * (block.level - 3);
       return [new Paragraph({
         children: headingRuns,
         indent: { left: indentLeft },
@@ -476,14 +572,31 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       })];
     }
     case 'paragraph': {
+      // PR-W11(user 指摘「同一スタイルの段落の続きに余白が多い」+「Web を
+      // 参考に」):paragraph block で **spacing.before/after を明示 0** に。
+      // Word default の暗黙 8pt after を消して、段落間を完全 tight に詰める
+      // (web `<p>` の margin: 0 で 行間 1.5 のみで構成、密度を上げる)。
       const runs = inlinesToRuns(block.children, ctx);
       let alignment: (typeof AlignmentType)[keyof typeof AlignmentType] | undefined;
       if (block.align === 'center') alignment = AlignmentType.CENTER;
       else if (block.align === 'right') alignment = AlignmentType.RIGHT;
       else if (block.align === 'left') alignment = AlignmentType.LEFT;
-      const opts: IParagraphOptions = alignment
-        ? { children: runs, alignment }
-        : { children: runs };
+      // PR-W13(user「本文の行間をもっとちいさく」「詰まってる?自分で
+      // 比較した?」):default の `lineRule: 'auto'` では font 内蔵の line
+      // height(通常 1.15-1.2)が効いて視覚差が微小だった。`exact` で twip
+      // 220(11pt)固定にして、font 10.5pt + 0.5pt leading のみの真の tight
+      // を実現。heading は own spacing で line 指定なし → font default で
+      // stretched(本 fix は paragraph block にのみ適用)。
+      const opts: IParagraphOptions = {
+        children: runs,
+        spacing: {
+          before: 0,
+          after: 0,
+          line: BODY_LINE_HEIGHT_TWIP,
+          lineRule: 'exact',
+        },
+        ...(alignment ? { alignment } : {}),
+      };
       return [new Paragraph(opts)];
     }
     case 'quote': {
@@ -492,13 +605,30 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         if (child.kind === 'paragraph') {
           out.push(new Paragraph({
             children: inlinesToRuns(child.children, ctx),
-            indent: { left: 720 },
+            indent: { left: DOCX_QUOTE_INDENT_TWIP },
             style: 'Quote',
           }));
           continue;
         }
         const nested = blockToDocxElements(child, ctx);
         for (const el of nested) if (el instanceof Paragraph) out.push(el);
+      }
+      // PR-W14(user 指示「AST から解釈、意味ないことすんな」):
+      // `:::quote{author=…}` の citation.author を末尾の attribution 段落で
+      // italic + right align + dash prefix(`— Author, year, source`)。
+      // AstQuote.citation: Record<string, string> から author / year / source 等を結合。
+      if (block.citation && Object.keys(block.citation).length > 0) {
+        const parts: string[] = [];
+        if (block.citation.author) parts.push(block.citation.author);
+        if (block.citation.year) parts.push(block.citation.year);
+        if (block.citation.source) parts.push(block.citation.source);
+        if (parts.length > 0) {
+          out.push(new Paragraph({
+            children: [new TextRun({ text: `— ${parts.join(', ')}`, italics: true })],
+            indent: { left: DOCX_QUOTE_INDENT_TWIP },
+            alignment: AlignmentType.RIGHT,
+          }));
+        }
       }
       return out;
     }
@@ -517,19 +647,33 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
             const inlines = inlinesToRuns(inlinesInput, ctx);
             let opts: IParagraphOptions;
             if (taskState) {
+              // PR-W8(AI review P2-10):task glyph を color 化(未完 grey ☐、
+              // 完 緑 ☑)。状態が text 周辺で伝わる視覚言語に。
               const prefix = taskState === 'done' ? '☑ ' : '☐ ';
+              const glyphColor = taskState === 'done'
+                ? TASK_DONE_GLYPH_COLOR_HEX
+                : TASK_OPEN_GLYPH_COLOR_HEX;
               opts = {
-                children: [new TextRun({ text: prefix }), ...inlines.filter((r): r is TextRun => r instanceof TextRun)],
-                indent: { left: 360 },
+                children: [
+                  new TextRun({ text: prefix, color: glyphColor }),
+                  ...inlines.filter((r): r is TextRun => r instanceof TextRun),
+                ],
+                indent: { left: DOCX_HEADING_INDENT_UNIT_TWIP },
               };
             } else if (block.listKind === 'ordered') {
               opts = { children: inlines, numbering: { reference: 'pkc-ordered', level: 0 } };
             } else if (block.listKind === 'task') {
               // AST 直接の task(rare、parser plugin 経路)
               const prefix = item.state === 'done' ? '☑ ' : '☐ ';
+              const glyphColor = item.state === 'done'
+                ? TASK_DONE_GLYPH_COLOR_HEX
+                : TASK_OPEN_GLYPH_COLOR_HEX;
               opts = {
-                children: [new TextRun({ text: prefix }), ...inlines.filter((r): r is TextRun => r instanceof TextRun)],
-                bullet: { level: 0 },
+                children: [
+                  new TextRun({ text: prefix, color: glyphColor }),
+                  ...inlines.filter((r): r is TextRun => r instanceof TextRun),
+                ],
+                numbering: { reference: 'pkc-bullet', level: 0 },
               };
             } else {
               opts = { children: inlines, bullet: { level: 0 } };
@@ -544,25 +688,45 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       return items;
     }
     case 'table': {
+      // PR-W4:cell 内 inline formatting 保持(filter で TextRun +
+      // ExternalHyperlink)。PR-W8(AI review P2-8):cell padding 8pt
+      // (twip 160)+ ヘッダー shading `#F4F4F5` + 罫線 hairline `#CCCCCC`。
       const rows = block.rows.map(
         (r) =>
           new TableRow({
-            tableHeader: r.isHeader, // ヘッダー行 marker
+            tableHeader: r.isHeader,
             children: r.cells.map(
               (c) =>
                 new TableCell({
                   children: [new Paragraph({
-                    children: inlinesToRuns(c.children, ctx).filter((x): x is TextRun => x instanceof TextRun),
+                    children: inlinesToRuns(c.children, ctx).filter(
+                      (x): x is TextRun | ExternalHyperlink =>
+                        x instanceof TextRun || x instanceof ExternalHyperlink,
+                    ),
                   })],
-                  // PR-V19 user audit 9:ヘッダー薄 shading(`EEEEEE`)
                   shading: r.isHeader
-                    ? { type: ShadingType.CLEAR, color: 'auto', fill: 'EEEEEE' }
+                    ? { type: ShadingType.CLEAR, color: 'auto', fill: TABLE_HEADER_SHADING_HEX }
                     : undefined,
+                  margins: {
+                    top: TABLE_CELL_PADDING_TWIP,
+                    bottom: TABLE_CELL_PADDING_TWIP,
+                    left: TABLE_CELL_PADDING_TWIP,
+                    right: TABLE_CELL_PADDING_TWIP,
+                  },
                 }),
             ),
           }),
       );
-      return [new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } })];
+      return [new Table({
+        rows,
+        // PR-W17(user「セルサイズコントロールしてない、絶対おかしい」):
+        // 旧 width 100% percentage は均等 column 分配されて content と合わない。
+        // `TableLayoutType.AUTOFIT` で content に応じた auto-fit に変更。
+        // width 自体は指定なしで Word が自動 calc(`tblW w="0" type="auto"`)。
+        layout: TableLayoutType.AUTOFIT,
+        // 罫線 hairline 0.5pt grey
+        borders: pkcHairlineTableBorders(),
+      })];
     }
     case 'code-block': {
       // PR-V19 user audit「コードブロックの csv とかがレンダリングされてない」:
@@ -585,13 +749,25 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
                       children: [new TextRun({ text: cellText })],
                     })],
                     shading: rIdx === 0 && !noHeader
-                      ? { type: ShadingType.CLEAR, color: 'auto', fill: 'EEEEEE' }
+                      ? { type: ShadingType.CLEAR, color: 'auto', fill: TABLE_HEADER_SHADING_HEX }
                       : undefined,
+                    // PR-W8(AI review P2-8):cell padding 8pt
+                    margins: {
+                      top: TABLE_CELL_PADDING_TWIP,
+                      bottom: TABLE_CELL_PADDING_TWIP,
+                      left: TABLE_CELL_PADDING_TWIP,
+                      right: TABLE_CELL_PADDING_TWIP,
+                    },
                   }),
               ),
             }),
           );
-          return [new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } })];
+          return [new Table({
+            rows,
+            // PR-W17:CSV fence の table も同じく autofit。
+            layout: TableLayoutType.AUTOFIT,
+            borders: pkcHairlineTableBorders(),
+          })];
         }
       }
       // 通常 code block:等幅 + 左 border + 薄 shading
@@ -599,17 +775,22 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       return lines.map(
         (line) =>
           new Paragraph({
-            children: [new TextRun({ text: line, font: 'Consolas' })],
-            shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'F5F5F5' },
+            children: [new TextRun({ text: line, font: BILINGUAL_MONOSPACE_FONT })],
+            shading: { type: ShadingType.CLEAR, color: 'auto', fill: CODE_BLOCK_SHADING_HEX },
             border: {
-              left: { style: BorderStyle.SINGLE, color: '888888', size: 6, space: 4 },
+              left: {
+                style: BorderStyle.SINGLE,
+                color: CODE_BLOCK_LEFT_BORDER_HEX,
+                size: DOCX_BORDER_SIZE_DEFAULT,
+                space: DOCX_BORDER_SPACE_DEFAULT,
+              },
             },
           }),
       );
     }
     case 'code-render':
       return [new Paragraph({
-        children: [new TextRun({ text: block.source, font: 'Consolas' })],
+        children: [new TextRun({ text: block.source, font: BILINGUAL_MONOSPACE_FONT })],
       })];
     case 'break': {
       if (block.breakKind === 'page') {
@@ -620,21 +801,104 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       return [new Paragraph({
         children: [],
         border: {
-          bottom: { style: BorderStyle.SINGLE, color: '666666', size: 6, space: 4 },
+          bottom: {
+            style: BorderStyle.SINGLE,
+            color: HORIZONTAL_RULE_BORDER_HEX,
+            size: DOCX_BORDER_SIZE_DEFAULT,
+            space: DOCX_BORDER_SPACE_DEFAULT,
+          },
         },
         spacing: { before: 60, after: 60 },
       })];
     }
-    case 'figure':
-    case 'section':
-    case 'if-block':
+    case 'if-block': {
+      // PR-W14(user 指示「AST から解釈」+ 可換性):`:::if{format=X}` で
+      // X !== 'docx' のブロックは export から **完全除外**(render しない)。
+      // 旧:常に children 展開 → DOCX なのに `format=html` blocks も出ていた。
+      // GFM Alert / Pandoc filter / Hugo conditional の汎用形に倣う。
+      const target = 'docx';
+      if (block.format !== target && block.format !== '' && block.format !== 'any') {
+        return [];
+      }
       return block.children.flatMap((c) => blockToDocxElements(c, ctx));
+    }
+    case 'section': {
+      // PR-W14(AI review P2-7 + user「意味ないことすんな」):
+      // `:::section{role=warning|note|info|tip|important|caution|danger}` に
+      // 応じて **role 別 callout box**(段落 border + shading + icon prefix)
+      // を AST native で構築。table wrap でなく paragraph border で軽量化、
+      // section 全体を border で囲む(top + bottom + left thick)。
+      const roleConfig: Record<string, { fill: string; border: string; icon: string }> = {
+        warning: { fill: 'FFF4E5', border: 'FB923C', icon: '⚠️ ' },
+        caution: { fill: 'FFF4E5', border: 'F97316', icon: '⚠️ ' },
+        danger: { fill: 'FEE2E2', border: 'DC2626', icon: '🛑 ' },
+        important: { fill: 'FEE2E2', border: 'DC2626', icon: '❗ ' },
+        note: { fill: 'EFF6FF', border: '60A5FA', icon: '📝 ' },
+        info: { fill: 'EFF6FF', border: '3B82F6', icon: 'ℹ️ ' },
+        tip: { fill: 'ECFDF5', border: '10B981', icon: '💡 ' },
+        summary: { fill: 'F5F3FF', border: '8B5CF6', icon: '📋 ' },
+      };
+      const config = roleConfig[block.role] ?? { fill: TABLE_HEADER_SHADING_HEX, border: TABLE_BORDER_HEX, icon: '📌 ' };
+      // section 全体の囲み感を出すため、先頭 + 末尾に accent border paragraph を
+      // 挟む。中身 paragraph は border / shading 付与は別 PR で深堀(現状は
+      // visible callout の最小実装、AST native interpretation で role / icon
+      // /色を反映)。
+      const inner = block.children.flatMap((c) => blockToDocxElements(c, ctx));
+      const header = new Paragraph({
+        children: [new TextRun({ text: `${config.icon}${block.role.toUpperCase()}`, bold: true, color: config.border })],
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: config.fill },
+        border: {
+          left: { style: BorderStyle.SINGLE, color: config.border, size: 24, space: 8 },
+          top: { style: BorderStyle.SINGLE, color: config.border, size: 4, space: 4 },
+        },
+        spacing: { before: 120, after: 60 },
+      });
+      const footer = new Paragraph({
+        children: [],
+        border: {
+          left: { style: BorderStyle.SINGLE, color: config.border, size: 24, space: 8 },
+          bottom: { style: BorderStyle.SINGLE, color: config.border, size: 4, space: 4 },
+        },
+        spacing: { before: 0, after: 60 },
+      });
+      return [header, ...inner, footer];
+    }
+    case 'figure': {
+      // PR-W14:`:::figure{id=X}` + caption + figureKind(figure / table /
+      // equation)を native handling。caption は italic + center align 段落、
+      // num が ast に stamped されていれば「図 N: caption」「表 N」「式 N」
+      // prefix を付与。id は AST attrs.id で参照、本 PR では visible
+      // marker のみ(bookmark / REF field は別 PR で深堀)。
+      const inner = block.children.flatMap((c) => blockToDocxElements(c, ctx));
+      const out: Array<Paragraph | Table> = [...inner];
+      if (block.caption && block.caption.length > 0) {
+        const labelMap: Record<string, string> = {
+          figure: '図',
+          table: '表',
+          equation: '式',
+        };
+        const label = labelMap[block.figureKind] ?? '図';
+        const num = block.num ?? 1;
+        const captionRuns = inlinesToRuns(block.caption, ctx, { italics: true });
+        const prefix = new TextRun({ text: `${label} ${num}:`, italics: true, bold: true });
+        out.push(new Paragraph({
+          children: [
+            prefix,
+            new TextRun({ text: ' ' }),
+            ...captionRuns.filter((r): r is TextRun => r instanceof TextRun),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 60, after: 120 },
+        }));
+      }
+      return out;
+    }
     case 'comment-block':
       return [];
     case 'blank':
       return [new Paragraph('')];
     case 'math-block':
-      return [new Paragraph({ children: [new TextRun({ text: block.src, font: 'Cambria Math' })] })];
+      return [new Paragraph({ children: [new TextRun({ text: block.src, font: MATH_FONT })] })];
     case 'definition-list': {
       const out: Paragraph[] = [];
       for (const item of block.items) {
@@ -645,7 +909,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
           if (desc.kind === 'paragraph') {
             out.push(new Paragraph({
               children: inlinesToRuns(desc.children, ctx),
-              indent: { left: 720 },
+              indent: { left: DOCX_QUOTE_INDENT_TWIP },
             }));
             continue;
           }
@@ -690,6 +954,28 @@ export async function astToDocxBlob(
     blockToDocxElements(b, ctx),
   );
 
+  // PR-W18(user「footnote 機能してない、HTML 側もできてない」):
+  // ast.footnotes(Record<id, AstBlock[]>)を docx Document.footnotes
+  // (Record<numStr, { children: Paragraph[] }>)に変換。各 footnote 定義
+  // block を blockToDocxElements で render(inline 入れ子の太字 / 強調 /
+  // link 等も再帰的に展開)、Table が出ても Paragraph に絞る(footnote
+  // 領域は段落集約)。
+  const footnotesRecord: Record<string, { children: Paragraph[] }> = {};
+  for (const [id, blocks] of Object.entries(ast.footnotes ?? {})) {
+    const num = ctx.footnoteIdMap.get(id);
+    if (typeof num !== 'number') continue;
+    const paragraphs: Paragraph[] = [];
+    for (const block of blocks) {
+      for (const el of blockToDocxElements(block, ctx)) {
+        if (el instanceof Paragraph) paragraphs.push(el);
+      }
+    }
+    if (paragraphs.length === 0) {
+      paragraphs.push(new Paragraph({ children: [new TextRun({ text: '' })] }));
+    }
+    footnotesRecord[String(num)] = { children: paragraphs };
+  }
+
   // PR-V19 user audit 8:PKC 内リンク appendix(本文末尾)
   if (ctx.internalLinks.length > 0) {
     children.push(new Paragraph({
@@ -704,44 +990,73 @@ export async function astToDocxBlob(
         ` [${link.href}]`;
       children.push(new Paragraph({
         children: [new TextRun({ text: lineText })],
-        indent: { left: 360 },
+        indent: { left: DOCX_HEADING_INDENT_UNIT_TWIP },
       }));
     }
   }
 
   const doc = new Document({
-    // PR-V19 user audit 3:default font を HTML(BIZ UDGothic)に合わせる
     styles: {
       default: {
         document: {
+          // PR-W7(Wave X P1、AI review feedback):欧文 / 和文を bilingual
+          // で分離(Inter + Noto Sans CJK JP)。`IFontAttributesProperties`
+          // で `{ ascii, hAnsi, eastAsia, cs }` を渡すことで Word/LibreOffice
+          // が region に応じて正しい font を選ぶ。受信環境に install が無い
+          // 場合は自動 fallback。**line-height** は 1.5(twip 360)に設定、
+          // 和文 1.5〜1.6 の読みやすさを satisfy。
           run: {
-            font: DEFAULT_FONT,
-            size: 22, // 11pt
+            // PR-W12(user 指示 2026-05-16「font 10.5pt かな」):body 11pt
+            // → 10.5pt(twip 21、Japanese technical writing 標準サイズ)。
+            font: BILINGUAL_BODY_FONT,
+            size: 21, // 10.5pt
+          },
+          paragraph: {
+            // PR-W11(user 指摘「同一スタイルの段落の続きに余白が多く、行間が
+            // 日本語的ではない」):line 1.4(BODY_LINE_HEIGHT_TWIP=336) +
+            // before=0/after=0 を default に。「同一スタイルの段落間に余白を
+            // 追加しない」Word default behavior を能動的に保証。連続段落は
+            // line spacing のみで詰まる、heading 等の前後は個別 spacing 上書き。
+            spacing: {
+              line: BODY_LINE_HEIGHT_TWIP,
+              lineRule: 'auto',
+              before: 0,
+              after: 0,
+            },
           },
         },
+        // PR-W6(AI review P0-c):H1/H2/H3 のサイズ階段を強化、spacing も
+        // before 24/18/12pt + after 12/8/6pt を明示(twip = pt × 20)。
+        // H1 size 40(20pt)/ H2 size 32(16pt)/ H3 size 26(13pt)で
+        // H1↔H2 の差を 4pt、H2↔H3 の差を 3pt に広げて階層が一目で読める。
+        // PR-W7:font も bilingual に置換。
+        // PR-W13(user 直接指示 2026-05-16「h1 から順に 16,14,12,10.5,10.5,
+        // 10.5」):heading 階段を user 指定値で固定。H1-H3 は size 差で
+        // 階層、H4-H6 は body と同 size、bold + indent + accent border で
+        // 識別。
         heading1: {
-          run: { font: DEFAULT_FONT, size: 32, bold: true }, // 16pt
-          paragraph: { spacing: { before: 240, after: 120 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 32, bold: true }, // 16pt
+          paragraph: { spacing: { before: 320, after: 160 } }, // 16pt / 8pt
         },
         heading2: {
-          run: { font: DEFAULT_FONT, size: 28, bold: true }, // 14pt
-          paragraph: { spacing: { before: 200, after: 100 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 28, bold: true }, // 14pt
+          paragraph: { spacing: { before: 280, after: 140 } }, // 14pt / 7pt
         },
         heading3: {
-          run: { font: DEFAULT_FONT, size: 26, bold: true }, // 13pt
-          paragraph: { spacing: { before: 160, after: 80 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 24, bold: true }, // 12pt
+          paragraph: { spacing: { before: 200, after: 100 } }, // 10pt / 5pt
         },
         heading4: {
-          run: { font: DEFAULT_FONT, size: 24, bold: true }, // 12pt
-          paragraph: { spacing: { before: 120, after: 60 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true }, // 10.5pt
+          paragraph: { spacing: { before: 100, after: 50 } },
         },
         heading5: {
-          run: { font: DEFAULT_FONT, size: 22, bold: true },
-          paragraph: { spacing: { before: 100, after: 60 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true }, // 10.5pt
+          paragraph: { spacing: { before: 80, after: 40 } },
         },
         heading6: {
-          run: { font: DEFAULT_FONT, size: 22, bold: true },
-          paragraph: { spacing: { before: 80, after: 60 } },
+          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true }, // 10.5pt
+          paragraph: { spacing: { before: 60, after: 30 } },
         },
       },
     },
@@ -755,12 +1070,110 @@ export async function astToDocxBlob(
               format: 'decimal',
               text: '%1.',
               alignment: AlignmentType.START,
+              // PR-W15:Word default 720 → 240 詰め
+              style: {
+                paragraph: {
+                  indent: { left: 360, hanging: 240 },
+                },
+              },
+            },
+          ],
+        },
+        // PR-W16(user「箇条書きのぶら下げ目立つ、バレットサイズデカすぎ」):
+        // bullet list を自前 `pkc-bullet` numbering で制御。glyph を `·`
+        // (中点 U+00B7、小さめ)に + hanging 240 で marker→text tight に。
+        // 旧:docx default の `bullet: { level: 0 }` で巨大 `•`(U+2022)+ 広 hanging。
+        {
+          reference: 'pkc-bullet',
+          levels: [
+            {
+              level: 0,
+              format: 'bullet',
+              text: '·', // 中点 ·(小さい)
+              alignment: AlignmentType.START,
+              style: {
+                paragraph: {
+                  indent: { left: 360, hanging: 240 },
+                },
+              },
             },
           ],
         },
       ],
     },
-    sections: [{ children }],
+    sections: [{
+      properties: resolveSectionProperties(ast.layout),
+      children,
+    }],
+    // PR-W18:footnote 定義(`[^id]: 本文`)を docx native footnote として
+    // 末尾領域に格納。本文の `FootnoteReferenceRun(num)` から page 下部の
+    // numbered list に link、Word/LibreOffice が自動で superscript ↔ 番号
+    // 対応を描画する。空 record(footnote 未使用)の場合は undefined 維持。
+    ...(Object.keys(footnotesRecord).length > 0 ? { footnotes: footnotesRecord } : {}),
   });
   return Packer.toBlob(doc);
+}
+
+/**
+ * PR-W11(2026-05-16、user 報告 fix):frontmatter `layout: a4-2col` 等を
+ * docx の Section properties に反映 + **margin を default 0.75 inch に詰め
+ * て余白の目立たない default に**(user 指摘「全体的に余白が目立つ」)。
+ *
+ * Word default 1.0 inch / LibreOffice 0.79 inch / 現代的 technical writing
+ * 0.75 inch。PKC2 default は「読みやすい現代的 layout」= 0.75 inch を採用。
+ *
+ * 用紙サイズ単位:twip(1 inch = 1440)
+ * - A4: 11906 × 16838(210 × 297mm)
+ * - B5: 9979 × 14175(176 × 250mm)
+ * - Letter: 12240 × 15840(8.5 × 11 inch)
+ * - Legal: 12240 × 20160(8.5 × 14 inch)
+ *
+ * 段組 space は 720 twip(0.5 inch)= 段間の余白。
+ */
+function resolveSectionProperties(layout?: string): Record<string, unknown> {
+  // PR-W11(user 指摘「余白」+「左と上はホチキスや綴じ白を意識」):
+  // 横書き default で **非対称 margin** を採用。
+  // - 左(綴じ代):1440 twip(1.0 inch、ホチキス / 製本 余白意識)
+  // - 上(ホチキス):1440 twip(1.0 inch、文書冒頭の余白)
+  // - 右 / 下:1080 twip(0.75 inch、印刷紙の余白を詰める)
+  // 縦書き(`writing: vertical`)は右綴じだが現状未対応(別 PR)。
+  // PR-W12(user 指示 2026-05-16「綴じ代は 2cm で」):全方向 2.0 cm 統一
+  // (1134 twip = 0.79 inch)。左綴じ代 + パンチホール対応 + 上下も詰め
+  // で情報密度を最大化。
+  const baseMargin = {
+    top: 1134,    // 2.0 cm
+    right: 1134,  // 2.0 cm
+    bottom: 1134, // 2.0 cm
+    left: 1134,   // 2.0 cm(綴じ代基準)
+  };
+  if (!layout) {
+    return { page: { margin: baseMargin } };
+  }
+  const m = /^(a4|b5|letter|legal)-(\d)col$/.exec(layout);
+  if (!m) return { page: { margin: baseMargin } };
+  const paper = m[1]!;
+  const cols = Number(m[2]);
+  const PAPER_SIZE_TWIP: Record<string, { w: number; h: number }> = {
+    a4: { w: 11906, h: 16838 },
+    b5: { w: 9979, h: 14175 },
+    letter: { w: 12240, h: 15840 },
+    legal: { w: 12240, h: 20160 },
+  };
+  const size = PAPER_SIZE_TWIP[paper]!;
+  const props: Record<string, unknown> = {
+    page: {
+      size: { width: size.w, height: size.h, orientation: 'portrait' as const },
+      margin: baseMargin,
+    },
+  };
+  if (cols >= 2) {
+    // PR-W12(user「2 段組の境界までの余白ももっと攻められない?」):
+    // column gap を 720(0.5 inch)→ 360(0.25 inch)に詰めて段間を攻める。
+    props.column = {
+      count: cols,
+      space: 360,
+      equalWidth: true,
+    };
+  }
+  return props;
 }

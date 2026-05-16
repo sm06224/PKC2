@@ -69,6 +69,7 @@
   "dependencies": {
     "docx": "^9.6.1",
     "markdown-it": "^14.1.1",
+    "markdown-it-footnote": "^4.0.0",
     "pptxgenjs": "^4.0.1"
   }
 }

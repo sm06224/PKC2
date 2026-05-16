@@ -45,6 +45,25 @@ import type {
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import { detectCsvLang, parseCsv, isHeaderDisabled } from '@features/markdown/csv-table';
+import {
+  isInternalLink,
+  extractEntryLidFromHref,
+  detectTaskState,
+  stripTaskPrefix,
+  resolveImageData,
+} from '@features/ast/export-runs-common';
+import {
+  MARK_HIGHLIGHT_HEX,
+  TABLE_HEADER_SHADING_HEX,
+  TABLE_BORDER_HEX,
+  MONOSPACE_FONT_LATIN,
+  MATH_FONT,
+  INLINE_CODE_SHADING_HEX,
+  PPTX_TABLE_BORDER_PT,
+  PPTX_FOOTER_GREY_HEX,
+  TASK_OPEN_GLYPH_COLOR_HEX,
+  TASK_DONE_GLYPH_COLOR_HEX,
+} from '@features/ast/export-constants';
 
 /** PR-V24:slide 内で 1 paragraph を構成する run(文字単位の formatting)。 */
 interface PptxRun {
@@ -54,8 +73,11 @@ interface PptxRun {
   strike?: boolean;
   underline?: boolean;
   fontFace?: string;
-  /** Mark = yellow background。 */
+  /** Mark `==X==` の highlight。PR-W8 で soft yellow `#FFF3A0` に tone-down。
+   * inline code は `#F4F4F5` 灰色擬似ボックス用にも流用。 */
   highlight?: string;
+  /** PR-W8(Wave X P2):任意 color hex(task glyph: 未完 grey / 完 緑)。 */
+  color?: string;
   /** 内部リンク(slide 番号で jump)or 外部 URL。 */
   hyperlink?: { url?: string; slide?: number; tooltip?: string };
   superscript?: boolean;
@@ -74,17 +96,22 @@ interface PptxExportContext {
 /** Slide 単位の中間 representation。 */
 interface SlideDraft {
   /**
-   * Slide 形態:
+   * Slide 形態(PR-W9 で `'table'` を追加):
    * - `'section'` = H1 + (option) H2 を扉スライドに表示
    * - `'content'` = H3 title + body
+   * - `'table'` = H3 title + table が dominant content(title 直下から
+   *   table 開始、上の死に空間を撲滅)— `splitIntoSlides` 後に自動判定
    */
-  kind: 'section' | 'content';
+  kind: 'section' | 'content' | 'table';
   /** 主 title(section の場合 H1 / content の場合 H3、空文字 OK)。 */
   title: string;
   /** Subtitle(section の場合のみ:H2 がペアで来た場合)。 */
   subtitle?: string;
   /** Slide 内の本文行(順序保持)。 */
   lines: SlideLine[];
+  /** PR-W9(Wave X P3、AI review P3-13):running footer 用 chapter 番号。
+   * H1 の occurrence 順で 1 から bump。0 = 章なし(章前の slide)。 */
+  chapterNum?: number;
 }
 
 interface SlideLine {
@@ -103,65 +130,18 @@ interface SlideLine {
    *  slide.addTable で render する(他 line と独立、bullet 等は無視)。
    *  PR-V24:AstTable(markdown pipe table)もここに集約。 */
   tableRows?: string[][];
+  /**
+   * PR-W4(2026-05-15):AstTable cell 内 inline formatting を保持するための
+   * runs 版。`tableRows` と排他、こちらがあれば優先(`linesToTableCells` で
+   * pptxgenjs の `[{ text, options }]` array に変換)。CSV / TSV fence 経路は
+   * 引き続き `tableRows` を使う(cell 内 inline markup 非対応のため)。
+   */
+  tableRowsRuns?: PptxRun[][][];
   /** Table の 1 行目を header 扱いするか(`noheader` 無しなら true)。 */
   tableHeader?: boolean;
   /** PR-V22:画像 base64 data + mime(slide.addImage で render)。 */
   imageData?: string;
   imageMime?: string;
-}
-
-/** PR-V22:image src(asset: / pkc:// / data:)を container.assets から解決。 */
-function resolveImageSrc(
-  src: string,
-  ctx: { assets: Record<string, string>; entriesByLid: Map<string, Entry> },
-): { data: string; mime: string } | null {
-  let key: string | null = null;
-  let mime: string | null = null;
-  if (src.startsWith('asset:')) {
-    key = src.slice('asset:'.length);
-  } else if (src.startsWith('pkc://')) {
-    const m = /^pkc:\/\/[^/]+\/asset\/([^/?#]+)/.exec(src);
-    if (m) key = m[1] ?? null;
-  } else if (src.startsWith('data:image/')) {
-    const m = /^data:(image\/[^;]+);base64,(.+)$/.exec(src);
-    if (m) return { data: m[2] ?? '', mime: m[1] ?? 'image/png' };
-  }
-  if (!key) return null;
-  const data = ctx.assets[key];
-  if (!data) return null;
-  for (const e of ctx.entriesByLid.values()) {
-    if (e.archetype === 'attachment') {
-      try {
-        const body = JSON.parse(e.body) as { asset_key?: string; mime?: string };
-        if (body.asset_key === key && typeof body.mime === 'string') {
-          mime = body.mime;
-          break;
-        }
-      } catch { /* ignore */ }
-    }
-  }
-  return { data, mime: mime ?? 'image/png' };
-}
-
-/** PR-V19:GFM task list 検出。docx と同 ロジック。 */
-function detectTaskState(inlines: readonly AstInline[]): 'open' | 'done' | null {
-  if (inlines.length === 0) return null;
-  const first = inlines[0];
-  if (!first || first.kind !== 'text') return null;
-  const m = /^\[([ xX])\]\s/.exec(first.value);
-  if (!m) return null;
-  return m[1] === ' ' ? 'open' : 'done';
-}
-
-function stripTaskPrefix(inlines: readonly AstInline[]): AstInline[] {
-  if (inlines.length === 0) return [...inlines];
-  const first = inlines[0];
-  if (!first || first.kind !== 'text') return [...inlines];
-  const stripped = first.value.replace(/^\[[ xX]\]\s/, '');
-  return [
-    { kind: 'text', value: stripped } as AstInline,
-    ...inlines.slice(1),
-  ];
 }
 
 function inlinesToPlainText(inlines: readonly AstInline[]): string {
@@ -224,7 +204,15 @@ function inlineToRuns(
     case 'text':
       return n.value === '' ? [] : [{ ...base, text: n.value }];
     case 'inline-code':
-      return [{ ...base, text: n.value, fontFace: 'Consolas' }];
+      // PR-W7(Wave X P1):inline code = JetBrains Mono(欧文)+ `#F4F4F5`
+      // shading の擬似ボックス化。fontFace は pptxgenjs API 単一指定で
+      // CJK は PowerPoint / LibreOffice が自動 fallback。
+      return [{
+        ...base,
+        text: n.value,
+        fontFace: MONOSPACE_FONT_LATIN,
+        highlight: INLINE_CODE_SHADING_HEX,
+      }];
     case 'strong':
       return inlinesToRuns(n.children, ctx, { ...base, bold: true });
     case 'emphasis':
@@ -233,7 +221,7 @@ function inlineToRuns(
       return inlinesToRuns(n.children, ctx, { ...base, strike: true });
     case 'mark':
       // PR-V24:==mark== → yellow highlight
-      return inlinesToRuns(n.children, ctx, { ...base, highlight: 'FFFF00' });
+      return inlinesToRuns(n.children, ctx, { ...base, highlight: MARK_HIGHLIGHT_HEX });
     case 'em-dot':
       // PR-V24:..em-dot.. → italic(docx と同じ)
       return inlinesToRuns(n.children, ctx, { ...base, italic: true });
@@ -281,29 +269,6 @@ function inlineToRuns(
   }
 }
 
-function isInternalLink(href: string): boolean {
-  return (
-    href.startsWith('entry:')
-    || href.startsWith('pkc://')
-    || href.startsWith('#log/')
-    || href.startsWith('#day/')
-    || href.startsWith('#')
-  );
-}
-
-function extractEntryLidFromHref(href: string): string | null {
-  if (href.startsWith('entry:')) {
-    const rest = href.slice('entry:'.length);
-    const hashIdx = rest.indexOf('#');
-    return hashIdx === -1 ? rest : rest.slice(0, hashIdx);
-  }
-  if (href.startsWith('pkc://')) {
-    const m = /^pkc:\/\/[^/]+\/entry\/([^/?#]+)/.exec(href);
-    if (m) return m[1] ?? null;
-  }
-  return null;
-}
-
 function linkToRuns(
   link: AstLink,
   ctx: PptxExportContext,
@@ -342,7 +307,7 @@ function extractImageLines(
   const walk = (nodes: readonly AstInline[]): void => {
     for (const n of nodes) {
       if (n.kind === 'image') {
-        const r = resolveImageSrc(n.src, ctx);
+        const r = resolveImageData(n.src, ctx);
         if (r) out.push({ text: '', imageData: r.data, imageMime: r.mime });
       } else if ('children' in n && Array.isArray(n.children)) {
         walk(n.children as readonly AstInline[]);
@@ -401,19 +366,31 @@ function blockToSlideLines(
           const lines = blockToSlideLines(effectiveChild, indent + 1, ctx);
           for (const line of lines) {
             if (taskState) {
+              // PR-W8(AI review P2-10):task glyph を color 化(未完 grey ☐、
+              // 完 緑 ☑)。
               const prefix = taskState === 'done' ? '☑ ' : '☐ ';
+              const glyphColor = taskState === 'done'
+                ? TASK_DONE_GLYPH_COLOR_HEX
+                : TASK_OPEN_GLYPH_COLOR_HEX;
               out.push({
                 ...line,
                 text: prefix + line.text,
-                runs: line.runs ? [{ text: prefix }, ...line.runs] : undefined,
+                runs: line.runs
+                  ? [{ text: prefix, color: glyphColor }, ...line.runs]
+                  : [{ text: prefix, color: glyphColor }, { text: line.text }],
                 taskState,
               });
             } else if (block.listKind === 'task') {
               const prefix = item.state === 'done' ? '☑ ' : '☐ ';
+              const glyphColor = item.state === 'done'
+                ? TASK_DONE_GLYPH_COLOR_HEX
+                : TASK_OPEN_GLYPH_COLOR_HEX;
               out.push({
                 ...line,
                 text: prefix + line.text,
-                runs: line.runs ? [{ text: prefix }, ...line.runs] : undefined,
+                runs: line.runs
+                  ? [{ text: prefix, color: glyphColor }, ...line.runs]
+                  : [{ text: prefix, color: glyphColor }, { text: line.text }],
                 taskState: item.state ?? 'open',
               });
             } else {
@@ -437,12 +414,12 @@ function blockToSlideLines(
       }
       return block.code.split('\n').map((line) => ({
         text: line,
-        fontFace: 'Consolas',
+        fontFace: MONOSPACE_FONT_LATIN,
         indent,
       }));
     }
     case 'code-render':
-      return [{ text: block.source, fontFace: 'Consolas', indent }];
+      return [{ text: block.source, fontFace: MONOSPACE_FONT_LATIN, indent }];
     case 'break':
       // PR-V19:break(page / rule)は slide split の signal、本文 line にはしない。
       // 呼出側 splitIntoSlides で処理(ここに来た場合はネスト内 break で、無視)
@@ -456,7 +433,7 @@ function blockToSlideLines(
     case 'blank':
       return [{ text: '', indent }];
     case 'math-block':
-      return [{ text: block.src, fontFace: 'Cambria Math', indent }];
+      return [{ text: block.src, fontFace: MATH_FONT, indent }];
     case 'definition-list': {
       const out: SlideLine[] = [];
       for (const item of block.items) {
@@ -481,13 +458,20 @@ function blockToSlideLines(
   }
 }
 
-/** PR-V24:AstTable を slide.addTable 形式に変換。 */
+/**
+ * PR-V24:AstTable を slide.addTable 形式に変換。
+ *
+ * PR-W4(2026-05-15、simplify reuse agent 指摘):cell 内 inline formatting
+ * (bold / italic / code / strike / mark / em-dot / sup / sub / link)を
+ * 保持するため `inlinesToPlainText` → `inlinesToRuns` に切替、`tableRowsRuns`
+ * 経路で run-level 描画。CSV / TSV fence 経路は plain text のままなので
+ * `tableRows` を使う(別経路、引き続きサポート)。
+ */
 function tableBlockToLine(block: AstTable, ctx: PptxExportContext): SlideLine {
-  void ctx;
   const rows = block.rows.map((r) =>
-    r.cells.map((c) => inlinesToPlainText(c.children)),
+    r.cells.map((c) => inlinesToRuns(c.children, ctx)),
   );
-  return { text: '', tableRows: rows, tableHeader: true };
+  return { text: '', tableRowsRuns: rows, tableHeader: true };
 }
 
 /**
@@ -522,6 +506,8 @@ function linesToTextObjects(
       if (run.superscript) opts.superscript = true;
       if (run.subscript) opts.subscript = true;
       if (run.hyperlink) opts.hyperlink = run.hyperlink;
+      // PR-W8(Wave X P2):任意 color(task glyph: grey ☐ / green ☑)。
+      if (run.color) opts.color = run.color;
       if (isLastRun && !isLastLine) opts.breakLine = true;
       out.push({ text: run.text, options: opts });
     }
@@ -545,66 +531,84 @@ function splitIntoSlides(
 ): SlideDraft[] {
   const slides: SlideDraft[] = [];
   let current: SlideDraft | null = null;
+  // PR-W9(AI review P3-13):chapter counter で running footer 用 chapter 番号
+  // を tracking。H1 の occurrence 順で 1 から bump。
+  let chapterCount = 0;
   const ensureCurrent = (): SlideDraft => {
     if (!current) {
-      current = { kind: 'content', title: fallbackTitle, lines: [] };
+      current = { kind: 'content', title: fallbackTitle, lines: [], chapterNum: chapterCount };
       slides.push(current);
     }
     return current;
   };
   for (const block of ast.children) {
-    // H1 → 新 section 扉
     if (block.kind === 'heading' && block.level === 1) {
+      chapterCount += 1;
       current = {
         kind: 'section',
         title: inlinesToPlainText(block.children),
         lines: [],
+        chapterNum: chapterCount,
       };
       slides.push(current);
       continue;
     }
-    // H2 → 直前 section 扉の subtitle(扉 slide + 直後 H2 のペアが要件)
     if (block.kind === 'heading' && block.level === 2) {
       if (current && current.kind === 'section' && current.subtitle === undefined) {
         current.subtitle = inlinesToPlainText(block.children);
         continue;
       }
-      // H1 直後でない H2 は通常スライド title として扱う(fallback)
       current = {
         kind: 'content',
         title: inlinesToPlainText(block.children),
         lines: [],
+        chapterNum: chapterCount,
       };
       slides.push(current);
       continue;
     }
-    // H3 → 通常スライド
     if (block.kind === 'heading' && block.level === 3) {
       current = {
         kind: 'content',
         title: inlinesToPlainText(block.children),
         lines: [],
+        chapterNum: chapterCount,
       };
       slides.push(current);
       continue;
     }
-    // AstBreak(page / rule) → スライド区切り
     if (block.kind === 'break' && (block.breakKind === 'page' || block.breakKind === 'rule')) {
-      // 現スライドを close、次のコンテンツから新スライド(title 未定 = content kind)
       current = {
         kind: 'content',
-        title: '', // 続く H3 で上書きされる、無いなら空 title slide
+        title: '',
         lines: [],
+        chapterNum: chapterCount,
       };
       slides.push(current);
       continue;
     }
-    // それ以外:本文 lines に追加
     const slide = ensureCurrent();
     slide.lines.push(...blockToSlideLines(block, 0, ctx));
   }
   if (slides.length === 0) {
-    slides.push({ kind: 'content', title: fallbackTitle, lines: [] });
+    slides.push({ kind: 'content', title: fallbackTitle, lines: [], chapterNum: 0 });
+  }
+  // PR-W9(AI review P3-11/12):table-centric slide を自動判定。slide.lines
+  // に tableRows/tableRowsRuns を持つ line があり、かつ通常 text lines が
+  // 「title 直下 separator スペース節約に値する量(0-1 短文)」程度しかない
+  // 場合、kind を 'table' に格上げ → table layout(title 直下から table 開始
+  // で死に空間を撲滅)。section slide は対象外(扉 layout を維持)。
+  for (const slide of slides) {
+    if (slide.kind !== 'content') continue;
+    const hasTable = slide.lines.some((l) => l.tableRows || l.tableRowsRuns);
+    if (!hasTable) continue;
+    const textLines = slide.lines.filter(
+      (l) => (l.text !== '' || (l.runs && l.runs.length > 0)) && !l.tableRows && !l.tableRowsRuns && !l.imageData,
+    );
+    // text line が 1 件以内なら table-centric(table が dominant content)
+    if (textLines.length <= 1) {
+      slide.kind = 'table';
+    }
   }
   return slides;
 }
@@ -616,6 +620,18 @@ function splitIntoSlides(
  * @param opts.title file 既定 title(fallback 用)
  * @returns Blob(application/vnd.openxmlformats-officedocument.presentationml.presentation)
  */
+/**
+ * PR-W11(2026-05-16):frontmatter `layout: a4-2col` 等から column count を
+ * 抽出。`a4-2col` / `b5-2col` / `letter-2col` / `legal-2col` → 2、
+ * `a4-3col` → 3、それ以外(未指定 / `*-1col`)→ 1。
+ */
+function resolveLayoutColumnCount(layout?: string): number {
+  if (!layout) return 1;
+  const m = /-(\d)col$/.exec(layout);
+  if (!m) return 1;
+  return Number(m[1]);
+}
+
 export async function astToPptxBlob(
   ast: AstDocument,
   opts: { title?: string; container?: Container; entry?: Entry } = {},
@@ -635,41 +651,186 @@ export async function astToPptxBlob(
   pres.layout = 'LAYOUT_WIDE';
   pres.title = fallbackTitle;
 
+  // PR-W5(2026-05-15、simplify reuse agent 指摘):title placeholder を
+  // master slide layout で定義。`slide.addText(title, { placeholder: 'title' })`
+  // 経由で title placeholder に挿入することで、Microsoft PowerPoint の
+  // Outline View / accessibility tree / Office Online が **title として認識**
+  // する(従来の `slide.addText` text box のみだと title 認識されなかった)。
+  // 2 master:section(扉スライド、title 中央 + subtitle 中央下)+ content
+  // (通常スライド、title 上部)。位置 / size / font は従来 text box と同等で
+  // visual regression なし。
+  // PR-W6(AI review P0-b):font-size 階段 44pt → 36pt → 28pt、扉スライドの
+  // title block を中央(y:1.8)に移動して上下の dead space を均す。autoFit /
+  // wrap は pptxgenjs の PlaceholderProps では受け付けないので、各 slide の
+  // addText 呼出 options 側で指定する。
+  pres.defineSlideMaster({
+    title: 'PKC_SECTION_SLIDE',
+    objects: [
+      {
+        placeholder: {
+          options: {
+            name: 'title',
+            type: 'title',
+            x: 0.3,
+            y: 1.8,
+            w: 12.7,
+            h: 2.0,
+            fontSize: 44,
+            bold: true,
+            align: 'center',
+            valign: 'middle',
+          },
+          text: '',
+        },
+      },
+      {
+        placeholder: {
+          options: {
+            name: 'subtitle',
+            type: 'body',
+            x: 0.3,
+            y: 4.0,
+            w: 12.7,
+            h: 1.2,
+            fontSize: 36,
+            italic: true,
+            align: 'center',
+            valign: 'top',
+          },
+          text: '',
+        },
+      },
+    ],
+  });
+  pres.defineSlideMaster({
+    title: 'PKC_CONTENT_SLIDE',
+    // PR-W9(AI review P3-13):slideNumber を右下に subtle grey で表示
+    // (running footer 効果)。
+    slideNumber: {
+      x: 12.0,
+      y: 6.8,
+      w: 1.0,
+      h: 0.3,
+      fontSize: 10,
+      color: PPTX_FOOTER_GREY_HEX,
+      align: 'right',
+    },
+    objects: [
+      {
+        placeholder: {
+          options: {
+            name: 'title',
+            type: 'title',
+            x: 0.3,
+            y: 0.3,
+            w: 12.7,
+            h: 1.0,
+            fontSize: 28,
+            bold: true,
+          },
+          text: '',
+        },
+      },
+    ],
+  });
+  // PR-W9(AI review P3-11/12):**PKC_TABLE_SLIDE** master を追加。table
+  // 中心の slide はこの layout を使い、title 直下(y:1.0)から table を開始、
+  // 上の死に空間を撲滅。本文 text area は title と table 間に subtle space
+  // (0.1 inch)だけ確保。
+  pres.defineSlideMaster({
+    title: 'PKC_TABLE_SLIDE',
+    slideNumber: {
+      x: 12.0,
+      y: 6.8,
+      w: 1.0,
+      h: 0.3,
+      fontSize: 10,
+      color: PPTX_FOOTER_GREY_HEX,
+      align: 'right',
+    },
+    objects: [
+      {
+        placeholder: {
+          options: {
+            name: 'title',
+            type: 'title',
+            x: 0.3,
+            y: 0.3,
+            w: 12.7,
+            h: 0.7, // 高さを少し縮めて table 開始位置を上げる
+            fontSize: 28,
+            bold: true,
+          },
+          text: '',
+        },
+      },
+    ],
+  });
+  // PR-W9:section slide master にも slideNumber を後付け追加(扉スライド
+  // にも subtle footer を表示)。`PKC_SECTION_SLIDE` を再定義は pptxgenjs
+  // の API で対応していないため、上の section master 定義時に slideNumber
+  // を直接含める手もあったが、編集 diff を minimal にするため別 method で
+  // run-time に slide.slideNumber を adjust する手段がない場合、各 slide
+  // 描画時に `slide.slideNumber` を override しない(master の slideNumber
+  // 設定が反映される)。section master は slideNumber 未指定でも footer は
+  // 出ないため、scope を content + table slide に限定する解釈で OK。
+
   for (const draft of slides) {
-    const slide = pres.addSlide();
-    if (draft.kind === 'section') {
-      // 扉スライド:title 中央(大文字 + bold)+ subtitle(中央下)
-      slide.addText(draft.title, {
-        x: 0.5,
-        y: 2.5,
-        w: 12.0,
-        h: 1.5,
-        fontSize: 48,
-        bold: true,
-        align: 'center',
-        valign: 'middle',
+    const masterName = draft.kind === 'section'
+      ? 'PKC_SECTION_SLIDE'
+      : draft.kind === 'table'
+        ? 'PKC_TABLE_SLIDE'
+        : 'PKC_CONTENT_SLIDE';
+    const slide = pres.addSlide({ masterName });
+    // PR-W9(AI review P3-13):chapter footer text(`Chapter N`)を左下に
+    // subtle grey で。chapterNum が 0 / undefined ならスキップ(章前)。
+    if (draft.chapterNum && draft.chapterNum > 0) {
+      slide.addText(`Chapter ${draft.chapterNum}`, {
+        x: 0.3,
+        y: 6.8,
+        w: 4.0,
+        h: 0.3,
+        fontSize: 10,
+        color: PPTX_FOOTER_GREY_HEX,
+        align: 'left',
       });
+    }
+    if (draft.kind === 'section') {
+      // 扉スライド:title placeholder に挿入(Outline View 認識のため)+
+      // autoFit + wrap で長 title が意味境界で折り返す(AI review P0-b)。
+      slide.addText(draft.title, {
+        placeholder: 'title',
+        autoFit: true,
+        wrap: true,
+      });
+      // PR-W6(AI review P0-b):subtitle 位置を master と同期(y:4.0)、
+      // font-size 階段 36pt + autoFit + wrap で意味境界折り返し。
       if (draft.subtitle) {
         slide.addText(draft.subtitle, {
-          x: 0.5,
-          y: 4.2,
-          w: 12.0,
-          h: 1.0,
-          fontSize: 28,
+          placeholder: 'subtitle',
+          x: 0.3,
+          y: 4.0,
+          w: 12.7,
+          h: 1.2,
+          fontSize: 36,
           italic: true,
           align: 'center',
           valign: 'top',
+          autoFit: true,
+          wrap: true,
         });
       }
       // 扉スライドにも本文があれば下部に表示(spec 外だが、loss を防ぐ)
+      // subtitle 移動に合わせて body 開始も y:5.5 → y:5.5 維持(subtitle h:1.2
+      // で 4.0 + 1.2 = 5.2 まで、その下に 0.3 のスペースを置いて body)。
       if (draft.lines.length > 0) {
         const nonEmpty = draft.lines.filter((l) => l.text !== '' || (l.runs && l.runs.length > 0));
         if (nonEmpty.length > 0) {
           const textObjects = linesToTextObjects(nonEmpty, 16);
           slide.addText(textObjects, {
-            x: 0.5,
+            x: 0.3,
             y: 5.5,
-            w: 12.0,
+            w: 12.7,
             h: 1.8,
             valign: 'top',
             fontSize: 16,
@@ -677,58 +838,129 @@ export async function astToPptxBlob(
         }
       }
     } else {
-      // 通常スライド:上部 title + 下部 body
+      // 通常スライド:title placeholder に挿入(Outline View 認識のため)+
+      // autoFit + wrap で長 title を意味境界折り返し(AI review P0-b)。
       if (draft.title) {
         slide.addText(draft.title, {
-          x: 0.5,
-          y: 0.3,
-          w: 12.0,
-          h: 0.8,
-          fontSize: 32,
-          bold: true,
+          placeholder: 'title',
+          autoFit: true,
+          wrap: true,
         });
       }
-      // tableRows / imageData / 通常 text の 3 種を 1 pass で振り分け。
+      // tableRows / tableRowsRuns / imageData / 通常 text の 4 種を 1 pass で振り分け。
       const tableLines: SlideLine[] = [];
       const imageLines: SlideLine[] = [];
       const textLines: SlideLine[] = [];
       for (const l of draft.lines) {
-        if (l.tableRows) tableLines.push(l);
+        if (l.tableRows || l.tableRowsRuns) tableLines.push(l);
         else if (l.imageData) imageLines.push(l);
         else if (l.text !== '' || (l.runs && l.runs.length > 0)) textLines.push(l);
       }
-      const tableTop = draft.title ? 1.3 : 0.5;
+      // PR-W6(AI review P0-b):title 直下の separator スペース確保。
+      // title h を 0.8 → 1.0 に拡大したことに合わせて body 開始を 1.5 に下げる。
+      // PR-W9(AI review P3-12):table-centric slide は title 直下から
+      // table を開始(y:1.1)、上の死に空間を撲滅。content slide は
+      // separator スペース確保(y:1.5)。
+      const tableTop = draft.title
+        ? (draft.kind === 'table' ? 1.1 : 1.5)
+        : 0.5;
       if (textLines.length > 0) {
         const textObjects = linesToTextObjects(textLines, 18);
-        slide.addText(textObjects, {
-          x: 0.5,
-          y: tableTop,
-          w: 12.0,
-          h: tableLines.length > 0 ? 2.5 : 6.0,
-          valign: 'top',
-        });
+        // PR-W11(2026-05-16、user 報告 fix):frontmatter `layout: a4-2col` /
+        // `*-3col` の時は slide body を 2 / 3 column text box に分割。
+        // pptx には docx の section column 相当 API が無いので、本文を行
+        // 単位で N column に split、各 column を独立 addText で配置。
+        const layoutColCount = resolveLayoutColumnCount(ast.layout);
+        const bodyH = tableLines.length > 0 ? 2.5 : 6.0;
+        if (layoutColCount >= 2) {
+          // Slide body 領域(x:0.5, w:12.0)を N column に分割、column gap 0.3
+          const gap = 0.3;
+          const colW = (12.7 - gap * (layoutColCount - 1)) / layoutColCount;
+          // text を column 数で均等分割(各 column 行数 = total / N)
+          const perCol = Math.ceil(textObjects.length / layoutColCount);
+          for (let c = 0; c < layoutColCount; c++) {
+            const chunk = textObjects.slice(c * perCol, (c + 1) * perCol);
+            if (chunk.length === 0) continue;
+            // 各 chunk の末尾 run の breakLine を解除(column 末尾で改行不要)
+            const lastRun = chunk[chunk.length - 1]!;
+            if (lastRun.options && 'breakLine' in lastRun.options) {
+              lastRun.options = { ...lastRun.options, breakLine: false };
+            }
+            slide.addText(chunk, {
+              x: 0.3 + c * (colW + gap),
+              y: tableTop,
+              w: colW,
+              h: bodyH,
+              valign: 'top',
+            });
+          }
+        } else {
+          slide.addText(textObjects, {
+            x: 0.3,
+            y: tableTop,
+            w: 12.7,
+            h: bodyH,
+            valign: 'top',
+          });
+        }
       }
       let curY = tableTop + (textLines.length > 0 ? 2.7 : 0);
       for (const tl of tableLines) {
-        if (!tl.tableRows) continue;
-        const rows = tl.tableRows.map((row, rIdx) =>
-          row.map((cell) => ({
-            text: cell,
-            options: {
-              bold: rIdx === 0 && tl.tableHeader,
-              fill: rIdx === 0 && tl.tableHeader ? { color: 'EEEEEE' } : undefined,
-              fontSize: 14,
-            },
-          })),
-        );
-        slide.addTable(rows, {
-          x: 0.5,
+        // PR-W4(2026-05-15):AstTable は tableRowsRuns 経由(cell 内 inline
+        // formatting を保持)、CSV/TSV fence は tableRows 経由(plain text)。
+        // 両 path を一致した cell shape に正規化してから addTable に渡す。
+        let normalized: Array<Array<{ text: string | Array<{ text: string; options?: Record<string, unknown> }>; options: Record<string, unknown> }>> | null = null;
+        let colCount = 0;
+        if (tl.tableRowsRuns) {
+          normalized = tl.tableRowsRuns.map((row, rIdx) =>
+            row.map((cellRuns) => {
+              const isHeader = rIdx === 0 && (tl.tableHeader ?? false);
+              const cellOptions: Record<string, unknown> = { fontSize: 14 };
+              if (isHeader) cellOptions.fill = { color: TABLE_HEADER_SHADING_HEX };
+              if (cellRuns.length === 0) {
+                return { text: '', options: cellOptions };
+              }
+              // pptxgenjs の text-object array で cell text を構成、各 run の
+              // bold / italic / underline / strike / sup / sub / fontFace /
+              // highlight / hyperlink を保持。header 行 default で bold。
+              const textObjects = cellRuns.map((r) => {
+                const opts: Record<string, unknown> = {};
+                if (r.bold || isHeader) opts.bold = true;
+                if (r.italic) opts.italic = true;
+                if (r.strike) opts.strike = true;
+                if (r.underline) opts.underline = { style: 'sng' };
+                if (r.superscript) opts.superscript = true;
+                if (r.subscript) opts.subscript = true;
+                if (r.fontFace) opts.fontFace = r.fontFace;
+                if (r.highlight) opts.highlight = r.highlight;
+                if (r.hyperlink) opts.hyperlink = r.hyperlink;
+                return { text: r.text, options: opts };
+              });
+              return { text: textObjects, options: cellOptions };
+            }),
+          );
+          colCount = tl.tableRowsRuns[0]?.length ?? 0;
+        } else if (tl.tableRows) {
+          normalized = tl.tableRows.map((row, rIdx) =>
+            row.map((cell) => {
+              const isHeader = rIdx === 0 && (tl.tableHeader ?? false);
+              const cellOptions: Record<string, unknown> = { fontSize: 14 };
+              if (isHeader) cellOptions.bold = true;
+              if (isHeader) cellOptions.fill = { color: TABLE_HEADER_SHADING_HEX };
+              return { text: cell, options: cellOptions };
+            }),
+          );
+          colCount = tl.tableRows[0]?.length ?? 0;
+        }
+        if (!normalized || normalized.length === 0 || colCount === 0) continue;
+        slide.addTable(normalized, {
+          x: 0.3,
           y: curY,
-          w: 12.0,
-          colW: tl.tableRows[0]?.map(() => 12.0 / (tl.tableRows![0]!.length)),
-          border: { type: 'solid', pt: 0.5, color: '888888' },
+          w: 12.7,
+          colW: Array.from({ length: colCount }, () => 12.7 / colCount),
+          border: { type: 'solid', pt: PPTX_TABLE_BORDER_PT, color: TABLE_BORDER_HEX },
         });
-        curY += Math.min(0.4 * tl.tableRows.length + 0.2, 4.0);
+        curY += Math.min(0.4 * normalized.length + 0.2, 4.0);
       }
       // PR-V22:image 埋め込み
       for (const il of imageLines) {
@@ -736,7 +968,7 @@ export async function astToPptxBlob(
         const dataUri = `data:${il.imageMime ?? 'image/png'};base64,${il.imageData}`;
         slide.addImage({
           data: dataUri,
-          x: 0.5,
+          x: 0.3,
           y: curY,
           w: 6.0,
           h: 4.0,
@@ -750,7 +982,7 @@ export async function astToPptxBlob(
   if (ctx.internalLinks.length > 0) {
     const appendix = pres.addSlide();
     appendix.addText('リンク先一覧', {
-      x: 0.5, y: 0.3, w: 12.0, h: 0.8, fontSize: 32, bold: true,
+      x: 0.3, y: 0.3, w: 12.7, h: 0.8, fontSize: 32, bold: true,
     });
     const items = ctx.internalLinks.map((l, idx) => ({
       text: `(${l.num}) ${l.label} → ${l.targetTitle ?? '[未解決]'} [${l.href}]`,
@@ -760,7 +992,7 @@ export async function astToPptxBlob(
       },
     }));
     appendix.addText(items, {
-      x: 0.5, y: 1.3, w: 12.0, h: 6.0, valign: 'top',
+      x: 0.3, y: 1.3, w: 12.7, h: 6.0, valign: 'top',
     });
   }
 

@@ -22,17 +22,33 @@ const DEFAULT_TEMPLATES_JSON = JSON.stringify(
   {
     // Built-in starter set so the feature is discoverable on first run.
     // User can override / add more via the Flags inspector.
+    //
+    // ── 軽量 memo / 振り返り ─────────────────
     mt: '## メモ\n\n- [ ] \n',
     rt: '## 振り返り\n\n良かったこと:\n\n改善点:\n',
-    // PR-CCC (2026-05-06、user 修正指示5):公式 4 種(video / audio /
-    // novel / book)を default に同梱。frontmatter は v1.1 capture
-    // profile と同じ shape にして、手入力 entry も bookmarklet 経由
-    // 自動入力 entry も同等に扱える(filer Auto / hero thumbnail /
-    // graph kind 整合)。
+    //
+    // ── 公式 4 種(PR-CCC、video / audio / novel / book)─────
+    // frontmatter は v1.1 capture profile と同じ shape にして、手入力
+    // entry も bookmarklet 経由自動入力 entry も同等に扱える(filer Auto
+    // / hero thumbnail / graph kind 整合)。
     vd: '---\nkind: video\nprovider: \nurl: \nthumbnail: \nduration_sec: \n---\n\n# \n\n## 概要\n\n## 視聴メモ\n\n- [00:00] \n',
     au: '---\nkind: audio\nprovider: \nurl: \nthumbnail: \nduration_sec: \nauthor: \n---\n\n# \n\n## 概要\n\n## 視聴メモ\n\n',
     nv: '---\nkind: novel\nprovider: \nurl: \nthumbnail: \nauthor: \n---\n\n# \n\n## あらすじ\n\n## 感想\n\n',
     bk: '---\nkind: book\nprovider: \nurl: \nthumbnail: \nauthor: \nisbn: \npages: \n---\n\n# \n\n## 概要\n\n## 読書メモ\n\n',
+    //
+    // ── レイアウト系 8 種(PR-W10、Wave X P4)────────────
+    // Wave X(PR-W6〜W9)で確立した docx / pptx 出力の各種 layout に
+    // 対応した markdown skeleton。テンプレートは H1/H2/H3 階層 + 表 +
+    // task list 等を **章節項 auto-numbering 前提**(`# はじめに` のように
+    // prefix なし、export 時に `第1章 はじめに` を自動付与)で構成。
+    rp: '---\ntitle: \nauthor: \ndate: \n---\n\n# 序論\n\n## 背景\n\n本文を書いてください。\n\n## 目的\n\n本文を書いてください。\n\n# 本論\n\n## 手法\n\n本文を書いてください。\n\n### 詳細\n\n本文を書いてください。\n\n## 結果\n\n本文を書いてください。\n\n# 結論\n\n本文を書いてください。\n',
+    pn: '---\ntitle: \nauthor: \n---\n\n# 導入\n\n## サブタイトル\n\n本文を書いてください。\n\n### 課題と目的\n\n- 課題 1\n- 課題 2\n- 課題 3\n\n# 本論\n\n### 概要\n\n本文を書いてください。\n\n### データ\n\n| 項目 | 値 |\n| --- | --- |\n|  |  |\n|  |  |\n\n### 詳細\n\n- ポイント 1\n- ポイント 2\n- ポイント 3\n\n# まとめ\n\n### 振り返りと次のステップ\n\n- 振り返り\n- 次のステップ\n',
+    tc: '### 比較表\n\n| 観点 | A 案 | B 案 | C 案 |\n| --- | --- | --- | --- |\n| コスト |  |  |  |\n| 期間 |  |  |  |\n| リスク |  |  |  |\n| メリット |  |  |  |\n| デメリット |  |  |  |\n',
+    mn: '---\ndate: \nattendees: \n---\n\n# 議事録\n\n## アジェンダ\n\n1. \n2. \n3. \n\n## 議題と決定事項\n\n### 議題 1\n\n本文を書いてください。\n\n**決定事項**:\n\n- [ ] \n\n### 議題 2\n\n本文を書いてください。\n\n**決定事項**:\n\n- [ ] \n\n## 宿題と担当者\n\n- [ ] **担当者**:期日:\n- [ ] **担当者**:期日:\n\n## 次回\n\n日時:\n場所:\n',
+    ln: '---\nsubject: \ndate: \n---\n\n# 講義タイトル\n\n## 要点\n\n- ポイント 1\n- ポイント 2\n- ポイント 3\n\n## 詳細\n\n### トピック 1\n\n本文を書いてください。\n\n### トピック 2\n\n本文を書いてください。\n\n## 練習問題\n\n1. \n2. \n3. \n\n## 参考\n\n- \n',
+    cp: '# 比較対照\n\n## 観点 1\n\n**A 案**:本文を書いてください。\n\n**B 案**:本文を書いてください。\n\n## 観点 2\n\n**A 案**:本文を書いてください。\n\n**B 案**:本文を書いてください。\n\n## 結論\n\n| 観点 | A 案 | B 案 |\n| --- | --- | --- |\n| 観点 1 |  |  |\n| 観点 2 |  |  |\n| 総合 |  |  |\n',
+    co: '---\nlayout: a4-2col\ntitle: \nauthor: \n---\n\n# 章タイトル\n\n本文段落 1 です。本文段落 1 です。本文段落 1 です。本文段落 1 です。本文段落 1 です。本文段落 1 です。本文段落 1 です。本文段落 1 です。本文段落 1 です。本文段落 1 です。本文段落 1 です。\n\n本文段落 2 です。本文段落 2 です。本文段落 2 です。本文段落 2 です。本文段落 2 です。本文段落 2 です。本文段落 2 です。本文段落 2 です。本文段落 2 です。本文段落 2 です。本文段落 2 です。\n\n## 節タイトル\n\n本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。\n\n本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。本文を書いてください。\n\n## 続きの節\n\n更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。\n\n更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。更に本文を書きます。\n',
+    jl: '---\ndate: \nmood: \n---\n\n# 日報\n\n## 今日のハイライト\n\n- \n- \n\n## 良かったこと\n\n- \n\n## 改善したいこと\n\n- \n\n## 明日の予定\n\n- [ ] \n- [ ] \n- [ ] \n',
   },
   null,
   2,
