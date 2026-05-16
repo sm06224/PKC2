@@ -37,7 +37,7 @@ PKC2 markdown の全拡張記法を **AST から解釈** して、各 export sur
 | var | `{{vars.x}}` | ✅ 展開 | ✅ 展開 | OK |
 | math-inline | `$X$` | ❌ AST 化されない | ❌ | **未対応**(PR-W18 で OMML / docx native) |
 | comment-inline | `%%X%%` | ✅ drop | ✅ drop | OK |
-| footnote-ref | `[^id]` | ⚠️ `[^id]` superscript text | ⚠️ | **未 native**(PR-W20 で docx Footnote API) |
+| footnote-ref | `[^id]` | ✅ **W18 FootnoteReferenceRun + footnotes.xml** | ⚠️ | docx native済(PR-W18)、HTML 側も markdown-it-footnote plugin で native、**pptx 後続** |
 | opaque-inline | LaTeX 等 raw | ✅ original 保持 | ✅ | OK |
 | citation | `[@id]`(prefix なし) | ⚠️ `@id` italic plain | ⚠️ | **未 native**(PR-W19) |
 

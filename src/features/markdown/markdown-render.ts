@@ -59,6 +59,16 @@ const md = new MarkdownIt({
   },
 });
 
+// PR-W18(user「footnote 機能してない、前々から実装した気になって実装されて
+// ない機能の代表、HTML 側もできてない」):markdown-it-footnote plugin で
+// `[^id]` + 末尾 `[^id]: 本文` 定義を native HTML render(`<sup class=
+// "footnote-ref">` + 末尾 `<section class="footnotes">`)。AST 経路は
+// parse.ts で shield + decompose-pkc で AstFootnoteRef 化済(別経路、
+// docx export 用)。本 plugin は HTML render 専用。
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const footnotePlugin = require('markdown-it-footnote');
+md.use(footnotePlugin);
+
 // ── Link hardening ────────────────────────────────────
 //
 // Phase 2: tighten the default validateLink to an explicit allowlist.

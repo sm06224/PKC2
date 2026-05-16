@@ -49,6 +49,7 @@ import {
   ExternalHyperlink,
   ShadingType,
   TableLayoutType,
+  FootnoteReferenceRun,
   type IParagraphOptions,
   type IRunOptions,
 } from 'docx';
@@ -205,11 +206,27 @@ interface ExportContext {
   assets: Record<string, string>;
   /** PR-V21:AstDocument.vars(変数展開用、`{{vars.x}}` → 値解決)。 */
   vars: Record<string, string>;
+  /**
+   * PR-W18(user「footnote 機能してない、前々から実装した気になって実装され
+   * てない機能の代表、HTML 側もできてない」):footnote id(`[^id]` の id)
+   * → docx footnote 番号 map。`FootnoteReferenceRun(num)` の num は数値必須
+   * (文字列不可)+ Document.footnotes の key は同 num の文字列形式。
+   * docx 内部で連番 1..N を採番して superscript として render される。
+   */
+  footnoteIdMap: Map<string, number>;
 }
 
 function newContext(ast: AstDocument, opts: AstToDocxOptions): ExportContext {
   const entriesByLid = new Map<string, Entry>();
   for (const e of opts.container?.entries ?? []) entriesByLid.set(e.lid, e);
+  // PR-W18:footnote id → 番号(1..N、insertion 順)map を事前構築。
+  // ast.footnotes は Record<id, AstBlock[]> 形式(decompose-pkc が抽出)。
+  // 本文 walk 中に AstFootnoteRef → FootnoteReferenceRun(num) で参照する。
+  const footnoteIdMap = new Map<string, number>();
+  const footnoteIds = Object.keys(ast.footnotes ?? {});
+  for (let i = 0; i < footnoteIds.length; i++) {
+    footnoteIdMap.set(footnoteIds[i]!, i + 1);
+  }
   return {
     headingCounters: [0, 0, 0, 0, 0, 0],
     seenFirstH1: false,
@@ -217,6 +234,7 @@ function newContext(ast: AstDocument, opts: AstToDocxOptions): ExportContext {
     entriesByLid,
     assets: opts.container?.assets ?? {},
     vars: ast.vars ?? {},
+    footnoteIdMap,
   };
 }
 
@@ -399,8 +417,18 @@ function inlineToRuns(
       return [new TextRun(applyStyle({ text: node.src }, base))];
     case 'comment-inline':
       return [];
-    case 'footnote-ref':
+    case 'footnote-ref': {
+      // PR-W18(user「footnote 機能してない、HTML 側もできてない」):
+      // docx native `FootnoteReferenceRun(num)` で superscript 番号 + 末尾
+      // 自動 footnote 領域に link する。num は ast.footnotes の挿入順
+      // (1..N、`newContext` の footnoteIdMap)。
+      // 旧:`[^${id}]` を superscript text として literal 出力(参照リンク
+      // としては機能していなかった)。
+      const num = ctx.footnoteIdMap.get(node.id);
+      if (typeof num === 'number') return [new FootnoteReferenceRun(num)];
+      // 定義不在(orphan ref):literal fallback で source を保つ。
       return [new TextRun(applyStyle({ text: `[^${node.id}]` }, { ...base, superScript: true }))];
+    }
     case 'opaque-inline':
       return [new TextRun(applyStyle({ text: node.original }, base))];
     case 'citation':
@@ -924,6 +952,28 @@ export async function astToDocxBlob(
     blockToDocxElements(b, ctx),
   );
 
+  // PR-W18(user「footnote 機能してない、HTML 側もできてない」):
+  // ast.footnotes(Record<id, AstBlock[]>)を docx Document.footnotes
+  // (Record<numStr, { children: Paragraph[] }>)に変換。各 footnote 定義
+  // block を blockToDocxElements で render(inline 入れ子の太字 / 強調 /
+  // link 等も再帰的に展開)、Table が出ても Paragraph に絞る(footnote
+  // 領域は段落集約)。
+  const footnotesRecord: Record<string, { children: Paragraph[] }> = {};
+  for (const [id, blocks] of Object.entries(ast.footnotes ?? {})) {
+    const num = ctx.footnoteIdMap.get(id);
+    if (typeof num !== 'number') continue;
+    const paragraphs: Paragraph[] = [];
+    for (const block of blocks) {
+      for (const el of blockToDocxElements(block, ctx)) {
+        if (el instanceof Paragraph) paragraphs.push(el);
+      }
+    }
+    if (paragraphs.length === 0) {
+      paragraphs.push(new Paragraph({ children: [new TextRun({ text: '' })] }));
+    }
+    footnotesRecord[String(num)] = { children: paragraphs };
+  }
+
   // PR-V19 user audit 8:PKC 内リンク appendix(本文末尾)
   if (ctx.internalLinks.length > 0) {
     children.push(new Paragraph({
@@ -1053,6 +1103,11 @@ export async function astToDocxBlob(
       properties: resolveSectionProperties(ast.layout),
       children,
     }],
+    // PR-W18:footnote 定義(`[^id]: 本文`)を docx native footnote として
+    // 末尾領域に格納。本文の `FootnoteReferenceRun(num)` から page 下部の
+    // numbered list に link、Word/LibreOffice が自動で superscript ↔ 番号
+    // 対応を描画する。空 record(footnote 未使用)の場合は undefined 維持。
+    ...(Object.keys(footnotesRecord).length > 0 ? { footnotes: footnotesRecord } : {}),
   });
   return Packer.toBlob(doc);
 }
