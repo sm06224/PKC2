@@ -119,6 +119,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`intermediate-representation-audit.md`](./intermediate-representation-audit.md) | 領域 10-3 IR 導入の audit doc draft。markdown source ↔ rendered HTML が N:M 関係であること、IR 経由でしか解けない問題、Phase 1〜5 段階移行計画、業界事例調査(VS Code / Joplin / Codebraid 等 30+ 出典)を整理 |
 | [`filer-view-and-folder-display-profile-audit-2026-05.md`](./filer-view-and-folder-display-profile-audit-2026-05.md) | 領域 10-6 発展版 audit(**ζ'' 確定 by user 2026-05-05**)。TEXT atom + Hybrid Z(frontmatter / tag / relation の責務 3 分離)+ filer view 第 4 view-mode + graph view(vanilla TS、PKC1 force config 流用)+ subset profile + 入力負担減 sub-wave(ISBN/oEmbed auto-fill)+ folder ZIP export 拡張(subgraph reachability)。archetype 増設ゼロ / 新 schema ゼロ / dep ゼロ で PKC2 invariants 6/6 整合、~12 PR / ~3 ヶ月 wave |
 | [`handover-2026-05-01.md`](./handover-2026-05-01.md) | reform-2026-05 session context snapshot(2026-05-01 引き継ぎ memo) |
+| [`full-pkc-fixture-audit-2026-05-16.md`](./full-pkc-fixture-audit-2026-05-16.md) | **PR-W14 全 PKC 拡張 fixture audit + Wave Z 21 PR plan**(2026-05-16、user 直接指示「20 PR 以上、破壊的変更も辞さない」)。37 AST kind の docx/pptx 対応 matrix + literal 残り 0 件への徹底返済計画 |
 
 ### Doc / build / test methodology
 

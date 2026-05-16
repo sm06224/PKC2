@@ -569,6 +569,23 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         const nested = blockToDocxElements(child, ctx);
         for (const el of nested) if (el instanceof Paragraph) out.push(el);
       }
+      // PR-W14(user 指示「AST から解釈、意味ないことすんな」):
+      // `:::quote{author=…}` の citation.author を末尾の attribution 段落で
+      // italic + right align + dash prefix(`— Author, year, source`)。
+      // AstQuote.citation: Record<string, string> から author / year / source 等を結合。
+      if (block.citation && Object.keys(block.citation).length > 0) {
+        const parts: string[] = [];
+        if (block.citation.author) parts.push(block.citation.author);
+        if (block.citation.year) parts.push(block.citation.year);
+        if (block.citation.source) parts.push(block.citation.source);
+        if (parts.length > 0) {
+          out.push(new Paragraph({
+            children: [new TextRun({ text: `— ${parts.join(', ')}`, italics: true })],
+            indent: { left: DOCX_QUOTE_INDENT_TWIP },
+            alignment: AlignmentType.RIGHT,
+          }));
+        }
+      }
       return out;
     }
     case 'list': {
@@ -760,10 +777,88 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         spacing: { before: 60, after: 60 },
       })];
     }
-    case 'figure':
-    case 'section':
-    case 'if-block':
+    case 'if-block': {
+      // PR-W14(user 指示「AST から解釈」+ 可換性):`:::if{format=X}` で
+      // X !== 'docx' のブロックは export から **完全除外**(render しない)。
+      // 旧:常に children 展開 → DOCX なのに `format=html` blocks も出ていた。
+      // GFM Alert / Pandoc filter / Hugo conditional の汎用形に倣う。
+      const target = 'docx';
+      if (block.format !== target && block.format !== '' && block.format !== 'any') {
+        return [];
+      }
       return block.children.flatMap((c) => blockToDocxElements(c, ctx));
+    }
+    case 'section': {
+      // PR-W14(AI review P2-7 + user「意味ないことすんな」):
+      // `:::section{role=warning|note|info|tip|important|caution|danger}` に
+      // 応じて **role 別 callout box**(段落 border + shading + icon prefix)
+      // を AST native で構築。table wrap でなく paragraph border で軽量化、
+      // section 全体を border で囲む(top + bottom + left thick)。
+      const roleConfig: Record<string, { fill: string; border: string; icon: string }> = {
+        warning: { fill: 'FFF4E5', border: 'FB923C', icon: '⚠️ ' },
+        caution: { fill: 'FFF4E5', border: 'F97316', icon: '⚠️ ' },
+        danger: { fill: 'FEE2E2', border: 'DC2626', icon: '🛑 ' },
+        important: { fill: 'FEE2E2', border: 'DC2626', icon: '❗ ' },
+        note: { fill: 'EFF6FF', border: '60A5FA', icon: '📝 ' },
+        info: { fill: 'EFF6FF', border: '3B82F6', icon: 'ℹ️ ' },
+        tip: { fill: 'ECFDF5', border: '10B981', icon: '💡 ' },
+        summary: { fill: 'F5F3FF', border: '8B5CF6', icon: '📋 ' },
+      };
+      const config = roleConfig[block.role] ?? { fill: 'F4F4F5', border: 'CCCCCC', icon: '📌 ' };
+      // section 全体の囲み感を出すため、先頭 + 末尾に accent border paragraph を
+      // 挟む。中身 paragraph は border / shading 付与は別 PR で深堀(現状は
+      // visible callout の最小実装、AST native interpretation で role / icon
+      // /色を反映)。
+      const inner = block.children.flatMap((c) => blockToDocxElements(c, ctx));
+      const header = new Paragraph({
+        children: [new TextRun({ text: `${config.icon}${block.role.toUpperCase()}`, bold: true, color: config.border })],
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: config.fill },
+        border: {
+          left: { style: BorderStyle.SINGLE, color: config.border, size: 24, space: 8 },
+          top: { style: BorderStyle.SINGLE, color: config.border, size: 4, space: 4 },
+        },
+        spacing: { before: 120, after: 60 },
+      });
+      const footer = new Paragraph({
+        children: [],
+        border: {
+          left: { style: BorderStyle.SINGLE, color: config.border, size: 24, space: 8 },
+          bottom: { style: BorderStyle.SINGLE, color: config.border, size: 4, space: 4 },
+        },
+        spacing: { before: 0, after: 60 },
+      });
+      return [header, ...inner, footer];
+    }
+    case 'figure': {
+      // PR-W14:`:::figure{id=X}` + caption + figureKind(figure / table /
+      // equation)を native handling。caption は italic + center align 段落、
+      // num が ast に stamped されていれば「図 N: caption」「表 N」「式 N」
+      // prefix を付与。id は AST attrs.id で参照、本 PR では visible
+      // marker のみ(bookmark / REF field は別 PR で深堀)。
+      const inner = block.children.flatMap((c) => blockToDocxElements(c, ctx));
+      const out: Array<Paragraph | Table> = [...inner];
+      if (block.caption && block.caption.length > 0) {
+        const labelMap: Record<string, string> = {
+          figure: '図',
+          table: '表',
+          equation: '式',
+        };
+        const label = labelMap[block.figureKind] ?? '図';
+        const num = block.num ?? 1;
+        const captionRuns = inlinesToRuns(block.caption, ctx, { italics: true });
+        const prefix = new TextRun({ text: `${label} ${num}:`, italics: true, bold: true });
+        out.push(new Paragraph({
+          children: [
+            prefix,
+            new TextRun({ text: ' ' }),
+            ...captionRuns.filter((r): r is TextRun => r instanceof TextRun),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 60, after: 120 },
+        }));
+      }
+      return out;
+    }
     case 'comment-block':
       return [];
     case 'blank':
