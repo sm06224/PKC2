@@ -169,8 +169,13 @@ function walkInline(tokens: readonly Token[]): AstInline[] {
       const node: AstText = { kind: 'text', value: tok.content };
       top().push(node);
     } else if (type === 'softbreak' || type === 'hardbreak') {
-      // softbreak は space、hardbreak は \n に正規化(commonmark 規約)
-      const node: AstText = { kind: 'text', value: type === 'hardbreak' ? '\n' : ' ' };
+      // PR-W24 v5(user 報告「コピーした方は改行位置違う」):softbreak も
+      // **`\n` に格上げ**。理由:markdown-render.ts(HTML 直接 render path)が
+      // `breaks: true` で softbreak を `<br>` として render するため、AST 経由
+      // でも同等の line-break 情報を保持しないと **PKC MD = Rendered HTML**
+      // 不変式(supreme invariant)を満たさない。両 path を「行末改行は
+      // 視覚的改行」に統一する。
+      const node: AstText = { kind: 'text', value: '\n' };
       top().push(node);
     } else if (type === 'code_inline') {
       const node: AstInlineCode = { kind: 'inline-code', value: tok.content };
@@ -425,7 +430,13 @@ function getDefaultMd(): MarkdownIt {
   // linkify を OFF。`{{vars.name}}` 等の PKC 拡張 pattern の中に含まれる
   // `vars.name` のような **domain 風 token** を markdown-it が auto-link 化
   // して link node に壊すため。明示的 link は `[text](url)` で書く方針。
-  defaultMd = new MarkdownIt({ html: false, linkify: false, breaks: false, typographer: false });
+  // PR-W24 v5(user 報告「コピーした方は改行位置違う」):`breaks: true` を
+  // 採用して softbreak → hardbreak に格上げ。markdown-render.ts(HTML 直接
+  // render path)が `breaks: true` で `\n` → `<br>` を出すのに対し、本
+  // parse.ts が `breaks: false` だと softbreak が消えて round-trip で
+  // 「改行が消える」差異が出る。両 path を `breaks: true` に揃えることで
+  // **PKC MD = Rendered HTML 不変式**(supreme invariant)を満たす。
+  defaultMd = new MarkdownIt({ html: false, linkify: false, breaks: true, typographer: false });
   defaultMd.enable(['table', 'strikethrough']);
   return defaultMd;
 }
