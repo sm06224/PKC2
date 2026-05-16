@@ -87,6 +87,16 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+- **PR-W10 Wave X P4 layout template 集 + マニュアル新章**(2026-05-16、user 直接要望):テンプレートコマンド `/tmpXX`(`templates.entries` Tier 1 flag、`[a-z0-9]{2}` key、value = body string)の default を 6 → **14 件に拡張**:
+  - **既存 6 件**(維持):`mt`(memo)/ `rt`(振り返り)/ `vd`(video)/ `au`(audio)/ `nv`(novel)/ `bk`(book)
+  - **新規 8 件 layout 系**:`rp`(報告書、序論/本論/結論 + 章節項 auto-numbering)/ `pn`(プレゼン骨子、H1 章 + H3 通常スライド + データ表)/ `tc`(表中心、5×3 比較表)/ `mn`(議事録、アジェンダ + 決定事項 + 宿題 task list)/ `ln`(講義ノート、要点 + 詳細 + 練習問題)/ `cp`(比較対照、観点別 + 結論表)/ `co`(2 段組、`layout: a4-2col` frontmatter)/ `jl`(日報、ハイライト + 振り返り + 明日の予定)
+  - 各 layout は **Wave X(PR-W6〜W9)で確立した docx/pptx 出力品位**(章番号 auto-numbering、bilingual font、accent border、3 layout master、running footer)に最適化された skeleton
+  - **新マニュアル章 14**(`docs/manual/14_テンプレートコマンド集.md`、NEW):14.1 使い方(slash command + Flags inspector)/ 14.2 default 14 件一覧表 / 14.3 layout 系 8 件詳細(各 template に markdown コード + docx page 1 PNG + pptx slide 1 PNG)/ 14.4 自前 template 追加方法 / 14.5 既存 default の上書き / 14.6 PKC1 からの移行 / 14.7 関連章
+  - **実機 PNG 16 セット**(`docs/manual/images/templates/` 配下、各 layout × docx/pptx、計 ~440 KB):vtest pipeline で各 template を実機 LibreOffice → PDF → 96dpi PNG 化、manual に inline 参照
+  - case matrix test 14 件 新規(`tests/features/templates/template-flag.test.ts` 内 PR-W10 describe block):既存 default 6 件維持 + 新 8 key の存在 + 14 件以上 + rp/co/tc/mn の内容 invariant
+  - 既存 `slash-menu.test.ts` 3 件 follow:fuzzy match で `date:` frontmatter を持つ layout template が `da` query で hit するため expected 2 → 6 に update
+  - 全 7869 test pass(PR-W9 7854 から +15)、bundle.js 1855 KB(+3 KB、default template JSON が +1.8 KB minify 後 +3 KB)、bundle.css 163 KB 不変。`docs/manual/00_index.md` 全体目次 + 「レイアウト template を使いたい方」読み順 entry 追加。check:doc-orphans 0 件 / check:doc-deadlinks 0 件。
+
 - **PR-W9 Wave X P3 layout templates**(2026-05-15、AI review P3 全件着地、Wave X 最終):
   - **P3-11 3 layout master 分化**:`PKC_SECTION_SLIDE`(扉、PR-W5 既存)+ `PKC_CONTENT_SLIDE`(本文、PR-W5 既存)+ **`PKC_TABLE_SLIDE`**(表中心、NEW)の 3 master。`splitIntoSlides` 後に **table-centric 自動判定**(slide が `tableRows`/`tableRowsRuns` を 1 件以上持ち、通常 text line が 0-1 件以内 = table が dominant content)で kind を `'content'` → `'table'` に格上げ。
   - **P3-12 表中心スライドの死に空間撲滅**:`table` layout で `tableTop = 1.1`(title 直下 0.1 inch separator)、`content` layout は従来通り `1.5`(separator スペース確保)。これで「表中心スライドでテーブルが中央に浮いて上半分が空っぽ」の AI review 指摘を解消。table-centric slide では title h を 0.7 に短縮して body 開始位置を上げる。
