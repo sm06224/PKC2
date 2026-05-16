@@ -35,12 +35,6 @@
 export const MARK_HIGHLIGHT_HEX = 'FFF3A0';
 
 /**
- * @deprecated PR-W8 で named 'yellow' から shading.fill hex 経路に移行。
- * 旧 import 名は残置するが、新規 site では `MARK_HIGHLIGHT_HEX` を使う。
- */
-export const MARK_HIGHLIGHT_NAMED = 'yellow' as const;
-
-/**
  * 表のヘッダー行 shading(docx / pptx で共通)。
  *
  * PR-W8(Wave X P2):従来 `EEEEEE` → `F4F4F5` に統一(`INLINE_CODE_SHADING_HEX`
@@ -120,21 +114,6 @@ export const MONOSPACE_FONT_LATIN = 'JetBrains Mono';
 /** 和文 monospace(CJK)。 */
 export const MONOSPACE_FONT_EASTASIA = 'Source Han Code JP';
 
-/**
- * @deprecated PR-W7 で bilingual 分離。docx は `IFontAttributesProperties`
- * で `{ ascii, eastAsia }` を渡す、pptx は `fontFace: FONT_LATIN` で欧文
- * 主体(CJK は LibreOffice / Word の自動 fallback に任せる)。互換のため
- * 既存 import 名を残すが新規 site では使わない。
- */
-export const DEFAULT_FONT = 'BIZ UDGothic';
-
-/**
- * @deprecated PR-W7 で `MONOSPACE_FONT_LATIN` / `MONOSPACE_FONT_EASTASIA` に
- * 分離。pptx は `fontFace: MONOSPACE_FONT_LATIN` で十分(LibreOffice が CJK
- * fallback)。docx は `{ ascii, eastAsia }` で両方指定。
- */
-export const MONOSPACE_FONT = 'Consolas';
-
 /** 数式(math-inline / math-block)用 font。docx / pptx 共通。 */
 export const MATH_FONT = 'Cambria Math';
 
@@ -197,3 +176,9 @@ export const PPTX_BODY_WIDTH_INCH = 12.0;
 
 /** pptx の table border thickness(pt)。 */
 export const PPTX_TABLE_BORDER_PT = 0.5;
+
+/**
+ * PR-W9(Wave X P3):pptx running footer(slide number / Chapter N)の
+ * subtle grey。`#888888` で本文と区別、目立たない位置情報。
+ */
+export const PPTX_FOOTER_GREY_HEX = '888888';

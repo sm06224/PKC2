@@ -127,6 +127,22 @@ const HEADING_LEVELS: Record<number, typeof HeadingLevel[keyof typeof HeadingLev
 /** 半角全角カタカナ(H5 numbering 用、ア-ン 47 字)。 */
 const KATAKANA = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
 
+/**
+ * PR-W8 統一の `Table.borders`(hairline 0.5pt grey、6 方向同値)。
+ * AstTable / CSV fence table どちらの経路でも共通の罫線設定。
+ */
+function pkcHairlineTableBorders() {
+  const b = { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX };
+  return {
+    top: b,
+    bottom: b,
+    left: b,
+    right: b,
+    insideHorizontal: b,
+    insideVertical: b,
+  };
+}
+
 /** H6 numbering 用(a-z 26 字)。 */
 function lowerLatin(n: number): string {
   if (n <= 0) return '?';
@@ -709,14 +725,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         // width 自体は指定なしで Word が自動 calc(`tblW w="0" type="auto"`)。
         layout: TableLayoutType.AUTOFIT,
         // 罫線 hairline 0.5pt grey
-        borders: {
-          top: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-          bottom: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-          left: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-          right: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-          insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-          insideVertical: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-        },
+        borders: pkcHairlineTableBorders(),
       })];
     }
     case 'code-block': {
@@ -757,14 +766,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
             rows,
             // PR-W17:CSV fence の table も同じく autofit。
             layout: TableLayoutType.AUTOFIT,
-            borders: {
-              top: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-              bottom: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-              left: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-              right: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-              insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-              insideVertical: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
-            },
+            borders: pkcHairlineTableBorders(),
           })];
         }
       }
@@ -836,7 +838,7 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         tip: { fill: 'ECFDF5', border: '10B981', icon: '💡 ' },
         summary: { fill: 'F5F3FF', border: '8B5CF6', icon: '📋 ' },
       };
-      const config = roleConfig[block.role] ?? { fill: 'F4F4F5', border: 'CCCCCC', icon: '📌 ' };
+      const config = roleConfig[block.role] ?? { fill: TABLE_HEADER_SHADING_HEX, border: TABLE_BORDER_HEX, icon: '📌 ' };
       // section 全体の囲み感を出すため、先頭 + 末尾に accent border paragraph を
       // 挟む。中身 paragraph は border / shading 付与は別 PR で深堀(現状は
       // visible callout の最小実装、AST native interpretation で role / icon

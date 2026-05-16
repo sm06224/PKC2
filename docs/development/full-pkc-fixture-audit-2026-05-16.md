@@ -78,43 +78,46 @@ literal text 残り(`grep -c LITERAL` in docx XML):
 
 User 認可「20 PR 以上、破壊的変更も辞さない」を受けた構造的改修計画:
 
-### Wave Z.2(P1 残、直近 native 化、5 PR)
+### Wave Z.2(user feedback driven dense layout + literal 0 + footnote native、着地済 4 PR)
 
-- **PR-W15** pptx 側 section role / if-block / figure caption / quote author native(docx 同等)
-- **PR-W16** sup / sub `:sup:[X]` / `:sub:[X]` formal を decompose-pkc に実装 + AST 化
-- **PR-W17** ruby を Word `<w:ruby>` element で native 実装(現状 `base(rt)` plain → 真のルビ)
-- **PR-W18** math-inline / math-block の OMML(Office Math)実装 + decompose-pkc で `$X$` / `$$X$$` AST 化
-- **PR-W19** auto-ref / citation を docx bookmark + REF field で cross-ref native
+User の継続 feedback「順序リストぶら下げ / バレット大 / 表余白 / footnote 機能してない」を受けて当初計画と着地順序が変化した。**完了**:
 
-### Wave Z.3(P2 拡張、5 PR)
+- ✅ **PR-W15** literal 残り 0 件達成(audit script 4 種 → 0)+ 順序リスト hanging 240 twip 詰め
+- ✅ **PR-W16** bullet list 自前 `pkc-bullet` numbering(glyph `·` 中点 + hanging 240、docx default の巨大 `•` 撤廃)
+- ✅ **PR-W17** 表 cell padding 60 twip + `TableLayoutType.AUTOFIT`(従来固定均等幅で「同じセルサイズと絶対おかしい」状態だった)
+- ✅ **PR-W18** footnote 真の native — docx `FootnoteReferenceRun` + `Document.footnotes` API、HTML `markdown-it-footnote` plugin
 
-- **PR-W20** footnote-ref を docx Footnote API で native(現状 `[^id]` plain text)
-- **PR-W21** blank-line marker `_<N>` を AST node 化 + docx で N 行 spacer paragraph
-- **PR-W22** definition-list を decompose-pkc で AST 化 + docx native(現状 paragraph fallback)
-- **PR-W23** card / embed を AST native + docx で entry preview(現状 children flat)
-- **PR-W24** mermaid code-render を image(svg → png)化 + docx ImageRun
+### Wave Z.3(残 P1 native 化、5 PR、後続)
 
-### Wave Z.4(P3 + 環境系、5 PR)
+- **PR-W19** pptx 側 section role / if-block / figure caption / quote author native(docx 同等)
+- **PR-W20** sup / sub `:sup:[X]` / `:sub:[X]` formal を decompose-pkc に実装 + AST 化
+- **PR-W21** ruby を Word `<w:ruby>` element で native 実装(現状 `base(rt)` plain → 真のルビ)
+- **PR-W22** math-inline / math-block の OMML(Office Math)実装 + decompose-pkc で `$X$` / `$$X$$` AST 化
+- **PR-W23** auto-ref / citation を docx bookmark + REF field で cross-ref native
 
-- **PR-W25** html-render fence を image 化 + docx ImageRun(現状 plain text)
-- **PR-W26** TOC `:::toc{depth=N}` を docx TableOfContents native
-- **PR-W27** docx running header / footer / page number / frontmatter core props(title / author / date を Word file properties に)
-- **PR-W28** code-block syntax highlight を language-specific color runs(現状 plain monospace)
-- **PR-W29** writing: vertical + direction: rtl を docx textDirection / bidi
+### Wave Z.4(P2 拡張、4 PR)
 
-### Wave Z.5(L-5 / L-8 / L-9 align / indent、3 PR)
+- **PR-W24** blank-line marker `_<N>` を AST node 化 + docx で N 行 spacer paragraph
+- **PR-W25** definition-list を decompose-pkc で AST 化 + docx native(現状 paragraph fallback)
+- **PR-W26** card / embed を AST native + docx で entry preview(現状 children flat)
+- **PR-W27** mermaid code-render を image(svg → png)化 + docx ImageRun
 
-- **PR-W30** paragraph align prefix L-5(`||` `|>` `<|`)を AstParagraph.align に AST 化
-- **PR-W31** paragraph indent L-9(`>>`)を AstParagraph.indent に AST 化
-- **PR-W32** `:::paragraph{align=...}` block を AstParagraph + alignAttr に AST 化(現状 children flat)
+### Wave Z.5(P3 + 環境系、5 PR)
 
-### Wave Z.6(symptom 残し fix、3 PR、破壊的変更含む)
+- **PR-W28** html-render fence を image 化 + docx ImageRun(現状 plain text)
+- **PR-W29** TOC `:::toc{depth=N}` を docx TableOfContents native
+- **PR-W30** docx running header / footer / page number / frontmatter core props(title / author / date を Word file properties に)
+- **PR-W31** code-block syntax highlight を language-specific color runs(現状 plain monospace)
+- **PR-W32** writing: vertical + direction: rtl を docx textDirection / bidi
 
-- **PR-W33** `..em-dot..` decompose-pkc の `..` literal 残り bug fix(text fragmentation を完全に block 化)
-- **PR-W34** `:::quote{author="..."}` の open marker text 残り bug fix(syntax を完全に block 化)
-- **PR-W35** `+++` section break を AstBreak(kind=section)で AST 化 + docx で thin divider rendering
+### Wave Z.6(L-5 / L-8 / L-9 align / indent、3 PR)
 
-**累計 21 PR**(W15-W35)、各 PR で fixture を全件再 render + literal 残り audit + native 実装 visual confirmation。破壊的変更が必要な場合は MIGRATION ノートを `CHANGELOG_v2.4.0.md`(次 minor bump 候補)に記載。
+- **PR-W33** paragraph align prefix L-5(`||` `|>` `<|`)を AstParagraph.align に AST 化
+- **PR-W34** paragraph indent L-9(`>>`)を AstParagraph.indent に AST 化
+- **PR-W35** `:::paragraph{align=...}` block を AstParagraph + alignAttr に AST 化(現状 children flat)
+- **PR-W36** `+++` section break を AstBreak(kind=section)で AST 化 + docx で thin divider rendering
+
+**累計 22 PR**(W15-W36)。W15-W18 完了、残 18 PR が後続着地予定。各 PR で fixture を全件再 render + literal 残り audit + native 実装 visual confirmation。破壊的変更が必要な場合は MIGRATION ノートを `CHANGELOG_v2.4.0.md`(次 minor bump 候補)に記載。
 
 ## 5. 検証方法
 

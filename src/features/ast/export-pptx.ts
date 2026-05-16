@@ -60,6 +60,7 @@ import {
   MATH_FONT,
   INLINE_CODE_SHADING_HEX,
   PPTX_TABLE_BORDER_PT,
+  PPTX_FOOTER_GREY_HEX,
   TASK_OPEN_GLYPH_COLOR_HEX,
   TASK_DONE_GLYPH_COLOR_HEX,
 } from '@features/ast/export-constants';
@@ -711,7 +712,7 @@ export async function astToPptxBlob(
       w: 1.0,
       h: 0.3,
       fontSize: 10,
-      color: '888888',
+      color: PPTX_FOOTER_GREY_HEX,
       align: 'right',
     },
     objects: [
@@ -744,7 +745,7 @@ export async function astToPptxBlob(
       w: 1.0,
       h: 0.3,
       fontSize: 10,
-      color: '888888',
+      color: PPTX_FOOTER_GREY_HEX,
       align: 'right',
     },
     objects: [
@@ -790,7 +791,7 @@ export async function astToPptxBlob(
         w: 4.0,
         h: 0.3,
         fontSize: 10,
-        color: '888888',
+        color: PPTX_FOOTER_GREY_HEX,
         align: 'left',
       });
     }
