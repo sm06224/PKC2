@@ -417,12 +417,18 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
         // PR-2JJ v2 hotfix(2026-05-13、user fixture report):attrs.id /
         // attrs.kvs を round-trip 保持。`:::figure{kind=figure}` だけだと
         // `id="topology-overview"` 等の attrs 情報が失われる。
-        const attrParts: string[] = [`kind=${block.figureKind}`];
+        // PR-W24 v3:`kind=figure`(default)は emit しない(re-parse で
+        // `kvs.kind="figure"` が空 attrs の AST に混入して round-trip diff
+        // を起こす)。`table` / `equation` のみ明示。
+        const attrParts: string[] = [];
+        if (block.figureKind !== 'figure') {
+          attrParts.push(`kind=${block.figureKind}`);
+        }
         if (block.attrs) {
           if (block.attrs.id) attrParts.push(`id="${block.attrs.id}"`);
           for (const cls of block.attrs.classes) attrParts.push(`.${cls}`);
           for (const [k, v] of Object.entries(block.attrs.kvs)) {
-            if (k === 'kind') continue; // already emitted
+            if (k === 'kind') continue; // already emitted (or skipped)
             if (v === true) attrParts.push(k);
             else if (v !== false) attrParts.push(`${k}=${JSON.stringify(v)}`);
           }
@@ -614,16 +620,22 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
       if (mode === 'pkc' && node.attrs && hasAttrs(node.attrs)) {
         // PR-2JJ v2 hotfix(2026-05-13):AstSpan(class=lead) や (class=caption)
         // は formal inline 形(`:lead:[X]` / `:caption:[X]`)で round-trip 安定。
-        // decompose-pkc が同じ formal 形に戻すので idempotent。
         const cls = node.attrs.classes;
         if (cls.includes('lead') && cls.length === 1) return `:lead:[${inner}]`;
         if (cls.includes('caption') && cls.length === 1) return `:caption:[${inner}]`;
-        if (cls.includes('pkc-em-dot') && cls.length === 1) {
-          // pkc-em-dot は AstEmDot として後段で生成されるが、念のため。
-          return `..${inner}..`;
+        if (cls.includes('pkc-em-dot') && cls.length === 1) return `..${inner}..`;
+        // PR-W24 v3 round-trip fix:
+        //   `attrs.classes` のみ持つ AstSpan → L-6 Simple inline `:text:cls1,cls2:`
+        //   `attrs.id / kvs` も持つ AstSpan → formal `:span:[text]{attrs}`
+        // どちらも decompose-pkc が同 AST に戻す PKC native 形。
+        const hasIdOrKvs = (node.attrs.id !== undefined && node.attrs.id !== '') ||
+                          Object.keys(node.attrs.kvs).length > 0;
+        if (!hasIdOrKvs && cls.length > 0) {
+          // Simple form: `:text:cls1,cls2:`
+          return `:${inner}:${cls.join(',')}:`;
         }
-        // 一般 span:`[X]{attrs}` 形
-        return `[${inner}]${formatAttrs(node.attrs)}`;
+        // formal form: `:span:[text]{attrs}` で id / class / kvs を保持
+        return `:span:[${inner}]${formatAttrs(node.attrs)}`;
       }
       // GFM:class が付いていれば `<span class="X">` で reverse 可能に
       if (mode === 'gfm' && node.attrs && node.attrs.classes.length > 0) {

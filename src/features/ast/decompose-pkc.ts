@@ -714,19 +714,52 @@ function buildBlockNode(
           : (cleanAttrs?.kvs.kind as string | undefined) === 'equation'
             ? 'equation'
             : 'figure');
-      // PR-W24:children 内の `^^^ caption` sentinel(L-7-a)を caption に
-      // 昇格、本体 children から除去。`:caption:[X]` formal inline は別経路
-      // (現状は inline 化されないので未対応、後続 PR で評価)。
-      const captionPattern = /^\u{E168}fcap:([\s\S]+?)\u{E169}$/u;
+      // PR-W24 v3:`^^^ caption` sentinel を caption field に抽出。**inline**
+      // level で抽出して、image など同 paragraph 内の他 inlines は本体 children
+      // に残置(旧 bug:paragraph 全体を drop していて image が消えていた)。
+      const captionInlinePattern = /\u{E168}fcap:([\s\S]+?)\u{E169}/gu;
       let extractedCaption: readonly AstInline[] | undefined;
       const childrenWithoutCaption: AstBlock[] = [];
       for (const c of children) {
         if (c.kind === 'paragraph') {
-          const t = inlinesToText(c.children).trim();
-          const m = captionPattern.exec(t);
-          if (m) {
-            const captionText = m[1]!.trim();
-            extractedCaption = scanInlineMarkers(captionText, {});
+          // paragraph.children の inline 中で text node に sentinel が含まれて
+          // いるか check、含まれていれば caption 抽出 + sentinel 削除した
+          // 新 paragraph を残置。残り inline(image / link 等)は保持。
+          let foundCaption = false;
+          const newInlines: AstInline[] = [];
+          for (const inl of c.children) {
+            if (inl.kind === 'text' && captionInlinePattern.test(inl.value)) {
+              captionInlinePattern.lastIndex = 0; // reset global flag
+              let lastEnd = 0;
+              let m: RegExpExecArray | null;
+              const remainingText: string[] = [];
+              while ((m = captionInlinePattern.exec(inl.value)) !== null) {
+                if (m.index > lastEnd) remainingText.push(inl.value.slice(lastEnd, m.index));
+                if (!extractedCaption) {
+                  extractedCaption = scanInlineMarkers(m[1]!.trim(), {});
+                }
+                lastEnd = m.index + m[0].length;
+                foundCaption = true;
+              }
+              if (lastEnd < inl.value.length) remainingText.push(inl.value.slice(lastEnd));
+              const joined = remainingText.join('').trim();
+              if (joined !== '') newInlines.push({ kind: 'text', value: joined });
+            } else {
+              newInlines.push(inl);
+            }
+            captionInlinePattern.lastIndex = 0;
+          }
+          if (foundCaption) {
+            // sentinel 削除後の inline が non-empty なら paragraph を残置
+            const filteredInlines = newInlines.filter((n) =>
+              !(n.kind === 'text' && n.value.trim() === ''),
+            );
+            if (filteredInlines.length > 0) {
+              childrenWithoutCaption.push({
+                kind: 'paragraph',
+                children: filteredInlines,
+              });
+            }
             continue;
           }
         }
