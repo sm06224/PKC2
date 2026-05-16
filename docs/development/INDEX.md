@@ -120,6 +120,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 | [`filer-view-and-folder-display-profile-audit-2026-05.md`](./filer-view-and-folder-display-profile-audit-2026-05.md) | 領域 10-6 発展版 audit(**ζ'' 確定 by user 2026-05-05**)。TEXT atom + Hybrid Z(frontmatter / tag / relation の責務 3 分離)+ filer view 第 4 view-mode + graph view(vanilla TS、PKC1 force config 流用)+ subset profile + 入力負担減 sub-wave(ISBN/oEmbed auto-fill)+ folder ZIP export 拡張(subgraph reachability)。archetype 増設ゼロ / 新 schema ゼロ / dep ゼロ で PKC2 invariants 6/6 整合、~12 PR / ~3 ヶ月 wave |
 | [`handover-2026-05-01.md`](./handover-2026-05-01.md) | reform-2026-05 session context snapshot(2026-05-01 引き継ぎ memo) |
 | [`full-pkc-fixture-audit-2026-05-16.md`](./full-pkc-fixture-audit-2026-05-16.md) | **PR-W14 全 PKC 拡張 fixture audit + Wave Z 21 PR plan**(2026-05-16、user 直接指示「20 PR 以上、破壊的変更も辞さない」)。37 AST kind の docx/pptx 対応 matrix + literal 残り 0 件への徹底返済計画 |
+| [`pkc-hint-mechanism-2026-05-16.md`](./pkc-hint-mechanism-2026-05-16.md) | **PKC Hint 共通機構 設計(設計のみ保存、未実装)**(2026-05-16、user 指示「コードブロックの暴発回避誘導線路を共通化、opt-out 方式」)。`AstHint` schema + 4 階層 opt-out + 既存 5 種(undef var / cap / orphan footnote / malformed / dangling)の統合 + code block render-available hint + Phase A-G renderer 群の誘導線路を 20+ PR plan で記述。wave Z 後の選択肢として記録 |
 
 ### Doc / build / test methodology
 
