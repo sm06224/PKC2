@@ -1014,6 +1014,14 @@ export async function astToDocxBlob(
               format: 'decimal',
               text: '%1.',
               alignment: AlignmentType.START,
+              // PR-W15(user「順序リストのぶら下げ余白大きい、ダサい」):
+              // Word default の hanging indent 720(0.5 inch)が広すぎる
+              // → 240(0.17 inch)に詰めて marker `1.` 直後から text 開始。
+              style: {
+                paragraph: {
+                  indent: { left: 360, hanging: 240 },
+                },
+              },
             },
           ],
         },

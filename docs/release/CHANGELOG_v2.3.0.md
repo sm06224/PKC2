@@ -87,6 +87,8 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+- **PR-W15 fixture audit literal 0 件達成**(2026-05-16、user 「PKC-Markdown がそのまま透けて出てきてる、これ OK だと思う?」を受けた即時 fix):**audit script 結果 4 種 → 0 件**。原因は私が fixture description 内に「未対応記法の例」として `+++` / `:::quote{author=...}` / `:::paragraph{align=...}` 等を ASCII literal で書いてしまった self-reference 混入(decompose bug ではなく)。修正:fixture 末尾の「未対応一覧」段落を audit doc reference に置換、L73 heading から `:::quote{author=...}` backtick literal を削除。実機 vtest で `..` / `:::` / `+++` / `[@` / `^^^` / `\\page` / `==` 全 13 pattern が 0 件確認。manual PNG 8 件再生成(`docs/manual/images/pkc-fixture/`)。Wave Z.6 で予定していた literal 残り fix を本 PR で前倒し解消。
+
 - **PR-W14 全 PKC 拡張 fixture + 部分 native 実装 + 21 PR 計画**(2026-05-16、user 直接指示「徹底的な叩き直しに 20 PR 以上、破壊的変更も辞さない」):
   - **全拡張 fixture commit**:`tests/features/ast/fixtures/full-pkc-fixture.md`、37 AST kind を網羅
   - **AST 経由 native 実装(部分)**:`AstQuote.citation` author を末尾 attribution 段落(italic right-align)/ `AstSection.role` を warning/note/info/tip/danger/important/caution/summary の 8 role 別 callout box(shading + left accent border + icon)/ `AstIfBlock.format` を format=docx 以外 skip(可換性 critical)/ `AstFigure` を `figureKind` + caption + `num` で「図 N: caption」/「表 N」/「式 N」prefix

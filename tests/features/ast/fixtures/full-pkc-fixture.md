@@ -70,7 +70,7 @@ CSV fence:
 ぶどう,2,400
 ```
 
-## 引用 + attribution(`:::quote{author=...}`)
+## 引用 + author attribution
 
 :::quote{author="Donald Knuth"}
 Premature optimization is the root of all evil.
@@ -139,4 +139,4 @@ PKC2 は AST commutative IR を導入[^ast-ir] + 各 format で AST 経由 rende
 
 各 export surface(HTML / DOCX / PPTX / PDF)で、上記すべての記法が **AST から解釈されて** visible / native render されることが期待されます。
 
-未対応(literal 残り):math-inline / math-block / sup / sub / definition-list / paragraph align prefix(L-5) / blank-line marker(L-8) / paragraph indent(L-9)/ `+++` section break / `:::paragraph{align=...}` / `:::break{kind=page}` — これらは別 PR(W15+)で decompose-pkc.ts に native 実装予定。
+未対応の記法一覧は `docs/development/full-pkc-fixture-audit-2026-05-16.md` を参照。本 fixture には未対応記法を混入させない方針(literal 残り 0 件を目指す)、後続 PR で順次 native 化。
