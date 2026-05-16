@@ -237,7 +237,11 @@ function inlinesToText(children: readonly AstInline[]): string {
   return parts.join('');
 }
 
-const BLOCK_OPEN_RE = /^[ \t]*:::([a-zA-Z0-9_-]+)(\{[^}]*\})?[ \t]*$/;
+// PR-W24:`{[^}]*}` の closing `}` missing でも寛容に attrs として受ける。
+// 不正 attrs は parse 失敗で role 名のみ採用、attrs は drop(寛容 parse doctrine、
+// L-tolerant フォールバック)。AI hallucinate / typo 対応。
+// PR-W24 v2:attrs は well-formed のみ accept、malformed `{` は role-only に fallback。
+const BLOCK_OPEN_RE = /^[ \t]*:::([a-zA-Z0-9_-]+)(\{[^}\n]{0,200}\})?[ \t]*$/;
 const BLOCK_CLOSE_RE = /^[ \t]*:::[ \t]*$/;
 const SINGLELINE_BLOCK_RE = /:::([a-zA-Z0-9_-]+)(\{[^}]*\})?[ \t\n]+([\s\S]*?)[ \t\n]*:::/g;
 /** `%%%` 単独行(open / close marker)。 */
@@ -471,6 +475,13 @@ function decomposeBlocks(
           i = closeIdx + 1;
           continue;
         }
+        // PR-W24 v3:closer 見つからず EOF まで到達 → 寛容 parse として残り全部を
+        // content として吸収。spec L-tolerant「EOF までを内容として取り込む」。
+        const innerBlocks = decomposeBlocks(expanded.slice(i + 1), vars);
+        const node = buildBlockNode(opener.role, opener.attrs, innerBlocks);
+        if (node) out.push(node);
+        i = expanded.length;
+        continue;
       }
     }
     // 通常 block(opener 不在 or close 不在):inline 解体のみ
@@ -506,49 +517,23 @@ function decomposeBlocks(
 // 拾うことで対応。
 
 function splitParagraphAtBlockMarkers(text: string): string[] {
-  const parts: string[] = [];
-  let pos = 0;
-  while (pos < text.length) {
-    const idx = text.indexOf(':::', pos);
-    if (idx === -1) {
-      const rest = text.slice(pos).trim();
-      if (rest !== '') parts.push(rest);
-      break;
-    }
-    // ::: が「行頭」(text 先頭 or 直前が whitespace)で始まっているか判定。
-    const prev = idx === 0 ? undefined : text[idx - 1];
-    const isLineStart = prev === undefined || /\s/.test(prev);
-    if (!isLineStart) {
-      // 文中の ::: は literal 扱い、scan を進めるだけ
-      pos = idx + 3;
-      continue;
-    }
-    // ::: の後を見て、(a) `role{attrs}` opener か (b) bare closer か判定。
-    let endIdx = idx + 3;
-    const after = text.slice(endIdx);
-    const roleMatch = /^([a-zA-Z0-9_-]+)(\{[^}]*\})?/.exec(after);
-    let marker: string;
-    if (roleMatch) {
-      endIdx += roleMatch[0].length;
-      marker = text.slice(idx, endIdx);
-    } else {
-      // bare `:::`、closer 候補。直後が whitespace or 行末でなければ literal。
-      const next = text[endIdx];
-      if (next !== undefined && !/\s/.test(next)) {
-        pos = endIdx;
-        continue;
-      }
-      marker = ':::';
-    }
-    // marker 前 content を push(trim)。
-    if (idx > pos) {
-      const before = text.slice(pos, idx).trim();
-      if (before !== '') parts.push(before);
-    }
-    parts.push(marker);
-    pos = endIdx;
+  const trimmed = text.trim();
+  // opener:`:::role` + optional well-formed `{...}` のみ(200 文字以内)
+  const openerMatch = /^:::([a-zA-Z0-9_-]+)(\{[^}\n]{0,200}\})?$/.exec(trimmed);
+  if (openerMatch) return [trimmed];
+  // closer:`:::` 単独
+  if (trimmed === ':::') return [':::'];
+  // PR-W24 v3:malformed opener tolerant fallback。
+  // `:::role{...` の `{` 後に `}` 閉じが無いまま content が続く場合、role-only
+  // opener + 残り content の 2 要素に split。寛容 parse doctrine。
+  const malformedRoleMatch = /^(:::[a-zA-Z0-9_-]+)\{([\s\S]*)$/.exec(trimmed);
+  if (malformedRoleMatch && !malformedRoleMatch[2]!.includes('}')) {
+    const rolePart = malformedRoleMatch[1]!;
+    const residual = malformedRoleMatch[2]!.trim();
+    return residual ? [rolePart, residual] : [rolePart];
   }
-  return parts;
+  // それ以外:通常 paragraph
+  return [text];
 }
 
 function expandSingleLineBlocks(
@@ -1031,12 +1016,13 @@ function tryInlinePattern(
   }
 
   // 2c. L-6 Simple inline `:text:attrs:` — `:text:` の attrs に装飾(bold,red,
-  // lg,1.5em 等)を colon 区切りで列挙。formal `:role:[X]` と区別するため
+  // lg,1.5em,150% 等)を colon 区切りで列挙。formal `:role:[X]` と区別するため
   // `:text:attrs:` の text 部分は `[]` を含まない、attrs 部分は `[]` でも
   // `{}` でも始まらない実用上の制約で formal と衝突しない。AI が hallucinate
   // した時の寛容 parse として AstSpan(class=[attr1, attr2])で wrap。
   // PR-W24:`:大きく背景黄:lg,bg-yellow:` 形を AST 化(L-6 spec)。
-  m = /^:([^:\n[{]+):([a-zA-Z0-9_.,#\s-]+):/.exec(slice);
+  //   attrs char class:CSS-like name + `%`(150%)+ `.`(1.5em)+ `,`(区切り)。
+  m = /^:([^:\n[{]+):([a-zA-Z0-9_.,#%\s-]+):/.exec(slice);
   if (m) {
     const text = m[1]!.trim();
     const attrStr = m[2]!.trim();

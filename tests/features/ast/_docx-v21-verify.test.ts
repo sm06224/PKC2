@@ -60,10 +60,14 @@ describe('PR-V21 docx 追加 audit', () => {
     expect(xml).not.toContain('{{vars.name}}');
   });
 
-  it('未定義変数は literal `{{...}}` で fallback', async () => {
+  it('未定義変数は `[未定義: vars.X]` visible 警告(PR-W24 spec、italic 赤)', async () => {
     const md = 'Hello {{vars.undefined_key}} world.';
     const xml = await gen(md, {}, 'docx-v21-vars-fallback');
-    expect(xml).toContain('{{vars.undefined_key}}');
+    // PR-W24:旧 literal `{{...}}` fallback → italic + red warning marker
+    // (spec「赤点線で警告が出るのが正解」)。
+    expect(xml).toContain('[未定義: vars.undefined_key]');
+    expect(xml).toMatch(/<w:i\/>/);
+    expect(xml).toContain('DC2626');
   });
 
   it('PKC 拡張:==mark== が shading 付き run(PR-W8 で named yellow → hex `#FFF3A0` に tone-down)', async () => {

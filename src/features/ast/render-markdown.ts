@@ -295,13 +295,29 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
     }
     case 'paragraph': {
       const text = renderInlines(block.children, mode);
-      // PKC mode のみ align / indent / layout を `{...}` attrs として出す
+      // PKC mode で paragraph attrs(align / indent / layout)を canonical 行頭
+      // marker(`||` / `|>` / `__`)に集約する。`{indent=1}` annotation 形は
+      // 旧 path、parse で再 decompose されず literal 残りの round-trip bug を
+      // 起こすため canonical marker 形を優先。
+      // PR-W24 round-trip fix:`indent: 1` → 行頭 `__`、`align: center` → 行頭
+      // `||`、`align: end/right` → 行頭 `|>`(simple end form を正規化採用)。
       if (mode === 'pkc') {
-        const parts: string[] = [];
-        if (block.align) parts.push(`align=${block.align}`);
-        if (block.indent !== undefined && block.indent !== 0) {
-          parts.push(`indent=${block.indent}`);
+        if (block.align === 'center') {
+          return `||${text}`;
         }
+        if (block.align === 'end' || block.align === 'right') {
+          return `|>${text}`;
+        }
+        if (block.align === 'left' || block.align === 'start') {
+          // commonmark default left、prefix 不要
+          return text;
+        }
+        if (block.indent && block.indent > 0) {
+          // 半角 `__` × N 段(現状 N=1 固定、複数段は今後拡張時に repeat)
+          return `__${text}`;
+        }
+        // layout hint(2col 等)は従来 attrs 形を残す(行頭 marker 仕様無し)
+        const parts: string[] = [];
         parts.push(...layoutHintToAttrParts(block.layout));
         if (parts.length > 0) {
           return `${text}\n{${parts.join(' ')}}`;
@@ -395,7 +411,9 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
         const inner = block.children
           .map((b) => renderBlock(b, mode))
           .join('\n\n');
-        const cap = block.caption ? `\n\n${renderInlines(block.caption, mode)}` : '';
+        // PR-W24 v3:caption は `^^^ text` marker(L-7-a spec)で出す。これ
+        // により round-trip で `^^^` がまた caption として抽出される。
+        const cap = block.caption ? `\n\n^^^ ${renderInlines(block.caption, mode)}` : '';
         // PR-2JJ v2 hotfix(2026-05-13、user fixture report):attrs.id /
         // attrs.kvs を round-trip 保持。`:::figure{kind=figure}` だけだと
         // `id="topology-overview"` 等の attrs 情報が失われる。
@@ -472,9 +490,15 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
       return '';
     }
     case 'blank': {
-      // blank node は paragraph 間の空行を制御するためのもの。
-      // join('\n\n') で既に空行が入るため、ここでは追加しない。
-      return '';
+      // PR-W24 v3:`AstBlank.count` を `_N` marker(L-8 spec)に出力。これに
+      // より round-trip stable(html1 = html2 = N 行空)。旧:空 string return
+      // で `_N` を drop → 再 parse で `<div class="pkc-blank-line">` 消失。
+      if (mode === 'pkc') {
+        const n = block.count ?? 1;
+        return n === 1 ? '_' : `_${n}`;
+      }
+      // GFM:空行で近似(N 行分の連続空行)
+      return '\n'.repeat(Math.max(0, (block.count ?? 1) - 1));
     }
     case 'math-block': {
       return '$$\n' + block.src + (block.src.endsWith('\n') ? '' : '\n') + '$$';

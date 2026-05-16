@@ -433,16 +433,20 @@ function inlineToRuns(
     case 'auto-ref':
       return [new TextRun(applyStyle({ text: `@${node.id}` }, base))];
     case 'var': {
-      // PR-V21(2026-05-14、user audit「変数も展開されていない」):
-      // `ast.vars` から path を解決。`vars.X` 形式は `X` を key として
-      // ctx.vars[X] を引く。未定義なら literal `{{...}}` で fallback。
+      // PR-V21:`ast.vars` から path を解決、未定義時は警告 marker。
+      // PR-W24(spec L-tolerant):未定義 var は `[未定義: vars.X]` italic red で
+      // visible 警告(spec「赤点線で警告が出るのが正解」)。print/Word
+      // 環境で red 文字 + italic で目立たせる。
       const path = node.path;
       const key = path.startsWith('vars.') ? path.slice('vars.'.length) : path;
       const value = ctx.vars[key];
       if (typeof value === 'string') {
         return [new TextRun(applyStyle({ text: value }, base))];
       }
-      return [new TextRun(applyStyle({ text: `{{${path}}}` }, base))];
+      return [new TextRun(applyStyle(
+        { text: `[未定義: ${path}]`, italics: true, color: 'DC2626' },
+        base,
+      ))];
     }
     case 'math-inline':
       // PR-W21:旧 plain text → math font(Cambria Math)+ italic で
