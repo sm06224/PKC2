@@ -163,7 +163,7 @@ export const MATH_FONT = 'Cambria Math';
  *
  * docx 単位 = 240 twip = 1.0。`lineRule: 'auto'` で font size に応じて auto 計算。
  */
-export const BODY_LINE_HEIGHT_TWIP = 240;
+export const BODY_LINE_HEIGHT_TWIP = 220;
 
 /**
  * PR-W7(Wave X P1、AI review feedback):inline code 背景。`#F4F4F5` は

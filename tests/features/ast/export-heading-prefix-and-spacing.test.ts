@@ -108,11 +108,11 @@ describe('PR-W6 P0-a: docx heading 章番号二重表記対応', () => {
   });
 });
 
-describe('PR-W6 + W12: docx heading spacing + size 階段(W12 で body 10.5pt 基準に比例縮小)', () => {
-  it('heading1 spacing before=360 (18pt)、size=36 (18pt)', async () => {
+describe('PR-W13: docx heading 階段(user 指示 h1-h6 = 16/14/12/10.5/10.5/10.5 pt)', () => {
+  it('heading1 spacing before=320 (16pt)、size=32 (16pt)', async () => {
     const styles = await docxToStyles('# H1\n');
-    expect(styles).toMatch(/w:before="360"/);
-    expect(styles).toMatch(/w:val="36"/); // 18pt
+    expect(styles).toMatch(/w:before="320"/);
+    expect(styles).toMatch(/w:val="32"/); // 16pt
   });
 
   it('heading2 spacing before=280 (14pt)、size=28 (14pt)', async () => {
@@ -121,9 +121,16 @@ describe('PR-W6 + W12: docx heading spacing + size 階段(W12 で body 10.5pt �
     expect(styles).toMatch(/w:val="28"/);
   });
 
-  it('heading3 spacing before=200 (10pt)', async () => {
+  it('heading3 spacing before=200 (10pt)、size=24 (12pt)', async () => {
     const styles = await docxToStyles('### H3\n');
     expect(styles).toMatch(/w:before="200"/);
+    expect(styles).toMatch(/w:val="24"/);
+  });
+
+  it('heading4 size=21 (10.5pt、body と同 size)', async () => {
+    const styles = await docxToStyles('#### H4\n');
+    // H4 が body と同 size、bold + indent で識別
+    expect(styles).toMatch(/Heading4[\s\S]*?w:val="21"/);
   });
 });
 

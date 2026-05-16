@@ -484,11 +484,10 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
         const level = HEADING_LEVELS[block.level] ?? HeadingLevel.HEADING_3;
         const isFirstH1 = block.level === 1 && !ctx.seenFirstH1;
         if (block.level === 1) ctx.seenFirstH1 = true;
-        // PR-W12(user 指示 font 10.5pt 基準):heading spacing も比例縮小、
-        // 全体的に詰めて密度 up。
-        // H1: before 18pt / after 9pt、H2: 14/7、H3: 10/5
+        // PR-W13(user 指示 h1-h6 = 16/14/12/10.5/10.5/10.5 pt):heading
+        // spacing も比例:H1 16/8pt、H2 14/7pt、H3 10/5pt。
         const spacingByLevel: Record<number, { before: number; after: number }> = {
-          1: { before: 360, after: 180 },
+          1: { before: 320, after: 160 },
           2: { before: 280, after: 140 },
           3: { before: 200, after: 100 },
         };
@@ -538,9 +537,20 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       if (block.align === 'center') alignment = AlignmentType.CENTER;
       else if (block.align === 'right') alignment = AlignmentType.RIGHT;
       else if (block.align === 'left') alignment = AlignmentType.LEFT;
+      // PR-W13(user「本文の行間をもっとちいさく」「詰まってる?自分で
+      // 比較した?」):default の `lineRule: 'auto'` では font 内蔵の line
+      // height(通常 1.15-1.2)が効いて視覚差が微小だった。`exact` で twip
+      // 220(11pt)固定にして、font 10.5pt + 0.5pt leading のみの真の tight
+      // を実現。heading は own spacing で line 指定なし → font default で
+      // stretched(本 fix は paragraph block にのみ適用)。
       const opts: IParagraphOptions = {
         children: runs,
-        spacing: { before: 0, after: 0 },
+        spacing: {
+          before: 0,
+          after: 0,
+          line: BODY_LINE_HEIGHT_TWIP,
+          lineRule: 'exact',
+        },
         ...(alignment ? { alignment } : {}),
       };
       return [new Paragraph(opts)];
@@ -869,11 +879,13 @@ export async function astToDocxBlob(
         // H1 size 40(20pt)/ H2 size 32(16pt)/ H3 size 26(13pt)で
         // H1↔H2 の差を 4pt、H2↔H3 の差を 3pt に広げて階層が一目で読める。
         // PR-W7:font も bilingual に置換。
-        // PR-W12(user 指示「font 10.5pt」):body 10.5pt 基準で heading 階段
-        // を再構築。階層性は維持しつつ全体的にコンパクト化。
+        // PR-W13(user 直接指示 2026-05-16「h1 から順に 16,14,12,10.5,10.5,
+        // 10.5」):heading 階段を user 指定値で固定。H1-H3 は size 差で
+        // 階層、H4-H6 は body と同 size、bold + indent + accent border で
+        // 識別。
         heading1: {
-          run: { font: BILINGUAL_BODY_FONT, size: 36, bold: true }, // 18pt
-          paragraph: { spacing: { before: 360, after: 180 } }, // 18pt / 9pt
+          run: { font: BILINGUAL_BODY_FONT, size: 32, bold: true }, // 16pt
+          paragraph: { spacing: { before: 320, after: 160 } }, // 16pt / 8pt
         },
         heading2: {
           run: { font: BILINGUAL_BODY_FONT, size: 28, bold: true }, // 14pt
@@ -884,15 +896,15 @@ export async function astToDocxBlob(
           paragraph: { spacing: { before: 200, after: 100 } }, // 10pt / 5pt
         },
         heading4: {
-          run: { font: BILINGUAL_BODY_FONT, size: 22, bold: true }, // 11pt
+          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true }, // 10.5pt
           paragraph: { spacing: { before: 100, after: 50 } },
         },
         heading5: {
-          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true },
+          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true }, // 10.5pt
           paragraph: { spacing: { before: 80, after: 40 } },
         },
         heading6: {
-          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true },
+          run: { font: BILINGUAL_BODY_FONT, size: 21, bold: true }, // 10.5pt
           paragraph: { spacing: { before: 60, after: 30 } },
         },
       },

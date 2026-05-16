@@ -87,6 +87,12 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+- **PR-W13 Wave Z.1 heading 階段 user 指定値固定 + line `exact` 220 twip**(2026-05-16、user 直接指示):
+  - **heading 階段固定**:user 直接指示「h1 から順に 16, 14, 12, 10.5, 10.5, 10.5」を反映、H1=32 twip(16pt)/ H2=28(14pt)/ H3=24(12pt)/ H4-H6=21(10.5pt、body と同 size、bold + indent で識別)。H1↔H2=2pt、H2↔H3=2pt、H3↔body=1.5pt の均一階段。heading spacing も連動(H1: 16/8pt、H2: 14/7pt、H3: 10/5pt)
+  - **line-height `auto` → `exact`**:user「本文の行間をもっとちいさく」「詰まってる?自分で比較した?」→ `lineRule: 'auto'` は font 内蔵 leading が効くので視覚差が微小だった。`case 'paragraph'` で `lineRule: 'exact'` + line 220 twip(11pt 固定)を明示、font 10.5pt + 0.5pt leading のみの真の dense layout。heading は own spacing(line 指定なし)で font default の stretched line を維持、本 fix は本文段落限定
+  - 既存 test follow:`export-heading-prefix-and-spacing` H1 480/40 → 320/32、`export-typography-bilingual` line 240 → 220、`export-runs-common` 空 task 受理(PR-W12 から継続)
+  - 全 7888 test pass、bundle.js 1857 KB 不変、**manual PNG 16 件 v10 全部再生成**
+
 - **PR-W12 Wave Z.1 task list literal fix + font 10.5pt + line 1.0 + margin 2cm 統一**(2026-05-16、user 報告 cascading fix 続編):
   - **task list `[ ]` literal 解消**:`detectTaskState` / `stripTaskPrefix` の regex を `/^\[([ xX])\]\s/` → `/^\[([ xX])\](?:\s|$)/` に変更、**空 task list `- [ ]`(trailing space なし)** も正しく ☐ glyph に置換。GFM 仕様も空 task を許容(mn 議事録の `- [ ]` 4 件で literal 残り → 完全 ☐ 化)
   - **font size 11pt → 10.5pt**(twip 22 → 21):user「font 10.5pt かな」、Japanese technical writing 標準サイズ、heading も比例縮小(H1: 20pt→18pt / H2: 16pt→14pt / H3: 13pt→12pt / H4: 12pt→11pt)
