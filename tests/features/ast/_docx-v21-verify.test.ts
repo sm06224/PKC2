@@ -74,10 +74,15 @@ describe('PR-V21 docx 追加 audit', () => {
     expect(xml).not.toContain('==marker==');
   });
 
-  it('PKC 拡張:[[ruby:漢字|かんじ]] が base(rt)で展開', async () => {
+  it('PKC 拡張:[[ruby:漢字|かんじ]] が base + superscript rt の furigana 近似で展開(PR-W23)', async () => {
     const xml = await gen('読みは [[ruby:漢字|かんじ]] です', {}, 'docx-v21-ruby');
-    expect(xml).toContain('漢字(かんじ)');
+    // PR-W23:旧 plain `base(rt)` → base run + superscript rt run の 2 run 形に
+    // docx package が `<w:ruby>` element native 未対応のため visual approximation。
+    expect(xml).toContain('漢字');
+    expect(xml).toContain('かんじ');
+    expect(xml).toMatch(/<w:vertAlign[^>]*superscript[\s\S]*?かんじ|かんじ[\s\S]*?<w:vertAlign[^>]*superscript/);
     expect(xml).not.toContain('[[ruby:');
+    expect(xml).not.toContain('漢字(かんじ)'); // 旧 plain 表記は廃止
   });
 
   it('PKC 拡張:..em-dot.. が italic として', async () => {
