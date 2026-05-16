@@ -136,12 +136,29 @@ export const MATH_FONT = 'Cambria Math';
 // ── Spacing tokens(line-height / inline code shading)─────
 
 /**
- * PR-W7(Wave X P1、AI review feedback):本文 line-height を 1.5(twip
- * line 360)に明示。docx 単位 = 240 twip = 1.0、360 twip = 1.5、384 twip =
- * 1.6。和文では 1.5〜1.6 が読みやすい。`lineRule: 'auto'` で複数行 line
- * spacing は font size に応じて auto 計算。
+ * PR-W11 確定(2026-05-16):本文 line-height **1.15**(twip 276)= dense
+ * web layout。
+ *
+ * user 指示「実際の web は line-height が 0pt に近い方、読みやすさは行間
+ * でなく文章の構成で担保」を受けて方針確定:
+ *
+ * - **line-height 1.15** = font size と行送りがほぼ同じ、文字が overlap
+ *   せず読める最小値の dense range
+ * - **段落間 spacing 0** を全 paragraph で明示(case 'paragraph' で
+ *   `spacing: { before: 0, after: 0 }`)
+ * - 読みやすさは heading hierarchy / section break / paragraph chunking で
+ *   担保 ← 行間で稼がない
+ *
+ * 試行錯誤の履歴(user feedback driven):
+ * - PR-W7:1.5(360)← 当初「web 標準」と認識
+ * - PR-W11 試行 1:1.4(336)→ user 「行間が日本語的ではない」
+ * - PR-W11 試行 2:1.25(300)→ user 「行間広いって」
+ * - PR-W11 試行 3:1.5(360)+ spacing 0 → user 「Web は 0pt 寄り」
+ * - PR-W11 確定:**1.15(276)+ spacing 0** ← 真の dense web layout
+ *
+ * docx 単位 = 240 twip = 1.0。`lineRule: 'auto'` で font size に応じて auto 計算。
  */
-export const BODY_LINE_HEIGHT_TWIP = 360;
+export const BODY_LINE_HEIGHT_TWIP = 276;
 
 /**
  * PR-W7(Wave X P1、AI review feedback):inline code 背景。`#F4F4F5` は

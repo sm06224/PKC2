@@ -619,6 +619,18 @@ function splitIntoSlides(
  * @param opts.title file 既定 title(fallback 用)
  * @returns Blob(application/vnd.openxmlformats-officedocument.presentationml.presentation)
  */
+/**
+ * PR-W11(2026-05-16):frontmatter `layout: a4-2col` 等から column count を
+ * 抽出。`a4-2col` / `b5-2col` / `letter-2col` / `legal-2col` → 2、
+ * `a4-3col` → 3、それ以外(未指定 / `*-1col`)→ 1。
+ */
+function resolveLayoutColumnCount(layout?: string): number {
+  if (!layout) return 1;
+  const m = /-(\d)col$/.exec(layout);
+  if (!m) return 1;
+  return Number(m[1]);
+}
+
 export async function astToPptxBlob(
   ast: AstDocument,
   opts: { title?: string; container?: Container; entry?: Entry } = {},
@@ -658,9 +670,9 @@ export async function astToPptxBlob(
           options: {
             name: 'title',
             type: 'title',
-            x: 0.5,
+            x: 0.3,
             y: 1.8,
-            w: 12.0,
+            w: 12.7,
             h: 2.0,
             fontSize: 44,
             bold: true,
@@ -675,9 +687,9 @@ export async function astToPptxBlob(
           options: {
             name: 'subtitle',
             type: 'body',
-            x: 0.5,
+            x: 0.3,
             y: 4.0,
-            w: 12.0,
+            w: 12.7,
             h: 1.2,
             fontSize: 36,
             italic: true,
@@ -708,9 +720,9 @@ export async function astToPptxBlob(
           options: {
             name: 'title',
             type: 'title',
-            x: 0.5,
+            x: 0.3,
             y: 0.3,
-            w: 12.0,
+            w: 12.7,
             h: 1.0,
             fontSize: 28,
             bold: true,
@@ -741,9 +753,9 @@ export async function astToPptxBlob(
           options: {
             name: 'title',
             type: 'title',
-            x: 0.5,
+            x: 0.3,
             y: 0.3,
-            w: 12.0,
+            w: 12.7,
             h: 0.7, // 高さを少し縮めて table 開始位置を上げる
             fontSize: 28,
             bold: true,
@@ -773,7 +785,7 @@ export async function astToPptxBlob(
     // subtle grey で。chapterNum が 0 / undefined ならスキップ(章前)。
     if (draft.chapterNum && draft.chapterNum > 0) {
       slide.addText(`Chapter ${draft.chapterNum}`, {
-        x: 0.5,
+        x: 0.3,
         y: 6.8,
         w: 4.0,
         h: 0.3,
@@ -795,9 +807,9 @@ export async function astToPptxBlob(
       if (draft.subtitle) {
         slide.addText(draft.subtitle, {
           placeholder: 'subtitle',
-          x: 0.5,
+          x: 0.3,
           y: 4.0,
-          w: 12.0,
+          w: 12.7,
           h: 1.2,
           fontSize: 36,
           italic: true,
@@ -815,9 +827,9 @@ export async function astToPptxBlob(
         if (nonEmpty.length > 0) {
           const textObjects = linesToTextObjects(nonEmpty, 16);
           slide.addText(textObjects, {
-            x: 0.5,
+            x: 0.3,
             y: 5.5,
-            w: 12.0,
+            w: 12.7,
             h: 1.8,
             valign: 'top',
             fontSize: 16,
@@ -853,13 +865,43 @@ export async function astToPptxBlob(
         : 0.5;
       if (textLines.length > 0) {
         const textObjects = linesToTextObjects(textLines, 18);
-        slide.addText(textObjects, {
-          x: 0.5,
-          y: tableTop,
-          w: 12.0,
-          h: tableLines.length > 0 ? 2.5 : 6.0,
-          valign: 'top',
-        });
+        // PR-W11(2026-05-16、user 報告 fix):frontmatter `layout: a4-2col` /
+        // `*-3col` の時は slide body を 2 / 3 column text box に分割。
+        // pptx には docx の section column 相当 API が無いので、本文を行
+        // 単位で N column に split、各 column を独立 addText で配置。
+        const layoutColCount = resolveLayoutColumnCount(ast.layout);
+        const bodyH = tableLines.length > 0 ? 2.5 : 6.0;
+        if (layoutColCount >= 2) {
+          // Slide body 領域(x:0.5, w:12.0)を N column に分割、column gap 0.3
+          const gap = 0.3;
+          const colW = (12.7 - gap * (layoutColCount - 1)) / layoutColCount;
+          // text を column 数で均等分割(各 column 行数 = total / N)
+          const perCol = Math.ceil(textObjects.length / layoutColCount);
+          for (let c = 0; c < layoutColCount; c++) {
+            const chunk = textObjects.slice(c * perCol, (c + 1) * perCol);
+            if (chunk.length === 0) continue;
+            // 各 chunk の末尾 run の breakLine を解除(column 末尾で改行不要)
+            const lastRun = chunk[chunk.length - 1]!;
+            if (lastRun.options && 'breakLine' in lastRun.options) {
+              lastRun.options = { ...lastRun.options, breakLine: false };
+            }
+            slide.addText(chunk, {
+              x: 0.3 + c * (colW + gap),
+              y: tableTop,
+              w: colW,
+              h: bodyH,
+              valign: 'top',
+            });
+          }
+        } else {
+          slide.addText(textObjects, {
+            x: 0.3,
+            y: tableTop,
+            w: 12.7,
+            h: bodyH,
+            valign: 'top',
+          });
+        }
       }
       let curY = tableTop + (textLines.length > 0 ? 2.7 : 0);
       for (const tl of tableLines) {
@@ -911,10 +953,10 @@ export async function astToPptxBlob(
         }
         if (!normalized || normalized.length === 0 || colCount === 0) continue;
         slide.addTable(normalized, {
-          x: 0.5,
+          x: 0.3,
           y: curY,
-          w: 12.0,
-          colW: Array.from({ length: colCount }, () => 12.0 / colCount),
+          w: 12.7,
+          colW: Array.from({ length: colCount }, () => 12.7 / colCount),
           border: { type: 'solid', pt: PPTX_TABLE_BORDER_PT, color: TABLE_BORDER_HEX },
         });
         curY += Math.min(0.4 * normalized.length + 0.2, 4.0);
@@ -925,7 +967,7 @@ export async function astToPptxBlob(
         const dataUri = `data:${il.imageMime ?? 'image/png'};base64,${il.imageData}`;
         slide.addImage({
           data: dataUri,
-          x: 0.5,
+          x: 0.3,
           y: curY,
           w: 6.0,
           h: 4.0,
@@ -939,7 +981,7 @@ export async function astToPptxBlob(
   if (ctx.internalLinks.length > 0) {
     const appendix = pres.addSlide();
     appendix.addText('リンク先一覧', {
-      x: 0.5, y: 0.3, w: 12.0, h: 0.8, fontSize: 32, bold: true,
+      x: 0.3, y: 0.3, w: 12.7, h: 0.8, fontSize: 32, bold: true,
     });
     const items = ctx.internalLinks.map((l, idx) => ({
       text: `(${l.num}) ${l.label} → ${l.targetTitle ?? '[未解決]'} [${l.href}]`,
@@ -949,7 +991,7 @@ export async function astToPptxBlob(
       },
     }));
     appendix.addText(items, {
-      x: 0.5, y: 1.3, w: 12.0, h: 6.0, valign: 'top',
+      x: 0.3, y: 1.3, w: 12.7, h: 6.0, valign: 'top',
     });
   }
 

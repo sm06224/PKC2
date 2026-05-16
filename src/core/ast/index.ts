@@ -466,6 +466,16 @@ export interface AstDocument {
   writing?: 'horizontal' | 'vertical';
   direction?: 'ltr' | 'rtl';
   align?: 'left' | 'right' | 'center' | 'top' | 'bottom';
+  /**
+   * frontmatter `layout: a4-2col` 等の document layout 指定。
+   *
+   * PR-W11(2026-05-16):従来 HTML render(center pane + Viewer popup)では
+   * PR-2N で支援していたが、docx / pptx export では ignore されていた user
+   * 報告 fix。`a4-2col` 等を export 側でも読んで columns 構成に反映する。
+   * Valid 値:`a4-1col` / `a4-2col` / `a4-3col` / `b5-1col` / `b5-2col` /
+   * `letter-1col` / `letter-2col` / `legal-1col` / `legal-2col`。
+   */
+  layout?: string;
   /** frontmatter `notation: pkc-markdown-1.0` 等の profile。 */
   notation?: string;
   /** frontmatter vars(本文 `{{vars.x}}` で展開)。**ChatGPT review 推奨**で

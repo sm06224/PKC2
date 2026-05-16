@@ -87,6 +87,17 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+- **PR-W11 Wave Z.1 layout: a4-2col 段組組版 + 余白 / 行間 / 段落 spacing default 大改修**(2026-05-16、user 直接報告 cascading fix):
+  - **段組組版 docx**:`Document.sections[].properties.column = { count, space, equalWidth }` を frontmatter `layout: a4-Xcol` から動的指定、用紙サイズ(A4 11906×16838 twip / B5 9979×14175 / Letter 12240×15840 / Legal 12240×20160)を `page.size` に反映。`<w:cols w:num="2">` で実機 2 段組が出る(従来 ignore で 1 段組のまま user 報告「2 段組じゃない」)
+  - **段組組版 pptx**:slide body 領域を N column に水平 split、column gap 0.3 inch、各 column を独立 addText で配置(pptxgenjs は docx 同等の column API なしのため)
+  - **AstDocument.layout field 追加**:`core/ast/index.ts` に optional string field、`parse.ts` の `extractFrontmatter` で抽出 + VALID_LAYOUTS 9 種 validation
+  - **docx margin 非対称化**:user「左と上はホチキスや綴じ白を意識」を受けて top: 1440 (1.0 inch、ホチキス意識) / right: 1080 (0.75 inch) / bottom: 1080 / **left: 1440** (1.0 inch、綴じ代意識) の横書き default(縦書き対応は別 PR)
+  - **pptx slide body 余白詰め**:`x: 0.5 / w: 12.0` → `x: 0.3 / w: 12.7` で 16:9 LAYOUT_WIDE(13.333 inch)を最大活用、コンテンツ比率を上げる
+  - **line-height 1.5 → 1.15**:user「実際 web は 0pt に近い、読みやすさは行間でなく文章の構成で担保」doctrine、`BODY_LINE_HEIGHT_TWIP = 276`(Word default 1.15 と同等、dense web layout)
+  - **段落間 spacing.before/after 全 0**:`case 'paragraph'` で明示 `spacing: { before: 0, after: 0 }`、Word default の暗黙 8pt after を完全消去、段落間は line-height のみで構成
+  - **co template 本文長文化**:2 段組として認識される量に増やす(`layout: a4-2col` 前提)
+  - case matrix test 16 件 新規(`tests/features/ast/export-layout-2col.test.ts`、`<w:cols num="2">` / `<w:pgSz>` 各用紙 / column space / `AstDocument.layout` field / pptx N column 等)、既存 `export-typography-bilingual.test.ts` の line height assertion を 360 → 276 に follow、全 7885 test pass、bundle.js 1857 KB / bundle.css 163 KB 不変。**manual PNG 16 件 全部再生成**(`docs/manual/images/templates/*` 一新、新 layout + 新 margin + 新 line-height + 新 spacing で密度 up)。
+
 - **PR-W10 Wave X P4 layout template 集 + マニュアル新章**(2026-05-16、user 直接要望):テンプレートコマンド `/tmpXX`(`templates.entries` Tier 1 flag、`[a-z0-9]{2}` key、value = body string)の default を 6 → **14 件に拡張**:
   - **既存 6 件**(維持):`mt`(memo)/ `rt`(振り返り)/ `vd`(video)/ `au`(audio)/ `nv`(novel)/ `bk`(book)
   - **新規 8 件 layout 系**:`rp`(報告書、序論/本論/結論 + 章節項 auto-numbering)/ `pn`(プレゼン骨子、H1 章 + H3 通常スライド + データ表)/ `tc`(表中心、5×3 比較表)/ `mn`(議事録、アジェンダ + 決定事項 + 宿題 task list)/ `ln`(講義ノート、要点 + 詳細 + 練習問題)/ `cp`(比較対照、観点別 + 結論表)/ `co`(2 段組、`layout: a4-2col` frontmatter)/ `jl`(日報、ハイライト + 振り返り + 明日の予定)

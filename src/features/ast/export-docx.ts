@@ -528,14 +528,20 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       })];
     }
     case 'paragraph': {
+      // PR-W11(user 指摘「同一スタイルの段落の続きに余白が多い」+「Web を
+      // 参考に」):paragraph block で **spacing.before/after を明示 0** に。
+      // Word default の暗黙 8pt after を消して、段落間を完全 tight に詰める
+      // (web `<p>` の margin: 0 で 行間 1.5 のみで構成、密度を上げる)。
       const runs = inlinesToRuns(block.children, ctx);
       let alignment: (typeof AlignmentType)[keyof typeof AlignmentType] | undefined;
       if (block.align === 'center') alignment = AlignmentType.CENTER;
       else if (block.align === 'right') alignment = AlignmentType.RIGHT;
       else if (block.align === 'left') alignment = AlignmentType.LEFT;
-      const opts: IParagraphOptions = alignment
-        ? { children: runs, alignment }
-        : { children: runs };
+      const opts: IParagraphOptions = {
+        children: runs,
+        spacing: { before: 0, after: 0 },
+        ...(alignment ? { alignment } : {}),
+      };
       return [new Paragraph(opts)];
     }
     case 'quote': {
@@ -842,7 +848,17 @@ export async function astToDocxBlob(
             size: 22, // 11pt
           },
           paragraph: {
-            spacing: { line: BODY_LINE_HEIGHT_TWIP, lineRule: 'auto' },
+            // PR-W11(user 指摘「同一スタイルの段落の続きに余白が多く、行間が
+            // 日本語的ではない」):line 1.4(BODY_LINE_HEIGHT_TWIP=336) +
+            // before=0/after=0 を default に。「同一スタイルの段落間に余白を
+            // 追加しない」Word default behavior を能動的に保証。連続段落は
+            // line spacing のみで詰まる、heading 等の前後は個別 spacing 上書き。
+            spacing: {
+              line: BODY_LINE_HEIGHT_TWIP,
+              lineRule: 'auto',
+              before: 0,
+              after: 0,
+            },
           },
         },
         // PR-W6(AI review P0-c):H1/H2/H3 のサイズ階段を強化、spacing も
@@ -891,7 +907,69 @@ export async function astToDocxBlob(
         },
       ],
     },
-    sections: [{ children }],
+    sections: [{
+      properties: resolveSectionProperties(ast.layout),
+      children,
+    }],
   });
   return Packer.toBlob(doc);
+}
+
+/**
+ * PR-W11(2026-05-16、user 報告 fix):frontmatter `layout: a4-2col` 等を
+ * docx の Section properties に反映 + **margin を default 0.75 inch に詰め
+ * て余白の目立たない default に**(user 指摘「全体的に余白が目立つ」)。
+ *
+ * Word default 1.0 inch / LibreOffice 0.79 inch / 現代的 technical writing
+ * 0.75 inch。PKC2 default は「読みやすい現代的 layout」= 0.75 inch を採用。
+ *
+ * 用紙サイズ単位:twip(1 inch = 1440)
+ * - A4: 11906 × 16838(210 × 297mm)
+ * - B5: 9979 × 14175(176 × 250mm)
+ * - Letter: 12240 × 15840(8.5 × 11 inch)
+ * - Legal: 12240 × 20160(8.5 × 14 inch)
+ *
+ * 段組 space は 720 twip(0.5 inch)= 段間の余白。
+ */
+function resolveSectionProperties(layout?: string): Record<string, unknown> {
+  // PR-W11(user 指摘「余白」+「左と上はホチキスや綴じ白を意識」):
+  // 横書き default で **非対称 margin** を採用。
+  // - 左(綴じ代):1440 twip(1.0 inch、ホチキス / 製本 余白意識)
+  // - 上(ホチキス):1440 twip(1.0 inch、文書冒頭の余白)
+  // - 右 / 下:1080 twip(0.75 inch、印刷紙の余白を詰める)
+  // 縦書き(`writing: vertical`)は右綴じだが現状未対応(別 PR)。
+  const baseMargin = {
+    top: 1440,    // 1.0 inch:文書上端余白(ホチキス意識)
+    right: 1080,  // 0.75 inch:右余白詰め
+    bottom: 1080, // 0.75 inch:下余白詰め
+    left: 1440,   // 1.0 inch:左綴じ代
+  };
+  if (!layout) {
+    return { page: { margin: baseMargin } };
+  }
+  const m = /^(a4|b5|letter|legal)-(\d)col$/.exec(layout);
+  if (!m) return { page: { margin: baseMargin } };
+  const paper = m[1]!;
+  const cols = Number(m[2]);
+  const PAPER_SIZE_TWIP: Record<string, { w: number; h: number }> = {
+    a4: { w: 11906, h: 16838 },
+    b5: { w: 9979, h: 14175 },
+    letter: { w: 12240, h: 15840 },
+    legal: { w: 12240, h: 20160 },
+  };
+  const size = PAPER_SIZE_TWIP[paper]!;
+  const props: Record<string, unknown> = {
+    page: {
+      size: { width: size.w, height: size.h, orientation: 'portrait' as const },
+      margin: baseMargin,
+    },
+  };
+  if (cols >= 2) {
+    props.column = {
+      count: cols,
+      space: 720,
+      equalWidth: true,
+    };
+  }
+  return props;
 }

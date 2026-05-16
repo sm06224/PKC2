@@ -86,17 +86,16 @@ describe('PR-W7 P1-4: docx bilingual font stack', () => {
   });
 });
 
-describe('PR-W7 P1-5: docx body line-height 1.5(twip 360)', () => {
-  it('default paragraph に w:line="360" + w:lineRule="auto"', async () => {
+describe('PR-W7 + W11: docx body line-height(PR-W11 確定 1.15 = dense web layout)', () => {
+  it('default paragraph に w:line="276"(1.15)+ w:lineRule="auto"', async () => {
     const styles = await docxToStyles('Body paragraph.\n');
-    expect(styles).toMatch(/w:line="360"/);
+    expect(styles).toMatch(/w:line="276"/);
     expect(styles).toMatch(/w:lineRule="auto"/);
   });
 
   it('line spacing は heading でも上書きされない(heading は own spacing)', async () => {
     const styles = await docxToStyles('# Heading\nBody.\n');
-    // default の line 360 は default block にのみ、heading は own spacing
-    expect(styles).toMatch(/w:line="360"/);
+    expect(styles).toMatch(/w:line="276"/);
   });
 });
 
