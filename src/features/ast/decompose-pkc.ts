@@ -67,6 +67,8 @@ import type {
   AstCitation,
   AstFootnoteRef,
   AstMathInline,
+  AstBreak,
+  AstBlank,
   AstBlock,
   AstCommentBlock,
   AstCommentInline,
@@ -265,14 +267,98 @@ function matchBlockCloser(text: string): boolean {
  * を見つけ次第、対応する block node(AstSection / AstFigure / AstIfBlock /
  * AstCommentBlock / AstQuote / AstParagraph)に集約。
  */
+/**
+ * PR-W24:parse.ts:shieldLineLeadingMarkers で挿入した sentinel
+ * (`\u{E160}sb` / `\u{E162}bl` / `\u{E164}ind` / `\u{E166}al` / `\u{E168}fcap`)
+ * を AST node に decompose する第 0 パス。各 sentinel は 1 paragraph 全体を
+ * 単独 sentinel として取り上げ、対応する AstBreak / AstBlank /
+ * AstParagraph(indent / align) に変換する。`\u{E168}fcap` は figure 内で
+ * 拾うため別 path、ここでは text として残置。
+ */
+function decomposeLineLeadingSentinels(
+  blocks: readonly AstBlock[],
+): AstBlock[] {
+  const out: AstBlock[] = [];
+  for (const block of blocks) {
+    if (block.kind !== 'paragraph') {
+      out.push(block);
+      continue;
+    }
+    const text = inlinesToText(block.children).trim();
+    // (z) `:::break{...}` self-closing block(R-2H formal)。content / closer 無し。
+    // expandSingleLineBlocks の opener/closer pair 検出ではなく、ここで先に処理。
+    const breakMatch = /^:::break(\{[^}]*\})?\s*$/.exec(text);
+    if (breakMatch) {
+      const attrs = breakMatch[1] ? parseAttrString(breakMatch[1]) : undefined;
+      const kindRaw = attrs?.kvs.kind as string | undefined;
+      const breakKind: 'rule' | 'page' = kindRaw === 'rule' ? 'rule' : 'page';
+      const roleAttr = attrs?.kvs.role as string | undefined;
+      const node: AstBreak = roleAttr
+        ? { kind: 'break', breakKind, role: roleAttr }
+        : { kind: 'break', breakKind };
+      out.push(node);
+      continue;
+    }
+    // (a) `+++` section break sentinel
+    const sbMatch = /^\u{E160}sb:(\{[^}]*\})?\u{E161}$/u.exec(text);
+    if (sbMatch) {
+      const attrsStr = sbMatch[1];
+      const attrs = attrsStr ? parseAttrString(attrsStr) : undefined;
+      const role = (attrs?.kvs?.role as string | undefined);
+      const node: AstBreak = role
+        ? { kind: 'break', breakKind: 'page', role }
+        : { kind: 'break', breakKind: 'page' };
+      out.push(node);
+      continue;
+    }
+    // (b) `_N` blank-line marker sentinel
+    const blMatch = /^\u{E162}bl:(\d{1,2})\u{E163}$/u.exec(text);
+    if (blMatch) {
+      const raw = parseInt(blMatch[1]!, 10);
+      const capped = Math.min(Math.max(raw, 1), 50);
+      const node: AstBlank = { kind: 'blank', count: capped };
+      if (capped !== raw) node.cappedFrom = raw;
+      out.push(node);
+      continue;
+    }
+    // (c) `__` / `＿` paragraph indent sentinel
+    const indMatch = /^\u{E164}ind:([\s\S]+?)\u{E165}$/u.exec(text);
+    if (indMatch) {
+      const body = indMatch[1]!.trim();
+      out.push({
+        kind: 'paragraph',
+        children: [{ kind: 'text', value: body }],
+        indent: 1,
+      });
+      continue;
+    }
+    // (d) align prefix sentinel
+    const alMatch = /^\u{E166}al:(center|end)\|([\s\S]+?)\u{E167}$/u.exec(text);
+    if (alMatch) {
+      const align = alMatch[1] as 'center' | 'end';
+      const body = alMatch[2]!.trim();
+      out.push({
+        kind: 'paragraph',
+        children: [{ kind: 'text', value: body }],
+        align,
+      });
+      continue;
+    }
+    out.push(block);
+  }
+  return out;
+}
+
 function decomposeBlocks(
   blocks: readonly AstBlock[],
   vars: Record<string, string>,
 ): AstBlock[] {
+  // 第 0 パス:行頭 marker sentinel(`+++` / `_N` / `__` / `||` 等)を AST 化。
+  const dedented = decomposeLineLeadingSentinels(blocks);
   // 第 1 パス:単一行 inline-block 形(markdown-it が paragraph 結合した
   // 結果、`:::role{...} content :::` が 1 paragraph text に入ってる)を
   // 複数 block に splitting。
-  const expanded = expandSingleLineBlocks(blocks, vars);
+  const expanded = expandSingleLineBlocks(dedented, vars);
 
   // 第 2 パス:opener / closer 対の検出と block 集約。
   // `:::role{...}` と `%%%` の 2 種類の block marker を扱う。
@@ -355,6 +441,73 @@ function decomposeBlocks(
  * single-line で `:::role{...} content :::` 形が 1 paragraph に入っている
  * case を切り出して block 配列を展開。
  */
+/**
+ * PR-W24:`:::` block 内部に blank line がある場合、markdown-it が opener
+ * +前半 content / 後半 content + closer の **2 paragraph に分割** する。
+ * 旧 expandSingleLineBlocks は paragraph 1 個に opener-content-closer が
+ * 全て収まっている場合(blank line なし)しか拾えず、blank line 入り
+ * `:::section / :::figure / :::quote / :::if / :::paragraph / :::comment`
+ * 全てが decompose 失敗していた critical bug を修正。
+ *
+ * Pre-pass:各 paragraph を scan して
+ *   - 行頭が `:::role{...}` 形で始まる場合 → opener-marker line を独立 paragraph に切り出し、
+ *     残り content を別 paragraph として続ける
+ *   - 末尾行が `:::` 単独形の場合 → content paragraph + closer-marker paragraph に切り出し
+ * これにより phase 2 の opener/closer detection が paragraph 跨ぎでも対応可能に。
+ */
+// PR-W24:parse.ts:172 で softbreak → space に正規化されるため、blank line で
+// 分断された paragraph 内では opener/closer の間が space で区切られる。
+// scan 式で全 `:::role{...}` と standalone `:::` を marker として extract、
+// その境界で paragraph を split。markers の前後 whitespace は trim。
+// ネスト時の連続 closer(`:::\n:::`)も「両方の closer を独立 marker」として
+// 拾うことで対応。
+
+function splitParagraphAtBlockMarkers(text: string): string[] {
+  const parts: string[] = [];
+  let pos = 0;
+  while (pos < text.length) {
+    const idx = text.indexOf(':::', pos);
+    if (idx === -1) {
+      const rest = text.slice(pos).trim();
+      if (rest !== '') parts.push(rest);
+      break;
+    }
+    // ::: が「行頭」(text 先頭 or 直前が whitespace)で始まっているか判定。
+    const prev = idx === 0 ? undefined : text[idx - 1];
+    const isLineStart = prev === undefined || /\s/.test(prev);
+    if (!isLineStart) {
+      // 文中の ::: は literal 扱い、scan を進めるだけ
+      pos = idx + 3;
+      continue;
+    }
+    // ::: の後を見て、(a) `role{attrs}` opener か (b) bare closer か判定。
+    let endIdx = idx + 3;
+    const after = text.slice(endIdx);
+    const roleMatch = /^([a-zA-Z0-9_-]+)(\{[^}]*\})?/.exec(after);
+    let marker: string;
+    if (roleMatch) {
+      endIdx += roleMatch[0].length;
+      marker = text.slice(idx, endIdx);
+    } else {
+      // bare `:::`、closer 候補。直後が whitespace or 行末でなければ literal。
+      const next = text[endIdx];
+      if (next !== undefined && !/\s/.test(next)) {
+        pos = endIdx;
+        continue;
+      }
+      marker = ':::';
+    }
+    // marker 前 content を push(trim)。
+    if (idx > pos) {
+      const before = text.slice(pos, idx).trim();
+      if (before !== '') parts.push(before);
+    }
+    parts.push(marker);
+    pos = endIdx;
+  }
+  return parts;
+}
+
 function expandSingleLineBlocks(
   blocks: readonly AstBlock[],
   vars: Record<string, string>,
@@ -365,7 +518,15 @@ function expandSingleLineBlocks(
       out.push(block);
       continue;
     }
-    const text = inlinesToText(block.children);
+    const rawText = inlinesToText(block.children);
+    // PR-W24:opener / closer が paragraph に merge されている case を分解。
+    // 結果が 2 件以上ある場合は splitting 必要、1 件なら従来 path。
+    const parts = splitParagraphAtBlockMarkers(rawText);
+    if (parts.length > 1) {
+      for (const part of parts) out.push(makeParagraphFromText(part));
+      continue;
+    }
+    const text = rawText;
     // (i)`%%% content %%%` 単一行 → AstCommentBlock(round-trip 安定性のため、
     // markdown-it が paragraph 結合した %%% 内容を再分解)
     const reP = new RegExp(SINGLELINE_PERCENT_BLOCK_RE.source, SINGLELINE_PERCENT_BLOCK_RE.flags);
@@ -525,7 +686,30 @@ function buildBlockNode(
           : (cleanAttrs?.kvs.kind as string | undefined) === 'equation'
             ? 'equation'
             : 'figure');
-      const node: AstFigure = { kind: 'figure', figureKind, children };
+      // PR-W24:children 内の `^^^ caption` sentinel(L-7-a)を caption に
+      // 昇格、本体 children から除去。`:caption:[X]` formal inline は別経路
+      // (現状は inline 化されないので未対応、後続 PR で評価)。
+      const captionPattern = /^\u{E168}fcap:([\s\S]+?)\u{E169}$/u;
+      let extractedCaption: readonly AstInline[] | undefined;
+      const childrenWithoutCaption: AstBlock[] = [];
+      for (const c of children) {
+        if (c.kind === 'paragraph') {
+          const t = inlinesToText(c.children).trim();
+          const m = captionPattern.exec(t);
+          if (m) {
+            const captionText = m[1]!.trim();
+            extractedCaption = scanInlineMarkers(captionText, {});
+            continue;
+          }
+        }
+        childrenWithoutCaption.push(c);
+      }
+      const node: AstFigure = {
+        kind: 'figure',
+        figureKind,
+        children: childrenWithoutCaption,
+      };
+      if (extractedCaption) node.caption = extractedCaption;
       if (cleanAttrs && !isEmptyAttrs(cleanAttrs)) node.attrs = cleanAttrs;
       if (layout) node.layout = layout;
       return node;
@@ -567,6 +751,17 @@ function buildBlockNode(
         return node;
       }
       return null;
+    }
+    case 'break': {
+      // PR-W24:`:::break{kind=page|rule|section role=R}` formal。
+      // R-2H spec、`+++` / `---` 等価。kind=page or rule(default page)。
+      const kindRaw = cleanAttrs?.kvs.kind as string | undefined;
+      const breakKind: 'rule' | 'page' = kindRaw === 'rule' ? 'rule' : 'page';
+      const roleAttr = cleanAttrs?.kvs.role as string | undefined;
+      const node: AstBreak = roleAttr
+        ? { kind: 'break', breakKind, role: roleAttr }
+        : { kind: 'break', breakKind };
+      return node;
     }
     default: {
       // 未知 role:AstSection で wrap(role 名そのまま、forward compatibility)
@@ -776,6 +971,20 @@ function tryInlinePattern(
       case 'sub':
         return { nodes: [{ kind: 'sub', children: innerNodes }], consumed };
     }
+  }
+
+  // 2b. :span:[X]{attrs} — formal inline span(R-E-3 spec、attrs optional)
+  // PR-W24:`:span:[text]{class=foo #id key=val}` で AstSpan(class / id / attrs 反映)
+  m = /^:span:\[([\s\S]+?)\](\{[^}]*\})?/.exec(slice);
+  if (m) {
+    const inner = m[1]!.replace(/^\s+|\s+$/g, '');
+    const consumed = start + m[0].length;
+    if (inner === '') return { nodes: [], consumed };
+    const attrs = m[2] ? parseAttrString(m[2]) : undefined;
+    const innerNodes = scanInlineMarkers(inner, vars);
+    const node: AstSpan = { kind: 'span', children: innerNodes };
+    if (attrs && !isEmptyAttrs(attrs)) node.attrs = attrs;
+    return { nodes: [node], consumed };
   }
 
   // 3. :role:{...} — attribution chip / hint / spacing / align

@@ -345,7 +345,18 @@ function blockToSlideLines(
       const runs = inlinesToRuns(block.children, ctx);
       const text = inlinesToPlainText(block.children);
       if (runs.length > 0 && text.trim() !== '') {
-        out.push({ text, runs, indent });
+        // PR-W24:`||X` `|>X` 系 align prefix + `:::paragraph{align=X}`を AstParagraph.align
+        // → SlideLine.align(center / right / left)に集約。
+        let align: SlideLine['align'];
+        if (block.align === 'center') align = 'center';
+        else if (block.align === 'right' || block.align === 'end') align = 'right';
+        else if (block.align === 'left' || block.align === 'start') align = 'left';
+        // PR-W24:`__X` indent は SlideLine.indent に加算(本 indent argument は
+        // 親 block ネスト深度、+block.indent で paragraph 字下げ分を上乗せ)。
+        const totalIndent = indent + (block.indent ?? 0);
+        const line: SlideLine = { text, runs, indent: totalIndent };
+        if (align) line.align = align;
+        out.push(line);
       }
       out.push(...extractImageLines(block.children, ctx));
       return out;
@@ -516,8 +527,13 @@ function blockToSlideLines(
     }
     case 'comment-block':
       return [];
-    case 'blank':
-      return [{ text: '', indent }];
+    case 'blank': {
+      // PR-W24:`_N` blank-line marker。count 個の空行を slide に挿入。
+      const count = Math.max(0, Math.min(50, block.count ?? 1));
+      const out: SlideLine[] = [];
+      for (let i = 0; i < count; i++) out.push({ text: '', indent });
+      return out;
+    }
     case 'math-block':
       return [{ text: block.src, fontFace: MATH_FONT, indent }];
     case 'definition-list': {

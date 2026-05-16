@@ -599,9 +599,11 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       // (web `<p>` の margin: 0 で 行間 1.5 のみで構成、密度を上げる)。
       const runs = inlinesToRuns(block.children, ctx);
       let alignment: (typeof AlignmentType)[keyof typeof AlignmentType] | undefined;
+      // PR-W24:`||X` `|>X` `<|X` `|<X` `>|X` 5 形 + `:::paragraph{align=X}` 全部
+      // AstParagraph.align に集約。Align 値:center / end / right / left / start。
       if (block.align === 'center') alignment = AlignmentType.CENTER;
-      else if (block.align === 'right') alignment = AlignmentType.RIGHT;
-      else if (block.align === 'left') alignment = AlignmentType.LEFT;
+      else if (block.align === 'right' || block.align === 'end') alignment = AlignmentType.RIGHT;
+      else if (block.align === 'left' || block.align === 'start') alignment = AlignmentType.LEFT;
       // PR-W13(user「本文の行間をもっとちいさく」「詰まってる?自分で
       // 比較した?」):default の `lineRule: 'auto'` では font 内蔵の line
       // height(通常 1.15-1.2)が効いて視覚差が微小だった。`exact` で twip
@@ -617,6 +619,11 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
           lineRule: 'exact',
         },
         ...(alignment ? { alignment } : {}),
+        // PR-W24:`__X` / `＿X` paragraph indent(L-9 spec)。block.indent は
+        // 数(1+)、Word の firstLine indent twip 単位で 1 段 ≒ 420 twip(0.3 inch)。
+        ...(block.indent && block.indent > 0
+          ? { indent: { firstLine: 420 * block.indent } }
+          : {}),
       };
       return [new Paragraph(opts)];
     }
@@ -916,8 +923,20 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
     }
     case 'comment-block':
       return [];
-    case 'blank':
-      return [new Paragraph('')];
+    case 'blank': {
+      // PR-W24:`_N` blank-line marker。count 個の空 paragraph を emit、N 行
+      // 縦余白を表現。count 0 は drop、cappedFrom があれば render しないが
+      // 警告として visible note 1 件は注入(L-8 spec の「N>50 cap + 警告」)。
+      const count = Math.max(0, Math.min(50, block.count ?? 1));
+      const paras: Paragraph[] = [];
+      for (let i = 0; i < count; i++) paras.push(new Paragraph(''));
+      if (block.cappedFrom && block.cappedFrom > 50) {
+        paras.push(new Paragraph({
+          children: [new TextRun({ text: `[blank-line cap: ${block.cappedFrom} → 50]`, italics: true, color: '888888' })],
+        }));
+      }
+      return paras;
+    }
     case 'math-block':
       // PR-W21:math-block を center-align + italic + math font で displayed
       // equation 体裁に。block 単独行に置くことで本文との区別を強化。
