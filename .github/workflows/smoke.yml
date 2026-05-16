@@ -1,23 +1,27 @@
-# PKC2 Smoke — Tier 3-2 (Playwright smoke baseline)
+# PKC2 Smoke — PR-W19 acceleration(Tier 分離 + matrix shard + cache)
 #
-# Minimal end-to-end gate: builds the single-HTML artifact and
-# verifies one user path (boot → create Text entry → enter editing
-# phase) against a real Chromium. Exists to catch regressions that
-# the vitest/happy-dom suite structurally can't see — for example
-# bundle-time minifier breakage, release-builder slot-injection
-# drift, or CSP errors.
+# 旧 smoke は workers:1 + fullyParallel:false の完全シリアル実行で 271 spec
+# が 15-17 min 消費、timeout 25 min を圧迫していた。PR-W19 で以下に再編:
 #
-# Decision (Tier 3-2):
-#   - **Separate workflow** from ci.yml. The base CI is sub-1-minute
-#     and must stay fast; Playwright adds browser install
-#     (~1.5 min) which shouldn't block every tier commit.
-#   - Triggered on push to main / release branches + PR to main.
-#     Dev branches (claude/**) still get ci.yml; smoke runs before
-#     merge.
-#   - Runs a single spec (tests/smoke/app-launch.spec.ts). Broader
-#     E2E (TIER3_PRIORITIZATION.md C-3) is deferred to Tier 3-3+.
+# 1. **Tier 分離**(`SMOKE_TIER=a` / `all`):
+#    - **Tier-A**(PR blocking、10 spec、< 2 min):boot / kanban / filer /
+#      graph / editor / swipe / search / debug / reform comprehensive parity。
+#      `pull_request: → main` で必ず走る。
+#    - **Tier-B**(main push + schedule 毎晩、261 spec):wave-* / 個別 feature /
+#      長い flow。`push: main` と `schedule: '0 18 * * *'` で走る。PR では skip。
+# 2. **matrix shard 4 並列**(Tier-B のみ):`--shard=1/4..4/4` で 4 jobs に
+#    分散、各 job 内は `workers: 2` で更に 2 並列 → total **8 parallel**。
+# 3. **Playwright browser cache**:`~/.cache/ms-playwright` を actions/cache で
+#    persist、`npx playwright install` を hit 時に skip → -1.5 min。
+# 4. **diagnostic 5 spec を `_archive/` 隔離**:production smoke から exclude。
+# 5. **retries: 0**:flake を retry で隠さず即診断。
 #
-# Non-goals: visual regression, cross-browser matrix, video retention.
+# 期待:
+# - PR 時:15-17 min → **2-3 min**(Tier-A 10 spec、browser cache hit、worker 2)
+# - main / schedule:15-17 min → **3-5 min**(Tier-B 261 spec、4 shard × 2 worker = 8 parallel)
+#
+# Non-goals: visual regression、cross-browser matrix、video retention。
+# Artifact upload は引き続き禁止(2026-05-05 user direction、private data 保護)。
 
 name: Smoke
 
@@ -28,21 +32,24 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    # 毎晩 18:00 UTC(JST 3:00)に Tier-B 全件を main に対して走らせる。
+    # main の状態を毎日 verify、PR で skip した specs の regression を 24h
+    # 以内に検出。
+    - cron: '0 18 * * *'
 
 concurrency:
   group: smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  smoke:
-    name: Playwright smoke (chromium)
+  # ─── Tier-A:PR blocking 用 small set(10 spec、< 2 min) ───
+  tier-a:
+    name: Smoke Tier-A (PR gate)
     runs-on: ubuntu-latest
-    # PKC2 の smoke は v2.3.x stack(PR-V13 で docx + pptxgenjs を bundle に
-    # 同梱、+725KB)+ wave-10 系の追加 spec で 250 件超に拡大。
-    # CI runner は local より遅く、本体 npm ci + playwright install + 3 種
-    # build で約 3min を消費するため、smoke 実行に 15-17min は必要。元の
-    # 15min cap だと smoke 完了前に job が timeout-kill される。
-    timeout-minutes: 25
+    # pull_request の時だけ走る(push: main / schedule は Tier-B のみ)
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -57,8 +64,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # PR-W19:Playwright chromium binary を cache。`~/.cache/ms-playwright`
+      # は GitHub runner 起動ごとに削除されるので、`actions/cache` で persist。
+      # cache key には Playwright version を埋め、version 更新時に自動 invalidate。
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install Playwright chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      - name: Install system deps (cache hit case)
+        # cache hit でも apt-get で chromium の system 依存(libnss / libatk 等)は
+        # 必要なので、`--with-deps` は run。binary download は cache が hit
+        # していれば skip される。
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       - name: Build bundle
         run: npm run build:bundle
@@ -67,21 +92,73 @@ jobs:
         run: npm run build:release
 
       - name: Build manual HTML
-        # Phase 4: the manual-launch smoke spec navigates
-        # /pkc2-manual.html. It needs the manual artifact present in
-        # PKC2-Extensions/ — `scripts/smoke-serve.cjs` routes that
-        # directory alongside dist/. See
-        # docs/development/manual-build-integration-plan.md §Phase 4.
         run: npm run build:manual
 
-      - name: Run smoke baseline
+      - name: Run smoke Tier-A
+        env:
+          SMOKE_TIER: a
         run: npm run test:smoke
 
-      # 2026-05-05 user direction:
-      #   「GitHub に間違ってもテストデータそのものやプライベートデータが
-      #    含まれる可能性があるスクショをアップしないでください」
-      #
-      # Artifact upload of test-results / playwright-report is REMOVED
-      # to guarantee no screenshot or trace.zip ever lands on GitHub.
-      # Failure diagnosis stays inside the CI run logs and the
-      # developer's local environment.
+  # ─── Tier-B:main push + schedule(毎晩)用 full set(261 spec、4 shard 並列) ───
+  tier-b:
+    name: Smoke Tier-B shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    # push: main + schedule のとき走る(pull_request は Tier-A のみ)
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install system deps (cache hit case)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Build bundle
+        run: npm run build:bundle
+
+      - name: Build release HTML
+        run: npm run build:release
+
+      - name: Build manual HTML
+        run: npm run build:manual
+
+      - name: Run smoke Tier-B shard ${{ matrix.shard }}
+        # --shard=N/M を Playwright に渡して spec を 4 分割並列実行。各 shard
+        # 内は `workers: 2` で更に 2 並列 → total 8 parallel。
+        run: npx playwright test --config=tests/smoke/playwright.config.ts --shard=${{ matrix.shard }}/4
+
+  # 2026-05-05 user direction:
+  #   「GitHub に間違ってもテストデータそのものやプライベートデータが
+  #    含まれる可能性があるスクショをアップしないでください」
+  #
+  # Artifact upload of test-results / playwright-report is REMOVED
+  # to guarantee no screenshot or trace.zip ever lands on GitHub.
+  # Failure diagnosis stays inside the CI run logs and the
+  # developer's local environment.
