@@ -84,7 +84,12 @@ export const TASK_DONE_GLYPH_COLOR_HEX = '22C55E';
  * PR-W8(Wave X P2):**table cell padding**。AI review「cell padding 8pt」
  * 指示。docx の twip 単位:160 twip = 8pt。
  */
-export const TABLE_CELL_PADDING_TWIP = 160;
+/**
+ * PR-W17(user「表の余白もひどい」):cell padding 160 twip(8pt)→ 60 twip
+ * (3pt = 約 1mm)に詰める。Word default に比べてかなり tight だが、Web
+ * style の dense table layout に倣う。
+ */
+export const TABLE_CELL_PADDING_TWIP = 60;
 
 /**
  * PR-W8(Wave X P2):**heading accent left border**。H2/H3 の左に 3pt

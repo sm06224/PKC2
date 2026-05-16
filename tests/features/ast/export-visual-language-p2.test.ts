@@ -69,7 +69,8 @@ describe('PR-W8 P2-8: docx table padding + hairline border', () => {
   it('table cell に padding 8pt(twip 160)', async () => {
     const xml = await docxToBodyXml('| a |\n| --- |\n| body |\n');
     // tcMar(table cell margin)に top/bottom/left/right = 160
-    expect(xml).toMatch(/w:w="160"/);
+    // PR-W17(user「表の余白もひどい」):160 twip(8pt)→ 60 twip(3pt)
+    expect(xml).toMatch(/w:w="60"/);
   });
 
   it('table の罫線 color = `CCCCCC` hairline', async () => {
@@ -87,7 +88,8 @@ describe('PR-W8 P2-8: docx table padding + hairline border', () => {
   it('CSV fence table も同様に padding + hairline border', async () => {
     const md = '```csv\na,b\n1,2\n```\n';
     const xml = await docxToBodyXml(md);
-    expect(xml).toMatch(/w:w="160"/);
+    // PR-W17(user「表の余白もひどい」):160 twip(8pt)→ 60 twip(3pt)
+    expect(xml).toMatch(/w:w="60"/);
     expect(xml).toContain('w:color="CCCCCC"');
   });
 });

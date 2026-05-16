@@ -48,7 +48,7 @@ import {
   ImageRun,
   ExternalHyperlink,
   ShadingType,
-  WidthType,
+  TableLayoutType,
   type IParagraphOptions,
   type IRunOptions,
 } from 'docx';
@@ -675,8 +675,12 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       );
       return [new Table({
         rows,
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        // PR-W8:罫線 hairline 0.5pt grey(size 4 = 0.5pt)。
+        // PR-W17(user「セルサイズコントロールしてない、絶対おかしい」):
+        // 旧 width 100% percentage は均等 column 分配されて content と合わない。
+        // `TableLayoutType.AUTOFIT` で content に応じた auto-fit に変更。
+        // width 自体は指定なしで Word が自動 calc(`tblW w="0" type="auto"`)。
+        layout: TableLayoutType.AUTOFIT,
+        // 罫線 hairline 0.5pt grey
         borders: {
           top: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
           bottom: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
@@ -723,8 +727,8 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
           );
           return [new Table({
             rows,
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            // PR-W8:罫線 hairline 0.5pt grey
+            // PR-W17:CSV fence の table も同じく autofit。
+            layout: TableLayoutType.AUTOFIT,
             borders: {
               top: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
               bottom: { style: BorderStyle.SINGLE, size: 4, color: TABLE_BORDER_HEX },
