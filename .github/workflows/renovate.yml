@@ -1,0 +1,75 @@
+# PKC2 Renovate — self-hosted via GitHub Actions(2026-05-17)
+#
+# 主権モード v2:Mend SaaS の App install + activation key を回避し、
+# 完全に **GitHub Actions 内で完結** する self-hosted Renovate に切替。
+# 外部 service への repo 書込権限付与ゼロ、token は runner 内のみ。
+#
+# user 方針(2026-05-17 続き):「Mend に signup させられるのが面倒、
+# 主権モード思想に反する」→ self-hosted で外部依存を排除。
+#
+# 動作:
+#   - 毎週 月曜朝 6 時 JST(= 日曜 21 時 UTC)に Renovate 起動
+#   - workflow_dispatch で手動 trigger も可能(test 用)
+#   - renovate.json の dependencyDashboardApproval により全 update は
+#     checkbox 明示 approve まで PR 化されない(dashboard issue のみ)
+#
+# 既知 limitation:
+#   - GITHUB_TOKEN で作成された PR は別 workflow を trigger できない
+#     (GitHub の security feature、無限 loop 防止)
+#   - dashboard で approve した PR の CI は **手動で re-run** 必要
+#     (PR を一旦 close → reopen で trigger される)
+#   - PAT(personal access token)を `RENOVATE_TOKEN` secret に設定すれば
+#     自動 trigger 可能、但し user の token 管理が増えるため将来 wave に
+#     deferred
+
+name: Renovate
+on:
+  schedule:
+    # Monday 06:00 JST = Sunday 21:00 UTC(月曜朝の確認 timing で dashboard
+    # 更新が間に合うように週末夜に実行)
+    - cron: '0 21 * * 0'
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'log level'
+        required: false
+        default: 'info'
+        type: choice
+        options:
+          - debug
+          - info
+          - warn
+          - error
+
+# Renovate は dashboard issue 更新 + (approve 後の)PR 作成のため、
+# contents + pull-requests + issues に write 権限が必要。
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+# 同時実行禁止(週次 cron で 1 run のみ走ればよい)
+concurrency:
+  group: renovate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    name: Renovate scan + dashboard update
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@v43.0.1
+        with:
+          configurationFile: renovate.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          # log level は workflow_dispatch の input から、cron 起動時は info
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
+          # repo を明示(self-hosted 時は autodiscovery 経路を取らない)
+          RENOVATE_REPOSITORIES: '["${{ github.repository }}"]'

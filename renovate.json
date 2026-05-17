@@ -1,0 +1,82 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "dependencyDashboard": true,
+  "dependencyDashboardAutoclose": false,
+  "dependencyDashboardTitle": "📦 Dependency Dashboard — 主権モード",
+  "dependencyDashboardHeader": "user 方針(2026-05-17、PR #463):**「更新は知りたい、いつ採用するかは主権的に判断する」**\n\n- 各 update は **checkbox で明示的に approve** するまで PR は作成されません(`dependencyDashboardApproval: true`)\n- 新 release 公開から **7 日間の cooldown**(0-day supply chain 攻撃の脆弱性 window 回避)\n- 対象:`package.json`(npm)+ `.github/workflows/*.yml`(GitHub Actions)\n- 週 1 回 月曜朝 6 時 JST 更新(`.github/workflows/renovate.yml` の cron による self-hosted 実行)\n\n採用判断の参考情報(各 dep 行に Renovate が自動転記):\n- changelog / release note URL\n- vulnerability flag(CVE 該当時)\n\n**Known limitation**:本 dashboard で approve した後に作成される PR は `GITHUB_TOKEN` で作成されるため、GitHub security policy により自動 CI trigger されません。PR を一旦 close → reopen するか、空 commit を push して CI を手動 trigger してください(無限 loop 防止のための GitHub 仕様)。\n\n詳細は [`docs/development/dependency-supply-chain-baseline-2026-05-17.md`](../docs/development/dependency-supply-chain-baseline-2026-05-17.md) 参照。",
+  "minimumReleaseAge": "7 days",
+  "enabledManagers": [
+    "npm",
+    "github-actions"
+  ],
+  "prConcurrentLimit": 10,
+  "rebaseWhen": "conflicted",
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "dependencyDashboardApproval": true,
+      "description": "全 update を dashboard approval 必須に。auto-PR を防ぎ user の主権を保証"
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchDepTypes": [
+        "dependencies"
+      ],
+      "labels": [
+        "deps",
+        "production"
+      ],
+      "description": "production deps(bundle.js に焼き込まれる)は特に慎重 review。label で識別容易化"
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchDepTypes": [
+        "devDependencies"
+      ],
+      "labels": [
+        "deps",
+        "dev"
+      ],
+      "description": "dev deps(build/test only、配布物に影響なし)"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "labels": [
+        "deps",
+        "github-actions"
+      ],
+      "description": "GitHub Actions の uses: 参照"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ],
+    "minimumReleaseAge": "0 days",
+    "dependencyDashboardApproval": true,
+    "description": "CVE 通知も dashboard approval 経由(緊急判断は user に委ねる)"
+  },
+  "lockFileMaintenance": {
+    "enabled": false,
+    "description": "lockfile の自動 refresh は無効化(手動 npm update のみ)"
+  }
+}
