@@ -6,12 +6,16 @@
  * for user review.
  */
 
-import { test, type Page } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 async function setup(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await shell.waitFor();
+  // CI flake fix (2026-05-17):`shell.waitFor()` は #pkc-root の存在のみ
+  // 確認。phase=ready(IDB read + 初回 render 完了)を待たないため、CI
+  // 高負荷時(workers=2 × shard 4 = 8 parallel)に reload 後の renderer
+  // 未完成 → tab.waitFor() 30s timeout flake が発生していた。
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
 
   // Seed 5 entries with relations so edges actually appear.
   await page.evaluate(async () => {
@@ -56,15 +60,16 @@ async function setup(page: Page): Promise<void> {
     });
   });
   await page.reload();
-  await shell.waitFor();
+  // reload 後も同様に phase=ready を待つ(seeded entry の re-render 完了)。
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
 
   // Switch to graph.
   const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]');
-  await tab.waitFor();
+  await tab.waitFor({ timeout: 15_000 });
   const tbox = await tab.boundingBox();
   if (!tbox) throw new Error('No graph tab');
   await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
-  await page.locator('[data-pkc-region="graph-canvas"]').waitFor();
+  await page.locator('[data-pkc-region="graph-canvas"]').waitFor({ timeout: 15_000 });
   // Allow layout + initial draw.
   await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
 }
