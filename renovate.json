@@ -10,7 +10,7 @@
   "dependencyDashboard": true,
   "dependencyDashboardAutoclose": false,
   "dependencyDashboardTitle": "📦 Dependency Dashboard — 主権モード",
-  "dependencyDashboardHeader": "user 方針(2026-05-17、PR #463):**「更新は知りたい、いつ採用するかは主権的に判断する」**\n\n- 各 update は **checkbox で明示的に approve** するまで PR は作成されません(`dependencyDashboardApproval: true`)\n- 新 release 公開から **7 日間の cooldown**(0-day supply chain 攻撃の脆弱性 window 回避)\n- 対象:`package.json`(npm)+ `.github/workflows/*.yml`(GitHub Actions)\n- 週 1 回 月曜朝 6 時 JST 更新\n\n採用判断の参考情報(各 dep 行に Renovate が自動転記):\n- changelog / release note URL\n- adoption rate(他 repo での採用率)\n- vulnerability flag(CVE 該当時)\n\n詳細は [`docs/development/dependency-supply-chain-baseline-2026-05-17.md`](../docs/development/dependency-supply-chain-baseline-2026-05-17.md) 参照。",
+  "dependencyDashboardHeader": "user 方針(2026-05-17、PR #463):**「更新は知りたい、いつ採用するかは主権的に判断する」**\n\n- 各 update は **checkbox で明示的に approve** するまで PR は作成されません(`dependencyDashboardApproval: true`)\n- 新 release 公開から **7 日間の cooldown**(0-day supply chain 攻撃の脆弱性 window 回避)\n- 対象:`package.json`(npm)+ `.github/workflows/*.yml`(GitHub Actions)\n- 週 1 回 月曜朝 6 時 JST 更新(`.github/workflows/renovate.yml` の cron による self-hosted 実行)\n\n採用判断の参考情報(各 dep 行に Renovate が自動転記):\n- changelog / release note URL\n- vulnerability flag(CVE 該当時)\n\n**Known limitation**:本 dashboard で approve した後に作成される PR は `GITHUB_TOKEN` で作成されるため、GitHub security policy により自動 CI trigger されません。PR を一旦 close → reopen するか、空 commit を push して CI を手動 trigger してください(無限 loop 防止のための GitHub 仕様)。\n\n詳細は [`docs/development/dependency-supply-chain-baseline-2026-05-17.md`](../docs/development/dependency-supply-chain-baseline-2026-05-17.md) 参照。",
   "minimumReleaseAge": "7 days",
   "enabledManagers": [
     "npm",

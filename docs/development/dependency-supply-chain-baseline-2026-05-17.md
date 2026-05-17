@@ -42,7 +42,19 @@ Dependabot / Renovate の素の運用(`prCreation` がデフォルト)= **「公
 
 ---
 
-## §3 主権モード設計(本 wave)
+## §3 主権モード設計(本 wave、self-hosted v2)
+
+### §3.0 なぜ Mend SaaS ではなく self-hosted か
+
+当初 <https://github.com/apps/renovate>(Mend が運営)経由を予定したが、無料 OSS
+利用にも Mend account 登録 + email 認証 + activation key を要求される商売モデルに
+変わっており、user 方針「外部 service に repo 書込権限を渡さず主権を保つ」と矛盾。
+
+→ **self-hosted Renovate**(GitHub Actions の workflow 内で実行)に切替:
+- 外部 SaaS への repo 書込権限付与ゼロ
+- token は GitHub Actions runner 内のみ流通
+- 全実行ログが repo の Actions tab で確認可能
+- Mend account 不要、activation key 不要
 
 ### §3.1 Renovate 設定(`renovate.json`)
 
@@ -62,13 +74,34 @@ Dependabot / Renovate の素の運用(`prCreation` がデフォルト)= **「公
 - **dashboard の checkbox を user が check するまで PR は作成されない**(approval)
 - **CVE 通知も approval 経由**(緊急判断は user に委ねる)
 
-### §3.2 残置される CVE 通知経路
+### §3.2 GitHub Actions による self-hosted 実行(`.github/workflows/renovate.yml`)
+
+- **trigger**:`schedule: cron('0 21 * * 0')`(週次 月曜朝 6 時 JST)+ `workflow_dispatch`
+  (手動 test 用)
+- **uses**:`renovatebot/github-action@v43.0.1`(Renovate 公式 Action)
+- **token**:`secrets.GITHUB_TOKEN`(repo scope 自動付与、PAT 不要)
+- **permissions**:`contents: write` + `pull-requests: write` + `issues: write`
+- **scope**:`RENOVATE_REPOSITORIES` で current repo に limit、autodiscovery 経路を取らない
+
+### §3.3 Known limitation:approve 後の PR の CI が auto trigger されない
+
+GitHub の security policy により `GITHUB_TOKEN` で作成された PR は **別 workflow を
+trigger できない**(無限 loop 防止)。dashboard で approve した後 Renovate が作成する
+PR の CI は **手動で re-run** 必要:
+
+- 方法 A:PR を一旦 close → reopen
+- 方法 B:空 commit を push(`git commit --allow-empty -m "ci: trigger" && git push`)
+
+将来 PAT(personal access token)を `RENOVATE_TOKEN` secret に設定すれば自動 trigger
+可能、但し user の token 管理が増えるため当面は本 limitation で運用。
+
+### §3.4 残置される CVE 通知経路
 
 GitHub の repo settings で以下は引き続き受信:
 - **Dependabot alerts**(Security tab、PR 生成なし):GHSA 登録時に通知
 - 通知のみで自動 PR は生成されない(本 wave で `.github/dependabot.yml` 削除済)
 
-### §3.3 CI gate 維持
+### §3.5 CI gate 維持
 
 `.github/workflows/ci.yml` の `Supply chain audit (npm audit, high+ severity blocking)`
 step は **維持**。high/critical CVE が PR を blocking、低 severity は noise として除外。
@@ -137,18 +170,18 @@ dashboard を見たとき、以下のいずれかが **trigger** なら採用検
 
 ---
 
-## §6 Renovate GitHub App セットアップ(user 操作必須)
+## §6 セットアップ(self-hosted、追加操作ほぼ不要)
 
-本 PR merge 後、user 自身で以下を実施:
+本 PR merge 後:
 
-1. <https://github.com/apps/renovate> にアクセス
-2. **Install** → sm06224/PKC2 repo を選択して権限付与
-3. 数分後 Renovate が初回 onboarding PR(自動)を起こす場合あり → 内容確認して close
-4. `renovate.json` が自動 detect され、最初の dashboard issue が `📦 Dependency Dashboard — 主権モード`
-   タイトルで開く
-5. 以降、毎週月曜朝 6 時 JST(設定値)に dashboard が自動更新される
+1. **何もしなくてよい**(self-hosted = workflow が merge と同時に有効化)
+2. 初回起動は **次の月曜朝 6 時 JST**(`.github/workflows/renovate.yml` の cron)
+3. 手動で即試したい場合:GitHub repo → Actions tab → 「Renovate」workflow → `Run workflow`
+4. 数分で `📦 Dependency Dashboard — 主権モード` issue が新規作成される
+5. 以降は週次 cron で dashboard が自動更新される
 
-私(Claude)には GitHub App を install する権限がないため、この step は user 操作になります。
+Mend account 登録 / activation key / 外部 App install は **不要**。すべて
+PKC2 repo の GitHub Actions 内で完結する。
 
 ---
 
@@ -183,14 +216,15 @@ dashboard で user が approve したら個別 PR で対応:
 |---|---|
 | 2026-05-17 朝 | **Phase 1**(PR #455 merged):minor/patch 一括 + npm audit gate + Dependabot config(自動 PR 機構) |
 | 2026-05-17 昼 | Dependabot が major bump 2 PR 自動生成(#460 / #461)、user が「常に最新は違う」と指摘 |
-| 2026-05-17 昼 | **主権モード再設計**:Dependabot 撤退、Renovate dashboard 採用。PR #460/#461/#462 全 close、本 wave の PR で Renovate に切替 |
-| TBD | Renovate GitHub App install(user 操作必須、本 PR description にて手順案内) |
+| 2026-05-17 昼 | **主権モード再設計**:Dependabot 撤退、Renovate dashboard 採用。PR #460/#461/#462 全 close |
+| 2026-05-17 夕 | Mend SaaS が account 登録 + activation key 要求と判明 → **self-hosted v2 に切替**(`.github/workflows/renovate.yml` で GitHub Actions 内実行、外部 service 依存ゼロ) |
 
 ---
 
 ## §9 関連 doc
 
 - `renovate.json`(本 PR で新規):Renovate dashboard 設定
+- `.github/workflows/renovate.yml`(本 PR で新規):self-hosted Renovate 実行 workflow
 - `.github/workflows/ci.yml`:npm audit CI gate(Supply chain audit step)
 - `feature-requests-2026-04-28-roadmap.md`:領域 11 未追記(将来候補)
 - `../release/CHANGELOG_v2.2.0.md`:本 wave クローズ後に追記予定
