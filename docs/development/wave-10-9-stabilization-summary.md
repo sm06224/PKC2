@@ -85,13 +85,13 @@ user 判断「いくつかのバグ挙動はあるが wave 締め」で許容。
 | `docs/development/feature-requests-2026-04-28-roadmap.md` | 領域 10-6 wave クローズ済、領域 10-9 連続 hotfix wave のクローズ追記が必要 |
 | `docs/planning/USER_REQUEST_LEDGER.md` | 修正指示 1〜10 を ledger §3.6 に tick off |
 | `docs/development/wave-10-9-stabilization-summary.md` | **本書 NEW** |
-| `docs/development/codespaces-merge-playbook-wave-10-9.md` | **NEW**(merge コマンド playbook) |
+| `docs/development/completed/codespaces-merge-playbook-wave-10-9.md` | **NEW**(merge コマンド playbook) |
 
 ---
 
 ## 6. Merge 戦略選択肢
 
-詳細は [`codespaces-merge-playbook-wave-10-9.md`](./codespaces-merge-playbook-wave-10-9.md) 参照。
+詳細は [`codespaces-merge-playbook-wave-10-9.md`](./completed/codespaces-merge-playbook-wave-10-9.md) 参照。
 
 ### Option A — 単発 squash(推奨、~10 分)
 
@@ -134,7 +134,7 @@ main 起点 4 系統(Phase 1-5 / wave-docs / review-fixes / mobile)を別々に 
 
 ## 関連 doc
 
-- [`codespaces-merge-playbook-wave-10-9.md`](./codespaces-merge-playbook-wave-10-9.md) — Codespaces 用 merge コマンド集
+- [`codespaces-merge-playbook-wave-10-9.md`](./completed/codespaces-merge-playbook-wave-10-9.md) — Codespaces 用 merge コマンド集
 - [`feature-requests-2026-04-28-roadmap.md`](./feature-requests-2026-04-28-roadmap.md) — 領域 1〜10 全 roadmap
 - [`pr-review-checklist.md`](./pr-review-checklist.md) — 8 項目自己監査
 - [`doc-archival-discipline.md`](./doc-archival-discipline.md) — RESOLVED doc archive 規約

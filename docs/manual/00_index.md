@@ -50,6 +50,10 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 
 - [14 テンプレートコマンド集](14_テンプレートコマンド集.md) — `/tmpXX` slash command による template 挿入 / default 14 件(memo / 公式 capture / **レイアウト系 8 件**= 報告書・プレゼン骨子・表中心・議事録・講義ノート・比較対照・2 段組・日報)/ コード + docx/pptx 実機レンダリング例 / 自前 template の追加方法
 
+### PKC2 が「気づいた」事象の hint 機構が気になる方
+
+- [15 PKC Hint 機構](15_pkc_hint_機構.md) — 未定義変数 / blank-line cap / orphan footnote / malformed `:::role{` / dangling `[@id]` の 5 種 hint(✅ 既に動いている)+ 統一 schema / opt-out 4 階層 / code block render-available 誘導(🚧 設計のみ、wave Z 後の候補)
+
 ## 全体目次
 
 | 章 | タイトル | 内容 |
@@ -69,22 +73,39 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 | 12 | マークダウン拡張記法 | Phase 1 拡張 9 種(L-1 セクション / L-2 ハイライト・ルビ・圏点 / L-4 コメント / L-5 行頭アライン / L-6 簡易インライン / L-7 図表自動採番 / L-8 空行マーカー / L-9 段落字下げ)+ M-7 Variables(`{{vars.x}}`)+ **reform-2026-05 Phase 1+2**(`:::section{role=…}` / `:::comment` / `:::break` / `:::paragraph{align}` / formal inline 4 形 / `:caption:` / `:autoref:` / 寛容 parse + canonical hint log + admonition alias / `layout: a4-2col` 段組組版 / `` ```html-render `` iframe sandbox / em-dot nested inline)+ AI 規約書 v2 + Phase 3 以降の予告 |
 | 13 | アプリランチャーと出力機能 | HTML attachment をアプリとして登録して新規ウィンドウ起動できる Launcher view + Data… メニュー(🧬 AST / Canonical / Pandoc / HTML を JSONL or Pretty で copy、📄 PDF / 📝 Word / 🎞 PPT の出力)+ 編集中の選択部に追従する PKC MD フォーマットパネル + TEXTLOG の各ログ行を右クリックして Data… 同等の操作(PR-2JJ v2、2026-05-13) |
 | 14 | テンプレートコマンド集 | `/tmpXX` slash command による template 挿入 + default 14 件(memo / 公式 capture / **レイアウト系 8 件**= 報告書・プレゼン骨子・表中心・議事録・講義ノート・比較対照・2 段組・日報)+ 各 layout の markdown コード + docx/pptx 実機レンダリング PNG + 自前 template の追加手順(PR-W10、2026-05-16) |
+| 15 | PKC Hint 機構 | PKC2 が parse / render 中に気づいた事象を user に伝える機構の完全カタログ。実装済 5 種(`{{vars.X}}` 未定義 / `_N` cap / orphan footnote / malformed `:::role{` / dangling `[@id]`)+ 統一 `AstHint` schema 設計(opt-out 4 階層、code block render-available 誘導の「ブルーオーシャン戦略」)|
 
-## 最近の UX 改善（2026-04-22 時点）
+## v2.3.0 の最近の改善(2026-05-16 時点、Wave Z 完了で確定)
 
-利用者から報告のあった UI の引っかかり（UI continuity wave）を一巡で解消した分をマニュアルに反映済みです。主な改善点は:
+v2.3.0 の Wave Z(W11〜W24 = 14 PR 連鎖)で、特に **文書出力(Word / PowerPoint)品位** と **PKC-Markdown 寛容 parse** が大きく前進しました。
 
-- **スクロール位置の保持** — TEXTLOG のチェックリストや HTML 添付の sandbox 許可 checkbox を切り替えてもペインが上端に戻らなくなりました（[05 日常操作 > クイック更新](05_日常操作.md#クイック更新)）
-- **Recent パネルの折りたたみ保持** — 畳んだ状態が再描画後も維持されます（[03 画面とビュー > Recent エントリパネル](03_画面とビュー.md#recent-エントリパネル)）
-- **Storage Profile のアクセス** — メニューから開けるストレージ使用量のオーバーレイ。閉じるまで維持されます（[03 画面とビュー > Storage Profile](03_画面とビュー.md#storage-profileストレージプロファイル)）
-- **Storage Profile に "Body bytes" 軸が追加** — asset のバイト数だけでなく、各エントリの本文バイト数も別軸で見られるようになりました。asset bytes と body bytes は合算されず、それぞれ独立に表示されます。CSV エクスポートにも対応する列が追加されています（[03 画面とビュー > Storage Profile](03_画面とビュー.md#storage-profileストレージプロファイル)）
-- **フォルダが勝手に全開しない** — 畳んだ意図が尊重され、外部ジャンプに近い一部経路だけ必要な先祖フォルダを展開します（[03 画面とビュー > フォルダの自動展開の扱い](03_画面とビュー.md#フォルダの自動展開の扱い)）
-- **別ウィンドウで使えるショートカット** — ダブルクリックで開いた編集ウィンドウでは `Ctrl+S` / `Cmd+S`、`Escape`、および編集中の日時挿入ショートカット 6 種類が使えます。ペイン切替や一覧系ショートカットは画面構成上そもそも対象がないため、意図的に無効です（[06 キーボードショートカット > 別ウィンドウで使えるショートカット](06_キーボードショートカット.md#別ウィンドウentry-windowで使えるショートカット)）
-- **PKC リンクの一括正規化** — Shell menu → Tools → `🔧 Normalize PKC links` で、本文に残った旧形式のリンク(空ラベル link / 旧 TEXTLOG fragment / 同一 container の `pkc://...`)を preview 付きで現行形式に揃えられます。Apply all safe 1 クリックで安全候補を一括適用、適用後のリビジョン履歴から undo 可能（[05 日常操作 > PKC リンクを正規化する](05_日常操作.md#pkc-リンクを正規化する--normalize-pkc-links)）
+### 文書出力(Word / PowerPoint)を業務文書品位に([13 章](13_アプリランチャーと出力機能.md))
 
-過去に経験していた症状に心当たりがある場合は [09 トラブルシューティング](09_トラブルシューティングと用語集.md) の「過去の症状」節も合わせて参照してください。
+- **dense web layout doctrine** — line-height 1.0(11pt 固定)+ font 10.5pt + margin 2cm 統一、業務文書らしく密度を上げて Word default の隙間を排除
+- **段組組版**(frontmatter `layout: a4-2col` 等 9 種)— A4 / B5 / Letter / Legal × 1-3 段組を docx / pptx 両方で自動構築
+- **bullet サイズ縮小** — 巨大 `•` を中点 `·` に置換、ぶら下げ(hanging)も詰める
+- **表 cell padding 詰め + autofit** — content-driven 列幅、固定均等幅を撤廃
+- **footnote が Word の真の脚注に** — `[^id]` が `FootnoteReferenceRun` + `Document.footnotes` API で page 下部 native footnote 領域に
+- **figure caption / quote author / section role の native 表現** — `:::figure{#id} ... ^^^ caption :::` で「図 N: caption」auto-numbering、`:::quote{author="X"}` で末尾 attribution 段落、`:::section{role=warning}` で 8 role 別 callout box
+- **数式 `$X$` / `$$X$$`** — docx で MATH_FONT(Cambria Math)+ italic で視覚区別、math-block は center align で displayed equation
+- **ふりがな `[[ruby:漢字|かんじ]]`** — Word / PPT 両方で base + superscript rt の furigana 効果
 
-> 開発側の詳細は `docs/planning/HANDOVER_FINAL.md §23`（UI Continuity Wave Closure）を参照。artifact size / dead-export / child window shortcut の slice 2 以降は別トラックで進めており、本マニュアルには実装後に反映します。
+### PKC-Markdown の寛容 parse + supreme invariant 確立([12 章](12_マークダウン拡張記法.md))
+
+- **PKC MD = Rendered HTML 不変式** — 📋 PKC MD ボタンで copy したテキストを別 entry に貼っても、render 結果は元と完全同一(HTML deep-equal、AST も同一)
+- **行頭 whitespace 寛容** — 全 marker(`__` indent / `||` align / `_N` blank / `+++` / `^^^` / `:::role`)は行頭の半角 sp / TAB / 全角 U+3000 を吸収して認識
+- **AI hallucination tolerance** — AI が hallucinate しがちな形(`:::note` / `:::callout{type=warning}` 等)を canonical 形へハンドオフ寛容、console.info で hint
+- **malformed 寛容** — `:::quote{author="No Close"`(`}` 閉じ忘れ)でも role-only + EOF まで content として取り込む
+- **色ハイライト 3 形** — `==[red]X==` / `==[#0f0]X==` / `==[rgb(0,0,255)]X==`
+- **L-6 Simple inline** — `:太字赤:bold,red:` 等で CSS class 風指定
+- **PKC Hint 機構の設計**([15 章](15_pkc_hint_機構.md)、実装済 5 種 + 統一機構 design)
+
+### 左ペイン / Filer 改善
+
+- **多階層 sort 実装** — 各階層内で folder 優先 + primary key sort + 再帰、章エントリと埋め込み画像が混在しない
+- **ASSETS folder 自動 grouping**(manual 内蔵 sample)— 埋め込み画像が左ペインに散在せず ASSETS folder にまとまる
+
+> 開発側の詳細は `docs/release/CHANGELOG_v2.3.0.md` の Wave Z final / Wave Z.4 / Wave Z.3 / Wave Z.1 各 section を参照。本マニュアル §12.8(Wave Z 完了内容)で記法レベルの達成状況、§15(PKC Hint 機構)で未実装設計を確認できます。
 
 ## 見本エントリについて
 

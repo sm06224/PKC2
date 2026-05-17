@@ -326,7 +326,7 @@ gh pr merge 363 --squash --delete-branch --admin  # admin override
 
 ## 関連 doc
 
-- [`wave-10-9-stabilization-summary.md`](./wave-10-9-stabilization-summary.md) — wave の改修一覧 + 残バグ
-- [`pr-review-checklist.md`](./pr-review-checklist.md) — 8 項目自己監査(merge 前の最終 check)
-- [`doc-archival-discipline.md`](./doc-archival-discipline.md) — RESOLVED doc archive 規約
-- [`../release/CHANGELOG_v2.2.0.md`](../release/CHANGELOG_v2.2.0.md) — release notes(merge 後に Δ5〜Δ34 追記要)
+- [`wave-10-9-stabilization-summary.md`](../wave-10-9-stabilization-summary.md) — wave の改修一覧 + 残バグ
+- [`pr-review-checklist.md`](../pr-review-checklist.md) — 8 項目自己監査(merge 前の最終 check)
+- [`doc-archival-discipline.md`](../doc-archival-discipline.md) — RESOLVED doc archive 規約
+- [`../../release/CHANGELOG_v2.2.0.md`](../../release/CHANGELOG_v2.2.0.md) — release notes(merge 後に Δ5〜Δ34 追記要)

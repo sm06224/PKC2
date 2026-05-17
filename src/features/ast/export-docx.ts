@@ -175,6 +175,8 @@ interface InlineStyle {
   mark?: boolean;
   /** Superscript(リンク連番表示用)。 */
   superScript?: boolean;
+  /** Subscript(`:sub:[X]` AstSub 用)。PR-W20 で field 追加(旧 cast hack 廃止)。 */
+  subScript?: boolean;
   /** PR-W8:任意 color hex 指定(task glyph 用、grey ☐ / green ☑)。 */
   color?: string;
 }
@@ -189,6 +191,7 @@ function applyStyle(base: IRunOptions, style: InlineStyle): IRunOptions {
     ...(style.italics ? { italics: true } : {}),
     ...(style.strike ? { strike: true } : {}),
     ...(style.superScript ? { superScript: true } : {}),
+    ...(style.subScript ? { subScript: true } : {}),
     ...(style.color ? { color: style.color } : {}),
     // PR-W8:mark `==X==` の shading を soft yellow `#FFF3A0` に tone-down
     // (旧 named `'yellow'` = `#FFFF00` ベタ塗りは威圧的だった)。
@@ -400,9 +403,21 @@ function inlineToRuns(
     case 'sup':
       return inlinesToRuns(node.children, ctx, { ...base, superScript: true });
     case 'sub':
-      return [new TextRun(applyStyle({ text: inlinesFlatText(node.children) }, { ...base, subScript: true } as InlineStyle & { subScript?: boolean }))];
+      // PR-W20:旧 `as InlineStyle & { subScript?: boolean }` cast hack で
+      // applyStyle の type には合うが実装側で `subScript` を spread して
+      // いなかったため silently drop されていた重大 bug。`InlineStyle.subScript`
+      // を正式 field に昇格 + applyStyle で展開 + 再帰 inline 対応に揃える。
+      return inlinesToRuns(node.children, ctx, { ...base, subScript: true });
     case 'ruby':
-      return [new TextRun(applyStyle({ text: `${node.base}(${node.rt})` }, base))];
+      // PR-W23:旧 plain `base(rt)` 表記 → base + superscript rt 形式に
+      // 改善。Word の真の `<w:ruby>` element は docx package 未対応のため
+      // 視覚的近似(superscript fontSize 60% で base 直上に小さく rt 表示)。
+      // 印刷物 / 表示で「漢字 + ふりがな」の furigana 効果に近い。
+      // 将来 docx package が ruby element を support した時に native 化候補。
+      return [
+        new TextRun(applyStyle({ text: node.base }, base)),
+        new TextRun(applyStyle({ text: node.rt, superScript: true }, base)),
+      ];
     case 'link': {
       return linkToRuns(node, ctx, base);
     }
@@ -418,19 +433,29 @@ function inlineToRuns(
     case 'auto-ref':
       return [new TextRun(applyStyle({ text: `@${node.id}` }, base))];
     case 'var': {
-      // PR-V21(2026-05-14、user audit「変数も展開されていない」):
-      // `ast.vars` から path を解決。`vars.X` 形式は `X` を key として
-      // ctx.vars[X] を引く。未定義なら literal `{{...}}` で fallback。
+      // PR-V21:`ast.vars` から path を解決、未定義時は警告 marker。
+      // PR-W24(spec L-tolerant):未定義 var は `[未定義: vars.X]` italic red で
+      // visible 警告(spec「赤点線で警告が出るのが正解」)。print/Word
+      // 環境で red 文字 + italic で目立たせる。
       const path = node.path;
       const key = path.startsWith('vars.') ? path.slice('vars.'.length) : path;
       const value = ctx.vars[key];
       if (typeof value === 'string') {
         return [new TextRun(applyStyle({ text: value }, base))];
       }
-      return [new TextRun(applyStyle({ text: `{{${path}}}` }, base))];
+      return [new TextRun(applyStyle(
+        { text: `[未定義: ${path}]`, italics: true, color: 'DC2626' },
+        base,
+      ))];
     }
     case 'math-inline':
-      return [new TextRun(applyStyle({ text: node.src }, base))];
+      // PR-W21:旧 plain text → math font(Cambria Math)+ italic で
+      // 視覚的に math と本文を区別。**真の OMML(Office Math Markup Language)**
+      // は schema が複雑(`<m:oMath><m:r>...</m:r></m:oMath>`)で docx library
+      // でも未対応、後続 PR で OMML 直接 emit を検討。本 PR は font + italic
+      // による「math らしさ」可視化と AST 化(decompose-pkc で `$X$` を
+      // AstMathInline 化)が scope。
+      return [new TextRun(applyStyle({ text: node.src, font: MATH_FONT, italics: true }, base))];
     case 'comment-inline':
       return [];
     case 'footnote-ref': {
@@ -578,9 +603,11 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
       // (web `<p>` の margin: 0 で 行間 1.5 のみで構成、密度を上げる)。
       const runs = inlinesToRuns(block.children, ctx);
       let alignment: (typeof AlignmentType)[keyof typeof AlignmentType] | undefined;
+      // PR-W24:`||X` `|>X` `<|X` `|<X` `>|X` 5 形 + `:::paragraph{align=X}` 全部
+      // AstParagraph.align に集約。Align 値:center / end / right / left / start。
       if (block.align === 'center') alignment = AlignmentType.CENTER;
-      else if (block.align === 'right') alignment = AlignmentType.RIGHT;
-      else if (block.align === 'left') alignment = AlignmentType.LEFT;
+      else if (block.align === 'right' || block.align === 'end') alignment = AlignmentType.RIGHT;
+      else if (block.align === 'left' || block.align === 'start') alignment = AlignmentType.LEFT;
       // PR-W13(user「本文の行間をもっとちいさく」「詰まってる?自分で
       // 比較した?」):default の `lineRule: 'auto'` では font 内蔵の line
       // height(通常 1.15-1.2)が効いて視覚差が微小だった。`exact` で twip
@@ -596,6 +623,11 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
           lineRule: 'exact',
         },
         ...(alignment ? { alignment } : {}),
+        // PR-W24:`__X` / `＿X` paragraph indent(L-9 spec)。block.indent は
+        // 数(1+)、Word の firstLine indent twip 単位で 1 段 ≒ 420 twip(0.3 inch)。
+        ...(block.indent && block.indent > 0
+          ? { indent: { firstLine: 420 * block.indent } }
+          : {}),
       };
       return [new Paragraph(opts)];
     }
@@ -895,10 +927,27 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
     }
     case 'comment-block':
       return [];
-    case 'blank':
-      return [new Paragraph('')];
+    case 'blank': {
+      // PR-W24:`_N` blank-line marker。count 個の空 paragraph を emit、N 行
+      // 縦余白を表現。count 0 は drop、cappedFrom があれば render しないが
+      // 警告として visible note 1 件は注入(L-8 spec の「N>50 cap + 警告」)。
+      const count = Math.max(0, Math.min(50, block.count ?? 1));
+      const paras: Paragraph[] = [];
+      for (let i = 0; i < count; i++) paras.push(new Paragraph(''));
+      if (block.cappedFrom && block.cappedFrom > 50) {
+        paras.push(new Paragraph({
+          children: [new TextRun({ text: `[blank-line cap: ${block.cappedFrom} → 50]`, italics: true, color: '888888' })],
+        }));
+      }
+      return paras;
+    }
     case 'math-block':
-      return [new Paragraph({ children: [new TextRun({ text: block.src, font: MATH_FONT })] })];
+      // PR-W21:math-block を center-align + italic + math font で displayed
+      // equation 体裁に。block 単独行に置くことで本文との区別を強化。
+      return [new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: block.src, font: MATH_FONT, italics: true })],
+      })];
     case 'definition-list': {
       const out: Paragraph[] = [];
       for (const item of block.items) {

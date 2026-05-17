@@ -295,13 +295,29 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
     }
     case 'paragraph': {
       const text = renderInlines(block.children, mode);
-      // PKC mode のみ align / indent / layout を `{...}` attrs として出す
+      // PKC mode で paragraph attrs(align / indent / layout)を canonical 行頭
+      // marker(`||` / `|>` / `__`)に集約する。`{indent=1}` annotation 形は
+      // 旧 path、parse で再 decompose されず literal 残りの round-trip bug を
+      // 起こすため canonical marker 形を優先。
+      // PR-W24 round-trip fix:`indent: 1` → 行頭 `__`、`align: center` → 行頭
+      // `||`、`align: end/right` → 行頭 `|>`(simple end form を正規化採用)。
       if (mode === 'pkc') {
-        const parts: string[] = [];
-        if (block.align) parts.push(`align=${block.align}`);
-        if (block.indent !== undefined && block.indent !== 0) {
-          parts.push(`indent=${block.indent}`);
+        if (block.align === 'center') {
+          return `||${text}`;
         }
+        if (block.align === 'end' || block.align === 'right') {
+          return `|>${text}`;
+        }
+        if (block.align === 'left' || block.align === 'start') {
+          // commonmark default left、prefix 不要
+          return text;
+        }
+        if (block.indent && block.indent > 0) {
+          // 半角 `__` × N 段(現状 N=1 固定、複数段は今後拡張時に repeat)
+          return `__${text}`;
+        }
+        // layout hint(2col 等)は従来 attrs 形を残す(行頭 marker 仕様無し)
+        const parts: string[] = [];
         parts.push(...layoutHintToAttrParts(block.layout));
         if (parts.length > 0) {
           return `${text}\n{${parts.join(' ')}}`;
@@ -383,10 +399,15 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
       return '```' + block.lang + '\n' + block.source + (block.source.endsWith('\n') ? '' : '\n') + '```';
     }
     case 'break': {
+      // PR-W24 v4 round-trip fix:旧 `:::page-break` 形は decompose-pkc が
+      // role="page-break" の AstSection に変換してしまい round-trip 不安定。
+      // canonical PKC:`+++` simple form(role 付きなら `+++ {role=R}`)。
+      // GFM:`---` HR で近似。
       if (block.breakKind === 'page') {
-        return mode === 'pkc'
-          ? `:::page-break${block.role ? `{role=${block.role}}` : ''}`
-          : '---';
+        if (mode === 'pkc') {
+          return block.role ? `+++ {role=${block.role}}` : '+++';
+        }
+        return '---';
       }
       return '---';
     }
@@ -395,16 +416,24 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
         const inner = block.children
           .map((b) => renderBlock(b, mode))
           .join('\n\n');
-        const cap = block.caption ? `\n\n${renderInlines(block.caption, mode)}` : '';
+        // PR-W24 v3:caption は `^^^ text` marker(L-7-a spec)で出す。これ
+        // により round-trip で `^^^` がまた caption として抽出される。
+        const cap = block.caption ? `\n\n^^^ ${renderInlines(block.caption, mode)}` : '';
         // PR-2JJ v2 hotfix(2026-05-13、user fixture report):attrs.id /
         // attrs.kvs を round-trip 保持。`:::figure{kind=figure}` だけだと
         // `id="topology-overview"` 等の attrs 情報が失われる。
-        const attrParts: string[] = [`kind=${block.figureKind}`];
+        // PR-W24 v3:`kind=figure`(default)は emit しない(re-parse で
+        // `kvs.kind="figure"` が空 attrs の AST に混入して round-trip diff
+        // を起こす)。`table` / `equation` のみ明示。
+        const attrParts: string[] = [];
+        if (block.figureKind !== 'figure') {
+          attrParts.push(`kind=${block.figureKind}`);
+        }
         if (block.attrs) {
           if (block.attrs.id) attrParts.push(`id="${block.attrs.id}"`);
           for (const cls of block.attrs.classes) attrParts.push(`.${cls}`);
           for (const [k, v] of Object.entries(block.attrs.kvs)) {
-            if (k === 'kind') continue; // already emitted
+            if (k === 'kind') continue; // already emitted (or skipped)
             if (v === true) attrParts.push(k);
             else if (v !== false) attrParts.push(`${k}=${JSON.stringify(v)}`);
           }
@@ -472,9 +501,15 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
       return '';
     }
     case 'blank': {
-      // blank node は paragraph 間の空行を制御するためのもの。
-      // join('\n\n') で既に空行が入るため、ここでは追加しない。
-      return '';
+      // PR-W24 v3:`AstBlank.count` を `_N` marker(L-8 spec)に出力。これに
+      // より round-trip stable(html1 = html2 = N 行空)。旧:空 string return
+      // で `_N` を drop → 再 parse で `<div class="pkc-blank-line">` 消失。
+      if (mode === 'pkc') {
+        const n = block.count ?? 1;
+        return n === 1 ? '_' : `_${n}`;
+      }
+      // GFM:空行で近似(N 行分の連続空行)
+      return '\n'.repeat(Math.max(0, (block.count ?? 1) - 1));
     }
     case 'math-block': {
       return '$$\n' + block.src + (block.src.endsWith('\n') ? '' : '\n') + '$$';
@@ -570,8 +605,10 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
       return `<span class="pkc-em-dot">${inner}</span>`;
     }
     case 'ruby':
-      if (mode === 'pkc') return `{${node.base}|${node.rt}}`;
-      // GFM:正しい `<ruby>` HTML(`<rt>` 単独は invalid、`<ruby>` で wrap 必要)
+      // PR-W24 v4 round-trip fix:旧 `{base|rt}` 形は decompose-pkc の
+      // ruby decompose pattern にマッチせず literal 化。canonical PKC:
+      // `[[ruby:base|rt]]` formal form。GFM:正しい `<ruby>` HTML。
+      if (mode === 'pkc') return `[[ruby:${node.base}|${node.rt}]]`;
       return `<ruby>${escapeText(node.base)}<rt>${escapeText(node.rt)}</rt></ruby>`;
     case 'sup': {
       const inner = renderInlines(node.children, mode);
@@ -590,16 +627,22 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
       if (mode === 'pkc' && node.attrs && hasAttrs(node.attrs)) {
         // PR-2JJ v2 hotfix(2026-05-13):AstSpan(class=lead) や (class=caption)
         // は formal inline 形(`:lead:[X]` / `:caption:[X]`)で round-trip 安定。
-        // decompose-pkc が同じ formal 形に戻すので idempotent。
         const cls = node.attrs.classes;
         if (cls.includes('lead') && cls.length === 1) return `:lead:[${inner}]`;
         if (cls.includes('caption') && cls.length === 1) return `:caption:[${inner}]`;
-        if (cls.includes('pkc-em-dot') && cls.length === 1) {
-          // pkc-em-dot は AstEmDot として後段で生成されるが、念のため。
-          return `..${inner}..`;
+        if (cls.includes('pkc-em-dot') && cls.length === 1) return `..${inner}..`;
+        // PR-W24 v3 round-trip fix:
+        //   `attrs.classes` のみ持つ AstSpan → L-6 Simple inline `:text:cls1,cls2:`
+        //   `attrs.id / kvs` も持つ AstSpan → formal `:span:[text]{attrs}`
+        // どちらも decompose-pkc が同 AST に戻す PKC native 形。
+        const hasIdOrKvs = (node.attrs.id !== undefined && node.attrs.id !== '') ||
+                          Object.keys(node.attrs.kvs).length > 0;
+        if (!hasIdOrKvs && cls.length > 0) {
+          // Simple form: `:text:cls1,cls2:`
+          return `:${inner}:${cls.join(',')}:`;
         }
-        // 一般 span:`[X]{attrs}` 形
-        return `[${inner}]${formatAttrs(node.attrs)}`;
+        // formal form: `:span:[text]{attrs}` で id / class / kvs を保持
+        return `:span:[${inner}]${formatAttrs(node.attrs)}`;
       }
       // GFM:class が付いていれば `<span class="X">` で reverse 可能に
       if (mode === 'gfm' && node.attrs && node.attrs.classes.length > 0) {

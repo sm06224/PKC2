@@ -169,8 +169,13 @@ function walkInline(tokens: readonly Token[]): AstInline[] {
       const node: AstText = { kind: 'text', value: tok.content };
       top().push(node);
     } else if (type === 'softbreak' || type === 'hardbreak') {
-      // softbreak は space、hardbreak は \n に正規化(commonmark 規約)
-      const node: AstText = { kind: 'text', value: type === 'hardbreak' ? '\n' : ' ' };
+      // PR-W24 v5(user 報告「コピーした方は改行位置違う」):softbreak も
+      // **`\n` に格上げ**。理由:markdown-render.ts(HTML 直接 render path)が
+      // `breaks: true` で softbreak を `<br>` として render するため、AST 経由
+      // でも同等の line-break 情報を保持しないと **PKC MD = Rendered HTML**
+      // 不変式(supreme invariant)を満たさない。両 path を「行末改行は
+      // 視覚的改行」に統一する。
+      const node: AstText = { kind: 'text', value: '\n' };
       top().push(node);
     } else if (type === 'code_inline') {
       const node: AstInlineCode = { kind: 'inline-code', value: tok.content };
@@ -425,7 +430,13 @@ function getDefaultMd(): MarkdownIt {
   // linkify を OFF。`{{vars.name}}` 等の PKC 拡張 pattern の中に含まれる
   // `vars.name` のような **domain 風 token** を markdown-it が auto-link 化
   // して link node に壊すため。明示的 link は `[text](url)` で書く方針。
-  defaultMd = new MarkdownIt({ html: false, linkify: false, breaks: false, typographer: false });
+  // PR-W24 v5(user 報告「コピーした方は改行位置違う」):`breaks: true` を
+  // 採用して softbreak → hardbreak に格上げ。markdown-render.ts(HTML 直接
+  // render path)が `breaks: true` で `\n` → `<br>` を出すのに対し、本
+  // parse.ts が `breaks: false` だと softbreak が消えて round-trip で
+  // 「改行が消える」差異が出る。両 path を `breaks: true` に揃えることで
+  // **PKC MD = Rendered HTML 不変式**(supreme invariant)を満たす。
+  defaultMd = new MarkdownIt({ html: false, linkify: false, breaks: true, typographer: false });
   defaultMd.enable(['table', 'strikethrough']);
   return defaultMd;
 }
@@ -471,11 +482,114 @@ function shieldFootnotes(body: string): string {
   return out;
 }
 
+/**
+ * PR-W24:行頭 marker を markdown-it から shield。`__` `||` `|>` `<|` `|<`
+ * `>|` `_N` `+++` `^^^` 等の line-leading 記号は markdown-it が strong /
+ * GFM table / autolink 等で破壊的に解釈する case があるため、parse 前に
+ * sentinel で囲んで shield、decompose-pkc が AST node 化する。
+ *
+ * 寛容 parse doctrine:行頭 whitespace(半角 sp / tab / 全角 U+3000)も飲み込む。
+ *
+ * sentinel 設計:
+ *   `+++` / `+++ {role=X}` → `\u{E160}sb:role?\u{E161}`        (section break)
+ *   `_N`(N=0-50) / `_`     → `\u{E162}bl:N\u{E163}`            (blank-line marker)
+ *   `__X` / `＿X`           → `\u{E164}ind:X\u{E165}`           (paragraph indent)
+ *   `||X` / `|>X` / `<|X` / `|<X` / `>|X` → `\u{E166}al:dir|X\u{E167}` (align prefix)
+ *   `^^^ caption`           → `\u{E168}fcap:caption\u{E169}`    (figure caption marker)
+ */
+/**
+ * PR-W24:markdown-it は **行頭 tab(1 字)** または **4+ space** を indented
+ * code block と解釈する。PKC marker 行に leading ws があると code block 化
+ * されて decompose-pkc が認識できなくなるため、PKC marker 行頭の ws は
+ * shield 前に **完全 strip**(寛容 parse doctrine、半角 sp / tab / 全角
+ * U+3000 全部対応)。
+ */
+/**
+ * PR-W24 v2:`:::` 行(opener / closer)の前後に blank line を強制挿入。
+ * commonmark blockquote の lazy continuation で `> text\n:::` が blockquote
+ * 内に取り込まれて closer 認識失敗する bug を回避。
+ */
+function ensureBlankAroundColonBlocks(body: string): string {
+  // PR-W24 v3:\u5168 `:::` \u884c(opener / closer)\u306e **\u524d** \u306b blank line \u3092\u633f\u5165\u3001
+  // \u591a\u91cd newline \u306f\u4e8b\u5f8c collapse\u3002\u3053\u308c\u3067 `:::\n:::`(\u9023\u7d9a closer)`}\n:::`
+  // (content + closer)`>quote\n:::`(blockquote lazy continuation + closer)
+  // \u3059\u3079\u3066 blank line \u3067\u5206\u96e2\u3055\u308c\u308b\u3002
+  let out = body.replace(/\n([ \t\u3000]*:::)/g, '\n\n$1');
+  // PR-W24 v3:malformed `:::role{...<no close brace>$` \u884c\u306f attrs \u3092 drop
+  // (\u5bdb\u5bb9 parse\u3001`author=` literal \u304c content \u306b\u6f0f\u308c\u308b\u306e\u3092\u9632\u3050)
+  out = out.replace(
+    /^([ \t\u3000]*:::[a-zA-Z0-9_-]+)\{[^}\n]*$/gm,
+    '$1',
+  );
+  // `:::role{...}` opener \u306e **\u5f8c** \u306b blank line(content \u3068\u5206\u96e2)
+  out = out.replace(
+    /^([ \t\u3000]*:::[a-zA-Z0-9_-]+(?:\{[^}\n]{0,200}\})?[ \t]*)\n([^\n])/gm,
+    '$1\n\n$2',
+  );
+  // 3+ \u9023\u7d9a newline \u3092 2 (blank line one) \u306b collapse
+  out = out.replace(/\n{3,}/g, '\n\n');
+  return out;
+}
+
+function stripLeadingWsOnPkcMarkers(body: string): string {
+  // Block-level marker:行頭 ws 全 strip。
+  // Inline-level marker(`:role:` 系):行頭 ws strip(`:span:[X]` 等が
+  // 行頭 tab で code-block 化されないよう)。
+  const markerStart =
+    /^[ \t\u3000]+(\+\+\+|_\d{0,2}[\s$]|__|＿|\|\||\|>|<\||\|<|>\||\^\^\^|:::[a-zA-Z0-9_-]+|:::[\s$]|:[a-z]+:[[{])/gm;
+  return body.replace(markerStart, '$1');
+}
+
+function shieldLineLeadingMarkers(body: string): string {
+  let out = stripLeadingWsOnPkcMarkers(ensureBlankAroundColonBlocks(body));
+  // (1) `+++` section break(role attrs optional)
+  // `+++ {role=X}` or `+++` 単独行(行頭 ws 寛容)
+  out = out.replace(
+    /^[ \t\u3000]*\+\+\+[ \t]*(\{[^}]*\})?[ \t]*$/gm,
+    (_m, attrs: string | undefined) => `\u{E160}sb:${attrs ?? ''}\u{E161}`,
+  );
+  // (2) `_N`(blank-line marker、N=0-50)/ `_`(N=1 暗黙)
+  //   行頭 `_` + 数字 OR 単独 `_` で次行までが構造記号。N>50 は cap される
+  //   (decompose 側で cap)。行頭 ws 寛容。
+  out = out.replace(
+    /^[ \t\u3000]*_(\d{1,3})?[ \t]*$/gm,
+    (_m, n: string | undefined) => `\u{E162}bl:${n ?? '1'}\u{E163}`,
+  );
+  // (3) `__X` / `＿X` paragraph indent prefix。行頭で `__` or `＿` の直後に
+  //   非空白文字、その行末まで段落 indent。行頭 ws 寛容(`__` 自体は半角 2
+  //   または全角 1 字)。
+  out = out.replace(
+    /^[ \t\u3000]*(?:__|＿)([^\n]+)$/gm,
+    (_m, body: string) => `\u{E164}ind:${body}\u{E165}`,
+  );
+  // (4) align prefix `||X` `|>X` `<|X` `|<X` `>|X` 5 形(end 4 形は typo 寛容)
+  //   center: `||` / end: `|>` `<|` `|<` `>|`
+  out = out.replace(
+    /^[ \t\u3000]*(\|\|)([^\n]+)$/gm,
+    (_m, _marker: string, body: string) => `\u{E166}al:center|${body}\u{E167}`,
+  );
+  out = out.replace(
+    /^[ \t\u3000]*(\|>|<\||\|<|>\|)([^\n]+)$/gm,
+    (_m, _marker: string, body: string) => `\u{E166}al:end|${body}\u{E167}`,
+  );
+  // (5) `^^^ caption text` figure caption marker(L-7-a)
+  //   行頭 `^^^` + space + caption text(行末まで)。figure block 内で使用、
+  //   block-level pre-processing として shield(figure decompose で拾う)。
+  out = out.replace(
+    /^[ \t\u3000]*\^\^\^[ \t]+([^\n]+)$/gm,
+    (_m, caption: string) => `\u{E168}fcap:${caption}\u{E169}`,
+  );
+  return out;
+}
+
 export function parseMarkdownToAst(text: string, opts: ParseOptions = {}): AstDocument {
   const { body, globals } = extractFrontmatter(text);
   // PR-2JJ v2 final hotfix(2026-05-13、Gemini review feedback 反映):
   // footnote pattern を markdown-it から shield。後段で AST node 化する。
-  const shieldedBody = shieldFootnotes(body);
+  // PR-W24:行頭 marker(`+++` / `_N` / `__` / `||` / `|>` / `<|` / `|<` /
+  // `>|` / `^^^`)も同様 shield。markdown-it は `__strong__` / `|table|` 等で
+  // 破壊解釈する case があるため。
+  const shieldedBody = shieldLineLeadingMarkers(shieldFootnotes(body));
   const md = opts.md ?? getDefaultMd();
   const tokens = md.parse(shieldedBody, {});
   const children = walkBlocks(tokens);
