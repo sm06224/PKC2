@@ -1,0 +1,75 @@
+# Dependabot config — PKC2 v2.3.0 deps wave(2026-05-17)
+#
+# user direction「依存ライブラリの整理と最新版への更新は次のwaveです。
+# 最近特にサプライチェーン攻撃が頻発化していますし、これは必須ですね」
+#
+# 目的:
+#   1. **supply chain 攻撃の早期検出** — typosquat / malicious package /
+#      compromised dependency を Dependabot security advisory で即時通知
+#   2. **dependency drift の継続削減** — minor/patch を group PR で
+#      週次 review、major bump は individual PR で慎重 review
+#   3. **lockfile pinning 維持** — npm の `package-lock.json` を canonical
+#      source of truth に保つ
+#
+# scheduling:
+#   - npm:weekly(月曜 09:00 JST)
+#   - github-actions:weekly(月曜 09:00 JST)
+#
+# grouping:
+#   - minor/patch を 1 PR に集約(review burden 削減)
+#   - major bump は individual PR(breaking change の risk 評価必須)
+#
+# PR limit:
+#   - npm:10(無制限だと flood リスク)
+#   - actions:5
+
+version: 2
+
+updates:
+  # npm runtime + dev dependencies
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      # minor / patch を 1 PR に group(review コスト削減)
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      # security update は最優先で 1 PR
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+
+  # GitHub Actions workflow file 内の uses: 参照
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - '*'

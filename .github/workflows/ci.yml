@@ -65,6 +65,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Supply chain audit (npm audit, high+ severity blocking)
+        # 2026-05-17 deps wave Phase 1:supply chain 攻撃対策の最初の gate。
+        # `--audit-level=high` で moderate 以下の noise を除外しつつ、high /
+        # critical 脆弱性が advisory に登録された瞬間に CI 失敗 → 即対応
+        # 必須化。typosquat / malicious package / compromised dependency の
+        # 早期検出。Dependabot security advisory(.github/dependabot.yml)
+        # と二重化することで notification 経路を冗長化。
+        #
+        # noise 抑制方針:moderate / low / info は本 gate では無視(Tier 0 +
+        # CHANGELOG で「次 wave 候補」として記録)。high+ のみ即対応の
+        # discipline を保つ。
+        run: npm audit --audit-level=high
+
       - name: Typecheck
         run: npm run typecheck
 
