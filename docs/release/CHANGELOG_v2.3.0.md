@@ -87,6 +87,22 @@ PR #433 の simplify reuse agent 指摘 + Phase 3 wave doc lifecycle 整理を 5
 
 外部 AI review(2026-05-15)で「視覚品位への押し上げ」フェーズと判定された 11 項目を P0〜P3 で順次着地。本 wave は v23 stack follow-up wave の継続。
 
+### Wave Z final — manual 大改修 + 多階層 sort 実装 + doc 整理(W24 v6、user 直接指示「これの完了を本 wave の完了とする」「マニュアルに PKC-Markdown 仕様 仕込め、PKC-Markdown 自体で書いて魅せろ」「左ペイン + Filer 多階層 sort 実装し直し」、2026-05-16)
+
+User 直接指示「これの完了を本 wave の完了とする」(v2.3.0 締めの wave 認定)を受けた doc 重厚 + 機能改修 cascading wave:
+
+- **manual ch12「マークダウン拡張記法」大幅拡張**(+~250 行、PR-W24 v6):従来 `docs/spec/markdown-dialect-for-ai-authors-v3.md`(GitHub のみ閲覧可)に置いていた PKC-Markdown 完全リファレンスを末端 user 向け版として manual に embed。**§12.9 PKC-Markdown 完全リファレンス**を新設、装飾 inline 一覧(Simple / Formal 両形)+ 構造 block 一覧(`:::role{attrs}` 7 種 + 行頭 marker)+ frontmatter document globals + 寛容 parse(Postel's Law)+ PKC MD ↔ HTML invariant + 実装済 / 未実装 record 一覧。**manual 自体が PKC-Markdown を full に使って書かれている**(`:::section{role=tip/warning/important}` 3 種 callout、`==[red]X==` color highlight、`^^X^^` em-dot、`[[ruby:漢字|かんじ]]`、`:strong:[X]` formal、`:sup:[2]` / `:sub:[2]`、`$E=mc^2$`、`[^a]` footnote、`:太字赤:bold,red:` L-6 Simple inline、`||中央寄せ` align prefix etc.)、dog-fooding 経路として render 結果が動作確認証跡に。
+
+- **新章 15「PKC Hint 機構」追加**(`docs/manual/15_pkc_hint_機構.md`、~200 行):PKC2 が parse / render 中に「気づいた」事象を user に伝える仕組みのカタログ。**実装済 5 種**(`{{vars.X}}` 未定義 / `_N` cap / orphan footnote / malformed `:::role{` / dangling `[@id]`)+ **未実装の統一機構設計**(`AstHint` schema / 4 階層 opt-out / code block render-available 誘導の「ブルーオーシャン戦略」)。`docs/development/pkc-hint-mechanism-2026-05-16.md` 設計 doc を末端 user 向け要約として manual に取込、manual 経由でいつでも最新ヘルプ取得可能に。
+
+- **manual builder ASSETS folder 化**(`build/manual-builder.ts`):画像 attachment(`manual-img-*`)を新規 `manual-folder-assets`(title「ASSETS」)に `folder-of` 関係で配置。従来左ペインに章エントリと混在して散在していた埋め込み画像が 1 folder に grouping、user は章 + ASSETS の 2 layer 構造で manual を見られる。新章 13 / 14 / 15 の `CHAPTER_TO_FOLDER` mapping も追加。
+
+- **多階層 sort 実装**(`src/features/relation/tree.ts`、`renderer.ts`):従来 sidebar は **flat sort**(`sortEntries(filtered, key, direction)`)で全 entry を 1 階層で並べていたため、folder / text / attachment が混在して整理されなかった。新 `sortTreeNodes(nodes, key, direction)` 関数:**各階層内で archetype grouping(folder 先頭)+ primary key sort + 再帰**。renderer の tree mode で `state.sortKey === 'manual'` 以外は `sortTreeNodes(tree, sortKey, direction)` 経由。case matrix test 6 件(`tests/features/relation/sort-tree-nodes.test.ts`):flat / folder 優先 / 再帰 / desc / created_at / manual sample 全 pass。
+
+- **doc archive 推進**:`docs/development/full-pkc-fixture-audit-2026-05-16.md`(W14 起点、W15-W24 で大半 ✅)を `completed/` へ移動、`INDEX.md` から strike-through 表記で archive 参照に変更。
+
+- **数値**:全 8067 test pass(+6 sort tree nodes test)、bundle.js / css 不変、manual 47 → 48 entries(+ASSETS folder)、relations 20 → 40(asset folder-of 18 件 + ch13-15 chapter folder-of 2 件)、typecheck + lint clean。
+
 ### Wave Z.4 — 寛容 parse 全数決着 wave(W24、user 直接指示「対応対象は全部」「サボることを許されない」、2026-05-16)
 
 User の全数 audit 要求(「PKC-Markdown を基準に GFM じゃなく」「Simple も Formal も両方 AST 化」「行頭 ws 寛容も含めて」)に対し、**全 PKC notation × 行頭 whitespace 4 種 = 75 ケース** の literal residue 0 件達成。

@@ -49,6 +49,11 @@ const FOLDERS: FolderGroup[] = [
   { lid: 'manual-folder-export', title: '保存と持ち出し', description: 'IndexedDB と Export / Import / Rehydrate' },
   { lid: 'manual-folder-appendix', title: '付録', description: 'トラブルシューティングと用語集' },
   { lid: 'manual-folder-samples', title: '見本', description: '各 archetype の見本エントリ' },
+  // PR-W24 v6(user 報告「マニュアルが顕著な例。本来 ASSETS に整理されるべき
+  // 埋め込み要素が左ペインに露出」):manual 内部使用の画像 attachment を
+  // 専用 ASSETS folder にまとめる。サイドバーで折り畳み / 隠す operation の
+  // 起点として機能、user は通常閲覧で意識する必要なし。
+  { lid: 'manual-folder-assets', title: 'ASSETS', description: 'マニュアル内部で参照される画像 / 図表 asset(本文中 `![](asset:KEY)` 経由でのみ使用)' },
 ];
 
 /**
@@ -69,6 +74,9 @@ const CHAPTER_TO_FOLDER: Record<string, string | null> = {
   '10': 'manual-folder-basics',     // filer / graph / inventory(2026-04 領域 10-6 wave で着地)
   '11': 'manual-folder-appendix',   // bookmarklet sample(PKC-Message v1 sender 入門)
   '12': 'manual-folder-basics',     // markdown 拡張記法(2026-05 wave-10-2 Phase 1)
+  '13': 'manual-folder-basics',     // アプリランチャーと出力機能(PR-2JJ v2)
+  '14': 'manual-folder-basics',     // テンプレートコマンド集(PR-W10)
+  '15': 'manual-folder-appendix',   // PKC Hint 機構(PR-W24 v6)
 };
 
 /**
@@ -182,14 +190,19 @@ function main(): void {
         size: bytes.length,
         asset_key: assetKey,
       });
+      const imgLid = `manual-img-${assetKey}`;
       entries.push({
-        lid: `manual-img-${assetKey}`,
+        lid: imgLid,
         title: file,
         body: attachmentBody,
         archetype: 'attachment',
         created_at: BUILD_TIMESTAMP,
         updated_at: BUILD_TIMESTAMP,
       });
+      // PR-W24 v6:画像 attachment を ASSETS folder にまとめる。サイドバー
+      // で「埋め込み画像が章エントリの間に散在する」問題を解消、user は
+      // 章エントリ + ASSETS folder の 2 layer 構造で manual を見られる。
+      relations.push(makeStructuralRelation('manual-folder-assets', imgLid, `rel-asset-${assetKey}`));
     }
   }
 

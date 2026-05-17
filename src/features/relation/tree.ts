@@ -132,6 +132,43 @@ export function buildTree(
 }
 
 /**
+ * PR-W24 v6(user 報告「左ペインと Filer の要素並び替え、1 階層しかソート対応
+ * していなくて全てがバラバラ」):tree の各階層内で entries を sort する。
+ *
+ * - `'title'`:title 昇順、folder を folder で grouping(folder first, then non-folder)
+ * - `'created_at'` / `'updated_at'`:同上 + 日付昇 / 降順(direction で切替)
+ * - `'manual'`:identity(`reorderTreeByEntries` 経路で別途処理)
+ *
+ * 各 level で再帰的に同じ key + direction を適用。`hierarchical` doctrine:
+ * 「folder が child を持つ場合、folder 自身は title 順、folder 内 child も
+ * 同じ key で sort」。
+ */
+export function sortTreeNodes(
+  nodes: readonly TreeNode[],
+  key: 'title' | 'created_at' | 'updated_at',
+  direction: 'asc' | 'desc',
+): TreeNode[] {
+  const dir = direction === 'asc' ? 1 : -1;
+  const sorted = [...nodes].sort((a, b) => {
+    // folder 優先(folder が同 level の non-folder より先に出る)
+    const aIsFolder = a.entry.archetype === 'folder';
+    const bIsFolder = b.entry.archetype === 'folder';
+    if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+    // 同 archetype 内で primary key 比較
+    const va = a.entry[key];
+    const vb = b.entry[key];
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
+  });
+  // 再帰:各 node の children も同 key で sort
+  return sorted.map((node) => ({
+    ...node,
+    children: sortTreeNodes(node.children, key, direction),
+  }));
+}
+
+/**
  * Get the structural parent of an entry, if any.
  */
 export function getStructuralParent(

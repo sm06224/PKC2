@@ -57,6 +57,7 @@ import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation
 import { filterByTag } from '../../features/relation/tag-filter';
 import {
   buildTree,
+  sortTreeNodes,
   getBreadcrumb,
   getAvailableFolders,
   getStructuralParent,
@@ -3580,9 +3581,13 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     // C-2 v1 manual mode: buildTree orders children by relation
     // iteration order, not by `entries` position. Reorder each node's
     // children so folder-child ordering reflects `entry_order`.
+    // PR-W24 v6(user 報告「左ペイン要素並び替え 1 階層しか sort 対応で
+    // バラバラ」):manual 以外の sort key で **各 level 内で sort** + folder
+    // を先頭に grouping(`sortTreeNodes` 再帰)。これにより manual の
+    // 章エントリ + ASSETS folder + 画像 attachment が hierarchical に整理。
     const displayTree = state.sortKey === 'manual'
       ? reorderTreeByEntries(tree, entries)
-      : tree;
+      : sortTreeNodes(tree, state.sortKey, state.sortDirection);
     const endTreeLoop = profileStart('render:sidebar:tree-loop');
     for (const node of displayTree) {
       renderTreeNode(node, list, state, backlinkCounts, connectedLids, connectednessSets);
