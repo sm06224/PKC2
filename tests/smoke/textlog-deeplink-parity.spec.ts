@@ -45,18 +45,19 @@ test('TEXTLOG log click on copy-link button copies entry:<lid>#... reference', a
   await page.goto('/pkc2.html');
   await bootReady(page);
 
-  // CI flake fix (2026-05-17):`data-pkc-phase=ready` の後でも entry の
-  // IDB read + sidebar re-render が completion する前に click を試みると
-  // 高負荷 CI で flake 化(30s timeout に当たる)。entry-list 内に target
-  // が居ることを wait してから click。
-  const entryList = page.locator('[data-pkc-region="entry-list"]');
-  await expect(entryList).toBeVisible({ timeout: 15_000 });
+  // CI flake fix v2 (2026-05-17):前回(PR #455)の「entry-list region 待ち
+  // → 特定 entry 待ち」の 2 段階方式は CI 高負荷時に entry-list の re-render
+  // tail で 15s 超過する pattern を残していた。entry-list が render される
+  // のは IDB から container が loaded + entries.length > 0 の状態のみで、
+  // boot phase=ready が先行する race がある。direct descendant locator で
+  // 「entry-list 内の target entry」を 1 段階で polling、render が完了した
+  // 瞬間に hit するため region 待ち race を回避。timeout 30s。
   await expect(
-    entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid="tl-1"]'),
-  ).toBeVisible({ timeout: 15_000 });
+    page.locator('[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="tl-1"]'),
+  ).toBeVisible({ timeout: 30_000 });
 
   // textlog entry を select
-  await entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid="tl-1"]').first().click();
+  await page.locator('[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="tl-1"]').first().click();
   await page.waitForTimeout(500);
 
   // copy-log-line-ref ボタン(🔗 anchor)を log-bbb 上で click
@@ -93,16 +94,14 @@ test('entry: link to textlog log scrolls the article into view', async ({ page }
   await page.goto('/pkc2.html');
   await bootReady(page);
 
-  // CI flake fix (2026-05-17):同上 — entry が sidebar に居ることを確実に
-  // wait してから click。
-  const entryList = page.locator('[data-pkc-region="entry-list"]');
-  await expect(entryList).toBeVisible({ timeout: 15_000 });
+  // CI flake fix v2 (2026-05-17):同上 — direct descendant locator + 30s
+  // で entry-list region 待ち race を回避。
   await expect(
-    entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid="src"]'),
-  ).toBeVisible({ timeout: 15_000 });
+    page.locator('[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="src"]'),
+  ).toBeVisible({ timeout: 30_000 });
 
   // src TEXT を選択
-  await entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid="src"]').first().click();
+  await page.locator('[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="src"]').first().click();
   await page.waitForTimeout(500);
 
   // body の link(entry:tl#log/log-15)を click
