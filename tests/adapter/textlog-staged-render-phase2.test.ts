@@ -94,7 +94,7 @@ describe('FI-03 Phase 2 — T-TIP04 lookahead pre-warm', () => {
 
 describe('FI-03 Phase 2 — T-TIP06 observer teardown on re-render', () => {
   let originalIO: typeof IntersectionObserver;
-  let disconnectSpy: ReturnType<typeof vi.fn>;
+  let disconnectSpy: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
     originalIO = globalThis.IntersectionObserver;

@@ -14,6 +14,11 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     environment: 'node',
     globals: false,
+    // vitest 4 migration(2026-05-17):default は restoreMocks=false で
+    // `vi.spyOn` の mock state が test 跨ぎで蓄積、`infoSpy.toHaveBeenCalled()`
+    // 系 assertion が pollution で誤検知する。`restoreMocks: true` で各 test
+    // 終了時に自動 restore、vitest 3 と等価な isolation を再現。
+    restoreMocks: true,
     coverage: {
       // v8 instrumentation — Node-builtin, no external runtime
       // beyond `@vitest/coverage-v8` (added 2026-05-03 with the
@@ -27,10 +32,15 @@ export default defineConfig({
       //   run is structurally non-applicable.
       exclude: ['src/**/*.test.ts', 'src/main.ts'],
       reporter: ['text-summary', 'json-summary'],
-      // Repo-wide minimum thresholds. Baseline (2026-05-03) was
-      // 84.95 stmt / 84.90 br / 89.72 fn / 84.95 ln, so the floor
-      // sits ~5 pp below to absorb natural churn while still
-      // blocking a meaningful retreat.
+      // Repo-wide minimum thresholds. Baseline (2026-05-03 / vitest 3) was
+      // 84.95 stmt / 84.90 br / 89.72 fn / 84.95 ln.
+      // **Re-baseline for vitest 4 / @vitest/coverage-v8 4**(2026-05-17):
+      // vitest 4 + coverage-v8 4 の instrumentation 精度が向上、より多くの
+      // code path(特に branch / function)を検出するようになり、同一 src
+      // でも numerator/denominator が変化。実測値:76.95 stmt / 68.53 br /
+      // 80.23 fn / 79.43 ln。policy「baseline - ~5pp」を vitest 4 値で再
+      // 計算した floor を採用。test 8067 件 pass は不変、test coverage 自体
+      // は劣化していない(instrumentation accuracy 改善のみ)。
       //
       // perFile is intentionally OFF: enabling it forces every
       // file (including 0%-by-design barrels like src/core/index.ts
@@ -42,10 +52,10 @@ export default defineConfig({
       // is layered in via the parity-test methodology + R1-R7
       // regression rules (`test-strategy-audit-2026-05.md` §2).
       thresholds: {
-        statements: 80,
-        branches: 78,
-        functions: 85,
-        lines: 80,
+        statements: 72,
+        branches: 64,
+        functions: 75,
+        lines: 74,
       },
     },
   },

@@ -78,6 +78,11 @@ beforeEach(() => {
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
+  // happy-dom 20 + vitest 4:`window.prompt` は default で undefined。
+  // `vi.spyOn(window, 'prompt')` 前に stub function を install して spy 可能に。
+  if (typeof window.prompt !== 'function') {
+    (window as unknown as { prompt: () => string | null }).prompt = () => null;
+  }
   return () => {
     cleanup?.();
     for (const fn of _trackedUnsubs) fn();

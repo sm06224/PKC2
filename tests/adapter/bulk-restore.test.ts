@@ -141,6 +141,11 @@ beforeEach(() => {
   root = document.createElement('div');
   root.id = 'pkc-root';
   document.body.appendChild(root);
+  // happy-dom 20 + vitest 4:`window.confirm` は default で undefined。
+  // `vi.spyOn(window, 'confirm')` 前に stub function を install して spy 可能に。
+  if (typeof window.confirm !== 'function') {
+    (window as unknown as { confirm: () => boolean }).confirm = () => true;
+  }
 });
 
 afterEach(() => {
