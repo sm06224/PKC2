@@ -635,7 +635,7 @@ attachment sandbox(既存)の延長で、複数 iframe を「workspace」とし�
 
 **着地後の docs**:
 - [`wave-10-9-stabilization-summary.md`](./wave-10-9-stabilization-summary.md)(NEW、wave 全体サマリ)
-- [`codespaces-merge-playbook-wave-10-9.md`](./codespaces-merge-playbook-wave-10-9.md)(NEW、merge 戦略 3 option)
+- [`codespaces-merge-playbook-wave-10-9.md`](./completed/codespaces-merge-playbook-wave-10-9.md)(NEW、merge 戦略 3 option)
 - [`../release/CHANGELOG_v2.2.0.md`](../release/CHANGELOG_v2.2.0.md)(Δ5〜Δ34 1 ブロック追記)
 
 サイズ: stabilization wave、~122 commit / 100 PR / 2 日。

@@ -23,10 +23,12 @@ function makeEntry(lid: string, title: string, archetype: Entry['archetype'] = '
 
 function makeRel(from: string, to: string, id?: string): Relation {
   return {
-    rid: id ?? `rel-${from}-${to}`,
+    id: id ?? `rel-${from}-${to}`,
     kind: 'structural',
     from,
     to,
+    created_at: '2026-05-16T00:00:00Z',
+    updated_at: '2026-05-16T00:00:00Z',
   };
 }
 
