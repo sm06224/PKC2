@@ -45,8 +45,18 @@ test('TEXTLOG log click on copy-link button copies entry:<lid>#... reference', a
   await page.goto('/pkc2.html');
   await bootReady(page);
 
+  // CI flake fix (2026-05-17):`data-pkc-phase=ready` の後でも entry の
+  // IDB read + sidebar re-render が completion する前に click を試みると
+  // 高負荷 CI で flake 化(30s timeout に当たる)。entry-list 内に target
+  // が居ることを wait してから click。
+  const entryList = page.locator('[data-pkc-region="entry-list"]');
+  await expect(entryList).toBeVisible({ timeout: 15_000 });
+  await expect(
+    entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid="tl-1"]'),
+  ).toBeVisible({ timeout: 15_000 });
+
   // textlog entry を select
-  await page.locator('[data-pkc-region="entry-list"]').locator('[data-pkc-action="select-entry"][data-pkc-lid="tl-1"]').first().click();
+  await entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid="tl-1"]').first().click();
   await page.waitForTimeout(500);
 
   // copy-log-line-ref ボタン(🔗 anchor)を log-bbb 上で click
@@ -83,8 +93,16 @@ test('entry: link to textlog log scrolls the article into view', async ({ page }
   await page.goto('/pkc2.html');
   await bootReady(page);
 
+  // CI flake fix (2026-05-17):同上 — entry が sidebar に居ることを確実に
+  // wait してから click。
+  const entryList = page.locator('[data-pkc-region="entry-list"]');
+  await expect(entryList).toBeVisible({ timeout: 15_000 });
+  await expect(
+    entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid="src"]'),
+  ).toBeVisible({ timeout: 15_000 });
+
   // src TEXT を選択
-  await page.locator('[data-pkc-region="entry-list"]').locator('[data-pkc-action="select-entry"][data-pkc-lid="src"]').first().click();
+  await entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid="src"]').first().click();
   await page.waitForTimeout(500);
 
   // body の link(entry:tl#log/log-15)を click
