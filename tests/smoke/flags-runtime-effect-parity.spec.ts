@@ -23,17 +23,10 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bootReady } from './_helpers/boot-ready';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = resolve(__dirname, '..', '..', 'bench-fixtures', 'c-100.json');
-
-async function bootReady(page: Page): Promise<void> {
-  await expect(page.locator('#pkc-root')).toHaveAttribute(
-    'data-pkc-phase',
-    'ready',
-    { timeout: 15_000 },
-  );
-}
 
 async function seedFixture(page: Page): Promise<void> {
   const containerJson = readFileSync(FIXTURE, 'utf-8');

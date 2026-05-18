@@ -13,12 +13,12 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 test('L-5 行頭 align prefix:HTML + computed text-align で center / right / left 解決', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
-  const shell = page.locator('#pkc-root');
-  await shell.waitFor();
+  await bootReady(page);
 
   // 直接 markdown を render して、その HTML を test container に inject。
   // entry の view-mode 切替フローに依存せず、CSS 適用と computed style だけ

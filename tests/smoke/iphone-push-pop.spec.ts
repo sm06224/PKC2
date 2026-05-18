@@ -21,6 +21,7 @@
  * of the smoke suite (`app-launch`, `theme-switching`, …).
  */
 import { test, expect } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 test.describe('iPhone shell (pointer:coarse + 375 px)', () => {
   test.use({ hasTouch: true, isMobile: true });
@@ -29,7 +30,7 @@ test.describe('iPhone shell (pointer:coarse + 375 px)', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/pkc2.html');
     const root = page.locator('#pkc-root');
-    await root.waitFor({ state: 'visible' });
+    await bootReady(page);
 
     // Boot lands on the list page; mobile header is the active
     // chrome (the desktop `<header>` is `display: none`).
@@ -106,7 +107,7 @@ test.describe('iPhone shell (pointer:coarse + 375 px)', () => {
     });
     await page.goto('/pkc2.html');
     const root = page.locator('#pkc-root');
-    await root.waitFor({ state: 'visible' });
+    await bootReady(page);
     await expect(root).toHaveAttribute('data-pkc-mobile-page', 'list');
 
     const sidebarLayout = await page
@@ -124,7 +125,7 @@ test.describe('iPhone shell (pointer:coarse + 375 px)', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/pkc2.html');
     const root = page.locator('#pkc-root');
-    await root.waitFor({ state: 'visible' });
+    await bootReady(page);
 
     // Create + commit one entry so we have something to edit.
     await page.locator('[data-pkc-action="mobile-open-drawer"]').first().click();
@@ -154,7 +155,7 @@ test.describe('desktop fallback (no touch + narrow window)', () => {
   test('Full HD user shrinking the window past 640 px keeps desktop chrome', async ({ page }) => {
     await page.setViewportSize({ width: 600, height: 800 });
     await page.goto('/pkc2.html');
-    await page.locator('#pkc-root').waitFor({ state: 'visible' });
+    await bootReady(page);
 
     // Mobile header MUST be hidden — only the desktop header is
     // visible, regardless of how narrow the window is.

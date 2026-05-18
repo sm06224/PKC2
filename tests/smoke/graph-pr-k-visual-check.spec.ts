@@ -6,16 +6,14 @@
  * for user review.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, type Page } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 async function setup(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
-  const shell = page.locator('#pkc-root');
-  // CI flake fix (2026-05-17):`shell.waitFor()` は #pkc-root の存在のみ
-  // 確認。phase=ready(IDB read + 初回 render 完了)を待たないため、CI
-  // 高負荷時(workers=2 × shard 4 = 8 parallel)に reload 後の renderer
-  // 未完成 → tab.waitFor() 30s timeout flake が発生していた。
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  // canonical bootReady(2026-05-18 reform):src 側 `window.PKC.bootReady`
+  // Promise を await、SYS_INIT_COMPLETE + 初回 render 完了を保証。
+  await bootReady(page);
 
   // Seed 5 entries with relations so edges actually appear.
   await page.evaluate(async () => {
@@ -60,8 +58,8 @@ async function setup(page: Page): Promise<void> {
     });
   });
   await page.reload();
-  // reload 後も同様に phase=ready を待つ(seeded entry の re-render 完了)。
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  // reload 後も canonical bootReady を待つ(seeded entry の再 render 完了)。
+  await bootReady(page);
 
   // Switch to graph.
   const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]');

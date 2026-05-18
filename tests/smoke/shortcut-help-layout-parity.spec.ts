@@ -13,15 +13,8 @@
  * Phase 8 順序性:open-shortcut-help action → overlay 描画 →
  * computed style が grid + overflow auto。
  */
-import { test, expect, type Page } from '@playwright/test';
-
-async function bootReady(page: Page): Promise<void> {
-  await expect(page.locator('#pkc-root')).toHaveAttribute(
-    'data-pkc-phase',
-    'ready',
-    { timeout: 15_000 },
-  );
-}
+import { test, expect } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 test('shortcut help — card fits in viewport, table is multi-column scrollable grid', async ({
   page,

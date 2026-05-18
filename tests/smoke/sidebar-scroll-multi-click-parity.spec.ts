@@ -17,14 +17,7 @@
  *      SELECT_ENTRY のチェーンで scroll 保持
  */
 import { test, expect, type Page } from '@playwright/test';
-
-async function bootReady(page: Page): Promise<void> {
-  await expect(page.locator('#pkc-root')).toHaveAttribute(
-    'data-pkc-phase',
-    'ready',
-    { timeout: 15_000 },
-  );
-}
+import { bootReady } from './_helpers/boot-ready';
 
 async function seedFlatEntries(page: Page, count: number): Promise<void> {
   await page.evaluate(async (n: number) => {

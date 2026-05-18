@@ -17,14 +17,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-
-async function bootReady(page: Page): Promise<void> {
-  await expect(page.locator('#pkc-root')).toHaveAttribute(
-    'data-pkc-phase',
-    'ready',
-    { timeout: 15_000 },
-  );
-}
+import { bootReady } from './_helpers/boot-ready';
 
 /** Seed a folder with one image attachment so contact-sheet is non-trivial. */
 async function seedFolderWithImage(page: Page): Promise<void> {
