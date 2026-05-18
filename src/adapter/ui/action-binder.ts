@@ -1214,6 +1214,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           if (currentState.multiSelectedLids.length > 0) {
             dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
           }
+          // Scroll preservation fix (2026-05-18、PR-XX scenario C 回帰修正):
+          // suppressAutoScroll の memo は **dispatch chain の前** に書く必要
+          // がある。旧実装は SET_LAST_FILER_SCOPE / SET_VIEW_MODE dispatch の
+          // **後** に書いていたため、その途中で renderer 走行 → 旧 lid を
+          // 基準に scrollIntoView 判定 → scroll drift > 8px の race を誘発。
+          // 先に memo を書くことで、3-dispatch chain の全 render で
+          // suppressAutoScroll 判定が正しく short-circuit する。
+          // Copilot 診断(2026-05-18、PR #471 後の Tier-B 失敗 trace)準拠。
+          suppressAutoScroll(lid);
           if (!stayInFiler && currentState.viewMode === 'filer') {
             // Phase 4 follow-up nav memory: snapshot the filer scope
             // before we leave, so a later Filer tab / back button
@@ -1240,7 +1249,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           if (!stayInFiler && currentState.viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
           }
-          suppressAutoScroll(lid);
           // PR-MMM (2026-05-06、user 修正指示5):sidebar からの単一
           // click は dblclick window(250ms)分だけ SELECT_ENTRY 発火
           // を delay する。同窓内で次の click が detail≥2 で来たら
