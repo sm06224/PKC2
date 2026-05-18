@@ -85,10 +85,10 @@ test('PR-XX scenario A: 5 sequential clicks at deep scroll preserve scrollTop', 
   // re-render が completion する前に entry-list 操作に入ると、CI 高負荷時
   // (2 worker 並列 + matrix shard 4 並列 = 8 parallel)に flake 化。
   // 実際の seeded entry が DOM に居ることを wait してから scroll 操作。
-  await expect(entryList).toBeVisible({ timeout: 15_000 });
+  await expect(entryList).toBeVisible();
   await expect(
     entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid^="seed-"]'),
-  ).toHaveCount(200, { timeout: 15_000 });
+  ).toHaveCount(200);
 
   await entryList.evaluate((el) => {
     (el as HTMLElement).scrollTop = 1500;
@@ -127,10 +127,10 @@ test('PR-XX scenario B: clicking near viewport bottom edge preserves scroll', as
   await bootReady(page);
 
   const entryList = page.locator('[data-pkc-region="entry-list"]');
-  await expect(entryList).toBeVisible({ timeout: 15_000 });
+  await expect(entryList).toBeVisible();
   await expect(
     entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid^="seed-"]'),
-  ).toHaveCount(100, { timeout: 15_000 });
+  ).toHaveCount(100);
 
   await entryList.evaluate((el) => {
     (el as HTMLElement).scrollTop = 800;
@@ -167,10 +167,10 @@ test('PR-XX scenario C: filer-mode → detail-mode switch via entry click preser
   // wait、その後 filer mode 切替で renderer が re-render するパスでも 100
   // entry が引き続き出ていることを wait してから scroll 操作。
   const initialList = page.locator('[data-pkc-region="entry-list"]');
-  await expect(initialList).toBeVisible({ timeout: 15_000 });
+  await expect(initialList).toBeVisible();
   await expect(
     initialList.locator('[data-pkc-action="select-entry"][data-pkc-lid^="seed-"]'),
-  ).toHaveCount(100, { timeout: 15_000 });
+  ).toHaveCount(100);
 
   // Switch to filer mode first.
   const filerTab = page.locator(
@@ -182,10 +182,10 @@ test('PR-XX scenario C: filer-mode → detail-mode switch via entry click preser
   await settleRAF(page);
 
   const entryList = page.locator('[data-pkc-region="entry-list"]');
-  await expect(entryList).toBeVisible({ timeout: 15_000 });
+  await expect(entryList).toBeVisible();
   await expect(
     entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid^="seed-"]'),
-  ).toHaveCount(100, { timeout: 15_000 });
+  ).toHaveCount(100);
 
   await entryList.evaluate((el) => {
     (el as HTMLElement).scrollTop = 600;
@@ -224,10 +224,10 @@ test('PR-XX scenario D: drift = 0 after 10 alternating arrow-down + click cycles
   await bootReady(page);
 
   const entryList = page.locator('[data-pkc-region="entry-list"]');
-  await expect(entryList).toBeVisible({ timeout: 15_000 });
+  await expect(entryList).toBeVisible();
   await expect(
     entryList.locator('[data-pkc-action="select-entry"][data-pkc-lid^="seed-"]'),
-  ).toHaveCount(200, { timeout: 15_000 });
+  ).toHaveCount(200);
 
   await entryList.evaluate((el) => {
     (el as HTMLElement).scrollTop = 1200;

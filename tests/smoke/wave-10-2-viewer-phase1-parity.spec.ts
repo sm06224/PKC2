@@ -27,10 +27,10 @@ test('Viewer popup: Phase 1 拡張(align / mark / em-dot)が visual に反映さ
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
 
   await page.locator('[data-pkc-field="title"]').first().fill('Viewer Phase 1 fixture');
   // reform-2026-05 PR-C 後:`<|` / `|>` 等は全部 'end' に正規化。viewer での
@@ -45,7 +45,7 @@ test('Viewer popup: Phase 1 拡張(align / mark / em-dot)が visual に反映さ
   ].join('\n');
   await page.locator('textarea[data-pkc-field="body"]').first().fill(body);
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // open-rendered-viewer button は <details data-pkc-region="action-bar-more">
   // 内に格納されているので、まず More 展開、その後 button click。

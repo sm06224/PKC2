@@ -27,23 +27,17 @@ import { test, expect, type Page } from '@playwright/test';
 async function bootAndCreateRedEntry(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 15_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Create a Text entry. Use the create button in the header.
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', {
-    timeout: 5_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('Red entry');
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 5_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Open color picker for the (now-selected) entry, click the red
   // swatch. The picker trigger is in the meta pane title row.

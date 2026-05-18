@@ -30,14 +30,14 @@ import { test, expect, type Page } from '@playwright/test';
 async function bootAndSeedOneText(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 }
 
 test('Filer tab click switches viewMode and paints filer-view region', async ({ page }) => {
@@ -53,7 +53,7 @@ test('Filer tab click switches viewMode and paints filer-view region', async ({ 
 
   // Filer region appears.
   const filerRegion = page.locator('[data-pkc-region="filer-view"]');
-  await expect(filerRegion).toBeVisible({ timeout: 15_000 });
+  await expect(filerRegion).toBeVisible();
 
   // Filer header (breadcrumb + subset label) is always rendered, both
   // when there are entries (table) and when empty.
@@ -88,6 +88,6 @@ test('default subset is explorer when folder has no display_profile', async ({ p
   await page.mouse.click(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
 
   const filerRegion = page.locator('[data-pkc-region="filer-view"]');
-  await expect(filerRegion).toBeVisible({ timeout: 15_000 });
+  await expect(filerRegion).toBeVisible();
   await expect(filerRegion).toHaveAttribute('data-pkc-subset', 'explorer');
 });

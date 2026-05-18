@@ -29,22 +29,22 @@ test('Viewer popup transclusion:`![label](entry:LID)` が他 entry の本文を�
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // 1) 埋め込み先 entry(other)を先に作成
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('埋め込み元エントリ');
   await page.locator('textarea[data-pkc-field="body"]').first().fill('これは埋め込まれる側の本文です。\n\n## 章 X\n\n本文 X');
   const otherSaveBtn = page.locator('[data-pkc-action="commit-edit"]').first();
   const otherLid = await otherSaveBtn.getAttribute('data-pkc-lid');
   expect(otherLid, 'other entry LID').toBeTruthy();
   await otherSaveBtn.click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // 2) ホスト entry を作成、本文に transclusion を含める
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('Viewer transclusion fixture');
   const hostBody = [
     '# ホスト entry の本文',
@@ -58,7 +58,7 @@ test('Viewer popup transclusion:`![label](entry:LID)` が他 entry の本文を�
   ].join('\n');
   await page.locator('textarea[data-pkc-field="body"]').first().fill(hostBody);
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // 3) Viewer popup を開く
   await page.locator('[data-pkc-region="action-bar-more"] summary').first().click();

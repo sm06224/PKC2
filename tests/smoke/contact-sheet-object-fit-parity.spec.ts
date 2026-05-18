@@ -157,7 +157,7 @@ test('book-base grid thumb img has computed object-fit: contain (PR-SS)', async 
   const folderRow = page
     .locator('[data-pkc-region="entry-list"] li.pkc-entry-item[data-pkc-lid="fld"]')
     .first();
-  await expect(folderRow).toBeVisible({ timeout: 15_000 });
+  await expect(folderRow).toBeVisible();
   const fbox = await folderRow.boundingBox();
   if (!fbox) throw new Error('folder row missing boundingBox');
   await page.mouse.click(fbox.x + fbox.width / 2, fbox.y + fbox.height / 2);
@@ -170,7 +170,7 @@ test('book-base grid thumb img has computed object-fit: contain (PR-SS)', async 
   await page.mouse.click(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
 
   const grid = page.locator('[data-pkc-region="filer-grid"].pkc-filer-grid-book-base');
-  await expect(grid).toBeVisible({ timeout: 15_000 });
+  await expect(grid).toBeVisible();
 
   const thumbImg = grid.locator('.pkc-filer-card-thumb img').first();
   await expect(thumbImg).toBeVisible();
@@ -191,7 +191,7 @@ test('contact-sheet thumb img has computed object-fit: contain (PR-KK)', async (
   const folderRow = page
     .locator('[data-pkc-region="entry-list"] li.pkc-entry-item[data-pkc-lid="fld"]')
     .first();
-  await expect(folderRow).toBeVisible({ timeout: 15_000 });
+  await expect(folderRow).toBeVisible();
   const fbox = await folderRow.boundingBox();
   if (!fbox) throw new Error('folder row missing boundingBox');
   await page.mouse.click(fbox.x + fbox.width / 2, fbox.y + fbox.height / 2);
@@ -206,7 +206,7 @@ test('contact-sheet thumb img has computed object-fit: contain (PR-KK)', async (
 
   // Grid in contact-sheet mode (folder profile sets it via display_profile_kind).
   const grid = page.locator('[data-pkc-region="filer-grid"].pkc-filer-grid-contact-sheet');
-  await expect(grid).toBeVisible({ timeout: 15_000 });
+  await expect(grid).toBeVisible();
 
   const thumbImg = grid.locator('.pkc-filer-card-thumb img').first();
   await expect(thumbImg).toBeVisible();

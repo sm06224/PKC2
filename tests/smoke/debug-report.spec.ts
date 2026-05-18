@@ -31,9 +31,7 @@ test('debug flag renders 🐞 button and downloads the report as a JSON file', a
   await page.goto('/pkc2.html?pkc-debug=*', { waitUntil: 'load' });
 
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 15_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   const reportBtn = page.locator('[data-pkc-region="debug-report-button"]');
   await expect(reportBtn).toBeVisible();
@@ -105,9 +103,7 @@ test('debug flag renders 🐞 button and downloads the report as a JSON file', a
 test('button does not appear without the debug flag', async ({ page }) => {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 15_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   const reportBtn = page.locator('[data-pkc-region="debug-report-button"]');
   expect(await reportBtn.count()).toBe(0);
 });

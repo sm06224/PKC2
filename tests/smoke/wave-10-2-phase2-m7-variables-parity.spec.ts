@@ -15,10 +15,10 @@ test('M-7 variables:`{{vars.x}}` が 3 surface で frontmatter 値に展開さ�
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('M-7 variables fixture');
 
   const body = [
@@ -50,7 +50,7 @@ test('M-7 variables:`{{vars.x}}` が 3 surface で frontmatter 値に展開さ�
   await ta.press('End');
   await page.waitForTimeout(700);
   const preview = page.locator('.pkc-text-edit-preview').first();
-  await expect(preview).toBeVisible({ timeout: 15_000 });
+  await expect(preview).toBeVisible();
 
   const previewText = (await preview.textContent()) ?? '';
   expect(previewText).toContain('案件 ALPHA-7 進捗');
@@ -70,7 +70,7 @@ test('M-7 variables:`{{vars.x}}` が 3 surface で frontmatter 値に展開さ�
 
   // 2) Save → Detail view(center pane)で同じ結果か確認
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   const rendered = page.locator('.pkc-view-body.pkc-md-rendered').first();
   await expect(rendered).toBeVisible({ timeout: 10_000 });
   const renderedText = (await rendered.textContent()) ?? '';

@@ -51,7 +51,7 @@ test('Data > Word click で生成された .docx に image が embed されて�
   const srcEntry = page.locator(
     '[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="src"]',
   ).first();
-  await expect(srcEntry).toBeVisible({ timeout: 15_000 });
+  await expect(srcEntry).toBeVisible();
   await srcEntry.click();
   await page.waitForTimeout(500);
 

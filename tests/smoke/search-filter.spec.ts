@@ -33,10 +33,10 @@ async function createTextEntry(page: Page, title: string): Promise<void> {
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill(title);
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 }
 
 test('search input filters sidebar entry list', async ({ page }) => {
@@ -48,7 +48,7 @@ test('search input filters sidebar entry list', async ({ page }) => {
 
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Use distinctive title prefixes so the search assertions are not
   // confused by any system entries (e.g. `__about__`) that may also
@@ -61,24 +61,24 @@ test('search input filters sidebar entry list', async ({ page }) => {
   // (`li.pkc-recent-item`) must not be counted because they ignore
   // the search filter.
   const entryList = page.locator('[data-pkc-region="sidebar"] li.pkc-entry-item');
-  await expect(entryList).toHaveCount(3, { timeout: 5_000 });
+  await expect(entryList).toHaveCount(3);
 
   // (1) Filter to the unique Charlie title.
   const search = page.locator('[data-pkc-field="search"]').first();
   await search.fill('OtherFixtureCharlie');
-  await expect(entryList).toHaveCount(1, { timeout: 5_000 });
+  await expect(entryList).toHaveCount(1);
   await expect(entryList.first()).toContainText('OtherFixtureCharlie');
 
   // (2) Clear via the input directly so we exercise the filter
   // pipeline rather than the clear-filters button (which is wired
   // through CLEAR_FILTERS — covered by vitest reducer tests).
   await search.fill('');
-  await expect(entryList).toHaveCount(3, { timeout: 5_000 });
+  await expect(entryList).toHaveCount(3);
 
   // (3) A second filter targets a multi-match prefix to prove the
   // pipeline is not just a one-shot — `Zulu` should leave 2 entries.
   await search.fill('Zulu');
-  await expect(entryList).toHaveCount(2, { timeout: 5_000 });
+  await expect(entryList).toHaveCount(2);
   for (const text of ['ZuluFilterAlpha', 'ZuluFilterBravo']) {
     await expect(entryList.filter({ hasText: text })).toHaveCount(1);
   }

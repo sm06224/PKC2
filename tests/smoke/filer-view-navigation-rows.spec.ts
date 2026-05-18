@@ -21,27 +21,27 @@ import { test, expect, type Page } from '@playwright/test';
 async function bootFilerWithNestedFolder(page: Page): Promise<{ outer: string; inner: string }> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Outer folder.
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('input[data-pkc-field="title"]').first().fill('Outer');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Inner folder (created while outer is selected → outer becomes parent).
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('input[data-pkc-field="title"]').first().fill('Inner');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Switch to filer (shows whichever folder is selected — Inner is selected
   // because it was the most recent commit).
@@ -49,7 +49,7 @@ async function bootFilerWithNestedFolder(page: Page): Promise<{ outer: string; i
   const tBox = await filerTab.boundingBox();
   if (!tBox) throw new Error('Filer tab has no boundingBox');
   await page.mouse.click(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible();
 
   const innerLid = await page
     .locator('[data-pkc-region="filer-view"]')
@@ -89,7 +89,6 @@ test('順序性: clicking the parent breadcrumb segment moves filer scope to the
   await expect(page.locator('[data-pkc-region="filer-view"]')).toHaveAttribute(
     'data-pkc-filer-scope-lid',
     outer,
-    { timeout: 5_000 },
   );
 });
 
@@ -98,23 +97,23 @@ test('at root scope, breadcrumb has only the Root segment (no ancestor folder bu
 }) => {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Seed only one root-level folder (no parent).
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('input[data-pkc-field="title"]').first().fill('Root Folder');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]');
   const tBox = await filerTab.boundingBox();
   if (!tBox) throw new Error('Filer tab has no boundingBox');
   await page.mouse.click(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible();
 
   await expect(page.locator('[data-pkc-filer-breadcrumb="root"]')).toBeVisible();
   await expect(page.locator('[data-pkc-filer-breadcrumb="current"]')).toBeVisible();

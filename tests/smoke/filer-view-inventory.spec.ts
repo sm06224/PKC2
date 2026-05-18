@@ -16,19 +16,19 @@ import { test, expect, type Page } from '@playwright/test';
 async function bootFiler(page: Page): Promise<string> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('input[data-pkc-field="title"]').first().fill('Watching');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]');
   const tBox = await filerTab.boundingBox();
   if (!tBox) throw new Error('Filer tab has no bbox');
   await page.mouse.click(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible();
   const folderLid = await page.locator('[data-pkc-region="filer-view"]').getAttribute('data-pkc-filer-scope-lid');
   if (!folderLid) throw new Error('Folder lid not resolved');
   return folderLid;

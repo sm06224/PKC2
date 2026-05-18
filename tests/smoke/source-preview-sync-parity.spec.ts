@@ -100,16 +100,12 @@ async function bootAndOpenTextEditor(page: Page): Promise<void> {
   });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 15_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', {
-    timeout: 5_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
 }
 
 /**

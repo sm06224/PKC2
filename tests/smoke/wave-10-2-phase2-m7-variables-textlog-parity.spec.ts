@@ -22,17 +22,17 @@ test('TEXTLOG vars:per-log frontmatter から `{{vars.x}}` 展開、frontmatter 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Create a TEXTLOG entry
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="textlog"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('TEXTLOG vars fixture');
 
   // Save & re-enter to use the textlog append textarea (Edit / commit-edit
   // flow doesn't support inserting log entries with raw frontmatter text directly).
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   const logText = [
     '---',
@@ -53,7 +53,7 @@ test('TEXTLOG vars:per-log frontmatter から `{{vars.x}}` 展開、frontmatter 
 
   // Use the textlog append area to add a new log
   const appendInput = page.locator('textarea[data-pkc-field="textlog-append-text"]').first();
-  await expect(appendInput).toBeVisible({ timeout: 15_000 });
+  await expect(appendInput).toBeVisible();
   await appendInput.fill(logText);
   // + Add button
   await page.locator('[data-pkc-action="append-log-entry"]').first().click();
@@ -61,7 +61,7 @@ test('TEXTLOG vars:per-log frontmatter から `{{vars.x}}` 展開、frontmatter 
 
   // Render check: log article should have expanded vars + no frontmatter visible
   const logEl = page.locator('.pkc-textlog-log .pkc-textlog-text').first();
-  await expect(logEl).toBeVisible({ timeout: 15_000 });
+  await expect(logEl).toBeVisible();
   const text = (await logEl.textContent()) ?? '';
 
   console.log('TEXTLOG log render observed:', text.slice(0, 300));

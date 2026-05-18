@@ -63,11 +63,11 @@ async function setup(page: Page): Promise<void> {
 
   // Switch to graph.
   const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]');
-  await tab.waitFor({ timeout: 15_000 });
+  await tab.waitFor();
   const tbox = await tab.boundingBox();
   if (!tbox) throw new Error('No graph tab');
   await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
-  await page.locator('[data-pkc-region="graph-canvas"]').waitFor({ timeout: 15_000 });
+  await page.locator('[data-pkc-region="graph-canvas"]').waitFor();
   // Allow layout + initial draw.
   await page.evaluate(() => new Promise((r) => setTimeout(r, 200)));
 }

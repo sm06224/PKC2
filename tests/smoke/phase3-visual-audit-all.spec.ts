@@ -25,13 +25,13 @@ async function bootApp(page: Page) {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 }
 
 async function createTextEntry(page: Page, title: string, body: string) {
   const shell = page.locator('#pkc-root');
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill(title);
   await page.locator('textarea[data-pkc-field="body"]').first().evaluate((el, value) => {
     const ta = el as HTMLTextAreaElement;
@@ -40,7 +40,7 @@ async function createTextEntry(page: Page, title: string, body: string) {
     ta.dispatchEvent(new Event('change', { bubbles: true }));
   }, body);
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 }
 
 test.describe('Phase 3 visual audit:視覚を持つ feature の実機確認', () => {
@@ -135,7 +135,7 @@ body content with **bold**
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/pkc2.html?pkc-debug=flags', { waitUntil: 'load' });
     const shell = page.locator('#pkc-root');
-    await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+    await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
     // Flags inspector overlay が visible になるトリガー(現実装の起動 method
     // が flag inspector button or `Ctrl+Shift+F` か等は実装依存。本 audit は
     // 「URL flag が ready 状態に到達するか」だけ確認、複雑な keyboard 操作は

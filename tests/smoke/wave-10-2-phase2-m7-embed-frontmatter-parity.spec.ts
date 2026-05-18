@@ -37,20 +37,20 @@ test('Embed TEXTLOG with frontmatter:vars 展開 + frontmatter strip(center pane
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // 1. Create a TEXTLOG entry that will be embedded.
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="textlog"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('Embed FM source log');
   const sourceSaveBtn = page.locator('[data-pkc-action="commit-edit"]').first();
   const sourceLid = await sourceSaveBtn.getAttribute('data-pkc-lid');
   expect(sourceLid, 'source TEXTLOG LID').toBeTruthy();
   await sourceSaveBtn.click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Append a log with frontmatter + vars.
   const logText = [
@@ -65,7 +65,7 @@ test('Embed TEXTLOG with frontmatter:vars 展開 + frontmatter strip(center pane
     '**{{vars.audience}}** 向けの本文です。',
   ].join('\n');
   const appendInput = page.locator('textarea[data-pkc-field="textlog-append-text"]').first();
-  await expect(appendInput).toBeVisible({ timeout: 15_000 });
+  await expect(appendInput).toBeVisible();
   await appendInput.fill(logText);
   await page.locator('[data-pkc-action="append-log-entry"]').first().click();
   await page.waitForTimeout(400);
@@ -75,12 +75,12 @@ test('Embed TEXTLOG with frontmatter:vars 展開 + frontmatter strip(center pane
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('Embed FM host');
   const hostBody = ['# Host', '', `![ソース](entry:${sourceLid})`, '', '末尾。'].join('\n');
   await page.locator('textarea[data-pkc-field="body"]').first().fill(hostBody);
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // 3. Verify center pane embed.
   const transclusion = page.locator('section.pkc-transclusion').first();

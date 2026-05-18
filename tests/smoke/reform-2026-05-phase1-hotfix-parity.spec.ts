@@ -148,18 +148,18 @@ async function bootApp(page: Page) {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   return shell;
 }
 
 async function createTextEntry(page: Page, title: string, body: string) {
   const shell = page.locator('#pkc-root');
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill(title);
   await page.locator('textarea[data-pkc-field="body"]').first().fill(body);
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 }
 
 // ============================================================
@@ -382,12 +382,12 @@ test.describe('reform-2026-05 hotfix 5 件 + AI-formal/human-simple 複合 visua
     await createTextEntry(page, 'Split View parity', HOTFIX_FIXTURE);
     await page.locator('[data-pkc-action="begin-edit"]').first().click();
     const shell = page.locator('#pkc-root');
-    await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+    await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
 
     const wrapper = page.locator('.pkc-text-split-editor').first();
-    await expect(wrapper).toBeVisible({ timeout: 15_000 });
+    await expect(wrapper).toBeVisible();
     const preview = wrapper.locator('.pkc-text-edit-preview.pkc-md-rendered').first();
-    await expect(preview).toBeVisible({ timeout: 15_000 });
+    await expect(preview).toBeVisible();
 
     const observed = await preview.evaluate((root) => {
       const els = root.querySelectorAll('[data-pkc-source-line]');
@@ -447,7 +447,7 @@ test.describe('reform-2026-05 hotfix 5 件 + AI-formal/human-simple 複合 visua
 
     // plain text:markdown 化されない
     await page.goto('/pkc2.html', { waitUntil: 'load' });
-    await expect(page.locator('#pkc-root')).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+    await expect(page.locator('#pkc-root')).toHaveAttribute('data-pkc-phase', 'ready');
     await createTextEntry(page, 'plain text', PLAIN_TEXT_FIXTURE);
     const plainArea = page.locator('.pkc-view-body').first();
     const plainObs = await plainArea.evaluate((root) => ({

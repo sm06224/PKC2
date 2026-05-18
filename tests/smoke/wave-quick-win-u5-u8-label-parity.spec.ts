@@ -69,21 +69,21 @@ test('U5: subset profile select is grouped via <optgroup> (Layout / Catalogue / 
   // Filer view へ切替 → meta pane に subset select が出る前に folder
   // を選択する必要がある(folder archetype 限定で出る)。
   const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]');
-  await filerTab.waitFor({ timeout: 5_000 });
+  await filerTab.waitFor();
   const ftbox = await filerTab.boundingBox();
   if (!ftbox) throw new Error('filer tab missing');
   await page.mouse.click(ftbox.x + ftbox.width / 2, ftbox.y + ftbox.height / 2);
-  await page.locator('[data-pkc-region="filer-view"]').waitFor({ timeout: 5_000 });
+  await page.locator('[data-pkc-region="filer-view"]').waitFor();
 
   // sidebar から folder を click(meta pane を folder context にする)。
   const folderRow = page.locator('[data-pkc-action="select-entry"][data-pkc-lid="fold"]').first();
-  await folderRow.waitFor({ timeout: 5_000 });
+  await folderRow.waitFor();
   const fbox = await folderRow.boundingBox();
   if (!fbox) throw new Error('folder row missing');
   await page.mouse.click(fbox.x + fbox.width / 2, fbox.y + fbox.height / 2);
 
   const select = page.locator('select[data-pkc-action="set-display-profile"]').first();
-  await select.waitFor({ timeout: 5_000 });
+  await select.waitFor();
 
   // Consumer behavior verification: <optgroup> structure + labels.
   const groupStructure = await select.evaluate((s) => {
@@ -118,14 +118,14 @@ test('U8: graph mode select labels are short (no parenthetical descriptions)', a
 
   // Graph view へ切替。
   const graphTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]');
-  await graphTab.waitFor({ timeout: 5_000 });
+  await graphTab.waitFor();
   const gtbox = await graphTab.boundingBox();
   if (!gtbox) throw new Error('graph tab missing');
   await page.mouse.click(gtbox.x + gtbox.width / 2, gtbox.y + gtbox.height / 2);
-  await page.locator('[data-pkc-region="graph-canvas"]').waitFor({ timeout: 5_000 });
+  await page.locator('[data-pkc-region="graph-canvas"]').waitFor();
 
   const modeSelect = page.locator('select[data-pkc-action="set-graph-mode"]').first();
-  await modeSelect.waitFor({ timeout: 5_000 });
+  await modeSelect.waitFor();
 
   // Consumer verification: option texts match new short labels.
   const labels = await modeSelect.evaluate((s) => {

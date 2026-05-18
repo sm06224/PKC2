@@ -45,9 +45,7 @@ function todayKeyLocal(): string {
 async function bootAndSeedOneTodo(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 15_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   // The view-mode tabs are hidden until at least one user entry
   // exists (renderer.ts:3522), so seed one Todo. The form-fill is
   // intentionally minimal — we only need the calendar to render.
@@ -55,14 +53,10 @@ async function bootAndSeedOneTodo(page: Page): Promise<void> {
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="todo"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', {
-    timeout: 5_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('Calendar boot probe');
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 5_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 }
 
 test('calendar: today cell carries today marker AND paints at visible coords', async ({

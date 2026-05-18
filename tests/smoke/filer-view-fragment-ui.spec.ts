@@ -30,14 +30,14 @@ async function shot(page: Page, name: string): Promise<void> {
 async function bootAndCreateUrlBackedText(page: Page, url: string): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Create a TEXT entry with frontmatter containing `url:` field.
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   // Inject body via DOM directly so we don't depend on textarea key
   // helpers ordering with frontmatter `---`.
   const body = `---\nkind: video\nurl: ${url}\n---\n# 視聴メモ\n`;
@@ -48,7 +48,7 @@ async function bootAndCreateUrlBackedText(page: Page, url: string): Promise<void
     ta.dispatchEvent(new Event('input', { bubbles: true }));
   }, body);
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 }
 
 test('Properties pane renders frontmatter url as a link with fragment badge', async ({ page }) => {
@@ -73,14 +73,14 @@ test('Filer card grid shows fragment badge on book/video subset', async ({ page 
   // Seed a folder + an URL-backed video TEXT entry under it.
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Folder.
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('input[data-pkc-field="title"]').first().fill('Watching');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   const folderLid: string | null = await page.evaluate(() => {
     // Sidebar tree marks folder entries with data-pkc-folder="true".
@@ -91,7 +91,7 @@ test('Filer card grid shows fragment badge on book/video subset', async ({ page 
 
   // TEXT entry with kind: video frontmatter (created while folder selected).
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.evaluate(() => {
     const ta = document.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
     if (!ta) throw new Error('No body textarea');
@@ -100,7 +100,7 @@ test('Filer card grid shows fragment badge on book/video subset', async ({ page 
   });
   await page.locator('input[data-pkc-field="title"]').first().fill('Note');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Re-select the folder via sidebar list item click (folder lid).
   await page
@@ -116,7 +116,7 @@ test('Filer card grid shows fragment badge on book/video subset', async ({ page 
 
   // Switch to video-base subset via the meta pane editor.
   const select = page.locator('select[data-pkc-action="set-display-profile"]').first();
-  await expect(select).toBeVisible({ timeout: 15_000 });
+  await expect(select).toBeVisible();
   await select.selectOption('video-base');
   await expect(page.locator('[data-pkc-region="filer-view"]')).toHaveAttribute(
     'data-pkc-subset',

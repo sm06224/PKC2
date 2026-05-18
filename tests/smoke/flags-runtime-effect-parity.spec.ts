@@ -77,7 +77,7 @@ test('URL flag `?pkc-flag=recent.default_limit=5` is honored at boot', async ({
   const rows = page.locator(
     '[data-pkc-region="recent-entries"] [data-pkc-action="select-recent-entry"]',
   );
-  await expect(rows).toHaveCount(5, { timeout: 5_000 });
+  await expect(rows).toHaveCount(5);
 });
 
 test('inspector-edit takes effect immediately — no reload (regression: import-time-capture bug)', async ({

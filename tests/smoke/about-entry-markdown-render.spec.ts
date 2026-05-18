@@ -11,7 +11,7 @@ test('About entry の Highlights / Known limitations が markdown render', async
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // About entry を選択(shell-menu の About button or version section)
   // dropdown menu を開いてから select-about を click
@@ -22,11 +22,11 @@ test('About entry の Highlights / Known limitations が markdown render', async
   }
   const aboutBtn = page.locator('[data-pkc-action="select-about"]').first();
   await aboutBtn.click({ force: true });
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // About region 確認
   const aboutRegion = page.locator('[data-pkc-region="about-release"]').first();
-  await expect(aboutRegion).toBeVisible({ timeout: 15_000 });
+  await expect(aboutRegion).toBeVisible();
 
   // Highlights list の最初の li 内に <strong> または <em> が存在
   const highlightsList = page.locator('[data-pkc-region="about-release-highlights"]').first();

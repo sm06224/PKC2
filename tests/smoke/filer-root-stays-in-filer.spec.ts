@@ -18,24 +18,24 @@ import { test, expect, type Page } from '@playwright/test';
 async function setup(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Create a folder.
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('input[data-pkc-field="title"]').first().fill('Sample Folder');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Switch to Filer.
   const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]');
   const tbox = await tab.boundingBox();
   if (!tbox) throw new Error('Filer tab no boundingBox');
   await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible();
 }
 
 test('clicking Root in filer breadcrumb keeps the user in filer view (root scope)', async ({

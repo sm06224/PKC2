@@ -32,9 +32,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function bootAndOpenKanbanWithOneTodo(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 15_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Create a Todo entry from the header (defaults to status='open').
   const createTodo = page
@@ -42,15 +40,11 @@ async function bootAndOpenKanbanWithOneTodo(page: Page): Promise<void> {
     .first();
   await expect(createTodo).toBeVisible();
   await createTodo.click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', {
-    timeout: 5_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('Kanban DnD probe');
   // Commit via the action bar's Save (action-binder routes to COMMIT_EDIT).
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 5_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Switch to kanban view.
   await page
@@ -154,7 +148,7 @@ test('kanban DnD: drag a card from open → done updates state', async ({
   const doneCards = page.locator(
     '[data-pkc-region="kanban-view"] .pkc-kanban-column[data-pkc-kanban-status="done"] [data-pkc-kanban-draggable="true"]',
   );
-  await expect(doneCards).toHaveCount(1, { timeout: 5_000 });
+  await expect(doneCards).toHaveCount(1);
   await expect(openCardsRemaining).toHaveCount(0);
 
   // Confirm via lid: the card with our expected lid is the one in done.
