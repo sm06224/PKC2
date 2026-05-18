@@ -44,7 +44,15 @@ test('Data > Word click で生成された .docx に image が embed されて�
   await bootReady(page);
 
   // src TEXT を選択
-  await page.locator('[data-pkc-region="entry-list"]').locator('[data-pkc-action="select-entry"][data-pkc-lid="src"]').first().click();
+  // CI flake fix v2 (2026-05-18):chained `.locator().locator().first().click()`
+  // は click が element appear を待つが、暗黙の per-action 待ち時間しかない。
+  // direct descendant + explicit `toBeVisible` wait に分離して、CI 高負荷時の
+  // 段階 5 完了直後の rendering tail で element が見つからない race を回避。
+  const srcEntry = page.locator(
+    '[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="src"]',
+  ).first();
+  await expect(srcEntry).toBeVisible({ timeout: 15_000 });
+  await srcEntry.click();
   await page.waitForTimeout(500);
 
   // Data... menu open
