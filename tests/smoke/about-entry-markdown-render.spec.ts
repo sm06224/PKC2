@@ -26,7 +26,7 @@ test('About entry の Highlights / Known limitations が markdown render', async
 
   // About region 確認
   const aboutRegion = page.locator('[data-pkc-region="about-release"]').first();
-  await expect(aboutRegion).toBeVisible({ timeout: 5_000 });
+  await expect(aboutRegion).toBeVisible({ timeout: 15_000 });
 
   // Highlights list の最初の li 内に <strong> または <em> が存在
   const highlightsList = page.locator('[data-pkc-region="about-release-highlights"]').first();

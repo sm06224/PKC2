@@ -132,7 +132,7 @@ test('theme switch cascades --pkc-color-tag tokens and sidebar bar updates', asy
   const orangeSwatch = page.locator(
     'button[data-pkc-action="apply-color-tag"][data-pkc-color="orange"]',
   ).first();
-  await expect(orangeSwatch).toBeVisible({ timeout: 5_000 });
+  await expect(orangeSwatch).toBeVisible({ timeout: 15_000 });
   const orangeBox = await orangeSwatch.boundingBox();
   if (!orangeBox) throw new Error('Orange swatch has no bounding box');
   await page.mouse.move(

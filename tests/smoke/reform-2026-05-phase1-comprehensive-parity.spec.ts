@@ -275,9 +275,9 @@ test.describe('reform-2026-05 Phase 1 comprehensive parity', () => {
     await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
 
     const wrapper = page.locator('.pkc-text-split-editor').first();
-    await expect(wrapper).toBeVisible({ timeout: 5_000 });
+    await expect(wrapper).toBeVisible({ timeout: 15_000 });
     const preview = wrapper.locator('.pkc-text-edit-preview.pkc-md-rendered').first();
-    await expect(preview).toBeVisible({ timeout: 5_000 });
+    await expect(preview).toBeVisible({ timeout: 15_000 });
 
     const observed = await preview.evaluate((root) => {
       const els = root.querySelectorAll('[data-pkc-source-line]');

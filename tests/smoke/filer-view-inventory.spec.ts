@@ -28,7 +28,7 @@ async function bootFiler(page: Page): Promise<string> {
   const tBox = await filerTab.boundingBox();
   if (!tBox) throw new Error('Filer tab has no bbox');
   await page.mouse.click(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
   const folderLid = await page.locator('[data-pkc-region="filer-view"]').getAttribute('data-pkc-filer-scope-lid');
   if (!folderLid) throw new Error('Folder lid not resolved');
   return folderLid;

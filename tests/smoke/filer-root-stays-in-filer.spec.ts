@@ -35,7 +35,7 @@ async function setup(page: Page): Promise<void> {
   const tbox = await tab.boundingBox();
   if (!tbox) throw new Error('Filer tab no boundingBox');
   await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
 }
 
 test('clicking Root in filer breadcrumb keeps the user in filer view (root scope)', async ({

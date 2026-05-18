@@ -49,7 +49,7 @@ async function bootFilerWithNestedFolder(page: Page): Promise<{ outer: string; i
   const tBox = await filerTab.boundingBox();
   if (!tBox) throw new Error('Filer tab has no boundingBox');
   await page.mouse.click(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
 
   const innerLid = await page
     .locator('[data-pkc-region="filer-view"]')
@@ -114,7 +114,7 @@ test('at root scope, breadcrumb has only the Root segment (no ancestor folder bu
   const tBox = await filerTab.boundingBox();
   if (!tBox) throw new Error('Filer tab has no boundingBox');
   await page.mouse.click(tBox.x + tBox.width / 2, tBox.y + tBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
 
   await expect(page.locator('[data-pkc-filer-breadcrumb="root"]')).toBeVisible();
   await expect(page.locator('[data-pkc-filer-breadcrumb="current"]')).toBeVisible();

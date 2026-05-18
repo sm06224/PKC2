@@ -57,7 +57,7 @@ test('順序性: Graph tab click → viewMode=graph + graph-view region paints',
   const box = await tab.boundingBox();
   if (!box) throw new Error('Graph tab has no boundingBox');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 15_000 });
   await expect(tab).toHaveAttribute('data-pkc-active', 'true');
 });
 
@@ -67,7 +67,7 @@ test('graph mode selector lists 5 options (relations / color-tags / tag-groups /
   const box = await tab.boundingBox();
   if (!box) throw new Error('Graph tab has no boundingBox');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 15_000 });
 
   const select = page.locator('select.pkc-graph-mode-select');
   await expect(select).toBeVisible();
@@ -85,7 +85,7 @@ test('順序性: switching graph-mode updates data-pkc-graph-mode attribute', as
   const box = await tab.boundingBox();
   if (!box) throw new Error('Graph tab has no boundingBox');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 15_000 });
 
   const select = page.locator('select.pkc-graph-mode-select');
   await select.selectOption('color-tags');

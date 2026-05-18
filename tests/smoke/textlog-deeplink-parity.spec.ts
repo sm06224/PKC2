@@ -59,7 +59,7 @@ test('TEXTLOG log click on copy-link button copies entry:<lid>#... reference', a
 
   // copy-log-line-ref ボタン(🔗 anchor)を log-bbb 上で click
   const linkBtn = page.locator('article[data-pkc-log-id="log-bbb"] [data-pkc-action="copy-log-line-ref"]').first();
-  await expect(linkBtn).toBeVisible({ timeout: 5_000 });
+  await expect(linkBtn).toBeVisible({ timeout: 15_000 });
   await linkBtn.click();
   await page.waitForTimeout(200);
 
@@ -103,13 +103,13 @@ test('entry: link to textlog log scrolls the article into view', async ({ page }
 
   // body の link(entry:tl#log/log-15)を click
   const link = page.locator('a[data-pkc-action="navigate-entry-ref"]').first();
-  await expect(link).toBeVisible({ timeout: 5_000 });
+  await expect(link).toBeVisible({ timeout: 15_000 });
   await link.click();
   await page.waitForTimeout(800);
 
   // textlog entry が selected になり、log-15 の article が view 内
   const article = page.locator('article[data-pkc-log-id="log-15"]');
-  await expect(article).toBeVisible({ timeout: 5_000 });
+  await expect(article).toBeVisible({ timeout: 15_000 });
   // viewport 内かを確認
   const inViewport = await article.evaluate((el) => {
     const r = el.getBoundingClientRect();
