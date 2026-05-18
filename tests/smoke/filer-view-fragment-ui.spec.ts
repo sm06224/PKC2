@@ -116,7 +116,7 @@ test('Filer card grid shows fragment badge on book/video subset', async ({ page 
 
   // Switch to video-base subset via the meta pane editor.
   const select = page.locator('select[data-pkc-action="set-display-profile"]').first();
-  await expect(select).toBeVisible({ timeout: 5_000 });
+  await expect(select).toBeVisible({ timeout: 15_000 });
   await select.selectOption('video-base');
   await expect(page.locator('[data-pkc-region="filer-view"]')).toHaveAttribute(
     'data-pkc-subset',

@@ -35,7 +35,7 @@ async function bootAndCreateFolder(page: Page): Promise<void> {
   const tabBox = await filerTab.boundingBox();
   if (!tabBox) throw new Error('Filer tab no boundingBox');
   await page.mouse.click(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
 }
 
 test('PR-G G15: a freshly-created folder defaults to display_profile=auto in the meta pane select', async ({

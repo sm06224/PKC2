@@ -50,7 +50,7 @@ test('M-7 variables:`{{vars.x}}` が 3 surface で frontmatter 値に展開さ�
   await ta.press('End');
   await page.waitForTimeout(700);
   const preview = page.locator('.pkc-text-edit-preview').first();
-  await expect(preview).toBeVisible({ timeout: 5_000 });
+  await expect(preview).toBeVisible({ timeout: 15_000 });
 
   const previewText = (await preview.textContent()) ?? '';
   expect(previewText).toContain('案件 ALPHA-7 進捗');

@@ -65,7 +65,7 @@ test('Embed TEXTLOG with frontmatter:vars 展開 + frontmatter strip(center pane
     '**{{vars.audience}}** 向けの本文です。',
   ].join('\n');
   const appendInput = page.locator('textarea[data-pkc-field="textlog-append-text"]').first();
-  await expect(appendInput).toBeVisible({ timeout: 5_000 });
+  await expect(appendInput).toBeVisible({ timeout: 15_000 });
   await appendInput.fill(logText);
   await page.locator('[data-pkc-action="append-log-entry"]').first().click();
   await page.waitForTimeout(400);

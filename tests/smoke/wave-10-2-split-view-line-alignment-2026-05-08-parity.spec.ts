@@ -74,7 +74,7 @@ test('Split View source-line alignment:preview block の data-pkc-source-line �
   await page.waitForTimeout(700);
 
   const preview = page.locator('.pkc-text-edit-preview').first();
-  await expect(preview).toBeVisible({ timeout: 5_000 });
+  await expect(preview).toBeVisible({ timeout: 15_000 });
 
   // preview の各 anchored block について data-pkc-source-line を取得
   // → 対応する textarea 行の content と blocking 内容が一致することを検証

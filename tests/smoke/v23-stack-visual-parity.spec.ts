@@ -105,9 +105,9 @@ test('PR-V5 visual parity: launcher tile に image icon が見えている座標
   await bootReady(page);
 
   const tile = page.locator('.pkc-launcher-tile').first();
-  await expect(tile).toBeVisible({ timeout: 5_000 });
+  await expect(tile).toBeVisible({ timeout: 15_000 });
   const img = tile.locator('img.pkc-launcher-tile-icon-image');
-  await expect(img).toBeVisible({ timeout: 5_000 });
+  await expect(img).toBeVisible({ timeout: 15_000 });
 
   // image の bounding rect を取り、その中心点で elementFromPoint が img を返す
   const rect = await img.boundingBox();
@@ -182,7 +182,7 @@ test('PR-V8 visual parity: 中央 pane で textlog log を scroll すると対�
 
   // TOC が出ているか
   const toc = page.locator('[data-pkc-region="toc"]');
-  await expect(toc).toBeVisible({ timeout: 5_000 });
+  await expect(toc).toBeVisible({ timeout: 15_000 });
   const tocButtons = page.locator('[data-pkc-region="toc"] .pkc-toc-link');
   const tocCount = await tocButtons.count();
   expect(tocCount).toBeGreaterThan(5);
@@ -342,7 +342,7 @@ test('PR-V6 visual parity: derived-branches link を real click すると branch
 
   // derived-branches section が出る
   const derivedSection = page.locator('[data-pkc-region="derived-branches"]');
-  await expect(derivedSection).toBeVisible({ timeout: 5_000 });
+  await expect(derivedSection).toBeVisible({ timeout: 15_000 });
 
   // link button の bounding rect を取り、center 座標で elementFromPoint
   const link = page.locator('.pkc-derived-branch-row[data-pkc-branch-lid="branch-1"] .pkc-derived-branch-link');

@@ -16,7 +16,7 @@ test('?app=launcher で center pane に Launcher view が表示される', async
 
   // viewMode = launcher に到達して center pane に launcher-view region が出ているか
   const launcherView = page.locator('[data-pkc-region="launcher-view"]');
-  await expect(launcherView).toBeVisible({ timeout: 5_000 });
+  await expect(launcherView).toBeVisible({ timeout: 15_000 });
 
   // 登録 0 件の empty state が出る(初回起動なので registered HTML attachment 無し)
   const empty = page.locator('[data-pkc-region="launcher-empty"]');

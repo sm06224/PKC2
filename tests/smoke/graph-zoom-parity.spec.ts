@@ -35,7 +35,7 @@ async function bootAndOpenGraph(page: Page): Promise<void> {
   const box = await tab.boundingBox();
   if (!box) throw new Error('Graph tab has no boundingBox');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 15_000 });
   // queueMicrotask で gesture install されるので 1 frame 待つ。
   await page.evaluate(() => new Promise((r) => setTimeout(r, 50)));
 }

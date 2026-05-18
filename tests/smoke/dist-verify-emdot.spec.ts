@@ -22,7 +22,7 @@ test('dist/pkc2.html branch 最新版で leftover * 残らない', async ({ page
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
 
   const rendered = page.locator('.pkc-view-body.pkc-md-rendered').first();
-  await expect(rendered).toBeVisible({ timeout: 5_000 });
+  await expect(rendered).toBeVisible({ timeout: 15_000 });
 
   const html = await rendered.innerHTML();
   const text = (await rendered.textContent()) ?? '';

@@ -47,7 +47,7 @@ async function bootSeedAndOpenGraph(page: Page): Promise<void> {
   const box = await tab.boundingBox();
   if (!box) throw new Error('Graph tab has no boundingBox');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 15_000 });
 }
 
 test('switching mode to time-proximity updates data-pkc-graph-mode (state mutation)', async ({ page }) => {

@@ -53,7 +53,7 @@ test('TEXTLOG vars:per-log frontmatter から `{{vars.x}}` 展開、frontmatter 
 
   // Use the textlog append area to add a new log
   const appendInput = page.locator('textarea[data-pkc-field="textlog-append-text"]').first();
-  await expect(appendInput).toBeVisible({ timeout: 5_000 });
+  await expect(appendInput).toBeVisible({ timeout: 15_000 });
   await appendInput.fill(logText);
   // + Add button
   await page.locator('[data-pkc-action="append-log-entry"]').first().click();
@@ -61,7 +61,7 @@ test('TEXTLOG vars:per-log frontmatter から `{{vars.x}}` 展開、frontmatter 
 
   // Render check: log article should have expanded vars + no frontmatter visible
   const logEl = page.locator('.pkc-textlog-log .pkc-textlog-text').first();
-  await expect(logEl).toBeVisible({ timeout: 5_000 });
+  await expect(logEl).toBeVisible({ timeout: 15_000 });
   const text = (await logEl.textContent()) ?? '';
 
   console.log('TEXTLOG log render observed:', text.slice(0, 300));

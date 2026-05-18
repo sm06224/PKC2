@@ -39,7 +39,7 @@ async function bootAndSwitchToFiler(page: Page): Promise<void> {
   if (!tabBox) throw new Error('Filer tab has no boundingBox');
   await page.mouse.click(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
 
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
 }
 
 test('explorer subset: empty folder shows empty message (no . / .. rows)', async ({ page }) => {

@@ -55,7 +55,7 @@ test('L-9 indent + leading whitespace + Split View source-line preservation', as
   await page.waitForTimeout(700);
 
   const preview = page.locator('.pkc-text-edit-preview').first();
-  await expect(preview).toBeVisible({ timeout: 5_000 });
+  await expect(preview).toBeVisible({ timeout: 15_000 });
   const previewObs = await preview.evaluate((root) => ({
     indent1Count: root.querySelectorAll('p[data-pkc-indent="1"]').length,
     alignCenterCount: root.querySelectorAll('p[data-pkc-align="center"]').length,

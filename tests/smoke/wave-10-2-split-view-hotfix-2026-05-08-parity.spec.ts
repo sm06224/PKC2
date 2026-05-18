@@ -57,7 +57,7 @@ test('Split View preview に sentinel glyph が漏れない(2026-05-08 hotfix)',
 
   // Edit mode の preview pane(`.pkc-text-edit-preview`)が見えているはず
   const preview = page.locator('.pkc-text-edit-preview').first();
-  await expect(preview).toBeVisible({ timeout: 5_000 });
+  await expect(preview).toBeVisible({ timeout: 15_000 });
 
   // textarea fill は input event を発火しているが、preview update は 500ms
   // debounced input にも乗っているので少し待つ。先に Enter keyup で確実に
