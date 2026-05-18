@@ -75,7 +75,7 @@ test('theme switch cascades --pkc-color-tag tokens and sidebar bar updates', asy
 
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // (1) Default cascade. With `prefers-color-scheme: dark` emulated
   // and no `data-pkc-theme` attribute set, `:root` supplies dark hex.
@@ -94,7 +94,7 @@ test('theme switch cascades --pkc-color-tag tokens and sidebar bar updates', asy
   // (2) Switch to explicit light. `[data-pkc-theme="light"]` overrides
   // 4 hues; `red` stays the same (its base hex already meets 3:1).
   await lightBtn.click();
-  await expect(shell).toHaveAttribute('data-pkc-theme', 'light', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-theme', 'light');
   expect(await readToken(page, '--pkc-color-tag-orange')).toBe(TOKEN_LIGHT_ORANGE);
   expect(await readToken(page, '--pkc-color-tag-red')).toBe(TOKEN_RED_BOTH);
 
@@ -104,13 +104,13 @@ test('theme switch cascades --pkc-color-tag tokens and sidebar bar updates', asy
   // (3) Sidebar binding — create an entry, apply orange color, and
   // confirm the sidebar entry's color band uses the live (light) token.
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   const saveBtn = page.locator('[data-pkc-action="commit-edit"]').first();
   const lid = await saveBtn.getAttribute('data-pkc-lid');
   expect(lid, 'commit-edit must expose the new entry lid').toBeTruthy();
   await page.locator('[data-pkc-field="title"]').first().fill('Theme switch fixture');
   await saveBtn.click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Open color picker (trigger lives in detail title row), pick orange
   // via press-drag-release. The picker now uses macOS-style menu UX
@@ -132,7 +132,7 @@ test('theme switch cascades --pkc-color-tag tokens and sidebar bar updates', asy
   const orangeSwatch = page.locator(
     'button[data-pkc-action="apply-color-tag"][data-pkc-color="orange"]',
   ).first();
-  await expect(orangeSwatch).toBeVisible({ timeout: 15_000 });
+  await expect(orangeSwatch).toBeVisible();
   const orangeBox = await orangeSwatch.boundingBox();
   if (!orangeBox) throw new Error('Orange swatch has no bounding box');
   await page.mouse.move(
@@ -148,7 +148,7 @@ test('theme switch cascades --pkc-color-tag tokens and sidebar bar updates', asy
   const sidebarItem = page.locator(
     `[data-pkc-region="sidebar"] li.pkc-entry-item[data-pkc-lid="${lid}"]`,
   );
-  await expect(sidebarItem).toHaveAttribute('data-pkc-color-tag', 'orange', { timeout: 5_000 });
+  await expect(sidebarItem).toHaveAttribute('data-pkc-color-tag', 'orange');
   await expect(sidebarItem).toHaveClass(/pkc-entry-color-bar/);
   await expect(sidebarItem).toHaveClass(/pkc-color-orange/);
 

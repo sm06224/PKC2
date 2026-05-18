@@ -14,23 +14,23 @@ import { test, expect, type Page } from '@playwright/test';
 async function bootFiler(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Seed one TEXT entry so the view-mode toggle bar is rendered.
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Switch into filer.
   const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]');
   const tabBox = await filerTab.boundingBox();
   if (!tabBox) throw new Error('Filer tab has no boundingBox');
   await page.mouse.click(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible();
 }
 
 test('Filer toolbar: create folder button creates a new folder', async ({ page }) => {
@@ -46,9 +46,7 @@ test('Filer toolbar: create folder button creates a new folder', async ({ page }
   await page.mouse.click(btnBox.x + btnBox.width / 2, btnBox.y + btnBox.height / 2);
 
   // Editing phase begins for the new folder.
-  await expect(page.locator('#pkc-root')).toHaveAttribute('data-pkc-phase', 'editing', {
-    timeout: 5_000,
-  });
+  await expect(page.locator('#pkc-root')).toHaveAttribute('data-pkc-phase', 'editing');
 });
 
 test('順序性: filer-scope-trash → data-pkc-filer-scope flips to trash', async ({ page }) => {

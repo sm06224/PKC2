@@ -79,7 +79,15 @@ export default defineConfig({
   // process 用に確保)。matrix shard と組合せて total 8 parallel。
   workers: process.env.CI ? 2 : 1,
   reporter: [['list']],
-  timeout: 30_000,
+  // CI tolerance bump(2026-05-18 user direction「smoke の責務は機能検証、
+  // boot time / paint timing の品質保証は dev / bench に分離する」):
+  // 旧 30s では CI 高負荷時(workers=2 × shard 4 = 8 parallel)に post-render
+  // side effect 完了前に test timeout してた。60s に倍化して、各 spec から
+  // tight な explicit timeout(`{ timeout: 5_000 }` 等)を撤廃。assertion
+  // は default(action timeout = test timeout 内)に乗せ、test timeout 内で
+  // 動けば pass、動かなければ slow-fail で診断可能に。
+  // Boot time 品質は `tests/bench/` の bench infrastructure で測定する。
+  timeout: 60_000,
 
   use: {
     baseURL: 'http://127.0.0.1:4173',

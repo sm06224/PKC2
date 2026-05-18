@@ -19,7 +19,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function bootSeedAndOpenGraph(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Seed 3 user entries via UI(IDB-direct approach is racy on reload).
   // Each entry is created sequentially; created_at is derived from the
@@ -32,10 +32,10 @@ async function bootSeedAndOpenGraph(page: Page): Promise<void> {
       .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
       .first()
       .click();
-    await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+    await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
     await page.locator('input[data-pkc-field="title"]').first().fill(title);
     await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-    await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+    await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
     // Spacing so created_at differs across entries (clock millisecond
     // resolution + JS task tick is usually > 1ms but assert anyway).
     await page.evaluate(() => new Promise((r) => setTimeout(r, 25)));
@@ -47,7 +47,7 @@ async function bootSeedAndOpenGraph(page: Page): Promise<void> {
   const box = await tab.boundingBox();
   if (!box) throw new Error('Graph tab has no boundingBox');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-pkc-region="graph-view"]')).toBeVisible();
 }
 
 test('switching mode to time-proximity updates data-pkc-graph-mode (state mutation)', async ({ page }) => {

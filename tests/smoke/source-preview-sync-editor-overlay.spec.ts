@@ -72,12 +72,12 @@ async function bootSeed(page: Page): Promise<void> {
   });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.evaluate((body: string) => {
     const ta = document.querySelector<HTMLTextAreaElement>(
       'textarea[data-pkc-field="body"]',
@@ -102,7 +102,6 @@ async function bootSeed(page: Page): Promise<void> {
       });
       return maxLine >= 25;
     },
-    { timeout: 5_000 },
   );
   // Constrain heights so scroll behaviour is observable.
   await page.evaluate(() => {

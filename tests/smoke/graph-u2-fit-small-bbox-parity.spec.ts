@@ -74,13 +74,13 @@ test('U2 fit-to-content: 小 N graph で auto-fit が zoom-IN を適用(scale > 
 
   // Graph view へ切替。real OS click 経由(reform-2026-05 §6)。
   const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]');
-  await tab.waitFor({ timeout: 15_000 });
+  await tab.waitFor();
   const tbox = await tab.boundingBox();
   if (!tbox) throw new Error('graph tab missing');
   await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
 
   const canvas = page.locator('[data-pkc-region="graph-canvas"]');
-  await canvas.waitFor({ timeout: 15_000 });
+  await canvas.waitFor();
   // force layout iteration + auto-fit が走る分の microtask + 1 frame 待機。
   await page.evaluate(() => new Promise((r) => setTimeout(r, 600)));
 

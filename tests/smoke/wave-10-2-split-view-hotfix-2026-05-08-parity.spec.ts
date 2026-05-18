@@ -27,10 +27,10 @@ test('Split View preview に sentinel glyph が漏れない(2026-05-08 hotfix)',
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
 
   await page.locator('[data-pkc-field="title"]').first().fill('Split View hotfix fixture');
   // user 報告と同様、prefix line に挟まれた `_` を含む(L-8 + L-5 + L-1 + L-7 全部
@@ -57,7 +57,7 @@ test('Split View preview に sentinel glyph が漏れない(2026-05-08 hotfix)',
 
   // Edit mode の preview pane(`.pkc-text-edit-preview`)が見えているはず
   const preview = page.locator('.pkc-text-edit-preview').first();
-  await expect(preview).toBeVisible({ timeout: 15_000 });
+  await expect(preview).toBeVisible();
 
   // textarea fill は input event を発火しているが、preview update は 500ms
   // debounced input にも乗っているので少し待つ。先に Enter keyup で確実に

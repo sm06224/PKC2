@@ -44,7 +44,7 @@ test('manual boots, renders a chapter, and entry: links navigate', async ({ page
   // pkc-data parsed (Phase 1 regression target) and that the
   // `__about__` system entry (Phase 3) did not break boot.
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Pick chapter 02 (`docs/manual/02_クイックスタート.md`, lid
   // `manual-text-02`). We address it by its stable `data-pkc-lid`

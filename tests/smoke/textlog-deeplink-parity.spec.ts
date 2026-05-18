@@ -51,7 +51,7 @@ test('TEXTLOG log click on copy-link button copies entry:<lid>#... reference', a
   // 瞬間に hit するため region 待ち race を回避。timeout 30s。
   await expect(
     page.locator('[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="tl-1"]'),
-  ).toBeVisible({ timeout: 30_000 });
+  ).toBeVisible();
 
   // textlog entry を select
   await page.locator('[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="tl-1"]').first().click();
@@ -59,7 +59,7 @@ test('TEXTLOG log click on copy-link button copies entry:<lid>#... reference', a
 
   // copy-log-line-ref ボタン(🔗 anchor)を log-bbb 上で click
   const linkBtn = page.locator('article[data-pkc-log-id="log-bbb"] [data-pkc-action="copy-log-line-ref"]').first();
-  await expect(linkBtn).toBeVisible({ timeout: 15_000 });
+  await expect(linkBtn).toBeVisible();
   await linkBtn.click();
   await page.waitForTimeout(200);
 
@@ -95,7 +95,7 @@ test('entry: link to textlog log scrolls the article into view', async ({ page }
   // で entry-list region 待ち race を回避。
   await expect(
     page.locator('[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="src"]'),
-  ).toBeVisible({ timeout: 30_000 });
+  ).toBeVisible();
 
   // src TEXT を選択
   await page.locator('[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="src"]').first().click();
@@ -103,13 +103,13 @@ test('entry: link to textlog log scrolls the article into view', async ({ page }
 
   // body の link(entry:tl#log/log-15)を click
   const link = page.locator('a[data-pkc-action="navigate-entry-ref"]').first();
-  await expect(link).toBeVisible({ timeout: 15_000 });
+  await expect(link).toBeVisible();
   await link.click();
   await page.waitForTimeout(800);
 
   // textlog entry が selected になり、log-15 の article が view 内
   const article = page.locator('article[data-pkc-log-id="log-15"]');
-  await expect(article).toBeVisible({ timeout: 15_000 });
+  await expect(article).toBeVisible();
   // viewport 内かを確認
   const inViewport = await article.evaluate((el) => {
     const r = el.getBoundingClientRect();

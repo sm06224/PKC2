@@ -22,10 +22,10 @@ test('L-9 indent + leading whitespace + Split View source-line preservation', as
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('L-9 + sync hotfix fixture');
 
   const body = [
@@ -55,7 +55,7 @@ test('L-9 indent + leading whitespace + Split View source-line preservation', as
   await page.waitForTimeout(700);
 
   const preview = page.locator('.pkc-text-edit-preview').first();
-  await expect(preview).toBeVisible({ timeout: 15_000 });
+  await expect(preview).toBeVisible();
   const previewObs = await preview.evaluate((root) => ({
     indent1Count: root.querySelectorAll('p[data-pkc-indent="1"]').length,
     alignCenterCount: root.querySelectorAll('p[data-pkc-align="center"]').length,
@@ -95,7 +95,7 @@ test('L-9 indent + leading whitespace + Split View source-line preservation', as
 
   // 2) Save → Detail view でも同じく動作するか確認
   await page.locator('[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   const rendered = page.locator('.pkc-view-body.pkc-md-rendered').first();
   await expect(rendered).toBeVisible({ timeout: 10_000 });
   const renderedObs = await rendered.evaluate((root) => ({

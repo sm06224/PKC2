@@ -40,13 +40,13 @@ test('card widget hydrates 3 reachable states with correct chrome and a11y', asy
 
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Create a new TEXT entry and grab its lid from the Save button —
   // commit-edit's data-pkc-lid is the canonical surface for the
   // currently-edited entry (renderer.ts:3142).
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   const saveBtn = page.locator('[data-pkc-action="commit-edit"]').first();
   const selfLid = await saveBtn.getAttribute('data-pkc-lid');
   expect(selfLid, 'commit-edit must expose the new entry lid').toBeTruthy();
@@ -71,7 +71,7 @@ test('card widget hydrates 3 reachable states with correct chrome and a11y', asy
   await page.locator('textarea[data-pkc-field="body"]').first().fill(body);
 
   await saveBtn.click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Rendered body holds the hydrated widgets. Scope all locators
   // here so we cannot accidentally pick up unrelated DOM (e.g. a

@@ -16,7 +16,7 @@ test('?app=launcher で center pane に Launcher view が表示される', async
 
   // viewMode = launcher に到達して center pane に launcher-view region が出ているか
   const launcherView = page.locator('[data-pkc-region="launcher-view"]');
-  await expect(launcherView).toBeVisible({ timeout: 15_000 });
+  await expect(launcherView).toBeVisible();
 
   // 登録 0 件の empty state が出る(初回起動なので registered HTML attachment 無し)
   const empty = page.locator('[data-pkc-region="launcher-empty"]');
@@ -33,7 +33,7 @@ test('view-mode bar に Launcher tab がある', async ({ page }) => {
   // text create button を押して dummy entry を 1 つ作る。
   await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
   // editing phase に入る
-  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]', { timeout: 5_000 });
+  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
   await page.click('[data-pkc-action="cancel-edit"]').catch(() => undefined);
 
   // view-mode toggle bar に Launcher button が含まれているか
@@ -52,12 +52,12 @@ test('Data… menu に AST / Pretty / Word / PPT / PDF が含まれる(entry 選
 
   // text create で 1 entry 作って selection に乗せる
   await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
-  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]', { timeout: 5_000 });
+  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
   // 保存して selected 状態へ
   const titleInput = page.locator('input[data-pkc-field="title"]');
   await titleInput.fill('Smoke entry');
   await page.click('[data-pkc-action="commit-edit"]');
-  await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 5_000 });
+  await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]');
 
   // Data… <details> menu を開く
   const dataSummary = page.locator('.pkc-eip-summary');
@@ -83,7 +83,7 @@ test('編集中 textarea で文字を選択すると format panel が visible �
 
   // text create + 編集モードへ
   await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
-  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]', { timeout: 5_000 });
+  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
 
   // 本文 textarea を埋める(detail-presenter は data-pkc-field="body" + .pkc-editor-body)
   const body = page.locator('textarea.pkc-editor-body[data-pkc-field="body"]').first();

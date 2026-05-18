@@ -39,7 +39,7 @@ test('boots and transitions into editing on Text create', async ({ page }) => {
   // IDB bootstrap completed — the reducer never exits initializing
   // without a SYS_INIT_COMPLETE action.
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Click the "Text" create-entry button in the header.
   const createText = page.locator(
@@ -50,7 +50,7 @@ test('boots and transitions into editing on Text create', async ({ page }) => {
 
   // After CREATE_ENTRY the reducer moves into the editing phase and
   // an entry editor renders with a title input.
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   const titleInput = page.locator('[data-pkc-field="title"]').first();
   await expect(titleInput).toBeVisible();
 

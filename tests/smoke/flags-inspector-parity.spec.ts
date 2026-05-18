@@ -52,7 +52,7 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   // 46 → 49(theme.scale は wave 10-9 で既に入っている場合があり Δ は実数で確認)。
   // PR-2JJ v2 (2026-05-13):editor.format_panel_enabled 1 flag 追加。
   // 49 → 50。CHANGELOG_v2.2.0.md "PR-2JJ v2" 参照。
-  await expect(rows).toHaveCount(50, { timeout: 5_000 });
+  await expect(rows).toHaveCount(50);
 
   // Spot-check one key per wave 2 file to surface drift if a future
   // PR drops or renames one.

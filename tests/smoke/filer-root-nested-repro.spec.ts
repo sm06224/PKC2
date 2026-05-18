@@ -28,10 +28,10 @@ test('CREATE_ENTRY while in filer mode switches viewMode to detail (Δ19 superse
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('input[data-pkc-field="title"]').first().fill('Outer');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Switch to filer.
   const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]');
@@ -48,7 +48,7 @@ test('CREATE_ENTRY while in filer mode switches viewMode to detail (Δ19 superse
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
 
   // Δ19 後の期待:detail tab が active、filer tab は inactive。
   await expect(

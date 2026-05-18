@@ -30,9 +30,7 @@ test('🐞 button paints inside the header, right of ⚙, and is OS-clickable', 
 }) => {
   await page.goto('/pkc2.html?pkc-debug=*', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', {
-    timeout: 15_000,
-  });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Locate the relevant elements.
   const header = page.locator('.pkc-header').first();

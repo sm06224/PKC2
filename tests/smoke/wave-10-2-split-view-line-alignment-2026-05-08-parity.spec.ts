@@ -28,10 +28,10 @@ test('Split View source-line alignment:preview block の data-pkc-source-line �
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   await page.locator('button[data-pkc-action="create-entry"][data-pkc-archetype="text"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('[data-pkc-field="title"]').first().fill('Sync align fixture');
 
   // user 報告の長文に近い fixture(L-1/2/5/7/8/9 + CSV 含む)
@@ -74,7 +74,7 @@ test('Split View source-line alignment:preview block の data-pkc-source-line �
   await page.waitForTimeout(700);
 
   const preview = page.locator('.pkc-text-edit-preview').first();
-  await expect(preview).toBeVisible({ timeout: 15_000 });
+  await expect(preview).toBeVisible();
 
   // preview の各 anchored block について data-pkc-source-line を取得
   // → 対応する textarea 行の content と blocking 内容が一致することを検証

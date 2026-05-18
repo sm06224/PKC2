@@ -19,23 +19,23 @@ import { test, expect, type Page } from '@playwright/test';
 async function bootAndCreateFolder(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   await page
     .locator('button[data-pkc-action="create-entry"][data-pkc-archetype="folder"]')
     .first()
     .click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'editing');
   await page.locator('input[data-pkc-field="title"]').first().fill('Auto Test');
   await page.locator('button[data-pkc-action="commit-edit"]').first().click();
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 5_000 });
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
   // Switch to filer.
   const filerTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]');
   const tabBox = await filerTab.boundingBox();
   if (!tabBox) throw new Error('Filer tab no boundingBox');
   await page.mouse.click(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
-  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-pkc-region="filer-view"]')).toBeVisible();
 }
 
 test('PR-G G15: a freshly-created folder defaults to display_profile=auto in the meta pane select', async ({
