@@ -109,6 +109,14 @@ jobs:
 
     strategy:
       fail-fast: false
+      # CI parallelism reduction(2026-05-18 user direction「シャードの実行を
+      # 2 つずつとかにできない?」):
+      # 4 shard 全件並列で各 runner が CPU + IDB / browser process contention
+      # に巻き込まれて flake 化していたため、同時 2 shard までに絞る。
+      # max-parallel: 2 → shards 1+2 → 3+4 の 2 batch 実行。
+      # wall time は ~2x になるが、playwright workers: 1 と組合せて total
+      # 同時実行 test 数 = 2 contexts まで、IDB / browser contention を最小化。
+      max-parallel: 2
       matrix:
         shard: [1, 2, 3, 4]
 
