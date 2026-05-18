@@ -38,6 +38,7 @@ import {
   isBlockDirectiveClose,
   type BlockDirectiveAttrs as _BlockDirectiveAttrs,
 } from './block-directive-attrs';
+import { ensureBlankAroundColonBlocksWithLineMap } from './colon-block-normalize';
 import { parseInlineRoleAt, type InlineRoleMatch } from './inline-role-parser';
 import {
   isCardPresentationLabel,
@@ -3398,6 +3399,22 @@ export function renderMarkdown(
   );
   text = admonitionResult.transformed;
   lineMap = admonitionResult.lineMap;
+  // Bug fix(2026-05-18 user 報告):CommonMark blockquote lazy continuation で
+  // `> 引用テキスト\n:::section{...}` の `:::section` が blockquote 内に
+  // 取り込まれて HTML 構造が崩れる問題を回避。`:::` 行の前後に blank line を
+  // 強制挿入して structural separation を取る。AST 経路(`parse.ts`)では
+  // PR-W24 v3 で既に同等処理を入れていたが、center pane / Viewer / Split View
+  // 経路にも対称に適用するため `colon-block-normalize.ts` から共有 utility
+  // を import。詳細 background は同 module + `docs/development/
+  // bug-section-blockquote-lazy-continuation-2026-05-18.md` 参照。
+  // **本 normalize は admonition alias rewrite(`:::note` → `:::section`)の
+  // **後** に走らせる**:rewrite で新たに生まれた `:::` 行も対象にするため。
+  // **本 normalize は processBlankLineMarkers / processFigureBlocks /
+  // processQuoteBlocks / processSectionBlocks 等 directive 処理の **前** に
+  // 走らせる**:lazy continuation で吸い込まれる前に分離する必要があるため。
+  const colonNormResult = ensureBlankAroundColonBlocksWithLineMap(text, lineMap);
+  text = colonNormResult.transformed;
+  lineMap = colonNormResult.lineMap;
   // PR-2K:less-critical block 3 件(:::toc / :::frontmatter / :::body)を
   // sentinel wrap + console.warn(PKC1010)。寛容 parse はせず literal 残し。
   const hallResult = processHallucinatedDirectives(text, lineMap, opts.silentHallucinationWarnings);
