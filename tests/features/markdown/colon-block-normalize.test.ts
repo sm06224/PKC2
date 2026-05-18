@@ -60,10 +60,10 @@ describe('ensureBlankAroundColonBlocks(string-only 版)', () => {
   it('行頭 ws(半角 space / tab / 全角 U+3000)込みの ::: も対象', () => {
     const input1 = '> q\n  :::section\n内容\n:::';
     const input2 = '> q\n\t:::section\n内容\n:::';
-    const input3 = '> q\n　:::section\n内容\n:::';
+    const input3 = '> q\n\u3000:::section\n内容\n:::';
     expect(ensureBlankAroundColonBlocks(input1)).toMatch(/> q\n\n {2}:::section/);
     expect(ensureBlankAroundColonBlocks(input2)).toMatch(/> q\n\n\t:::section/);
-    expect(ensureBlankAroundColonBlocks(input3)).toMatch(/> q\n\n　:::section/);
+    expect(ensureBlankAroundColonBlocks(input3)).toMatch(/> q\n\n\u3000:::section/);
   });
 });
 
