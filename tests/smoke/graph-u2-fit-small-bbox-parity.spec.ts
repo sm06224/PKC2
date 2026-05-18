@@ -16,16 +16,11 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 async function seedSmallFolderGraph(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
-  const shell = page.locator('#pkc-root');
-  // CI flake fix (2026-05-18):`shell.waitFor()` は #pkc-root の存在のみ
-  // 確認、phase=ready(IDB read + 初回 render 完了)を待たない。CI 高負荷
-  // 時(workers=2 × shard 4 = 8 parallel)に reload 後の renderer 未完成
-  // 状態で graph tab.waitFor(5_000) に入り 5s timeout 超過 flake。
-  // PR #464 graph-pr-k-visual-check と同 pattern fix。
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await bootReady(page);
 
   // Seed 4 nodes(folder + 3 children)= 小 N case の典型 via IndexedDB
   // → reload(他 smoke spec の seedManyEntries と同パターン)。U2 fit-
@@ -70,8 +65,7 @@ async function seedSmallFolderGraph(page: Page): Promise<void> {
     });
   });
   await page.reload();
-  // reload 後も seeded entry 込みの phase=ready を待つ。
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
+  await bootReady(page);
 }
 
 test('U2 fit-to-content: 小 N graph で auto-fit が zoom-IN を適用(scale > 1)', async ({ page }) => {

@@ -23,6 +23,7 @@
  * counterpart of `page.mouse.click(x, y)`.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 test.describe('swipe-to-delete (touch only)', () => {
   test.use({ hasTouch: true, isMobile: true });
@@ -78,7 +79,7 @@ test.describe('swipe-to-delete (touch only)', () => {
   test('left swipe past commit threshold deletes the entry', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/pkc2.html');
-    await page.locator('#pkc-root').waitFor({ state: 'visible' });
+    await bootReady(page);
 
     await createOne(page, 'Swipe-delete target');
     await expect(page.locator('#pkc-root')).toHaveAttribute('data-pkc-mobile-page', 'list');
@@ -96,7 +97,7 @@ test.describe('swipe-to-delete (touch only)', () => {
   test('short swipe snaps back without deleting', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/pkc2.html');
-    await page.locator('#pkc-root').waitFor({ state: 'visible' });
+    await bootReady(page);
 
     await createOne(page, 'Snap-back target');
     const row = page.locator(

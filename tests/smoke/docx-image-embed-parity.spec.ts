@@ -1,9 +1,6 @@
 /** PR-V22: docx export 経由で実際 container.assets から image が埋め込まれる. */
 import { test, expect, type Page } from '@playwright/test';
-
-async function bootReady(page: Page): Promise<void> {
-  await expect(page.locator('#pkc-root')).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 30_000 });
-}
+import { bootReady } from './_helpers/boot-ready';
 
 async function seedContainer(page: Page, container: Record<string, unknown>): Promise<void> {
   await page.evaluate(async (cont) => {

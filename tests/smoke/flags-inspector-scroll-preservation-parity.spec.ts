@@ -13,15 +13,8 @@
  *   scrollTop is preserved across the re-render).
  */
 
-import { test, expect, type Page } from '@playwright/test';
-
-async function bootReady(page: Page): Promise<void> {
-  await expect(page.locator('#pkc-root')).toHaveAttribute(
-    'data-pkc-phase',
-    'ready',
-    { timeout: 15_000 },
-  );
-}
+import { test, expect } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 test('順序性: SET_FLAG keeps flags-inspector-body scrollTop across re-render', async ({
   page,

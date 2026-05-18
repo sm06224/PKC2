@@ -20,6 +20,10 @@ import {
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
 import { exposeAstApi } from './adapter/public-ast-api';
+import {
+  installBootReadySignal,
+  signalBootReady,
+} from './adapter/boot-ready-signal';
 import { mountFormatPanel } from './adapter/ui/format-panel';
 import { installWcagResolverRuntime, applyWcagResolverNow } from './adapter/ui/wcag-runtime';
 import { checkForUpdate } from './adapter/platform/version-check';
@@ -120,6 +124,12 @@ async function boot(): Promise<void> {
   // boot:enter → boot:exit duration. Marks (vs measures) avoid
   // having to thread an `end()` thunk past every early return.
   profileMark('boot:enter');
+  // Smoke test boot signal (2026-05-18):smoke test が「真の boot 完了」を
+  // 待つための Promise を window.PKC.bootReady に install。boot 開始前に
+  // install することで、test が先に navigate + await しても miss しない。
+  // resolve は SYS_INIT_COMPLETE 後の初回 render 完了時に 1 回だけ発火。
+  // 詳細は src/adapter/boot-ready-signal.ts。
+  installBootReadySignal();
   // Reform-2026-05 stage β finalize: install error capture FIRST so
   // boot-time crashes land in the debug ring buffer. Cheap when no
   // ?pkc-debug flag is active (the recordDebugError ring buffer is
@@ -592,6 +602,21 @@ async function boot(): Promise<void> {
         }),
       });
       console.log(`[PKC2] Message bridge mounted (container: ${state.container.meta.container_id})`);
+    }
+  });
+
+  // Smoke test boot signal (2026-05-18):SYS_INIT_COMPLETE 後の最初の
+  // phase=ready state mutation で signalBootReady() を呼ぶ。本 subscriber は
+  // dispatcher.onState 登録順で renderer subscriber(line 180 付近)より後に
+  // 登録されているため、本 callback が走る時点で renderer は既に DOM 更新
+  // 済(synchronous chain)。test は `await window.PKC.bootReady` で UI
+  // 操作の前段同期を確実に取れる。idempotent(signalBootReady 内で resolve
+  // を 1 回だけ発火、以降の dispatch では no-op)。
+  let bootReadySignaled = false;
+  dispatcher.onState((state) => {
+    if (!bootReadySignaled && state.phase === 'ready' && state.container) {
+      bootReadySignaled = true;
+      signalBootReady();
     }
   });
 

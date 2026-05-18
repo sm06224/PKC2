@@ -21,14 +21,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-
-async function bootReady(page: Page): Promise<void> {
-  await expect(page.locator('#pkc-root')).toHaveAttribute(
-    'data-pkc-phase',
-    'ready',
-    { timeout: 15_000 },
-  );
-}
+import { bootReady } from './_helpers/boot-ready';
 
 /**
  * Seed a flat container with N text entries directly into IDB. Flat

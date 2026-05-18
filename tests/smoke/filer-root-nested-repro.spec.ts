@@ -15,15 +15,11 @@
  *   - filer-scope-root が SET_VIEW_MODE 'filer' を併発(belt-and-suspenders)
  */
 
-import { test, expect, type Page } from '@playwright/test';
-
-async function bootReady(page: Page): Promise<void> {
-  await page.goto('/pkc2.html', { waitUntil: 'load' });
-  const shell = page.locator('#pkc-root');
-  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
-}
+import { test, expect } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 test('CREATE_ENTRY while in filer mode switches viewMode to detail (Δ19 supersedes PR-J)', async ({ page }) => {
+  await page.goto('/pkc2.html', { waitUntil: 'load' });
   await bootReady(page);
   const shell = page.locator('#pkc-root');
 

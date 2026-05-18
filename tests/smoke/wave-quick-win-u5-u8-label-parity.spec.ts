@@ -14,11 +14,11 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 async function bootWithSeed(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
-  const shell = page.locator('#pkc-root');
-  await shell.waitFor();
+  await bootReady(page);
 
   // 単一 folder を seed → filer view + graph view を開ける状態に。
   await page.evaluate(async () => {
@@ -59,7 +59,7 @@ async function bootWithSeed(page: Page): Promise<void> {
     });
   });
   await page.reload();
-  await shell.waitFor();
+  await bootReady(page);
 }
 
 test('U5: subset profile select is grouped via <optgroup> (Layout / Catalogue / Query / 既定)', async ({ page }) => {

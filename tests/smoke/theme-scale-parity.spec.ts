@@ -18,15 +18,8 @@
  * `--theme-scale-default` (set by media query) reaches the calc()
  * chain. Mobile (pointer:coarse + max-width:640px) defaults to 0.9.
  */
-import { test, expect, type Page } from '@playwright/test';
-
-async function bootReady(page: Page): Promise<void> {
-  await expect(page.locator('#pkc-root')).toHaveAttribute(
-    'data-pkc-phase',
-    'ready',
-    { timeout: 15_000 },
-  );
-}
+import { test, expect } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 test('theme.scale flag scales root font-size + element rem values', async ({
   page,
@@ -117,11 +110,7 @@ test('Phase 3b — mobile viewport activates device-class default 0.9 via media 
   });
   const mobilePage = await ctx.newPage();
   await mobilePage.goto('/pkc2.html?pkc-flag=*', { waitUntil: 'load' });
-  await expect(mobilePage.locator('#pkc-root')).toHaveAttribute(
-    'data-pkc-phase',
-    'ready',
-    { timeout: 15_000 },
-  );
+  await bootReady(mobilePage);
 
   // ── (1) Mobile resting state: --theme-scale absent, --theme-scale-default
   //         from media query = 0.9, root font-size = 16 * 0.9 = 14.4px.
