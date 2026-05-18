@@ -70,14 +70,20 @@ export default defineConfig({
   testMatch,
   // `_archive/` 配下の spec は production smoke から exclude(diagnostic / debug 用)
   testIgnore: ['**/_archive/**'],
-  // PR-W19:各 spec は独立 browser context で実行、worker 並列で 4x speedup
+  // PR-W19:各 spec は独立 browser context で実行
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // PR-W19:retry で flake を隠蔽せず即診断(flake は別 PR で fix)
   retries: 0,
-  // PR-W19:GitHub runner 4-core 環境で 2 worker 並列(残 2 core を browser
-  // process 用に確保)。matrix shard と組合せて total 8 parallel。
-  workers: process.env.CI ? 2 : 1,
+  // CI parallelism reduction(2026-05-18 user direction「シャードの実行を
+  // 2 つずつとかにできない?」):
+  // 旧 workers=2 で per-runner CPU + IDB / browser process contention が
+  // flake 源だった。CI でも workers=1 にして shard 内 sequential 化、
+  // 同時実行 test 数を最小化。GitHub Actions side で `max-parallel: 2` も
+  // 別途設定して total 2 parallel test までに絞る(同 max 2 contexts 動作)。
+  // wall time は ~2x になるが flake が消えるため net で fast(retry の無駄
+  // が消える)。
+  workers: 1,
   reporter: [['list']],
   // CI tolerance bump(2026-05-18 user direction「smoke の責務は機能検証、
   // boot time / paint timing の品質保証は dev / bench に分離する」):
