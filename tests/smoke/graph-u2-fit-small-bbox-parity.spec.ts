@@ -20,7 +20,12 @@ import { test, expect, type Page } from '@playwright/test';
 async function seedSmallFolderGraph(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
-  await shell.waitFor();
+  // CI flake fix (2026-05-18):`shell.waitFor()` は #pkc-root の存在のみ
+  // 確認、phase=ready(IDB read + 初回 render 完了)を待たない。CI 高負荷
+  // 時(workers=2 × shard 4 = 8 parallel)に reload 後の renderer 未完成
+  // 状態で graph tab.waitFor(5_000) に入り 5s timeout 超過 flake。
+  // PR #464 graph-pr-k-visual-check と同 pattern fix。
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
 
   // Seed 4 nodes(folder + 3 children)= 小 N case の典型 via IndexedDB
   // → reload(他 smoke spec の seedManyEntries と同パターン)。U2 fit-
@@ -65,7 +70,8 @@ async function seedSmallFolderGraph(page: Page): Promise<void> {
     });
   });
   await page.reload();
-  await shell.waitFor();
+  // reload 後も seeded entry 込みの phase=ready を待つ。
+  await expect(shell).toHaveAttribute('data-pkc-phase', 'ready', { timeout: 15_000 });
 }
 
 test('U2 fit-to-content: 小 N graph で auto-fit が zoom-IN を適用(scale > 1)', async ({ page }) => {
@@ -74,13 +80,13 @@ test('U2 fit-to-content: 小 N graph で auto-fit が zoom-IN を適用(scale > 
 
   // Graph view へ切替。real OS click 経由(reform-2026-05 §6)。
   const tab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]');
-  await tab.waitFor({ timeout: 5_000 });
+  await tab.waitFor({ timeout: 15_000 });
   const tbox = await tab.boundingBox();
   if (!tbox) throw new Error('graph tab missing');
   await page.mouse.click(tbox.x + tbox.width / 2, tbox.y + tbox.height / 2);
 
   const canvas = page.locator('[data-pkc-region="graph-canvas"]');
-  await canvas.waitFor({ timeout: 5_000 });
+  await canvas.waitFor({ timeout: 15_000 });
   // force layout iteration + auto-fit が走る分の microtask + 1 frame 待機。
   await page.evaluate(() => new Promise((r) => setTimeout(r, 600)));
 
