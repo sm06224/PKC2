@@ -22,6 +22,7 @@
 import MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
 import { decomposePkcExtensions } from './decompose-pkc';
+import { ensureBlankAroundColonBlocks } from '@features/markdown/colon-block-normalize';
 import type {
   AstAttrs,
   AstBlock,
@@ -504,32 +505,10 @@ function shieldFootnotes(body: string): string {
  * shield 前に **完全 strip**(寛容 parse doctrine、半角 sp / tab / 全角
  * U+3000 全部対応)。
  */
-/**
- * PR-W24 v2:`:::` 行(opener / closer)の前後に blank line を強制挿入。
- * commonmark blockquote の lazy continuation で `> text\n:::` が blockquote
- * 内に取り込まれて closer 認識失敗する bug を回避。
- */
-function ensureBlankAroundColonBlocks(body: string): string {
-  // PR-W24 v3:\u5168 `:::` \u884c(opener / closer)\u306e **\u524d** \u306b blank line \u3092\u633f\u5165\u3001
-  // \u591a\u91cd newline \u306f\u4e8b\u5f8c collapse\u3002\u3053\u308c\u3067 `:::\n:::`(\u9023\u7d9a closer)`}\n:::`
-  // (content + closer)`>quote\n:::`(blockquote lazy continuation + closer)
-  // \u3059\u3079\u3066 blank line \u3067\u5206\u96e2\u3055\u308c\u308b\u3002
-  let out = body.replace(/\n([ \t\u3000]*:::)/g, '\n\n$1');
-  // PR-W24 v3:malformed `:::role{...<no close brace>$` \u884c\u306f attrs \u3092 drop
-  // (\u5bdb\u5bb9 parse\u3001`author=` literal \u304c content \u306b\u6f0f\u308c\u308b\u306e\u3092\u9632\u3050)
-  out = out.replace(
-    /^([ \t\u3000]*:::[a-zA-Z0-9_-]+)\{[^}\n]*$/gm,
-    '$1',
-  );
-  // `:::role{...}` opener \u306e **\u5f8c** \u306b blank line(content \u3068\u5206\u96e2)
-  out = out.replace(
-    /^([ \t\u3000]*:::[a-zA-Z0-9_-]+(?:\{[^}\n]{0,200}\})?[ \t]*)\n([^\n])/gm,
-    '$1\n\n$2',
-  );
-  // 3+ \u9023\u7d9a newline \u3092 2 (blank line one) \u306b collapse
-  out = out.replace(/\n{3,}/g, '\n\n');
-  return out;
-}
+// PR-W24 v2/v3 で `ensureBlankAroundColonBlocks` を inline 実装していたが、
+// 2026-05-18 user 報告で center pane 経路(markdown-render.ts)にも同等の
+// 正規化が必要と判明。`src/features/markdown/colon-block-normalize.ts` に
+// 抽出して両経路で共有。詳細 background は同 module の comment 参照。
 
 function stripLeadingWsOnPkcMarkers(body: string): string {
   // Block-level marker:行頭 ws 全 strip。
