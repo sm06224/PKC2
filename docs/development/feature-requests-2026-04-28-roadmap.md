@@ -56,16 +56,29 @@ User direction(原文):
 
 ---
 
-## 領域 2: iPhone textarea zoom 抑制
+## 領域 2: iPhone textarea zoom 抑制 ✅ **完了済**(2026-05-19 確認、Phase α #A4)
+
+### Status
+
+**実装済**(現行 main):
+- `src/styles/base.css` の `@media (pointer: coarse)` ブロック内に textarea /
+  input 系の `font-size: 16px !important` を全件適用(line 9084-9100)
+- `build/shell.html` の viewport meta に `maximum-scale=1.0, user-scalable=no`
+  を追加済
+- smoke test `tests/smoke/iphone-zoom-suppress.spec.ts` で focus 時 zoom
+  抑止を verify
+
+Phase α #A4 として 2026-05-19 に「既に done」を確認、本書を closed marker
+へ更新。残課題なし(`pointer: coarse` 全 touch device 対応で iPhone + iPad
+ともに zoom 抑止)。
+
+---
+
+### 旧記録(参考)
 
 ### 要望
 - iPhone でテキストエリアにタップフォーカスすると Safari が拡大、
   俯瞰性が崩れる
-
-### 現状
-- viewport meta は `width=device-width, initial-scale=1.0`
-- フォントサイズ < 16px の input/textarea で iOS Safari は auto-zoom
-- 既存編集 UI のフォントサイズが 14-15px 程度
 
 ### 設計骨子
 1. **編集系入力(textarea, body editor, search input)のフォントサイズを
@@ -75,11 +88,7 @@ User direction(原文):
 3. iPhone shell でのみ font-size 16px を強制(`pointer:coarse and
    max-width:640px` メディアクエリ)
 
-### 推奨
-- mobile media query で input/textarea のみ 16px に上書き(PR-簡易)
-- それでも気になる箇所は個別調整
-
-### サイズ: 小(CSS のみ)
+### サイズ: 小(CSS のみ)— 完了済
 
 ---
 
@@ -190,15 +199,21 @@ Desktop では完動するが、**iPhone 実機で `(` 打鍵すると `((`
 
 ## 領域 5: コマンドパレット拡充 + キーボードスクロール修正
 
+### Status
+
+| 項目 | Status |
+|---|---|
+| キーボードスクロール bug | ✅ **完了**(PR #476、Phase α #A3、2026-05-19):slash-menu / asset-picker / asset-autocomplete の 3 popover で active item を popover 内部のみ scroll させる正しい挙動に修正 |
+| 編集支援コマンド拡充 | 🔄 **未着手**(別 wave 候補) |
+
 ### 要望
 - 編集支援コマンドの拡充(現在の slash menu / quick action の拡張)
-- コマンドリストをキーボード入力のみでスクロールできない bug 修正
+- ~~コマンドリストをキーボード入力のみでスクロールできない bug 修正~~ ✅ 完了
 
-### 現状
-- `slash-menu.ts` 風の popover はあるが、command list 全体の keyboard
-  navigation は不完全(↓ / ↑ で active item を変えられても、
-  list が viewport を超えると active item に scrollIntoView しない)
-- 利用可能 command が少ない
+### 現状(残:command 拡充のみ)
+- ✅ scrollIntoView 修正 完了(`getBoundingClientRect` + `scrollTop` 直接操作で
+  popover container のみ scroll、page scroll 副作用なし)
+- ⏳ 利用可能 command が少ない → 別 wave で拡充予定
 
 ### 設計骨子
 1. **scrollIntoView 修正**: active item 変更時に
@@ -341,17 +356,25 @@ PR 順:
 
 ## 領域 7: レンダリング操作 UI(コピーボタン + iPhone/iPad ボタン拡充)
 
+### Status
+
+| 項目 | Status |
+|---|---|
+| 表のコピーボタン | ✅ **完了**(`pkc-md-block` `data-pkc-md-block-kind="table"` に `pkc-md-copy-btn` 配置、`copy-md-block` action)|
+| コードブロックのコピーボタン | ✅ **完了**(同 pattern、PR #196 で実装)|
+| iPhone/iPad action bar | 🔄 **未着手**(別 wave、v3 提案 #4「マルチウィンドウ路線」と整合性ある形で検討予定)|
+
 ### 要望
 - 表のコピーボタン(リッチ + プレーン両方)
 - コードブロックのコピーボタン(同上)
 - ショートカットはあるが画面ボタンが無い操作を iPhone/iPad 向けに
-  ボタン化
+  ボタン化(残)
 
-### 現状
-- 一部のコードブロックに copy ボタンあり(textlog 等)
-- 表 / 画像系には無し
-- iPhone shell には back / forward 等のキーボード ショートカットが
-  動かない(物理キーが無い)
+### 現状(残:action bar 部分のみ)
+- ✅ コードブロック / 表に copy ボタンあり(`src/features/markdown/markdown-render.ts:186 / 209`)
+- ✅ リッチ + プレーン両モード(`copy-md-block` action 内で選択可)
+- ⏳ iPhone shell には back / forward 等のキーボード ショートカットが
+  動かない(物理キーが無い)→ action bar 化は別 wave
 
 ### 設計骨子
 1. **コードブロック / 表 hover-overlay コピーボタン**:
