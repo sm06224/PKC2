@@ -200,12 +200,25 @@ function renderItems(): void {
 
 function updateSelection(): void {
   if (!activePopover) return;
-  const items = activePopover.querySelectorAll('.pkc-asset-autocomplete-item');
+  const popover = activePopover;
+  const items = popover.querySelectorAll<HTMLElement>('.pkc-asset-autocomplete-item');
   for (let i = 0; i < items.length; i++) {
+    const item = items[i]!;
     if (i === selectedIndex) {
-      items[i]!.setAttribute('data-pkc-selected', 'true');
+      item.setAttribute('data-pkc-selected', 'true');
+      // roadmap §領域 5 bug fix(2026-05-19):keyboard navigation で active
+      // item が popover viewport を超えた時、popover 内部のみ scroll させる。
+      // 旧実装は scroll なし。scrollIntoView は ancestor 全部 scroll
+      // するため、`scrollTop` 直接操作で popover container のみ scroll。
+      const itemRect = item.getBoundingClientRect();
+      const popRect = popover.getBoundingClientRect();
+      if (itemRect.top < popRect.top) {
+        popover.scrollTop -= popRect.top - itemRect.top;
+      } else if (itemRect.bottom > popRect.bottom) {
+        popover.scrollTop += itemRect.bottom - popRect.bottom;
+      }
     } else {
-      items[i]!.removeAttribute('data-pkc-selected');
+      item.removeAttribute('data-pkc-selected');
     }
   }
 }

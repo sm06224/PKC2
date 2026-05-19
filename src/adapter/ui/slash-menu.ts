@@ -363,17 +363,33 @@ function renderMenuItems(inst: ActiveSlashMenu): void {
 
 function updateSelection(inst: ActiveSlashMenu): void {
   if (!inst.menu) return;
-  const items = inst.menu.querySelectorAll<HTMLElement>('.pkc-slash-menu-item');
+  const menu = inst.menu;
+  const items = menu.querySelectorAll<HTMLElement>('.pkc-slash-menu-item');
   for (let i = 0; i < items.length; i++) {
+    const item = items[i]!;
     if (i === inst.selectedIndex) {
-      items[i]!.setAttribute('data-pkc-selected', 'true');
+      item.setAttribute('data-pkc-selected', 'true');
       // Keep the active item visible inside the scrolling menu —
-      // `block: 'nearest'` scrolls only when the item is fully /
-      // partially out of view, so keyboard navigation past either
-      // edge always lands on something the user can see.
-      items[i]!.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      // 旧 `item.scrollIntoView({ block: 'nearest' })` は ancestor
+      // 全部を scroll する仕様で、popover の親 document 全体まで
+      // scroll してしまう browser 挙動があった(roadmap §領域 5
+      // bug:「list が viewport を超えると active item に
+      // scrollIntoView しない」= 実際は menu でなく page が scroll
+      // していたケース)。menu 内部の `scrollTop` を直接操作して
+      // **menu container のみ** scroll させる。
+      const itemRect = item.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      if (itemRect.top < menuRect.top) {
+        // 上端を超えている → menu を上方向に scroll
+        menu.scrollTop -= menuRect.top - itemRect.top;
+      } else if (itemRect.bottom > menuRect.bottom) {
+        // 下端を超えている → menu を下方向に scroll
+        menu.scrollTop += itemRect.bottom - menuRect.bottom;
+      }
+      // 上記いずれにも該当しない場合(item が完全に menu 内に visible)
+      // は no-op、無駄な scroll を起こさない。
     } else {
-      items[i]!.removeAttribute('data-pkc-selected');
+      item.removeAttribute('data-pkc-selected');
     }
   }
 }
