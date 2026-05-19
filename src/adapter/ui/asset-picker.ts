@@ -178,12 +178,27 @@ function renderPickerItems(): void {
 
 function updateSelection(): void {
   if (!activePicker) return;
-  const items = activePicker.querySelectorAll('.pkc-asset-picker-item');
+  const picker = activePicker;
+  const items = picker.querySelectorAll<HTMLElement>('.pkc-asset-picker-item');
   for (let i = 0; i < items.length; i++) {
+    const item = items[i]!;
     if (i === selectedIndex) {
-      items[i]!.setAttribute('data-pkc-selected', 'true');
+      item.setAttribute('data-pkc-selected', 'true');
+      // roadmap §領域 5 bug fix(2026-05-19):keyboard navigation で active
+      // item が picker viewport を超えた時、popover 内部のみ scroll させる。
+      // 旧実装は scroll なしで、↓ / ↑ で off-screen にされて user が見失う問題。
+      // `scrollIntoView` は ancestor 全部 scroll するため、popover の外側
+      // document が page scroll される browser 挙動を避けて、`scrollTop`
+      // 直接操作で picker container のみ scroll させる。
+      const itemRect = item.getBoundingClientRect();
+      const pickerRect = picker.getBoundingClientRect();
+      if (itemRect.top < pickerRect.top) {
+        picker.scrollTop -= pickerRect.top - itemRect.top;
+      } else if (itemRect.bottom > pickerRect.bottom) {
+        picker.scrollTop += itemRect.bottom - pickerRect.bottom;
+      }
     } else {
-      items[i]!.removeAttribute('data-pkc-selected');
+      item.removeAttribute('data-pkc-selected');
     }
   }
 }
