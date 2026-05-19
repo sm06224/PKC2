@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   renderMediaViewer,
   openMediaViewer,
@@ -8,16 +8,14 @@ import {
 } from '@adapter/ui/media-viewer';
 
 /**
- * PR #203 — media viewer.
+ * PR #203 → 2026-05-19 PiP 廃止後の test 更新。
  *
- * Two delivery paths covered indirectly:
- *   - Real browsers with `documentPictureInPicture`: open spawns a
- *     free-floating PiP window. Untested here (happy-dom doesn't
- *     expose the API).
- *   - Fallback modal overlay: covered below. happy-dom doesn't
- *     expose `documentPictureInPicture`, so `openMediaViewer`
- *     resolves to the modal path and we can pin the same shape we
- *     shipped in v1.
+ * Two delivery paths covered:
+ *   - **`window.open()` 新規 window**(全ブラウザ対応):popup の document
+ *     に host stylesheet を copy + cloned content を inject。本 test では
+ *     `window.open` を stub して popup document への注入を検証。
+ *   - **Modal fallback**:happy-dom default では `window.open` が `null`
+ *     を返す環境を作って modal path に flow させる。
  */
 
 beforeEach(() => {
@@ -58,6 +56,17 @@ describe('openMediaViewer / closeMediaViewer — modal fallback', () => {
     document.body.appendChild(backdrop);
     return backdrop;
   }
+
+  // PiP 廃止後(2026-05-19):default で window.open() を試すので、modal path
+  // を意図的に効かせるために window.open を null returner に stub。
+  let originalOpen: typeof window.open;
+  beforeEach(() => {
+    originalOpen = window.open;
+    (window as unknown as { open: typeof window.open }).open = () => null;
+  });
+  afterEach(() => {
+    (window as unknown as { open: typeof window.open }).open = originalOpen;
+  });
 
   it('returns false from isMediaViewerOpen when not yet opened', () => {
     mountViewer();
@@ -173,27 +182,24 @@ describe('openMediaViewer / closeMediaViewer — modal fallback', () => {
   });
 });
 
-describe('openMediaViewer — Document PiP path (when API is present)', () => {
-  it('opens via documentPictureInPicture.requestWindow when supported', async () => {
-    // Stub a minimal PiP window (just a doc-like body for our clone).
-    const fakePipDoc = document.implementation.createHTMLDocument('pip');
-    let closed = false;
-    const fakePipWindow = {
-      document: fakePipDoc,
-      closed,
+describe('openMediaViewer — window.open() 新規 window 経路(PiP 廃止後の主経路)', () => {
+  it('window.open() が popup を返す場合、popup document に cloned content を挿入', async () => {
+    // window.open を stub:fake popup window を返す。
+    const fakePopupDoc = document.implementation.createHTMLDocument('popup');
+    const fakePopup = {
+      document: fakePopupDoc,
+      closed: false,
       close: () => {
-        closed = true;
-        (fakePipWindow as unknown as { closed: boolean }).closed = true;
+        (fakePopup as unknown as { closed: boolean }).closed = true;
       },
       addEventListener: () => {},
     } as unknown as Window;
 
-    let requested = false;
-    (window as unknown as Record<string, unknown>).documentPictureInPicture = {
-      requestWindow: async () => {
-        requested = true;
-        return fakePipWindow;
-      },
+    const originalOpen = window.open;
+    let openCalled = false;
+    (window as unknown as { open: typeof window.open }).open = () => {
+      openCalled = true;
+      return fakePopup;
     };
 
     try {
@@ -202,15 +208,39 @@ describe('openMediaViewer — Document PiP path (when API is present)', () => {
       source.innerHTML = '<table><tr><td>row</td></tr></table>';
       document.body.appendChild(source);
 
-      // No mounted modal; PiP path is the only option.
       await openMediaViewer(source);
 
-      expect(requested).toBe(true);
-      // Clone landed in the PiP document, NOT in the host document.
-      expect(fakePipDoc.querySelector('table')).toBeTruthy();
-      expect(fakePipDoc.querySelector('.pkc-media-viewer-clone')).toBeTruthy();
+      expect(openCalled).toBe(true);
+      // Clone landed in the popup document, NOT in the host document.
+      expect(fakePopupDoc.querySelector('table')).toBeTruthy();
+      expect(fakePopupDoc.querySelector('.pkc-media-viewer-clone')).toBeTruthy();
     } finally {
-      delete (window as unknown as Record<string, unknown>).documentPictureInPicture;
+      (window as unknown as { open: typeof window.open }).open = originalOpen;
+    }
+  });
+
+  it('window.open() が null を返す(popup blocker)場合、modal にフォール', async () => {
+    const host = renderMediaViewer();
+    document.body.appendChild(host);
+
+    const originalOpen = window.open;
+    (window as unknown as { open: typeof window.open }).open = () => null;
+
+    try {
+      const source = document.createElement('div');
+      source.className = 'pkc-md-block';
+      source.innerHTML = '<table><tr><td>row</td></tr></table>';
+      document.body.appendChild(source);
+
+      await openMediaViewer(source);
+
+      // popup blocked → modal が表示される
+      const backdrop = document.querySelector<HTMLElement>('[data-pkc-region="media-viewer-backdrop"]');
+      expect(backdrop?.hidden).toBe(false);
+      const content = document.querySelector<HTMLElement>('[data-pkc-region="media-viewer-content"]');
+      expect(content?.querySelector('table')).toBeTruthy();
+    } finally {
+      (window as unknown as { open: typeof window.open }).open = originalOpen;
     }
   });
 });
