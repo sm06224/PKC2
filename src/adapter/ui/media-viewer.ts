@@ -1,41 +1,30 @@
 /**
- * Media viewer (PR #203, 2026-04-29).
+ * Media viewer(2026-05-19 PiP 廃止後の単一窓化):
  *
- * Two delivery paths, picked at runtime:
+ * 旧版(PR #203、2026-04-29)では Document Picture-in-Picture を試して
+ * 落ちたら modal にフォールバックする 2 段構成だった。が、user 体感で
+ * 「PiP は思ったより使いにくい(常時最前面が邪魔 / drag 操作不安定 /
+ * cross-browser 不揃い)」(v3 提案 #3、2026-05-18)を受けて **PiP 経路を
+ * 廃止**、別窓は `window.open()` に統一する。
  *
- *   1. **Document Picture-in-Picture** (Chrome / Edge 116+).
- *      Opens a real OS-level always-on-top floating window via
- *      `documentPictureInPicture.requestWindow()`. Sized free of the
- *      host page — wide tables get all the horizontal room they
- *      need, the user can drag / resize the PiP, and it stays
- *      visible while they work in the main window. The host page's
- *      stylesheets are cloned in so the rendered look matches.
+ * 2 delivery paths:
  *
- *   2. **Fallback modal overlay** (Safari, Firefox, anywhere PiP
- *      is unavailable). Same backdrop + dialog card we shipped in
- *      v1; constrained to the host viewport but at least full-
- *      width within it.
+ *   1. **`window.open()` 新規 window**(全ブラウザ対応)。
+ *      browser native の通常 window として開く、常時最前面ではなく
+ *      自由に裏に回せる。host の stylesheet を clone して同 look。
+ *      Popup blocker でブロックされた場合のみ次の modal にフォール。
  *
- * Open path is async because PiP request returns a promise;
- * `openMediaViewer(source)` resolves once either path finishes
- * setting up.
+ *   2. **モーダル overlay フォールバック**(popup blocked / 旧ブラウザ)。
+ *      v1 の backdrop + dialog card。host viewport 内に拘束されるが
+ *      横幅一杯に展開。
  *
  * Pure DOM helpers — no dispatcher / state coupling. The action
  * binder owns event wiring.
  */
 
-interface DocumentPiPApi {
-  requestWindow(options?: { width?: number; height?: number }): Promise<Window>;
-}
-
-function getDocumentPiP(): DocumentPiPApi | null {
-  const w = window as unknown as { documentPictureInPicture?: DocumentPiPApi };
-  return w.documentPictureInPicture ?? null;
-}
-
 /**
  * Render the modal-fallback viewer overlay. Hidden by default; the
- * action binder unhides it when PiP is unavailable.
+ * action binder unhides it when window.open() is blocked or unavailable.
  */
 export function renderMediaViewer(): HTMLElement {
   const backdrop = document.createElement('div');
@@ -93,7 +82,7 @@ function buildViewerClone(source: Element): Element {
 
 /**
  * Copy every accessible CSS rule from the host document into a
- * `<style>` tag in the PiP window, so the cloned content renders
+ * `<style>` tag in the new window, so the cloned content renders
  * identically. Cross-origin sheets are skipped silently (their
  * rules aren't readable; usually they're not relevant to a PKC2
  * single-HTML build anyway).
@@ -116,52 +105,60 @@ function cloneStylesheetsInto(target: Document): void {
 }
 
 /**
- * Track the currently open PiP window so subsequent open calls can
- * close the previous one before spawning a new one(otherwise the
+ * Track the currently open window so subsequent open calls can
+ * close the previous one before spawning a new one (otherwise the
  * user accumulates orphan windows).
  */
-let activePipWindow: Window | null = null;
+let activeWindow: Window | null = null;
 
-async function tryOpenInPiP(source: Element): Promise<boolean> {
-  const pip = getDocumentPiP();
-  if (!pip) return false;
+async function tryOpenInWindow(source: Element): Promise<boolean> {
   try {
-    // Close any previous PiP window from a stale open call.
-    if (activePipWindow && !activePipWindow.closed) {
-      activePipWindow.close();
+    // Close any previous viewer window from a stale open call.
+    if (activeWindow && !activeWindow.closed) {
+      activeWindow.close();
     }
-    const pipWindow = await pip.requestWindow({ width: 900, height: 640 });
-    activePipWindow = pipWindow;
+    // window.open() で新規 window を起こす。`noopener` は外す:popup 側
+    // で host stylesheet / attribute をコピーしたいため document アクセス
+    // 必須。size hint は features 文字列で指定(browser 側で許容範囲)。
+    const popup = window.open('', '_blank', 'width=900,height=640');
+    if (!popup) {
+      // Popup blocker / new tab fallback → modal へ。
+      return false;
+    }
+    activeWindow = popup;
 
-    cloneStylesheetsInto(pipWindow.document);
+    // popup の document に host の style + theme attribute をコピー。
+    cloneStylesheetsInto(popup.document);
 
     // Mirror the body classes/data attributes that drive theming
     // (`data-pkc-theme`, `data-pkc-scanline`, etc.) so the cloned
     // content uses the user's chosen palette.
     for (const attr of Array.from(document.documentElement.attributes)) {
-      pipWindow.document.documentElement.setAttribute(attr.name, attr.value);
+      popup.document.documentElement.setAttribute(attr.name, attr.value);
     }
     for (const attr of Array.from(document.body.attributes)) {
-      pipWindow.document.body.setAttribute(attr.name, attr.value);
+      popup.document.body.setAttribute(attr.name, attr.value);
     }
 
-    // Layout container — `.pkc-md-rendered` for inherited prose
-    // styling, padding for visual breathing room.
-    const container = pipWindow.document.createElement('div');
+    // タイトル(window title bar 用)
+    popup.document.title = 'PKC2 Media Viewer';
+
+    // Layout container — `.pkc-md-rendered` で host の prose スタイルを
+    // 継承、padding で視認性。`pkc-media-viewer-popup-body` で window 固有
+    // CSS(旧 PiP CSS の名残は別 PR で整理予定)。
+    const container = popup.document.createElement('div');
     container.className = 'pkc-md-rendered pkc-media-viewer-pip-body';
     container.appendChild(buildViewerClone(source));
-    pipWindow.document.body.appendChild(container);
+    popup.document.body.appendChild(container);
 
-    // Ensure the host knows when the user closes the PiP window so
-    // we can clear the reference (lets the next open spawn fresh).
-    pipWindow.addEventListener('pagehide', () => {
-      if (activePipWindow === pipWindow) activePipWindow = null;
+    // popup を user が閉じたら active reference を clear。
+    popup.addEventListener('pagehide', () => {
+      if (activeWindow === popup) activeWindow = null;
     });
     return true;
   } catch (err) {
-    // PiP can be denied (e.g. user gesture missing, blocked by
-    // policy). Fall through to the modal path.
-    console.warn('[media-viewer] Document PiP unavailable:', err);
+    // window.open が何らかの理由で落ちたら modal へ fall through。
+    console.warn('[media-viewer] window.open unavailable:', err);
     return false;
   }
 }
@@ -176,23 +173,23 @@ function openModalFallback(source: Element): void {
 }
 
 /**
- * Show the viewer for `source`. Tries Document Picture-in-Picture
- * first (free-floating OS window, no parent-size constraint); falls
- * back to the in-page modal where PiP is unavailable.
+ * Show the viewer for `source`. Try `window.open()` first(全ブラウザ
+ * 対応、常時最前面でない通常 window)、popup blocked / 不可なら in-page
+ * modal にフォール。
  */
 export async function openMediaViewer(source: Element): Promise<void> {
-  if (await tryOpenInPiP(source)) return;
+  if (await tryOpenInWindow(source)) return;
   openModalFallback(source);
 }
 
 /**
- * Close whichever delivery is open: PiP window if active, modal
+ * Close whichever delivery is open: separate window if active, modal
  * otherwise.
  */
 export function closeMediaViewer(): void {
-  if (activePipWindow && !activePipWindow.closed) {
-    activePipWindow.close();
-    activePipWindow = null;
+  if (activeWindow && !activeWindow.closed) {
+    activeWindow.close();
+    activeWindow = null;
   }
   const backdrop = findMediaViewer();
   const content = findContentArea();
@@ -204,7 +201,7 @@ export function closeMediaViewer(): void {
  * Returns whether either delivery is currently open.
  */
 export function isMediaViewerOpen(): boolean {
-  if (activePipWindow && !activePipWindow.closed) return true;
+  if (activeWindow && !activeWindow.closed) return true;
   const backdrop = findMediaViewer();
   return !!backdrop && !backdrop.hidden;
 }
