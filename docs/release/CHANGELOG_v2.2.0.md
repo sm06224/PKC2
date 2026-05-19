@@ -80,9 +80,23 @@ v2.3.0 release 直前の **締め wave**(user direction「ALL!! DEEP!! GO AHEAD!
 
 - **PR-W20〜W23 Wave Z.3(PR #454 stack 内、CI green、未 merge)**:PKC MD = Rendered HTML 不変式 strict 化(`L-6 Simple inline regex` / `:::break` self-closing / multi-sentinel split / figure caption inline-level extraction)+ `breaks: true` 統一 + canonical form 修正(ruby `[[ruby:base|rt]]` / break `+++` / span `:text:cls:` / blank `_N` / align `||/|>` / indent `__`)。
 
+### Phase α — Wave Z 直後の small-wins wave(2026-05-17〜19、PR #463〜#478)
+
+Wave Z final 直後の **小サイズ・低 risk な改善 batch**。`docs/development/v3-architecture-proposals-2026-05-18.md` §4 で定義した段階着手順序の **Phase α** 部分(設計 wave に入る前に踏める PR を全部踏む)。
+
+- **PR #463 dependency + supply chain Phase 1 baseline**(2026-05-17):user direction「依存ライブラリ整理 + サプライチェーン攻撃対策」への initial wave。**(1)Renovate self-hosted 化**(`.github/workflows/renovate.yml` + `renovate.json` で dependency dashboard mode + 7 日 cooldown + group ルール、Mend SaaS dependency なし);**(2)minor / patch 7 件一括更新**(production deps 4 件 = docx / markdown-it / markdown-it-footnote / pptxgenjs はすべて latest 一致、devDeps の中 7 件のみ bump);**(3)`npm audit --audit-level=high` CI gate** を typecheck+test+build workflow に追加;**(4)主権モード doctrine 化**(常時最新 ≠ 安全、user が知っていて判断する dashboard)。**残 5 major bump**(vitest 4 / @vitest/coverage-v8 4 / typescript 6 / vite 8 / eslint 10)は Phase 2/3 で individual PR 経由で慎重評価予定。詳細は `docs/development/dependency-supply-chain-baseline-2026-05-17.md`。
+- **PR #467 canonical bootReady helper**(2026-05-17):CI smoke の boot 待ち race condition を root-fix。`src/adapter/boot-ready-signal.ts` で `window.PKC.bootReady: Promise<void>` を expose、`tests/smoke/_helpers/boot-ready.ts` から `waitForBootReady(page)` で `await window.PKC.bootReady` する canonical 待ち方を確立。`#pkc-root` の出現を polling する旧経路は撤回、Playwright の addInitScript で boot 前 hook して race を構造的に阻止。
+- **PR #470 / #471 CI smoke 並列度 reduction**(2026-05-17):flake が頻発していた Playwright shard を **workers=1 + max-parallel=2** に絞り、行きすぎた並列実行による resource starvation を回避。`timeout: 60_000`(per-test)で過敏な per-action timeout を撤回、retries: 0 で flake を retry mask しない PR-W19 doctrine を継続。
+- **PR #474 `>` 引用 + `:::section` lazy continuation 修正**(2026-05-19、user 報告):CommonMark blockquote lazy continuation で `:::section` opener が blockquote 内に取り込まれて構造崩壊する bug を root-fix。**共有 utility `src/features/markdown/colon-block-normalize.ts`**(NEW)を起こし、`ensureBlankAroundColonBlocks(body)`(AST 経路用)+ `ensureBlankAroundColonBlocksWithLineMap(source, lineMapIn)`(markdown-render.ts 経路用、Split View source-line tracking 保持)の 2 entry を export。`parse.ts` は inline 実装を削除して共有 utility を import、`markdown-render.ts` の preprocessor chain は admonition rewrite 後 / directive 処理前に挿入。center pane / Viewer popup / Split View preview の 3 surface すべてで blockquote と `:::section` が独立構造として render される。詳細は `docs/development/completed/bug-section-blockquote-lazy-continuation-2026-05-18.md`。
+- **PR #475 + #477 PiP 廃止 + regression hotfix**(2026-05-19、v3 提案 #3):user 体感「PiP は常時最前面が邪魔 / drag 操作不安定 / cross-browser 不揃いで思ったより使いにくい」を受けて **Document Picture-in-Picture API を廃止**、別窓は `window.open()` に統一。**hotfix**:`window.open('', '_blank')` の features arg(`'width=900,height=640'`)を削除(iOS Safari で features 付き = popup blocker 発火)+ `async` 修飾子を削除(microtask 跨ぎで user activation chain が切れて popup blocker 発火)。`tests/adapter/media-viewer-pr203.test.ts` を window.open stub ベースの test に更新、modal fallback path と new window path の両方を網羅。
+- **PR #476 scrollIntoView ancestor scroll 修正**(2026-05-19、roadmap §領域 5 bug):slash-menu / asset-picker / asset-autocomplete の keyboard navigation で `item.scrollIntoView({ block: 'nearest' })` を呼ぶと **popover の祖先 document まで scroll** されて user が画面を見失う bug。3 popover すべてで `scrollTop` 直接操作に置換、popover container のみ scroll させる。
+- **PR #478 roadmap 領域 2 #A4 / 領域 5 #A3 / 領域 7 #A5 完了反映**(2026-05-19):`docs/development/feature-requests-2026-04-28-roadmap.md` の 3 領域に completion status table を追加、本 Phase α で resolved な項目を roadmap 側にも反映。
+
+**規律遵守**:CLAUDE.md Wave §1「30〜50 PR で打ち止め」順守(本 Phase α = 8 PR の小 batch)、§3「既存問題は通さない hotfix PR」順守(lint 残務はその場で剥がす)、§5「visual parity test 最低 1 件」順守(scrollIntoView 修正に 3 popover 各々の visual smoke を追加)、§7「doc orphan / dead-link は作成と同時に登録」順守(本 PR で `bug-section-blockquote` を completed/ に移動 + INDEX strike-through + 取消線 + 完了 link)。
+
 ### Wave Z 残バグ / 次 wave 候補
 
-- **dependency 更新 + supply chain audit(次 wave)**:user direction「依存ライブラリの整理と最新版への更新は次のwaveです...最近特にサプライチェーン攻撃が頻発化していますし、これは必須ですね」。npm audit + Renovate config 整備 + lockfile pinning + npm provenance verify + 必要なら subresource integrity を次 wave 主軸に。
+- ~~**dependency 更新 + supply chain audit(次 wave)**~~ → ✅ PR #463 で Phase 1 baseline 着地(Renovate self-hosted + npm audit gate + minor/patch 7 件 bump)、残 5 major bump は Phase 2/3 で individual PR 経由。詳細は `dependency-supply-chain-baseline-2026-05-17.md`。
 - **/simplify findings 適用(follow-up commit)**:~60 LOC mis-positioned JSDoc cleanup + section roleConfig dedup + figure labelMap dedup を `decompose-pkc.ts` / `parse.ts` で実施候補(test 8067 が依存しないため安全に消せる)。
 
 ---
@@ -595,7 +609,7 @@ Wave 10-9 の **stabilization 連続 hotfix**。user 実機テストで挙がっ
 - bundle.css 146 KB:CHANGELOG 記載 budget 98 KB 超過 → 次 wave で領域 9 重複削減 Phase 2c で吸収予定
 - rubber band drag は 2-hop までで止まる(N-hop physics は別 wave)
 - drag 後の position は次 re-render で消える(pin 留めは未実装、別 wave 候補)
-- 既存 lint 警告 2 件(action-binder.ts:242 U+3000 / parse-capture-json.ts:16 import restriction、本 wave 起源ではない)
+- ~~既存 lint 警告 2 件(action-binder.ts:242 U+3000 / parse-capture-json.ts:16 import restriction)~~ → ✅ Phase 3 wave 内で resolved、`npm run lint` clean
 
 詳細 + merge 戦略は [`docs/development/wave-10-9-stabilization-summary.md`](../development/wave-10-9-stabilization-summary.md) + [`docs/development/completed/codespaces-merge-playbook-wave-10-9.md`](../development/completed/codespaces-merge-playbook-wave-10-9.md) 参照。
 
@@ -1009,18 +1023,31 @@ bundle.js 915.57 → 916.15 KB(+0.58 KB)、bundle.css 144.07 → 144.31 KB(+0.24
 
 ## Known Limitations
 
-- **Theme 切替時の不整合**:System dark↔light 切替で **mermaid graph(galaxy theme)+ 右ペイン TOC + PIP popup** の theme が一部固定。iOS + Windows で同症状(2026-05-10 user 報告)、PR-2R(別 wave)で対応予定
-- **書式指定の WCAG コントラスト**:背景色 × 前景色の組み合わせで可読性が損なわれるケースあり。AI 生成 fixture では特に発生。同系色 shift で WCAG AA(4.5:1)を保証する Flag-gated 機能を PR-2S(別 wave)で予定
-- **`:::toc` `:::frontmatter` `:::body` block directive**:未実装、PKC1010 warning marker で literal 残し(structural、ユーザーが即気付ける category)
-- **multi-line `%% … %%`**:`%%` は single-line inline comment、複数行 strip は `%%%…%%%`(block form)必要
-- **block comment による行ズレ**:multi-line `%%%…%%%` を strip すると Split View source-preview-sync の line index が乖離。preprocessor LineMap thread が未対応(TODO)
-- **Flags inspector のキーボード操作**:Tab / Enter / Space で flag 編集は OS 標準挙動に依存、専用 hotkey は未実装(power user 向け、別 wave で検討)
+> **本セクションは About entry に build 時 parse される**。`- ` bullet 行が About の「既知の制約」一覧に展開されるため、resolved 済み項目は本セクション外(例:該当 PR の changelog entry)に記録して bullet として残さない。
+
+- **multi-line `%% … %%` は仕様(設計意図)**:`%%` は **single-line inline comment**、複数行 strip は `%%%…%%%`(block form)を使う。Phase 2 PR-2X で block form の LineMap thread 対応済(Split View source-preview-sync で行ズレなし)
 - **領域 9 CSS architecture Phase 4**:per-archetype palette via `insertRule` は deferred(`USER_REQUEST_LEDGER.md` §3.6、user 確認で「拡大解釈」と認定、再 open trigger 5 件記録済)
 - **TEXTLOG drag-to-reorder**:USER_REQUEST_LEDGER §3.6 deferred items の trigger 解消(2026-05-03)、別 wave で着手予定
 - **PKC-Message v2 spec doc 起こし**:OQ decisions は固定済み、v2 spec normative 化は別 wave(v2.3 候補)
 - **Cross-container resolver / P2P**:未実装(v2.1.0 / v2.1.1 から継承)
 - **OS protocol handler for `pkc://`**:未実装(同)
 - **Full container footprint(body + relations + revisions)**:未実装、Storage Profile は asset-only(同)
+- **v3.x architecture 提案 8 案**:`docs/development/v3-architecture-proposals-2026-05-18.md` で受領(編集 mode 3 分割 / canvas 化 / wasm 化 / マルチウィンドウ / ファイラ統合 + 左ペイン廃止 / 右ペイン特化 / 書式機能ワープロ化)。Phase α(PiP 廃止 + bug fix + cleanup)は 2026-05-19 完了、Phase β(設計 wave)/ γ(実装 wave)/ δ(v3.0 spinoff)は別 wave 候補
+
+### Resolved since previous release(2026-05-12 Phase 3 + 2026-05-19 Phase α)
+
+本表は本書内の参照用。**About entry に出さないため bullet ではなく表形式**。
+
+| 旧 limitation | 解消 PR / Wave | 内容 |
+|---|---|---|
+| Theme 切替時の不整合(mermaid + 右ペイン TOC + popup theme 固定) | PR-2S(2026-05-12) | 3 site fix(mermaid 動的 theme + TOC CSS variable + popup matchMedia) |
+| 書式指定の WCAG コントラスト | PR-2T(2026-05-12) | resolver + Tier 0 flag `theme.wcag_auto_shift` default ON |
+| `:::toc` / `:::frontmatter` / `:::body` block directive 未実装 | PR-2V / PR-2W(2026-05-12) | PKC1010 deny list から削除、formal preprocessor + post-process で render |
+| multi-line `%%%…%%%` の行ズレ | PR-2X(2026-05-12) | state machine + LineMap thread で Split View source-preview-sync 維持 |
+| Flags inspector のキーボード操作未実装 | PR-2CC(2026-05-12) | ESC / `/` / j / k / ArrowDown / ArrowUp / Enter / Tab |
+| `>` 引用直後の `:::section` lazy continuation 取り込み | PR #474(2026-05-19) | 共有 utility `colon-block-normalize.ts` で AST 経路 + markdown-render.ts 経路に preprocessor 共通化 |
+| 別窓 PiP(Document Picture-in-Picture)使いにくい | PR #475 + #477(2026-05-19) | PiP 廃止、`window.open('', '_blank')` の同期実行へ統一(user activation chain + iOS Safari popup blocker 配慮) |
+| slash-menu / asset-picker / asset-autocomplete の scrollIntoView ancestor scroll | PR #476(2026-05-19) | popover 3 種すべて `scrollTop` 直接操作に置換、popover container のみ scroll |
 
 ---
 

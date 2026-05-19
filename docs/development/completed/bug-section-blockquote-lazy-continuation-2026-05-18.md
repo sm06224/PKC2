@@ -1,10 +1,12 @@
 # Bug:`>` 引用 + `:::section` lazy continuation 取り込み(2026-05-18 user 報告)
 
-**Status**:報告済、未修正(設計合意 + 実装 wave 待ち)
+**Status**:✅ **RESOLVED**(2026-05-19、PR #474 で対応完了)
 **Severity**:中(機能不足、user が「引用ブロック化しない」と報告)
 **Reporter**:user(2026-05-18)
 **Path**:`src/features/markdown/markdown-render.ts`(center pane 経路)
 **関連**:`src/features/ast/parse.ts`(AST 経路は既に修正済、対称性欠落)
+
+**Resolution(2026-05-19)**:修正方針 A(共有 utility 化)で着地。新規 `src/features/markdown/colon-block-normalize.ts` を起こし、`ensureBlankAroundColonBlocks(body)`(AST 経路)+ `ensureBlankAroundColonBlocksWithLineMap(source, lineMapIn)`(markdown-render.ts 経路、Split View source-line tracking 保持)の 2 entry を export。`parse.ts` は inline 実装を削除して共有 utility を import、`markdown-render.ts` の preprocessor chain は admonition rewrite 後 / directive 処理前に挿入。center pane / Viewer popup / Split View preview の 3 surface すべてで lazy continuation 取り込み再現せず、blockquote と `:::section` が独立構造として render される。
 
 ---
 

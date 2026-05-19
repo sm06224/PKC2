@@ -248,9 +248,19 @@ line-break / measure 問題)。Source ↔ Preview sync で誤差が生じ、user
 ## §4 推奨着手順序
 
 ### Phase α(immediate、Wave Z 直後):
-- **#3 PiP 廃止**:小 cleanup、Wave Z 締めの一環として 1 PR で着地
-- **bug fix:`>` + `:::section` lazy continuation**(別 doc:
-  `bug-section-blockquote-lazy-continuation-2026-05-18.md`)も同時候補
+- ✅ **#3 PiP 廃止**(PR #475 + 後続 #477 regression hotfix):Document
+  Picture-in-Picture API を破棄、`window.open('', '_blank')` の同期実行
+  へ統一(user activation chain を保つため `async` 廃止 + iOS Safari
+  popup blocker を避けるため features arg 廃止)
+- ✅ **bug fix:`>` + `:::section` lazy continuation**(PR #474、別 doc:
+  `completed/bug-section-blockquote-lazy-continuation-2026-05-18.md`):
+  共有 utility `colon-block-normalize.ts` を起こし AST 経路 +
+  markdown-render.ts 経路の preprocessor chain 両方から呼び出し
+- ✅ 周辺 cleanup:scrollIntoView ancestor scroll bug 3 popover
+  (slash-menu / asset-picker / asset-autocomplete)を `scrollTop` 直接
+  操作に置換(PR #476)、CI smoke 並列度 reduction で flake 緩和(PR
+  #470/#471)、boot ready canonical helper(PR #467)、roadmap 完了
+  項目反映(PR #478)
 
 ### Phase β(設計 wave、~2 週):
 docs-only で全体図を固める:
@@ -314,7 +324,7 @@ docs-only で全体図を固める:
 | 2026-05-18 | **user 提案**:Wave Z 直後の棚卸し回答に対して 8 案を提示(編集 mode 分割 / canvas 化 / wasm 化 / PiP 廃止 / マルチウィンドウ / ファイラ統合 / 右ペイン特化 / 書式機能強化)|
 | 2026-05-18 | 私(Claude)が group 分け + 評価表 + 着手順序を整理 |
 | 2026-05-18 | **docs-only 着地**:本書で背景 + 提案 + 評価 + 議論を明文化、後の wave 着手時に陳腐化させない |
-| TBD | Phase α 着手(#3 PiP 廃止 + bug fix)|
+| 2026-05-19 | ✅ Phase α 完了:#3 PiP 廃止(PR #475 + 後続 #477 hotfix)+ bug fix(PR #474)+ 周辺 cleanup(scrollIntoView 3 popover #476 / CI smoke 並列度 #470-#471 / boot ready helper #467 / roadmap 反映 #478)|
 | TBD | Phase β 設計 wave(#1 + #4 + #5 + #6 + #7 の spec 化)|
 | TBD | Phase γ 実装 wave(Group A → B → C 順次)|
 | TBD | Phase δ v3.0 spinoff(#2 + #8 = canvas + wasm)|
@@ -323,7 +333,7 @@ docs-only で全体図を固める:
 
 ## §7 関連 doc
 
-- `bug-section-blockquote-lazy-continuation-2026-05-18.md`:同時報告 bug
+- `completed/bug-section-blockquote-lazy-continuation-2026-05-18.md`:同時報告 bug(2026-05-19 PR #474 で resolved → archive 済)
 - `feature-requests-2026-04-28-roadmap.md`:領域 1〜10 既存 roadmap
 - `pkc2-vision-modern-emacs-2026-05.md`:「モダン emacs / org-mode + 非
   プログラマ + AI 一級市民」vision、本 8 案と整合
