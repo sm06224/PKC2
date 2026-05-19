@@ -158,10 +158,11 @@ describe('openMediaViewer / closeMediaViewer — modal fallback', () => {
     expect(content.children.length).toBe(0);
   });
 
-  it('open / close on a viewer that was never mounted is a no-op', async () => {
+  it('open / close on a viewer that was never mounted is a no-op', () => {
     const source = document.createElement('div');
     source.className = 'pkc-md-block';
-    await expect(openMediaViewer(source)).resolves.toBeUndefined();
+    // openMediaViewer は sync 関数(2026-05-19 regression hotfix)
+    expect(() => openMediaViewer(source)).not.toThrow();
     expect(() => closeMediaViewer()).not.toThrow();
     expect(isMediaViewerOpen()).toBe(false);
   });
