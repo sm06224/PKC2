@@ -263,15 +263,20 @@ line-break / measure 問題)。Source ↔ Preview sync で誤差が生じ、user
   項目反映(PR #478)
 
 ### Phase β(設計 wave、~2 週):
-docs-only で全体図を固める:
-- **編集 / window 統合設計 doc**(#1 + #4 + #5 一括)
+**全体計画 doc** = [`phase-beta-plan-2026-05-19.md`](./phase-beta-plan-2026-05-19.md)
+で起こした(2026-05-19、user direction「Phase β 全体計画 doc で合意」)。
+PR-β0 = 本計画書、PR-β1〜β4 = 各 group の canonical spec doc + Phase γ
+wave map。docs-only で全体図を固める:
+- **PR-β1 Group A 統合 spec**(#1 + #4 + #5 一括)
   - 3 mode 定義、子 window の data flow、左ペイン廃止後の navigation
   - migration plan(現 sidebar / detail / filer の互換性破壊範囲)
   - Tier 0 flag `shell.multi_window` 等で段階導入経路
-- **右ペイン spec**(#6)
+- **PR-β2 Group B 右ペイン spec**(#6)
   - relation editor / YAML editor の UI design
-- **書式機能 spec**(#7)
+- **PR-β3 Group C 書式機能 spec**(#7)
   - ワープロ相当の operation 一覧、PKC MD canonical 形との対応表
+- **PR-β4 Phase γ 実装 wave map**(optional、spec 全件着地後)
+  - 実装 PR stack 順序 + budget 試算 + visual parity test 計画
 
 ### Phase γ(実装 wave、~2-3 ヶ月、6-15 PR):
 - 設計合意後に Group A(window shell)→ B(右ペイン特化)→ C(書式強化)を順次着地
