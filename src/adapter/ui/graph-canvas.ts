@@ -1282,9 +1282,23 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
       view.dragNeighborFactor = undefined;
       view.dragMouseStartClient = null;
     }
-    // Phase γ-B2:wire drag 終了。本 PR(γ-B2-2)は reset のみ、relation
-    // 確定(kind popup → CREATE_RELATION)は後続 PR。
+    // Phase γ-B2-3:wire drag 終了。drop 点に別 node があれば wire-drop
+    // event を発行(action-binder が kind selector popup → CREATE_RELATION)。
     if (view.wireSource) {
+      const dropTarget = hitTestNodeAt(canvas, me.clientX, me.clientY);
+      if (dropTarget && dropTarget !== view.wireSource) {
+        canvas.dispatchEvent(
+          new CustomEvent('pkc-graph-wire-drop', {
+            detail: {
+              source: view.wireSource,
+              target: dropTarget,
+              clientX: me.clientX,
+              clientY: me.clientY,
+            },
+            bubbles: true,
+          }),
+        );
+      }
       view.wireSource = null;
       view.wireTarget = null;
       drawGraphCanvas(canvas);

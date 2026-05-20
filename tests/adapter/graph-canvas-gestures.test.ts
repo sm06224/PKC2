@@ -318,6 +318,55 @@ describe('graph canvas wire drag (Phase γ-B2-2)', () => {
     expect(v.wireSource == null).toBe(true);
   });
 
+  it('edit mode: drop が別 node 上なら pkc-graph-wire-drop を発行', () => {
+    bindGraphCanvas(
+      canvas,
+      mkPayload(960, 600, [
+        { id: 'n1', x: 100, y: 100 },
+        { id: 'n2', x: 300, y: 100 },
+      ]),
+    );
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('edit');
+    let dropDetail: { source: string; target: string } | null = null;
+    canvas.addEventListener('pkc-graph-wire-drop', (ev) => {
+      dropDetail = (ev as CustomEvent).detail as {
+        source: string;
+        target: string;
+      };
+    });
+
+    md(100, 100);
+    mmove(300, 100);
+    mup(300, 100);
+
+    expect(dropDetail).not.toBeNull();
+    expect(dropDetail!.source).toBe('n1');
+    expect(dropDetail!.target).toBe('n2');
+  });
+
+  it('edit mode: drop が空白なら wire-drop event は出ない', () => {
+    bindGraphCanvas(canvas, mkPayload(960, 600, [{ id: 'n1', x: 100, y: 100 }]));
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('edit');
+    let fired = false;
+    canvas.addEventListener('pkc-graph-wire-drop', () => {
+      fired = true;
+    });
+
+    md(100, 100);
+    mmove(500, 400);
+    mup(500, 400);
+
+    expect(fired).toBe(false);
+  });
+
   it('view mode: wire drag は起きず従来の node-drag のまま', () => {
     bindGraphCanvas(
       canvas,

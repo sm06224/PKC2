@@ -37,6 +37,7 @@ import {
 } from './media-viewer';
 import { openImagePreview } from './image-preview';
 import { resetGraphCanvasZoom, setGraphEditMode } from './graph-canvas';
+import { openRelationKindPopup } from './relation-kind-popup';
 import {
   enhanceTable,
   sortColumn,
@@ -7702,6 +7703,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     });
     root.appendChild(menu);
     clampMenuToViewport(menu);
+  });
+  root.addEventListener('pkc-graph-wire-drop', (ev) => {
+    // Phase γ-B2-3/4:graph wire drag の drop。kind selector popup を出し、
+    // kind 選択で CREATE_RELATION を dispatch(meta pane の create-relation
+    // と同じ reducer path を共有)。
+    const detail = (ev as CustomEvent).detail as
+      | { source?: unknown; target?: unknown; clientX?: unknown; clientY?: unknown }
+      | undefined;
+    if (
+      !detail ||
+      typeof detail.source !== 'string' ||
+      typeof detail.target !== 'string' ||
+      typeof detail.clientX !== 'number' ||
+      typeof detail.clientY !== 'number'
+    ) {
+      return;
+    }
+    if (dispatcher.getState().readonly) return;
+    const from = detail.source;
+    const to = detail.target;
+    openRelationKindPopup({
+      x: detail.clientX,
+      y: detail.clientY,
+      onPick: (kind) => {
+        dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind });
+      },
+    });
   });
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);
