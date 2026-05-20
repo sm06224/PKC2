@@ -1179,7 +1179,74 @@ function renderHeader(state: AppState): HTMLElement {
 
   header.appendChild(toggles);
 
+  // Top-header 階層パス(Explorer 風 path trail、pgc-42 / user direction
+  // 2026-05-20)。header 最下段に full-width 1 行で出す。
+  const pathTrail = renderHeaderPathTrail(state);
+  if (pathTrail) header.appendChild(pathTrail);
+
   return header;
+}
+
+// Top-header の階層パス(Explorer 風 path trail)。user direction
+// (2026-05-20「トップレベルの最上部のヘッダにファイラの階層パスを
+// エクスプローラみたいに表示・jump できるように」)。選択中 entry の
+// 祖先 folder を辿り、各 segment を click で SELECT_ENTRY(= jump)。
+// center pane の breadcrumb(renderView 内)と data 経路(`getBreadcrumb`)を
+// 共有する別 surface で、常時可視。選択が無ければ null(描画しない)。
+function renderHeaderPathTrail(state: AppState): HTMLElement | null {
+  const container = state.container;
+  const lid = state.selectedLid;
+  if (!container || !lid) return null;
+  const entry = container.entries.find((e) => e.lid === lid);
+  if (!entry) return null;
+
+  const nav = createElement('nav', 'pkc-header-path');
+  nav.setAttribute('data-pkc-region', 'header-path');
+  nav.setAttribute('aria-label', '階層パス');
+
+  const appendSep = (): void => {
+    const sep = createElement('span', 'pkc-header-path-sep');
+    sep.textContent = '›';
+    nav.appendChild(sep);
+  };
+
+  // Root marker(非 clickable)。
+  const root = createElement('span', 'pkc-header-path-root');
+  root.textContent = 'Root';
+  nav.appendChild(root);
+
+  const ancestors = getBreadcrumb(container.relations, container.entries, lid);
+
+  // 祖先が getBreadcrumb の maxDepth cap で truncate されていれば … を挟む。
+  if (
+    ancestors.length > 0 &&
+    getStructuralParent(container.relations, container.entries, ancestors[0]!.lid) !== null
+  ) {
+    appendSep();
+    const trunc = createElement('span', 'pkc-header-path-truncated');
+    trunc.setAttribute('title', '…(省略された祖先あり)');
+    trunc.textContent = '…';
+    nav.appendChild(trunc);
+  }
+
+  // 祖先 folder — click で jump(SELECT_ENTRY、action-binder の汎用 handler)。
+  for (const a of ancestors) {
+    appendSep();
+    const seg = createElement('span', 'pkc-header-path-segment');
+    seg.setAttribute('data-pkc-action', 'select-entry');
+    seg.setAttribute('data-pkc-lid', a.lid);
+    seg.setAttribute('title', a.title || '(untitled)');
+    seg.textContent = a.title || '(untitled)';
+    nav.appendChild(seg);
+  }
+
+  // 現在 entry(非 clickable — 既にそこに居る)。
+  appendSep();
+  const current = createElement('span', 'pkc-header-path-current');
+  current.textContent = entry.title || '(untitled)';
+  nav.appendChild(current);
+
+  return nav;
 }
 
 /**

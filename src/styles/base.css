@@ -528,6 +528,46 @@
   letter-spacing: 0.05em;
 }
 
+/* Top-header 階層パス(Explorer 風 path trail、pgc-42)。.pkc-header は
+   flex-wrap:wrap なので flex-basis:100% で最下段に独立 1 行となる。
+   segment click は data-pkc-action="select-entry" で jump。 */
+.pkc-header-path {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--c-border);
+  font-size: var(--fs-sm);
+  color: var(--c-fg-dim);
+  overflow-x: auto;
+}
+.pkc-header-path-root,
+.pkc-header-path-truncated,
+.pkc-header-path-current,
+.pkc-header-path-segment {
+  white-space: nowrap;
+}
+.pkc-header-path-current {
+  font-weight: 600;
+  color: var(--c-accent);
+}
+.pkc-header-path-sep {
+  opacity: 0.55;
+}
+.pkc-header-path-segment {
+  cursor: pointer;
+  color: var(--c-accent);
+  border-radius: var(--radius);
+  padding: 0 var(--space-1);
+}
+.pkc-header-path-segment:hover {
+  background: var(--c-accent-dim);
+  text-decoration: underline;
+}
+
 .pkc-phase-badge {
   font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2-5);
