@@ -106,4 +106,40 @@ describe('frontmatter graphical editor (Phase γ-B1)', () => {
     const entry = dispatcher.getState().container!.entries[0];
     expect(entry!.body).toBe('---\nkind: 2024\n---\nbody');
   });
+
+  it('flag ON: enum key(writing)は <select>、非 enum key は <input>', () => {
+    setContainerFlagSource({ 'meta_pane.yaml_graphical_enabled': true });
+    boot('---\nwriting: horizontal\ntitle: T\n---\ntext');
+    const section = root.querySelector('[data-pkc-region="frontmatter"]')!;
+    expect(
+      section.querySelector('[data-pkc-frontmatter-key="writing"]')?.tagName,
+    ).toBe('SELECT');
+    expect(
+      section.querySelector('[data-pkc-frontmatter-key="title"]')?.tagName,
+    ).toBe('INPUT');
+  });
+
+  it('flag ON: select 変更が entry.body に書き戻る', () => {
+    setContainerFlagSource({ 'meta_pane.yaml_graphical_enabled': true });
+    const dispatcher = boot('---\nwriting: horizontal\n---\nbody');
+    const select = root.querySelector<HTMLSelectElement>(
+      'select[data-pkc-frontmatter-key="writing"]',
+    )!;
+    select.selectedIndex = Array.from(select.options).findIndex(
+      (o) => o.value === 'vertical',
+    );
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    const entry = dispatcher.getState().container!.entries[0];
+    expect(entry!.body).toBe('---\nwriting: vertical\n---\nbody');
+  });
+
+  it('flag ON: enum 外の現在値も select の option として残る', () => {
+    setContainerFlagSource({ 'meta_pane.yaml_graphical_enabled': true });
+    boot('---\nalign: weird\n---\ntext');
+    const select = root.querySelector<HTMLSelectElement>(
+      'select[data-pkc-frontmatter-key="align"]',
+    );
+    expect(Array.from(select!.options).map((o) => o.value)).toContain('weird');
+    expect(select!.value).toBe('weird');
+  });
 });

@@ -5444,8 +5444,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // Phase γ-B1:frontmatter graphical editor の input change。section 内の
       // 全 key input を集めて meta を再構築、setFrontmatter で entry.body に
       // 書き戻す(body-only update なので QUICK_UPDATE_ENTRY)。
+      // target は input / select いずれもあり得る(enum key は select)。
       const lid = target.getAttribute('data-pkc-lid');
-      if (!lid || !(target instanceof HTMLInputElement)) return;
+      if (!lid) return;
       const section = target.closest('[data-pkc-region="frontmatter"]');
       if (!section) return;
       const entry = dispatcher
@@ -5453,12 +5454,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         .container?.entries.find((e) => e.lid === lid);
       if (!entry) return;
       const meta: Record<string, string | number | boolean | null> = {};
-      const inputs = section.querySelectorAll<HTMLInputElement>(
-        'input[data-pkc-frontmatter-key]',
-      );
-      for (const input of inputs) {
-        const key = input.getAttribute('data-pkc-frontmatter-key');
-        if (key) meta[key] = parseFrontmatterScalar(input.value);
+      const controls = section.querySelectorAll<
+        HTMLInputElement | HTMLSelectElement
+      >('input[data-pkc-frontmatter-key], select[data-pkc-frontmatter-key]');
+      for (const control of controls) {
+        const key = control.getAttribute('data-pkc-frontmatter-key');
+        if (key) meta[key] = parseFrontmatterScalar(control.value);
       }
       const body = setFrontmatter(entry.body ?? '', meta);
       dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body });

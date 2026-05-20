@@ -8407,7 +8407,68 @@ function renderFrontmatterReadonly(
   return dl;
 }
 
-// Phase γ-B1:key ごとの編集 input を持つ graphical editor。input change を
+// strict enum を持つ frontmatter key(spec §3.1、document-globals.ts の
+// VALID_* と整合)。これらは `<select>` で編集する。`kind` は parser が値を
+// 検証しない free string のため select 化しない(text input のまま)。
+const FRONTMATTER_ENUMS: Readonly<Record<string, readonly string[]>> = {
+  writing: ['horizontal', 'vertical'],
+  align: ['left', 'right', 'center', 'top', 'bottom'],
+  layout: [
+    'a4-1col',
+    'a4-2col',
+    'a4-3col',
+    'b5-1col',
+    'b5-2col',
+    'letter-1col',
+    'letter-2col',
+  ],
+};
+
+// 1 つの frontmatter key の編集 control を生成する。enum key は <select>、
+// それ以外は text <input>。現在値が enum 外でも option として残し値を失わない。
+function renderFrontmatterControl(
+  key: string,
+  value: unknown,
+  lid: string,
+): HTMLElement {
+  const current = frontmatterInputValue(value);
+  const enumValues = FRONTMATTER_ENUMS[key];
+  if (enumValues) {
+    const select = document.createElement('select');
+    select.className = 'pkc-frontmatter-edit-input';
+    select.setAttribute('data-pkc-frontmatter-key', key);
+    select.setAttribute('data-pkc-action', 'update-frontmatter-field');
+    select.setAttribute('data-pkc-lid', lid);
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '(未設定)';
+    select.appendChild(blank);
+    const options =
+      current === '' || enumValues.includes(current)
+        ? enumValues
+        : [current, ...enumValues];
+    for (const v of options) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      select.appendChild(opt);
+    }
+    // 全 option 追加後に value を設定(個別 opt.selected 設定だと value
+    // 変更時に複数 selected が残る環境差がある)。
+    select.value = current;
+    return select;
+  }
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'pkc-frontmatter-edit-input';
+  input.value = current;
+  input.setAttribute('data-pkc-frontmatter-key', key);
+  input.setAttribute('data-pkc-action', 'update-frontmatter-field');
+  input.setAttribute('data-pkc-lid', lid);
+  return input;
+}
+
+// Phase γ-B1:key ごとの編集 control を持つ graphical editor。control change を
 // action-binder の `update-frontmatter-field` が拾い、setFrontmatter で
 // entry.body へ書き戻す。
 function renderFrontmatterEditor(
@@ -8420,15 +8481,8 @@ function renderFrontmatterEditor(
     const row = createElement('div', 'pkc-frontmatter-edit-row');
     const label = createElement('label', 'pkc-frontmatter-edit-label');
     label.textContent = key;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'pkc-frontmatter-edit-input';
-    input.value = frontmatterInputValue(meta[key]);
-    input.setAttribute('data-pkc-frontmatter-key', key);
-    input.setAttribute('data-pkc-action', 'update-frontmatter-field');
-    input.setAttribute('data-pkc-lid', entry.lid);
     row.appendChild(label);
-    row.appendChild(input);
+    row.appendChild(renderFrontmatterControl(key, meta[key], entry.lid));
     form.appendChild(row);
   }
   return form;
