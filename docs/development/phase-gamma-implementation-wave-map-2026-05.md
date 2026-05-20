@@ -211,17 +211,23 @@ happy-dom 12 + Playwright parity 1)、`pgc-34` で **UX 完成度向上**
 で **per-folder 絞り込み検索**(`sidebarFilerQuery`、happy-dom 11 +
 Playwright parity 1)、`pgc-36` で **multi-select + 一括操作バー**
 (`buildFilerMultiActionBar` 再利用、happy-dom 7 + Playwright parity 1)。
-これで filer-mode sidebar は audit の critical gap(DnD・multi-select)を
-解消し **tree-mode と実用上同等の management 能力**に到達。entry
-metadata badge は後続候補。**A1-4 default 切替は `pgc-37` で着地**
-(user direction 2026-05-20「filer をデフォルト化まで進める」→「1 PR で
-一括移行」):A1-1 で新設しなかった `shell.sidebar_mode_default` の代わりに
-既存 `sidebar.mode` flag の `defineFlag` default を `'tree'` → `'filer'`
-に切替。tree-mode を暗黙 default 前提としていた既存 test 22 ファイル /
-204 件を `setContainerFlagSource({ 'sidebar.mode': 'tree' })` 明示固定へ
-移行(smoke 6 spec は `?pkc-flag=sidebar.mode=tree`)。tree mode は
-`sidebar.mode=tree` で opt-in する legacy 経路として保持。A1-5 deprecated
-marker は後続 PR。詳細は shell spec §4.5。
+これで filer-mode sidebar は DnD・絞り込み検索・multi-select を獲得した
+が、tree sidebar の検索系(検索窓・hide-buckets・archetype filter・saved
+searches・advanced filters・unreferenced-attachments filter・recent-
+entries pane)は未移植のまま。
+
+**A1-4 default 切替は `pgc-37` で一旦着地したが `pgc-41` で revert**:
+pgc-37 で `sidebar.mode` の default を `'tree'` → `'filer'` に切替えた
+ものの、user 指摘(2026-05-20「左 pane を不完全なファイラーにした /
+ツリー表示の検索オプションが無くなった / 機能ダウンしすぎ」)の通り、
+上記検索系を欠く filer を default にしたのは明確な機能ダウンだった。
+**A1-2(filer への tree 機能移植)/ A1-3(navigation parity)が未達の
+まま A1-4(default 切替)を実施した手順ミス**。pgc-41 で default を
+`'tree'` に戻し、filer は `sidebar.mode=filer` の opt-in に復帰。pgc-37
+で入れた tree-sidebar test 22 ファイルの明示 `sidebar.mode=tree` 固定
+(+ smoke 12 spec)は無害なため保持。A1-4 の再実施は A1-2/A1-3(検索系
+の filer 移植)完了が前提。A1-5 deprecated marker も同様に保留。詳細は
+shell spec §4.5。
 
 ### §4.2 γ-A2:編集 mode 3 分割(10 PR)
 

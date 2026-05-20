@@ -1,11 +1,10 @@
 /**
  * @vitest-environment happy-dom
  *
- * Phase γ-A1:filer モード sidebar。pgc-37 で `sidebar.mode` の default を
- * `'filer'` に切替え(tree は `sidebar.mode='tree'` で opt-in する legacy)。
+ * Phase γ-A1:filer モード sidebar(`sidebar.mode='filer'` で opt-in)。
  *
  * 既存機能(領域 10-6)だが active test 被覆が皆無だったため、γ-A1 の
- * 品質固めとして happy-dom 被覆を新設。default → filer sidebar 描画 →
+ * 品質固めとして happy-dom 被覆を新設。flag gate → filer sidebar 描画 →
  * item 属性 → folder scope ナビゲーション(click → SELECT_ENTRY →
  * sidebar が scope 内へ再描画)の reform-2026-05 Phase 8 順序性まで検証。
  * 実 OS click parity は `tests/smoke/sidebar-filer-mode.spec.ts`。
@@ -95,13 +94,7 @@ describe('filer モード sidebar (Phase γ-A1)', () => {
     );
   }
 
-  it('default(flag 未設定):filer モード sidebar が描画される(pgc-37 で default 切替)', () => {
-    boot();
-    expect(filerSidebar()).not.toBeNull();
-  });
-
-  it('sidebar.mode=tree:filer は出ず legacy tree sidebar に戻る', () => {
-    setContainerFlagSource({ 'sidebar.mode': 'tree' });
+  it('flag 未設定(default tree):filer モード sidebar は出ない', () => {
     boot();
     expect(filerSidebar()).toBeNull();
   });

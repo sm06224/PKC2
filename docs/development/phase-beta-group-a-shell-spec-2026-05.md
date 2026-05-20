@@ -579,16 +579,19 @@ critical gap(DnD・multi-select)を解消、**tree-mode と実用上同等の
 management 能力**に到達。entry metadata badge(backlink / orphan /
 copy-link)は nice-to-have として後続候補。
 
-**A1-4 default 切替は `pgc-37` で着地**(user direction 2026-05-20「filer
-をデフォルト化まで進める」→「1 PR で一括移行」)。A1-1 で新設しなかった
-`shell.sidebar_mode_default` の代わりに既存 `sidebar.mode` flag の
-`defineFlag` default を `'tree'` → `'filer'` へ切替。flag 未設定の全
-viewer が filer-explorer 風 sidebar を既定表示し、tree-mode は
-`sidebar.mode=tree` で opt-in する legacy 経路として保持(後方互換)。
-tree-mode を暗黙 default 前提としていた既存 test 22 ファイル / 204 件は
-`setContainerFlagSource({ 'sidebar.mode': 'tree' })` 明示固定へ移行
-(smoke 6 spec は `?pkc-flag=sidebar.mode=tree`)。A1-5 deprecated marker
-は後続 PR。
+**A1-4 default 切替は `pgc-37` で一旦着地したが `pgc-41` で revert**。
+pgc-37 で `sidebar.mode` の default を `'tree'` → `'filer'` へ切替えた
+ものの、user 指摘(2026-05-20「左 pane を不完全なファイラーにした /
+ツリー表示の検索オプションが無くなった / 機能ダウンしすぎ」)の通り、
+filer sidebar は tree sidebar の検索系(検索窓・hide-buckets・archetype
+filter・saved searches・advanced filters・unreferenced-attachments
+filter・recent-entries pane)を欠いており、default 化は機能ダウンだった。
+**A1-2(filer への tree 機能移植)/ A1-3(navigation parity)が未達の
+まま A1-4 を実施した手順ミス**。pgc-41 で default を `'tree'` に戻し、
+filer は `sidebar.mode=filer` の opt-in に復帰。pgc-37 で入れた
+tree-sidebar test 22 ファイルの明示 `sidebar.mode=tree` 固定(+ smoke
+12 spec)は無害なため保持する。A1-4 の再実施は A1-2/A1-3(検索系の
+filer 移植)完了が前提。A1-5 deprecated marker も保留。
 
 ---
 
