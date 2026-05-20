@@ -3097,6 +3097,143 @@ function markChildWindowItems(
  * archetype icon column, no breadcrumb header (it's pinned to the
  * current folder via selectedLid).
  */
+/**
+ * pgc-49:tree sidebar(renderSidebarImpl)と filer sidebar
+ * (renderSidebarAsFiler)で共有する ⚙ Filters disclosure。color strip +
+ * showArchived / treeHideBuckets / searchHideBuckets / unreferenced の
+ * 4 toggle を 1 つの `<details>` に折りたたみ収納する(2026-04-27 user
+ * direction「トグル自体を折りたたんで隠したうえで」)。
+ *
+ * 各 toggle の有無は container の中身で出し分ける。toggle が 1 つも無ければ
+ * `null` を返す。disclosure の open/close は `state.advancedFiltersOpen` で
+ * 次 dispatch の full re-render を跨いで維持される。helper 化により tree と
+ * filer の検索オプションが構造的に分岐し得なくなる(user 指摘「機能ダウン
+ * しすぎ」への恒久対策)。
+ *
+ * @param userEntries  precondition 判定に使う user entry 配列(system-*
+ *                     archetype は除外済を渡すこと)。
+ * @param filterActive search 軸 filter(query / archetype / tag / color /
+ *                     categoricalPeer)が立っているか。`search-hide-buckets`
+ *                     toggle の表示 gate(検索中のみ意味を持つ)。
+ */
+function renderAdvancedFiltersPanel(
+  state: AppState,
+  userEntries: Entry[],
+  filterActive: boolean,
+): HTMLElement | null {
+  const hasArchivedTodo = userEntries.some(
+    (e) => e.archetype === 'todo' && parseTodoBody(e.body).archived,
+  );
+  const hasAttachment = userEntries.some((e) => e.archetype === 'attachment');
+  const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+  const hasBucketFolder = !!state.container
+    && state.container.entries.some(
+      (e) => e.archetype === 'folder' && bucketTitles.has(e.title),
+    );
+  const hasBucketedEntryInResults =
+    filterActive
+    && !!state.container
+    && (() => {
+      const containerRef = state.container!;
+      return userEntries.some((e) => {
+        const parent = getStructuralParent(containerRef.relations, containerRef.entries, e.lid);
+        return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
+      });
+    })();
+  const colorStrip = renderColorFilterStrip(userEntries, state.colorTagFilter ?? new Set());
+  const hasColorsInUse = colorStrip !== null;
+  const hasAnyToggle =
+    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults || hasColorsInUse;
+  if (!hasAnyToggle) return null;
+
+  const details = document.createElement('details');
+  details.className = 'pkc-advanced-filters';
+  details.setAttribute('data-pkc-region', 'advanced-filters');
+  if (state.advancedFiltersOpen ?? false) {
+    details.setAttribute('open', '');
+  }
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-advanced-filters-summary';
+  summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
+  summary.textContent = '⚙ Filters';
+  details.appendChild(summary);
+
+  if (colorStrip) {
+    // Color tag chip strip — first child so the visual filter axis
+    // is at the top of the disclosure, ahead of the toggle list.
+    details.appendChild(colorStrip);
+  }
+
+  if (hasArchivedTodo) {
+    const toggle = createElement('label', 'pkc-show-archived-toggle');
+    toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = state.showArchived;
+    check.setAttribute('data-pkc-action', 'toggle-show-archived');
+    toggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show archived';
+    toggle.appendChild(labelText);
+    details.appendChild(toggle);
+  }
+
+  if (hasBucketFolder) {
+    // Inverted UX: checked = "show ASSETS / TODOS folders in tree".
+    const toggle = createElement('label', 'pkc-show-archived-toggle');
+    toggle.setAttribute('data-pkc-region', 'tree-hide-buckets-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = !(state.treeHideBuckets ?? true);
+    check.setAttribute('data-pkc-action', 'toggle-tree-hide-buckets');
+    toggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show ASSETS / TODOS folders';
+    toggle.appendChild(labelText);
+    details.appendChild(toggle);
+  }
+
+  if (hasBucketedEntryInResults) {
+    // Inverted UX: checked = "show ASSETS / TODOS contents in
+    // search results". Distinct from the tree-folder toggle —
+    // user may want folder visibility OFF but search-result
+    // visibility ON, or vice versa.
+    const toggle = createElement('label', 'pkc-show-archived-toggle');
+    toggle.setAttribute('data-pkc-region', 'search-hide-buckets-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = !(state.searchHideBuckets ?? true);
+    check.setAttribute('data-pkc-action', 'toggle-search-hide-buckets');
+    toggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show ASSETS / TODOS in search results';
+    toggle.appendChild(labelText);
+    details.appendChild(toggle);
+  }
+
+  if (hasAttachment) {
+    const unrefToggle = createElement('label', 'pkc-show-archived-toggle');
+    unrefToggle.setAttribute('data-pkc-region', 'unreferenced-attachments-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = state.unreferencedAttachmentsOnly ?? false;
+    check.setAttribute('data-pkc-action', 'toggle-unreferenced-attachments');
+    unrefToggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show only unused attachments';
+    unrefToggle.appendChild(labelText);
+    if (state.container && (state.unreferencedAttachmentsOnly ?? false)) {
+      const count = collectUnreferencedAttachmentLids(state.container).size;
+      const badge = createElement('span', 'pkc-unref-count');
+      badge.textContent = ` (${count})`;
+      unrefToggle.appendChild(badge);
+    }
+    details.appendChild(unrefToggle);
+  }
+
+  return details;
+}
+
 function renderSidebarAsFiler(state: AppState): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar pkc-sidebar-filer-mode');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
@@ -3115,21 +3252,73 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   // tree sidebar 同等の検索オプションを獲得する(user 指摘「ツリー表示の
   // 検索オプションが無くなっている」への対応)。どの filter 軸も立って
   // いなければ従来どおり現スコープの folder navigation を表示。
+  const userEntries = (state.container?.entries ?? []).filter(
+    (e) => !isSystemArchetype(e.archetype),
+  );
   const rawQuery = state.sidebarFilerQuery ?? '';
-  const filtering =
+  // searchAxisActive:`applyFilters` が駆動する軸(query / archetype / tag /
+  // color)。`filtering` はそれに加え unreferenced lens も含む ─ pgc-49 で
+  // unreferenced lens を ON にすると現フォルダでなく container 全体から未参照
+  // 添付を拾う必要があるため、flat global list へ切り替える(添付は ASSETS
+  // bucket に auto-route されるので現スコープ局所では空になる)。
+  const searchAxisActive =
     rawQuery.trim().length > 0 ||
     state.archetypeFilter.size > 0 ||
     (state.tagFilter?.size ?? 0) > 0 ||
     (state.colorTagFilter?.size ?? 0) > 0;
-  const matched = filtering
+  const filtering = searchAxisActive || (state.unreferencedAttachmentsOnly ?? false);
+  let matched = filtering
     ? applyFilters(
-        (state.container?.entries ?? []).filter((e) => !isSystemArchetype(e.archetype)),
+        userEntries,
         rawQuery,
         state.archetypeFilter,
         state.tagFilter,
         state.colorTagFilter,
       )
     : visibleChildren;
+
+  // pgc-49:tree sidebar(renderSidebarImpl)の post-applyFilters chain を
+  // matched に適用する。showArchived / searchHideBuckets / treeHideBuckets /
+  // unreferencedAttachmentsOnly の 4 toggle を tree と同一 semantics で再現
+  // (toggle UI は後段の ⚙ Filters disclosure)。
+  // ① showArchived:OFF なら archived todo を全 mode で除外。
+  if (!state.showArchived) {
+    matched = matched.filter((e) => {
+      if (e.archetype !== 'todo') return true;
+      return !parseTodoBody(e.body).archived;
+    });
+  }
+  // ② searchHideBuckets:検索軸が立っているときのみ ASSETS / TODOS bucket
+  // 直下 entry を検索結果から除外。unreferenced lens 単独では bypass する
+  // ─ 未参照添付は ASSETS bucket 内に住むため、ここで hide すると lens が
+  // 常に空になってしまう(tree の filterIsActive と同じ gate)。
+  if (searchAxisActive && (state.searchHideBuckets ?? true) && state.container) {
+    const { bucketChildLids } = getFilterIndexes(state.container);
+    if (bucketChildLids.size > 0) {
+      matched = matched.filter((e) => !bucketChildLids.has(e.lid));
+    }
+  }
+  // ③ treeHideBuckets:bucket folder + 子孫を hide。unreferenced lens 中は
+  // bypass(tree と同一)。現スコープ自体が bucket 配下なら hide を skip ─
+  // filer は folder navigation を持つので、bucket folder へ navigate-in した
+  // 状態で全件 hide されると view が空になり戻れなくなる。
+  if (
+    (state.treeHideBuckets ?? true) &&
+    !(state.unreferencedAttachmentsOnly ?? false) &&
+    state.container
+  ) {
+    const { hiddenBucketLids } = getFilterIndexes(state.container);
+    const scopeInBucket = !!scope && hiddenBucketLids.has(scope.lid);
+    if (hiddenBucketLids.size > 0 && !scopeInBucket) {
+      matched = matched.filter((e) => !hiddenBucketLids.has(e.lid));
+    }
+  }
+  // ④ unreferencedAttachmentsOnly:何からも参照されない attachment のみに
+  // 絞る cleanup lens(destructive workflow 用、明示 ON 時のみ作動)。
+  if ((state.unreferencedAttachmentsOnly ?? false) && state.container) {
+    const { unreferencedAttachmentLids } = getFilterIndexes(state.container);
+    matched = matched.filter((e) => unreferencedAttachmentLids.has(e.lid));
+  }
 
   const header = createElement('div', 'pkc-sidebar-filer-header');
   const label = createElement('span', 'pkc-sidebar-filer-label');
@@ -3156,9 +3345,7 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   // (空 folder からでも全体検索できるよう、pgc-35 の「現 folder に item が
   // あるときだけ」gate を撤廃)。data-pkc-field は render-continuity helper
   // が focus + caret を full re-render 跨ぎで復元するキー(IME が壊れない)。
-  const hasAnyEntry = (state.container?.entries ?? []).some(
-    (e) => !isSystemArchetype(e.archetype),
-  );
+  const hasAnyEntry = userEntries.length > 0;
   if (hasAnyEntry) {
     const searchInput = document.createElement('input');
     searchInput.type = 'search';
@@ -3172,14 +3359,14 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     // を再利用し、検索結果を type で絞れるようにする。button は
     // `set-archetype-filter` を dispatch、`applyFilters` 経由で matched に反映。
     sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
-    // pgc-48:color filter strip。color tag 付き entry があるときだけ出る
-    // (renderColorFilterStrip は色無しなら null)。applyFilters は pgc-47 で
-    // colorTagFilter を受けるため、strip で色を選べば検索結果に連動する。
-    const colorStrip = renderColorFilterStrip(
-      state.container?.entries ?? [],
-      state.colorTagFilter ?? new Set(),
-    );
-    if (colorStrip) sidebar.appendChild(colorStrip);
+    // pgc-48/49:⚙ Filters disclosure。tree sidebar(renderSidebarImpl)と
+    // 共有する `renderAdvancedFiltersPanel` で color strip + showArchived /
+    // treeHideBuckets / searchHideBuckets / unreferenced の 4 toggle を
+    // 折りたたみ収納する。helper 共有で tree と検索オプションが構造的に
+    // 乖離しないことを保証(user 指摘「ツリー表示の検索オプションが
+    // 無くなっている / 機能ダウンしすぎ」への対応)。
+    const advanced = renderAdvancedFiltersPanel(state, userEntries, searchAxisActive);
+    if (advanced) sidebar.appendChild(advanced);
   }
 
   const nav = resolveFilerNavigation(state);
@@ -3325,122 +3512,18 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   // so the typical browse view stays clean. The section persists
   // its open/closed state via `state.advancedFiltersOpen` so it
   // survives the next dispatch's full-shell rebuild.
-  const hasArchivedTodo = allEntries.some(
-    (e) => e.archetype === 'todo' && parseTodoBody(e.body).archived,
-  );
-  const hasAttachment = allEntries.some((e) => e.archetype === 'attachment');
-  const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
-  const hasBucketFolder = !!state.container
-    && state.container.entries.some(
-      (e) => e.archetype === 'folder' && bucketTitles.has(e.title),
-    );
-  const filterIsActiveForToggle =
-    state.searchQuery !== '' ||
-    state.archetypeFilter.size > 0 ||
-    (state.tagFilter?.size ?? 0) > 0 ||
-    (state.colorTagFilter?.size ?? 0) > 0 ||
-    state.categoricalPeerFilter !== null;
-  const hasBucketedEntryInResults =
-    filterIsActiveForToggle
-    && !!state.container
-    && (() => {
-      const containerRef = state.container!;
-      return allEntries.some((e) => {
-        const parent = getStructuralParent(containerRef.relations, containerRef.entries, e.lid);
-        return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
-      });
-    })();
-  const colorStrip = renderColorFilterStrip(allEntries, state.colorTagFilter ?? new Set());
-  const hasColorsInUse = colorStrip !== null;
-  const hasAnyToggle =
-    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults || hasColorsInUse;
-  if (hasAnyToggle) {
-    const details = document.createElement('details');
-    details.className = 'pkc-advanced-filters';
-    details.setAttribute('data-pkc-region', 'advanced-filters');
-    if (state.advancedFiltersOpen ?? false) {
-      details.setAttribute('open', '');
-    }
-    const summary = document.createElement('summary');
-    summary.className = 'pkc-advanced-filters-summary';
-    summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
-    summary.textContent = '⚙ Filters';
-    details.appendChild(summary);
-
-    if (colorStrip) {
-      // Color tag chip strip — first child so the visual filter axis
-      // is at the top of the disclosure, ahead of the toggle list.
-      details.appendChild(colorStrip);
-    }
-
-    if (hasArchivedTodo) {
-      const toggle = createElement('label', 'pkc-show-archived-toggle');
-      toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = state.showArchived;
-      check.setAttribute('data-pkc-action', 'toggle-show-archived');
-      toggle.appendChild(check);
-      const labelText = createElement('span', '');
-      labelText.textContent = 'Show archived';
-      toggle.appendChild(labelText);
-      details.appendChild(toggle);
-    }
-
-    if (hasBucketFolder) {
-      // Inverted UX: checked = "show ASSETS / TODOS folders in tree".
-      const toggle = createElement('label', 'pkc-show-archived-toggle');
-      toggle.setAttribute('data-pkc-region', 'tree-hide-buckets-toggle');
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = !(state.treeHideBuckets ?? true);
-      check.setAttribute('data-pkc-action', 'toggle-tree-hide-buckets');
-      toggle.appendChild(check);
-      const labelText = createElement('span', '');
-      labelText.textContent = 'Show ASSETS / TODOS folders';
-      toggle.appendChild(labelText);
-      details.appendChild(toggle);
-    }
-
-    if (hasBucketedEntryInResults) {
-      // Inverted UX: checked = "show ASSETS / TODOS contents in
-      // search results". Distinct from the tree-folder toggle —
-      // user may want folder visibility OFF but search-result
-      // visibility ON, or vice versa.
-      const toggle = createElement('label', 'pkc-show-archived-toggle');
-      toggle.setAttribute('data-pkc-region', 'search-hide-buckets-toggle');
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = !(state.searchHideBuckets ?? true);
-      check.setAttribute('data-pkc-action', 'toggle-search-hide-buckets');
-      toggle.appendChild(check);
-      const labelText = createElement('span', '');
-      labelText.textContent = 'Show ASSETS / TODOS in search results';
-      toggle.appendChild(labelText);
-      details.appendChild(toggle);
-    }
-
-    if (hasAttachment) {
-      const unrefToggle = createElement('label', 'pkc-show-archived-toggle');
-      unrefToggle.setAttribute('data-pkc-region', 'unreferenced-attachments-toggle');
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = state.unreferencedAttachmentsOnly ?? false;
-      check.setAttribute('data-pkc-action', 'toggle-unreferenced-attachments');
-      unrefToggle.appendChild(check);
-      const labelText = createElement('span', '');
-      labelText.textContent = 'Show only unused attachments';
-      unrefToggle.appendChild(labelText);
-      if (state.container && (state.unreferencedAttachmentsOnly ?? false)) {
-        const count = collectUnreferencedAttachmentLids(state.container).size;
-        const badge = createElement('span', 'pkc-unref-count');
-        badge.textContent = ` (${count})`;
-        unrefToggle.appendChild(badge);
-      }
-      details.appendChild(unrefToggle);
-    }
-
-    sidebar.appendChild(details);
+  // pgc-49:disclosure 構築は `renderAdvancedFiltersPanel` に集約し、filer
+  // sidebar(renderSidebarAsFiler)と共有する。tree と filer で検索オプション
+  // が構造的に乖離しないことを helper 共有で保証。
+  {
+    const filterIsActiveForToggle =
+      state.searchQuery !== '' ||
+      state.archetypeFilter.size > 0 ||
+      (state.tagFilter?.size ?? 0) > 0 ||
+      (state.colorTagFilter?.size ?? 0) > 0 ||
+      state.categoricalPeerFilter !== null;
+    const advanced = renderAdvancedFiltersPanel(state, allEntries, filterIsActiveForToggle);
+    if (advanced) sidebar.appendChild(advanced);
   }
 
   // Active tag filter indicator (categorical relation peer).
