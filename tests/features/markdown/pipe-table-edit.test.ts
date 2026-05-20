@@ -4,6 +4,7 @@ import {
   deleteTableRow,
   addTableColumn,
   deleteTableColumn,
+  setTableColumnAlign,
 } from '@features/markdown/pipe-table-edit';
 
 // 2 列 × 2 body 行の基準表。
@@ -130,5 +131,38 @@ describe('pipe-table-edit — deleteTableColumn (spec §6.2)', () => {
   });
   it('24. 表でない位置 → null', () => {
     expect(deleteTableColumn('plain text', 2)).toBeNull();
+  });
+});
+
+describe('pipe-table-edit — setTableColumnAlign (spec §6.3)', () => {
+  it('25. 列 0 を中央寄せ(:-:)', () => {
+    expect(setTableColumnAlign(T, 28, 'center')?.value).toBe(
+      '| h1 | h2 |\n| :-: | --- |\n| a | b |\n| c | d |',
+    );
+  });
+  it('26. 列 1 を右寄せ(--:)', () => {
+    expect(setTableColumnAlign(T, 32, 'right')?.value).toBe(
+      '| h1 | h2 |\n| --- | --: |\n| a | b |\n| c | d |',
+    );
+  });
+  it('27. 列 0 を左寄せ(:--)', () => {
+    expect(setTableColumnAlign(T, 28, 'left')?.value).toBe(
+      '| h1 | h2 |\n| :-- | --- |\n| a | b |\n| c | d |',
+    );
+  });
+  it('28. none で既定(---)に戻す', () => {
+    const centered = setTableColumnAlign(T, 28, 'center')!.value;
+    expect(setTableColumnAlign(centered, 28, 'none')?.value).toBe(T);
+  });
+  it('29. 不正な align 値は --- に fallback', () => {
+    expect(setTableColumnAlign(T, 28, 'bogus')?.value).toBe(T);
+  });
+  it('30. separator 行上の caret(列 0)でも動作', () => {
+    expect(setTableColumnAlign(T, 15, 'center')?.value).toBe(
+      '| h1 | h2 |\n| :-: | --- |\n| a | b |\n| c | d |',
+    );
+  });
+  it('31. 表でない位置 → null', () => {
+    expect(setTableColumnAlign('plain', 2, 'center')).toBeNull();
   });
 });

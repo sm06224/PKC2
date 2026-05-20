@@ -16,6 +16,7 @@ import {
   deleteTableRow,
   addTableColumn,
   deleteTableColumn,
+  setTableColumnAlign,
   type TableEditResult,
 } from '@features/markdown/pipe-table-edit';
 
@@ -338,6 +339,23 @@ const HIGHLIGHT_COLOR_PICKER: FormatPicker = {
   swatch: true,
 };
 
+// 表セル整列 picker(spec §6.3)。caret 列の separator marker を置き換える。
+const TABLE_ALIGN_PICKER: FormatPicker = {
+  id: 'table-align',
+  triggerLabel: '整列',
+  triggerTitle: '表:caret 列のセル整列',
+  options: [
+    { label: '既定', value: 'none', title: '既定整列(---)' },
+    { label: '左', value: 'left', title: '左寄せ(:--)' },
+    { label: '中央', value: 'center', title: '中央寄せ(:-:)' },
+    { label: '右', value: 'right', title: '右寄せ(--:)' },
+  ],
+  apply: (sel, value) => {
+    const r = setTableColumnAlign(sel.value, sel.start, value);
+    return r ? { value: r.value, start: r.caret, end: r.caret } : sel;
+  },
+};
+
 // 表挿入 picker(GFM pipe table、spec §6.1)。option value は "cols x rows"。
 const TABLE_INSERT_PICKER: FormatPicker = {
   id: 'table-insert',
@@ -424,7 +442,7 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: '列→', title: '表:caret 列の右に列を追加', apply: tableEditOp((v, c) => addTableColumn(v, c, 'right')) },
       { label: '列✕', title: '表:caret 列を削除', apply: tableEditOp(deleteTableColumn) },
     ],
-    pickers: [TABLE_INSERT_PICKER],
+    pickers: [TABLE_INSERT_PICKER, TABLE_ALIGN_PICKER],
   },
   {
     id: 'insert',

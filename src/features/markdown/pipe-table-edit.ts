@@ -229,3 +229,33 @@ export function deleteTableColumn(
     t.caretLine - t.firstLine,
   );
 }
+
+// セル整列を表す separator marker(spec §6.3)。
+const ALIGN_MARKER: Readonly<Record<string, string>> = {
+  none: '---',
+  left: ':--',
+  center: ':-:',
+  right: '--:',
+};
+
+// caret 位置を含む表で、caret 列の separator セルを整列 marker に置き換える。
+export function setTableColumnAlign(
+  value: string,
+  caret: number,
+  align: string,
+): TableEditResult | null {
+  const t = parseTableAt(value, caret);
+  if (!t) return null;
+  const col = Math.min(t.caretCol, t.align.length - 1);
+  if (col < 0) return null;
+  const newAlign = [...t.align];
+  newAlign[col] = ALIGN_MARKER[align] ?? '---';
+  return commitTable(
+    value,
+    t,
+    t.header,
+    newAlign,
+    t.body,
+    t.caretLine - t.firstLine,
+  );
+}

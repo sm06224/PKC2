@@ -91,9 +91,9 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(25);
   });
 
-  it('renders 5 value pickers with their option buttons', () => {
+  it('renders 6 value pickers with their option buttons', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-picker]')).toHaveLength(5);
+    expect(panel.querySelectorAll('[data-pkc-picker]')).toHaveLength(6);
     const count = (id: string) =>
       panel.querySelectorAll(`[data-pkc-picker="${id}"] [data-pkc-picker-value]`)
         .length;
@@ -102,6 +102,7 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     expect(count('text-color')).toBe(6);
     expect(count('highlight-color')).toBe(6);
     expect(count('table-insert')).toBe(4);
+    expect(count('table-align')).toBe(4);
   });
 
   it('color picker options render as swatches', () => {
@@ -521,6 +522,22 @@ describe('format-panel — button click applies to the editor textarea', () => {
 
     (panel.closest('.pkc-editor') as HTMLElement).remove();
   });
+
+  it('clicking a table-align option sets the column alignment', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = '| h | h |\n| --- | --- |\n| a | b |';
+    ta.focus();
+    ta.setSelectionRange(28, 28);
+
+    panel
+      .querySelector<HTMLButtonElement>(
+        '[data-pkc-picker="table-align"] [data-pkc-picker-value="center"]',
+      )!
+      .click();
+    expect(ta.value).toBe('| h | h |\n| :-: | --- |\n| a | b |');
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
 });
 
 describe('format-panel — 検索 launcher (spec §8)', () => {
@@ -616,7 +633,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
     expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(25);
-    expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(5);
+    expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(6);
     expect(panel!.querySelectorAll('[data-pkc-launcher]')).toHaveLength(1);
   });
 
