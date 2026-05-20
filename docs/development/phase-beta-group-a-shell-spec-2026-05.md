@@ -541,9 +541,23 @@ DnD 移動**:
 pgc-32 / drag = pgc-33 は parity 済)、`sidebar-filer-mode.test.ts` に
 happy-dom 5 件追加。
 
-機能強化の残り(search / filter、multi-select + bulk action、entry
-metadata badge、copy-link 等)は後続 pgc で順次。default 切替(A1-4)+
-deprecated marker(A1-5)は user 判断保留。
+**pgc-35 per-folder 検索**:filer-mode sidebar に現フォルダ内の絞り込み
+検索窓を追加。
+
+- `AppState.sidebarFilerQuery` + `SET_SIDEBAR_FILER_QUERY`。center filer
+  の subtree 検索 `filerSearchQuery` とは **別概念** — sidebar は現スコープ
+  の direct children を title 部分一致で絞る per-folder filter
+- 検索窓は `data-pkc-field="sidebar-filer-search"` を持ち、render-continuity
+  helper が full re-render を跨いで focus + caret を復元(filer-search と
+  同じ機構)。IME 合成中は `searchImeComposing` で dispatch skip
+- 一致なしは `data-pkc-region="filer-sidebar-no-match"` の案内、検索窓は
+  残し query 解除導線を確保
+- `tests/adapter/sidebar-filer-search.test.ts`(happy-dom 11 件)+
+  `tests/smoke/sidebar-filer-search.spec.ts`(Playwright parity 1 件)
+
+機能強化の残り(multi-select + bulk action、entry metadata badge、
+copy-link 等)は後続 pgc で順次。default 切替(A1-4)+ deprecated
+marker(A1-5)は user 判断保留。
 
 ---
 

@@ -6413,6 +6413,19 @@ mark.pkc-search-mark {
   padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
 }
 
+/* filer 内 絞り込み検索窓(Group A、Phase γ-A1)。 */
+.pkc-sidebar-filer-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--c-bg, #fff);
+  color: var(--c-fg, #000);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-sm, 2px);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  font-family: inherit;
+  font-size: var(--fs-sm, 0.7rem);
+}
+
 .pkc-sidebar-filer-list {
   list-style: none;
   margin: 0;

@@ -490,6 +490,7 @@ export type UserAction =
   | { type: 'CLEAR_INVENTORY_QUERY' }
   | { type: 'SET_FILER_EXPLORER_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }
   | { type: 'SET_FILER_SEARCH_QUERY'; query: string }
+  | { type: 'SET_SIDEBAR_FILER_QUERY'; query: string }
   | { type: 'SET_DISPLAY_PROFILE'; lid: string; profile: FilerProfile | undefined }
   | { type: 'SET_FILER_SCOPE'; scope: 'auto' | 'trash' }
   | { type: 'SET_LAST_FILER_SCOPE'; lid: string | null }

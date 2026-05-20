@@ -5205,7 +5205,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // PR-QQQ (2026-05-07):sidebar 検索 + filer 検索の両方で IME 中は
     // dispatch をスキップする。filer 側は data-pkc-field="filer-search"
     // を持つ(PR-QQQ で追加)。
-    if (field === 'search' || field === 'filer-search') {
+    if (
+      field === 'search'
+      || field === 'filer-search'
+      || field === 'sidebar-filer-search'
+    ) {
       searchImeComposing = true;
     }
   }
@@ -5219,6 +5223,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     } else if (field === 'filer-search') {
       searchImeComposing = false;
       dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: target!.value });
+    } else if (field === 'sidebar-filer-search') {
+      searchImeComposing = false;
+      dispatcher.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: target!.value });
     }
   }
 
@@ -5239,6 +5246,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (searchImeComposing) return;
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: value });
+      return;
+    }
+    // Phase γ-A1(pgc-35):filer モード sidebar の per-folder 絞り込み。
+    if (target.getAttribute('data-pkc-action') === 'set-sidebar-filer-query') {
+      if (searchImeComposing) return;
+      const value = (target as HTMLInputElement).value;
+      dispatcher.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: value });
       return;
     }
 

@@ -404,6 +404,14 @@ export interface AppState {
    */
   filerSearchQuery?: string;
   /**
+   * Phase γ-A1:filer モード sidebar(`sidebar.mode='filer'`)の現スコープ
+   * 内 絞り込み query。空 / undefined = 絞り込みなし。非空 = 現フォルダの
+   * direct children を title 部分一致で絞り込む(center filer の
+   * `filerSearchQuery` の subtree 検索とは別概念。sidebar は per-folder
+   * filter)。Runtime-only。
+   */
+  sidebarFilerQuery?: string;
+  /**
    * Filer view runtime scope override. 領域 10-6 ζ'' Phase 1 PR-2.
    * - `'auto'` (default): the filer scope is resolved from `selectedLid`
    *   (current folder or the entry's first folder ancestor; null = root).
@@ -3119,6 +3127,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // PR-L (2026-05-06):filer 側の検索 query を更新。空文字列 →
       // 検索キャンセル(direct children に戻る)、非空 → subtree search。
       const next: AppState = { ...state, filerSearchQuery: action.query };
+      return { state: next, events: [] };
+    }
+    case 'SET_SIDEBAR_FILER_QUERY': {
+      // Phase γ-A1:filer モード sidebar の per-folder 絞り込み query。
+      const next: AppState = { ...state, sidebarFilerQuery: action.query };
       return { state: next, events: [] };
     }
     case 'SET_VIEW_MODE': {

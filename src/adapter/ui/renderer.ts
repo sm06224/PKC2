@@ -3017,16 +3017,40 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
   const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
 
+  // Phase γ-A1(pgc-35):現フォルダ内の絞り込み。query は per-folder
+  // filter(center filer の subtree 検索 filerSearchQuery とは別概念)。
+  const query = (state.sidebarFilerQuery ?? '').trim().toLowerCase();
+  const matched =
+    query.length > 0
+      ? visibleChildren.filter((e) =>
+          (e.title || e.lid).toLowerCase().includes(query),
+        )
+      : visibleChildren;
+
   const header = createElement('div', 'pkc-sidebar-filer-header');
   const label = createElement('span', 'pkc-sidebar-filer-label');
   label.textContent = scope ? (scope.title || scope.lid) : 'Root';
   header.appendChild(label);
-  // Phase γ-A1:現スコープの item 数を表示。
+  // Phase γ-A1:現スコープの(絞り込み後の)item 数を表示。
   const count = createElement('span', 'pkc-sidebar-filer-count');
   count.setAttribute('data-pkc-region', 'filer-sidebar-count');
-  count.textContent = String(visibleChildren.length);
+  count.textContent = String(matched.length);
   header.appendChild(count);
   sidebar.appendChild(header);
+
+  // Phase γ-A1(pgc-35):folder に item があるときだけ絞り込み検索窓を
+  // 出す。data-pkc-field は render-continuity helper が focus + caret を
+  // 復元するためのキー(full re-render を跨いで日本語 IME 入力が壊れない)。
+  if (visibleChildren.length > 0) {
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.className = 'pkc-sidebar-filer-search';
+    searchInput.setAttribute('data-pkc-action', 'set-sidebar-filer-query');
+    searchInput.setAttribute('data-pkc-field', 'sidebar-filer-search');
+    searchInput.setAttribute('placeholder', '🔍 このフォルダ内を絞り込み');
+    searchInput.value = state.sidebarFilerQuery ?? '';
+    sidebar.appendChild(searchInput);
+  }
 
   const nav = resolveFilerNavigation(state);
   const list = createElement('ul', 'pkc-sidebar-filer-list');
@@ -3045,7 +3069,7 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     li.textContent = `📁 ..  (${nav.parent.title || nav.parent.lid})`;
     list.appendChild(li);
   }
-  for (const child of visibleChildren) {
+  for (const child of matched) {
     const li = createElement('li', 'pkc-sidebar-filer-item');
     li.setAttribute('data-pkc-action', 'select-entry');
     li.setAttribute('data-pkc-lid', child.lid);
@@ -3071,6 +3095,12 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     const empty = createElement('div', 'pkc-sidebar-filer-empty');
     empty.textContent = scope ? 'このフォルダは空です' : '項目がありません';
     sidebar.appendChild(empty);
+  } else if (matched.length === 0) {
+    // Phase γ-A1(pgc-35):検索 query に一致なし。
+    const noMatch = createElement('div', 'pkc-sidebar-filer-empty');
+    noMatch.setAttribute('data-pkc-region', 'filer-sidebar-no-match');
+    noMatch.textContent = `「${state.sidebarFilerQuery ?? ''}」に一致なし`;
+    sidebar.appendChild(noMatch);
   } else {
     // Phase γ-A1:操作ヒント(pgc-33 の DnD 着地で「ドラッグで移動」が
     // 有効になった)。

@@ -207,10 +207,11 @@ user direction「filer モードを機能強化して続行」を受け、tree-m
 minimal だった filer-mode sidebar の機能強化を開始:`pgc-33` で entry の
 folder 間 **drag-and-drop 移動**(action-binder 汎用 DnD 機構を再利用、
 happy-dom 12 + Playwright parity 1)、`pgc-34` で **UX 完成度向上**
-(item 数表示 / 操作ヒント / 空スコープ案内の改善、happy-dom 5)。残り
-(search / filter、multi-select + bulk action、entry metadata 等)は
-後続 pgc。default 切替(A1-4)+ deprecated marker(A1-5)は user 判断
-保留。詳細は shell spec §4.5。
+(item 数表示 / 操作ヒント / 空スコープ案内の改善、happy-dom 5)、`pgc-35`
+で **per-folder 絞り込み検索**(`sidebarFilerQuery`、happy-dom 11 +
+Playwright parity 1)。残り(multi-select + bulk action、entry metadata
+等)は後続 pgc。default 切替(A1-4)+ deprecated marker(A1-5)は user
+判断保留。詳細は shell spec §4.5。
 
 ### §4.2 γ-A2:編集 mode 3 分割(10 PR)
 
