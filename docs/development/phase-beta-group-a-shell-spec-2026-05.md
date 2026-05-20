@@ -413,8 +413,31 @@ stack ごと close しても安全)の方針に統一しているため default 
 `editingLid → editingLids` の Set 化(§3.4、A3-1)は state machine 全体
 + 多数 test に波及する大規模 refactor。reload guard(A3-4)は子 window
 の有無を `getOpenEntryWindowLids()` で参照できれば足り、§3.4 の Set 化に
-依存しないため先行着地した。後続 A3 PR で §3.4 / §3.3 / §3.5 を扱う際の
-model 精緻化は本 §3.6 に追記する。
+依存しないため先行着地した。
+
+**γ-A3 既存能力 audit(2026-05-20、pgc-31)**:wave map §4.3 の
+A3-1〜A3-11 を `entry-window.ts`(約 2977 行)+ main.ts wiring と突き
+合わせた結果、multi-window 基盤は **大半が実装済** と判明した。
+
+| 能力 | 状態 | 根拠 |
+|---|---|---|
+| 複数 child window 同時(別 lid)| 実装済 | `openWindows` Map(entry-window.ts:105)、dedup は per-lid のみ |
+| parent → child live refresh | 実装済 | `pushPreviewContextUpdate` / `pushViewBodyUpdate` / `pushTitleUpdate` + `wireEntryWindow*` 3 本(main.ts)|
+| postMessage protocol | 実装済 | 8 message type(`pkc-entry-init` / `-save` / `-saved` / `-conflict` / `-update-{preview-ctx,view-body,title}` / `-task-toggle` / `-download-asset`)|
+| 競合検知 | 実装済 | `handleDblClickAction` onSave の `updated_at !== openedAt` → `notifyConflict`(`pkc-entry-conflict`)|
+| child close / crash recovery | 実装済 | 500ms `setInterval` poll で `child.closed` 検知 → `openWindows.delete`(entry-window.ts:600-611)|
+| reload guard | **pgc-30 で着地** | `main-reload-guard.ts`(本 §3.6 上記)|
+| AppState の child-window 集約 | 未(不要)| reload guard は `getOpenEntryWindowLids()` を直接参照、`editingLids` 集約の consumer が存在しない |
+
+**結論**:γ-A3 は **機能的に完了**。A3-1(`editingLid → editingLids`
+Set 化)は consumer 不在のため着手しない(YAGNI / CLAUDE.md「No
+premature abstraction」。§3.4 は将来 consumer が出現した時点で再評価)。
+A3-6 の競合解決は **検知**まで実装済で、spec §3.5 の 3-pane diff UI への
+格上げは §3.5 自身が「難易度 高、γ-A4 まで遅延可」と明記しており
+deferred。A3-8(main = navigation 専用)は §4 の sidebar / filer 再編と
+同一概念のため γ-A1 で扱う。wave map §4.3 の 11 PR 内訳は γ-A3 が「ほぼ
+新規実装」だった前提で書かれていたが、実際は format-panel(§γ-C)と
+同様に既存資産が spec を上回っていた。
 
 ---
 
