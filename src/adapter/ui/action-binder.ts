@@ -3548,6 +3548,34 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (canvas) resetGraphCanvasZoom(canvas);
         break;
       }
+      case 'bulk-relate-selected': {
+        // Phase γ-B2-6:multi-select した node を、先頭 node を hub に放射状
+        // (hub → 各 node)で一括 relate。kind は popup で選ぶ。各 dispatch は
+        // reducer 側で重複 / cycle / self-loop を guard 済。
+        const lids = dispatcher.getState().multiSelectedLids;
+        const hub = lids[0];
+        if (lids.length < 2 || !hub) break;
+        if (dispatcher.getState().readonly) break;
+        const rect = target.getBoundingClientRect();
+        openRelationKindPopup({
+          x: rect.left,
+          y: rect.bottom + 4,
+          onPick: (kind) => {
+            for (let i = 1; i < lids.length; i++) {
+              const to = lids[i];
+              if (to) {
+                dispatcher.dispatch({
+                  type: 'CREATE_RELATION',
+                  from: hub,
+                  to,
+                  kind,
+                });
+              }
+            }
+          },
+        });
+        break;
+      }
       case 'set-graph-edit-mode': {
         // Phase γ-B2:graph view の View / Edit toggle。edit mode は
         // canvas-local runtime state(dispatch でない)なので、toggle の

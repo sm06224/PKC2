@@ -6120,6 +6120,21 @@ function renderCenterGraphView(state: AppState): HTMLElement {
     toolbar.appendChild(editToggle);
   }
 
+  // Phase γ-B2-6:edit mode で 2+ node を multi-select 中なら一括 relate
+  // button。先頭 node を hub に放射状(hub → 各 node)で relate する。
+  if (
+    graphEditModeEnabled() &&
+    getGraphEditMode() === 'edit' &&
+    state.multiSelectedLids.length >= 2
+  ) {
+    const bulkBtn = createElement('button', 'pkc-btn-small');
+    bulkBtn.setAttribute('data-pkc-action', 'bulk-relate-selected');
+    bulkBtn.setAttribute('data-pkc-region', 'graph-bulk-relate');
+    bulkBtn.textContent = `🔗 ${state.multiSelectedLids.length} 件を一括 relate`;
+    bulkBtn.title = '選択した node を先頭 node を hub に放射状で一括 relate';
+    toolbar.appendChild(bulkBtn);
+  }
+
   if (state.graphFocusLid && state.container) {
     const focus = state.container.entries.find((e) => e.lid === state.graphFocusLid);
     const label = createElement('span', 'pkc-graph-focus-label');
