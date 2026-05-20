@@ -396,6 +396,26 @@ Tier 0 flag:`shell.multi_window = true`(default OFF、Phase γ-A3 で ON
 実装難易度:**高**、Phase γ-A4 まで遅延可。Phase γ-A3 では「2 child 同時
 編集禁止 + 検知 dialog」で済ませる選択肢あり(後述 §8 OQ-A-3)。
 
+### §3.6 γ-A3 実装記録(2026-05-20、stack pgc-30〜)
+
+**A3-4 main reload guard(pgc-30)**:`src/adapter/ui/main-reload-guard.ts`
+新設。`installMainReloadGuard(getOpenWindowLids)` が `beforeunload`
+listener を張り、`shouldGuardReload`(flag ON かつ子 window ≥ 1)なら
+`preventDefault` + `returnValue` で browser native の確認を出す。子
+window 一覧は entry-window.ts の既存 `getOpenEntryWindowLids` を main.ts
+から **注入**(adapter/ui 内の循環 import 回避 + テスト容易性)。
+
+flag は `shell.main_reload_guard`。§3.2 / §5.2 は default ON を想定して
+いたが、γ-A stack は **全 flag OFF 出荷**(opt-in するまで完全 no-op、
+stack ごと close しても安全)の方針に統一しているため default OFF で
+出荷する。採用時に user が ON に切り替える(§5.2 表も false に更新済)。
+
+`editingLid → editingLids` の Set 化(§3.4、A3-1)は state machine 全体
++ 多数 test に波及する大規模 refactor。reload guard(A3-4)は子 window
+の有無を `getOpenEntryWindowLids()` で参照できれば足り、§3.4 の Set 化に
+依存しないため先行着地した。後続 A3 PR で §3.4 / §3.3 / §3.5 を扱う際の
+model 精緻化は本 §3.6 に追記する。
+
 ---
 
 ## §4 提案 #5 ファイラ統合 + 左ペイン廃止
@@ -466,7 +486,7 @@ entry のクリック挙動は **filer に navigate**(folderDetailAsFiler の意
 | `editor.mode_legacy` | bool | `false` | 3 mode 経路の無効化(旧 detail-edit + Split View に戻す)|
 | `editor.mode_default` | string | `'split'` | 新規 3 mode のうち初期値 |
 | `editor.mode_by_archetype` | object | `{}` | per-archetype override(`{ text: 'overlay', ... }`)|
-| `shell.main_reload_guard` | bool | `true` | main reload 抑制 ON/OFF |
+| `shell.main_reload_guard` | bool | `false` | main reload 抑制 ON/OFF(spec §3.2 は ON 想定、γ-A stack 全 flag OFF 方針で出荷時 OFF、§3.6 参照)|
 | `shell.multi_window` | bool | `false` | 複数 child window 許可 |
 | `shell.sidebar_mode_default` | string | `'tree'`(γ-A1 で `'filer'` に切替)| sidebar 初期 mode |
 | `shell.sidebar_deprecated_marker` | bool | `false`(γ-A2 で `true`)| Beta marker 表示 |

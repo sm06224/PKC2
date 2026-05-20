@@ -247,6 +247,15 @@ flag default ON 切替(A2-10)は user 判断に委ねる。
 **累積**:+15 KB js。
 **前提**:A3-1 は **OQ-A-2**、A3-4 は **OQ-A-4**、A3-7 は **OQ-A-5** 合意が必須。
 
+**実装記録(2026-05-20、stack pgc-30〜)**:A3-4(main reload guard)を
+`pgc-30` で先行着地。reload guard は子 window の有無を entry-window.ts の
+`getOpenEntryWindowLids()` で参照でき、A3-1 の `editingLid → editingLids`
+Set 化(state machine 全体 + 多数 test に波及する大規模 refactor)に
+依存しないため先行できた。flag は shell spec §3.2 に合わせ
+`shell.main_reload_guard`(本表旧表記 `shell.main_navigation_only` は
+A3-8「main = navigation 専用」側の概念)、γ-A stack 方針で default OFF
+出荷。詳細は shell spec §3.6。
+
 ### §4.4 γ-A4:旧 sidebar 完全 removal(4 PR、v3.0 lineup 合流)
 
 | PR | scope | Tier 0 flag | budget |

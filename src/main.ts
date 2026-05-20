@@ -38,6 +38,8 @@ import {
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
+import { getOpenEntryWindowLids } from './adapter/ui/entry-window';
+import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
 import {
@@ -358,6 +360,14 @@ async function boot(): Promise<void> {
   // `src/adapter/ui/entry-window-title-refresh.ts` and
   // `docs/development/entry-window-title-live-refresh-v1.md`.
   wireEntryWindowTitleRefresh(dispatcher);
+
+  // 2e. main reload guard (Phase γ-A3 A3-4). When child entry-windows
+  // are open, `beforeunload` raises the browser-native confirm so a
+  // stray main reload / close does not silently drop in-progress child
+  // edits. flag-gated (`shell.main_reload_guard`, default OFF); no-op
+  // when the flag is off or no children are open. See
+  // `src/adapter/ui/main-reload-guard.ts` + shell spec §3.2.
+  installMainReloadGuard(getOpenEntryWindowLids);
 
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);

@@ -14,3 +14,18 @@ export const shellEditModeEnabled = defineFlag<boolean>(
       '編集モードの選択(inline / window)を有効化。OFF で従来の inline 編集のみ',
   },
 );
+
+// 子 entry-window が開いている間、main window の reload / close 時に
+// browser native の確認を出す(編集中の子 window を巻き込む事故を防ぐ)。
+// spec §3.2 は default ON を想定するが、γ-A stack は全 flag OFF で
+// 「opt-in するまで完全 no-op」を保つため OFF で出荷、採用時に user が
+// 切り替える。
+export const shellMainReloadGuardEnabled = defineFlag<boolean>(
+  'shell.main_reload_guard',
+  false,
+  {
+    category: 'shell',
+    description:
+      '子 entry-window が開いている間、main の reload / close 時に確認ダイアログを出す',
+  },
+);
