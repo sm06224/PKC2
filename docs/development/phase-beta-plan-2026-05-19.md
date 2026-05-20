@@ -370,6 +370,8 @@ parity-testing 準拠)。
 | 2026-05-19 | **PR-β1 起こし**:[`phase-beta-group-a-shell-spec-2026-05.md`](./phase-beta-group-a-shell-spec-2026-05.md) 着手。§4 で plan §3.1 Q3 の事実誤認(`folder.detail_as_filer` flag = sidebar 廃止 と書いたが、実際は center pane detail の filer 置き換え flag で sidebar とは別軸)を訂正、sidebar 廃止経路を `sidebarMode()` default 切替 + 3 段階 deprecation に再定義。新 OQ-A-1〜A-5 を追加(Overlay 精度 / 複数 child 編集 / sidebar tree port / main = navigation 専用 / per-window state persistence)|
 | 2026-05-19 | PR #481(PR-β1)merge:Group A 統合 spec 着地、OQ-A-1〜A-5 未合意のまま継続 |
 | 2026-05-19 | **PR-β2 起こし**:[`phase-beta-group-b-meta-pane-spec-2026-05.md`](./phase-beta-group-b-meta-pane-spec-2026-05.md) 着手。v3 提案 #6 = relation wire editor(graph view 統合)+ YAML frontmatter graphical editor を 1 spec に統合。case matrix 12 件 + 12 件で網羅、Tier 0 flag 6 件、新 OQ-B-1〜B-7 追加 |
+| 2026-05-19 | PR #482(PR-β2)merge:Group B 右ペイン特化 spec 着地 |
+| 2026-05-19 | **PR-β3 起こし**:[`phase-beta-group-c-format-panel-spec-2026-05.md`](./phase-beta-group-c-format-panel-spec-2026-05.md) 着手。v3 提案 #7 = format panel ワープロ化。現状調査で **desktop 固定 toolbar 未実装**(format affordance は `snippet-toolbar.ts` の floating popup 18 snippet のみ)が判明、roadmap §206 の「14 button」記述も古いと訂正。canonical 往復 invariant + 領域 8 / 領域 6 scope 境界を §2 で固定、case matrix 14+12+12+12 件、Tier 0 flag 7 件、新 OQ-C-1〜C-8 追加 |
 | TBD | PR-β2 Group B 右ペイン spec(`phase-beta-group-b-meta-pane-spec-2026-05.md`)|
 | TBD | PR-β3 Group C 書式機能 spec(`phase-beta-group-c-format-panel-spec-2026-05.md`)|
 | TBD | PR-β4 Phase γ 実装 wave map |
