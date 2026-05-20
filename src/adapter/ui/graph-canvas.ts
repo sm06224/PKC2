@@ -134,6 +134,12 @@ interface CanvasViewState {
   dragOrigUser?: Map<string, { x: number; y: number }>;
   dragNeighborFactor?: Map<string, number>;
   dragMouseStartClient?: { x: number; y: number } | null;
+  /**
+   * Phase γ-B2:relation wire editor の drag 中状態。wireSource = drag 元
+   * node の lid、wireTarget = cursor の user-space 座標。edit mode 時のみ。
+   */
+  wireSource?: string | null;
+  wireTarget?: { x: number; y: number } | null;
 }
 
 // PR-DD (2026-05-06、user 報告「銀河の星々のように」):zoom range を
@@ -633,6 +639,24 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.stroke();
   }
 
+  // Phase γ-B2:relation wire editor の prototype line(edit mode の drag 中)。
+  // kind 未確定なので neutral 灰色 + 半透明 + 点線(spec OQ-B-4 暫定)。
+  if (view.wireSource && view.wireTarget) {
+    const src = payload.positions.get(view.wireSource);
+    if (src) {
+      ctx.save();
+      ctx.strokeStyle = theme.fgMuted;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 2 / view.scale;
+      ctx.setLineDash([6 / view.scale, 4 / view.scale]);
+      ctx.beginPath();
+      ctx.moveTo(src.x, src.y);
+      ctx.lineTo(view.wireTarget.x, view.wireTarget.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // PR-Δ21 (2026-05-07、user 指摘「Venn って何?どう見てもベンでは
   // ない」):旧 concentric ring を撤回。**真の集合 hull**(group
   // メンバーの凸包に相当する circle envelope)を translucent fill で
@@ -1129,6 +1153,19 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
     if (pressDownLid && mouseDownPos) {
       const movedDist = Math.hypot(me.clientX - mouseDownPos.x, me.clientY - mouseDownPos.y);
       const payload = payloads.get(canvas);
+      // Phase γ-B2:edit mode では node-drag ではなく wire drag(prototype
+      // line を引いて relation 作成へ)。drag-end の relation 確定は後続 PR。
+      if (getGraphEditMode() === 'edit') {
+        if (!view.wireSource && movedDist > 5) {
+          view.wireSource = pressDownLid;
+        }
+        if (view.wireSource) {
+          const lg = clientToLogical(canvas, me.clientX, me.clientY);
+          view.wireTarget = logicalToUser(canvas, lg.x, lg.y);
+          drawGraphCanvas(canvas);
+          return;
+        }
+      }
       if (!view.dragLid && movedDist > 5 && payload) {
         view.dragLid = pressDownLid;
         view.dragMouseStartClient = { x: mouseDownPos.x, y: mouseDownPos.y };
@@ -1244,6 +1281,13 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
       view.dragOrigUser = undefined;
       view.dragNeighborFactor = undefined;
       view.dragMouseStartClient = null;
+    }
+    // Phase γ-B2:wire drag 終了。本 PR(γ-B2-2)は reset のみ、relation
+    // 確定(kind popup → CREATE_RELATION)は後続 PR。
+    if (view.wireSource) {
+      view.wireSource = null;
+      view.wireTarget = null;
+      drawGraphCanvas(canvas);
     }
   }, { signal });
 
