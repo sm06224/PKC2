@@ -3108,22 +3108,33 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
   const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
 
-  // pgc-46:query があれば現フォルダ内ではなく container 全体を title
-  // 部分一致で検索する(user 指摘「ツリー表示の検索オプションが無くなって
-  // いる」への対応 — pgc-35 の per-folder filter を global search へ拡張)。
-  // query 空時は従来どおり現スコープの folder navigation を表示。
-  const query = (state.sidebarFilerQuery ?? '').trim().toLowerCase();
-  const searching = query.length > 0;
-  const matched = searching
-    ? (state.container?.entries ?? [])
-        .filter((e) => !isSystemArchetype(e.archetype))
-        .filter((e) => (e.title || e.lid).toLowerCase().includes(query))
+  // pgc-46/47:query または archetype/tag/color filter が立っていれば
+  // container 全体を検索する。検索は tree sidebar と同じ `applyFilters`
+  // pipeline を再利用 — full-text(title + body)+ `tag:` / `color:`
+  // query token + archetype / tag / color filter set。これで filer が
+  // tree sidebar 同等の検索オプションを獲得する(user 指摘「ツリー表示の
+  // 検索オプションが無くなっている」への対応)。どの filter 軸も立って
+  // いなければ従来どおり現スコープの folder navigation を表示。
+  const rawQuery = state.sidebarFilerQuery ?? '';
+  const filtering =
+    rawQuery.trim().length > 0 ||
+    state.archetypeFilter.size > 0 ||
+    (state.tagFilter?.size ?? 0) > 0 ||
+    (state.colorTagFilter?.size ?? 0) > 0;
+  const matched = filtering
+    ? applyFilters(
+        (state.container?.entries ?? []).filter((e) => !isSystemArchetype(e.archetype)),
+        rawQuery,
+        state.archetypeFilter,
+        state.tagFilter,
+        state.colorTagFilter,
+      )
     : visibleChildren;
 
   const header = createElement('div', 'pkc-sidebar-filer-header');
   const label = createElement('span', 'pkc-sidebar-filer-label');
   // pgc-46:検索中は scope 名でなく「検索結果」であることを示す。
-  label.textContent = searching
+  label.textContent = filtering
     ? '🔍 検索結果'
     : scope ? (scope.title || scope.lid) : 'Root';
   header.appendChild(label);
@@ -3157,13 +3168,17 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     searchInput.setAttribute('placeholder', '🔍 全エントリを検索');
     searchInput.value = state.sidebarFilerQuery ?? '';
     sidebar.appendChild(searchInput);
+    // pgc-47:archetype filter rail。tree sidebar と同じ `renderArchetypeFilter`
+    // を再利用し、検索結果を type で絞れるようにする。button は
+    // `set-archetype-filter` を dispatch、`applyFilters` 経由で matched に反映。
+    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
   }
 
   const nav = resolveFilerNavigation(state);
   const list = createElement('ul', 'pkc-sidebar-filer-list');
   // pgc-46:検索中は folder navigation でなく flat な検索結果なので nav-up
-  // を出さない(query を消すと folder view へ戻る)。
-  if (nav.parent && !searching) {
+  // を出さない(filter を解除すると folder view へ戻る)。
+  if (nav.parent && !filtering) {
     const li = createElement('li', 'pkc-sidebar-filer-item pkc-sidebar-filer-nav-up');
     li.setAttribute('data-pkc-action', 'select-entry');
     li.setAttribute('data-pkc-lid', nav.parent.lid);
@@ -3203,18 +3218,20 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   }
   sidebar.appendChild(list);
 
-  if (searching && matched.length === 0) {
-    // pgc-46:global 検索 query に一致なし。
+  if (filtering && matched.length === 0) {
+    // pgc-46/47:検索 / filter 条件に一致なし。
     const noMatch = createElement('div', 'pkc-sidebar-filer-empty');
     noMatch.setAttribute('data-pkc-region', 'filer-sidebar-no-match');
-    noMatch.textContent = `「${state.sidebarFilerQuery ?? ''}」に一致なし`;
+    noMatch.textContent = rawQuery.trim().length > 0
+      ? `「${rawQuery}」に一致なし`
+      : '絞り込み条件に一致なし';
     sidebar.appendChild(noMatch);
-  } else if (!searching && visibleChildren.length === 0) {
+  } else if (!filtering && visibleChildren.length === 0) {
     // Phase γ-A1:空スコープの案内。scoped 時は nav-up が戻る導線。
     const empty = createElement('div', 'pkc-sidebar-filer-empty');
     empty.textContent = scope ? 'このフォルダは空です' : '項目がありません';
     sidebar.appendChild(empty);
-  } else if (!searching) {
+  } else if (!filtering) {
     // Phase γ-A1:操作ヒント(pgc-33 の DnD 着地で「ドラッグで移動」が有効)。
     const hint = createElement('div', 'pkc-sidebar-filer-hint');
     hint.setAttribute('data-pkc-region', 'filer-sidebar-hint');

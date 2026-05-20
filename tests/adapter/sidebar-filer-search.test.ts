@@ -280,3 +280,93 @@ describe('filer モード sidebar の global 検索 (pgc-46)', () => {
     ).not.toBeNull();
   });
 });
+
+describe('filer モード sidebar の archetype filter (pgc-47)', () => {
+  let root: HTMLElement;
+  let teardown: (() => void) | null = null;
+
+  /** root に folder 1 + text 2 の mixed container。 */
+  function mixedContainer(): Container {
+    const e = (lid: string, title: string, archetype: 'text' | 'folder') => ({
+      lid, title, body: '', archetype, created_at: TS, updated_at: TS,
+    });
+    return {
+      meta: { container_id: 't', title: 'T', created_at: TS, updated_at: TS, schema_version: 1 },
+      entries: [
+        e('f1', 'フォルダA', 'folder'),
+        e('e1', '記事A', 'text'),
+        e('e2', '記事B', 'text'),
+      ],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+  }
+
+  beforeEach(() => {
+    __resetRegistry();
+    __resetUrlCache();
+    setContainerFlagSource({ 'sidebar.mode': 'filer' });
+    document.body.innerHTML = '';
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+    document.body.appendChild(root);
+    teardown = null;
+  });
+
+  afterEach(() => {
+    if (teardown) { teardown(); teardown = null; }
+  });
+
+  function boot(): ReturnType<typeof createDispatcher> {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((s) => render(s, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mixedContainer() });
+    render(dispatcher.getState(), root);
+    teardown = bindActions(root, dispatcher);
+    return dispatcher;
+  }
+
+  function archetypeRail(): HTMLElement | null {
+    return root.querySelector<HTMLElement>(
+      '[data-pkc-region="sidebar"][data-pkc-sidebar-mode="filer"] [data-pkc-region="archetype-filter"]',
+    );
+  }
+  function itemLids(): string[] {
+    return Array.from(
+      root.querySelectorAll<HTMLElement>('.pkc-sidebar-filer-item[data-pkc-draggable]'),
+    ).map((li) => li.getAttribute('data-pkc-lid') ?? '');
+  }
+
+  it('filer sidebar は tree 同等の archetype filter rail を描画する', () => {
+    boot();
+    expect(archetypeRail()).not.toBeNull();
+  });
+
+  it('archetype filter button click で結果を type 絞り込み(Phase 8 順序性)', () => {
+    boot();
+    const folderBtn = archetypeRail()!.querySelector<HTMLElement>(
+      '[data-pkc-action="toggle-archetype-filter"][data-pkc-archetype="folder"]',
+    );
+    expect(folderBtn).not.toBeNull();
+    folderBtn!.click();
+    // archetype=folder で絞ると folder の f1 のみ。
+    expect(itemLids()).toEqual(['f1']);
+  });
+
+  it('archetype filter 解除で folder navigation に戻る', () => {
+    boot();
+    archetypeRail()!
+      .querySelector<HTMLElement>(
+        '[data-pkc-action="toggle-archetype-filter"][data-pkc-archetype="folder"]',
+      )!
+      .click();
+    expect(itemLids()).toEqual(['f1']);
+    // All button(archetype='')で解除 → 全 root entry。click ごとに sidebar が
+    // rebuild されるため、rail は stale 参照を避けて再 query する。
+    archetypeRail()!
+      .querySelector<HTMLElement>('[data-pkc-action="set-archetype-filter"][data-pkc-archetype=""]')!
+      .click();
+    expect(itemLids().sort()).toEqual(['e1', 'e2', 'f1']);
+  });
+});
