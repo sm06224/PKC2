@@ -214,9 +214,15 @@ v3.x architecture Phase γ の Group C(format panel ワープロ化)第 1 wave�
 - **PR-pgc-05 段落 align**:行頭 prefix `<|` / `||` / `|>` の toggle 適用。
 - **PR-pgc-06 表挿入**:GFM pipe table 雛形(2×2〜4×3)、block 境界を改行で保つ挿入。
 - **PR-pgc-07 挿入**:ふりがな `[[ruby:漢字|よみ]]` / 区切り線 `+++`。
-- **PR-pgc-08 本 CHANGELOG + doc 同期**(Group C γ-C1 stack 締め)。
-- **数値**:operation 19 種 + value picker 5 種、`tests/adapter/format-panel.test.ts` 74 件(registry / DOM / apply math case matrix / button click / flag-gated renderer integration)、smoke parity test を実 OS click ベースに刷新。bundle.js scrap 相殺で微増にとどまる。
-- **後続予定**:検索 group(text / textlog 別 dialog の archetype 解決が別設計)、表の行・列追加削除 / セル整列、両端揃え(justify、`:::paragraph{align=justify}` の renderer 対応待ち)。
+- **PR-pgc-08 CHANGELOG + doc 同期**(γ-C1 第 1 段 締め)。
+- **PR-pgc-09 検索 group**:🔎 検索置換 launcher → 既存 `openTextReplaceDialog`。新 button 種別 `FormatLauncher`(archetype 出し分け、text 限定)。
+- **PR-pgc-10 表の行編集**:`pipe-table-edit.ts`(pure table parser を新設)+ 行↑ / 行↓ / 行✕(caret 行の contextual 追加・削除)。
+- **PR-pgc-11 表の列編集**:列← / 列→ / 列✕(caret 列の追加・削除、parser 再利用)。
+- **PR-pgc-12 表セル整列**:整列 picker(caret 列の separator marker を `---` / `:--` / `:-:` / `--:` に置換)。
+- **PR-pgc-13 リスト・番号拡充**:· 箇条書きを toggle 化、1. 番号リスト、⇥ / ⇤ インデント増減。
+- **PR-pgc-14 本 CHANGELOG + doc 同期**(pgc-09〜13 反映)。
+- **数値**:固定 format ribbon = 6 group / **operation 28 種** / **value picker 6 種** / **launcher 1 種**。`tests/adapter/format-panel.test.ts` 99 件 + `tests/features/markdown/pipe-table-edit.test.ts` 31 件、smoke parity test は実 OS click ベース。
+- **後続予定**:採番正規化 / uniform-one(領域 8 番号体系の auto-renumber engine 待ち)、両端揃え(justify、`:::paragraph{align=justify}` の renderer 対応待ち)。
 
 ---
 
