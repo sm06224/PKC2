@@ -65,6 +65,8 @@ describe('frontmatter graphical editor (Phase γ-B1)', () => {
   }
 
   it('flag OFF: frontmatter section は read-only <dl> のまま', () => {
+    // pgc-40 で default を ON に切替えたため、OFF 挙動の検証は明示的に false を指定。
+    setContainerFlagSource({ 'meta_pane.yaml_graphical_enabled': false });
     boot('---\nkind: book\n---\ntext');
     const section = root.querySelector('[data-pkc-region="frontmatter"]');
     expect(section).not.toBeNull();
