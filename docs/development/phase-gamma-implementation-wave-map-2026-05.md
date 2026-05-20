@@ -425,7 +425,8 @@ Phase γ 完了時に `docs/development/archived/phase-beta/` へ一括 archive
 | 2026-05-19 | PR #484(PR-β4)merge:Phase γ 実装 wave map 着地 |
 | 2026-05-20 | user 判断:20 OQ 暫定回答を全承認、Phase γ-C1 着手。以後は **main 着地せず stack 運用**(PR-pgc-NN) |
 | 2026-05-20 | **訂正(stack PR-pgc-01)**:γ-C 着手準備中に既存 `format-panel.ts`(選択追従 floating 書式 panel、本番稼働中)を発見。§2 を scrap-and-build に再定義(C1-1 = 旧 panel scrap + 新 ribbon build、flag は `editor.format_panel_enabled` 引き継ぎ)。詳細は [`phase-beta-group-c-format-panel-spec-2026-05.md`](./phase-beta-group-c-format-panel-spec-2026-05.md) 訂正 notice |
-| TBD | stack PR-pgc-02 以降:Phase γ-C1 実装(scrap-and-build)|
+| 2026-05-20 | **Phase γ-C1 実装(stack PR-pgc-02〜08、main 着地せず stack 運用)**:pgc-02 scrap-and-build 骨格 + 14 op / pgc-03 font-size・family picker / pgc-04 文字色・背景色 picker / pgc-05 段落 align / pgc-06 表挿入 / pgc-07 挿入(ruby / 区切り線)/ pgc-08 CHANGELOG + doc 同期。固定 format ribbon = 6 group / operation 19 種 / value picker 5 種。検索 group・表の行列編集・justify は後続(CHANGELOG v2.3.0 §Phase γ-C1 参照)|
+| TBD | Phase γ-C 残(検索 group / 表編集 / justify)、γ-B / γ-A wave |
 
 ---
 

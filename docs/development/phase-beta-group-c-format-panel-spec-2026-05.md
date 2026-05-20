@@ -787,7 +787,7 @@ case 精査。
 | 2026-05-19 | PR #483(PR-β3)merge:Group C 書式機能 spec 着地 |
 | 2026-05-19 | PR #484(PR-β4)merge:Phase γ 実装 wave map 着地、Phase β 設計 wave 完了 |
 | 2026-05-20 | **訂正(stack PR-pgc-01)**:§1 / §3 の事実誤認を訂正。既存 `format-panel.ts`(選択追従 floating 書式 panel、14 button、本番稼働中)を見落としていた。user 判断で scrap-and-build に方針確定、§0 / §1.1 / §3.1 を実態に合わせ、冒頭に訂正 notice を追加。Phase γ-C は wave map 側で scrap-and-build 構成に再定義 |
-| TBD | stack PR-pgc-02 以降:format-panel.ts を scrap → 新 desktop 固定 ribbon を build |
+| 2026-05-20 | **Phase γ-C1 実装着地(stack PR-pgc-02〜08)**:format-panel.ts を scrap-and-build。固定 format ribbon(6 group / operation 19 種 / value picker 5 種)を実装。§4 Font(B/I/S/code/mark/em-dot/sup/sub + size/family/color/highlight picker)、§5 段落(heading/quote/align)、§6 表挿入、§8 挿入(link/ruby/区切り線)が着地。検索 group(§8)・表の行列編集(§6.2/§6.3)・justify(§5.3)は後続。詳細は CHANGELOG v2.3.0 §Phase γ-C1 |
 
 ---
 

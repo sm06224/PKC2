@@ -203,6 +203,21 @@ User の「次 wave の最初の 1 PR どれにしますか?」(sup/sub / math /
   - **P0-b PPTX title autoFit + wrap + font-size 階段**:section title 44pt(旧 48pt)/ subtitle 36pt(旧 28pt)/ content title 28pt(旧 32pt)、各 title に `autoFit: true` + `wrap: true` を addText 呼出 options で指定(pptxgenjs の PlaceholderProps は autoFit を受け付けないため master でなく slide.addText 側に置く)、長 title が **意味境界で折り返し** + container 内 shrink で 2 行以内に収まる。section title 位置を y:2.5 → y:1.8 に移動して扉スライドの **上下 dead space を均す**、subtitle y:4.2 → y:4.0(title 直下に詰めて視線移動の断絶を消す)。content slide title h を 0.8 → 1.0、body 開始 y を 1.3 → 1.5 に下げて **title 直下の separator スペース確保**。
   - case matrix test 17 件 新規(`tests/features/ast/export-heading-prefix-and-spacing.test.ts`、章番号 7 + spacing 3 + autoFit 3 + invariant 4)、`docxXmlToText` helper で `<w:r>` 境界に分割された text を連結して assertion 簡素化、全 7810 test pass(PR-W5 7792 から +18)。**実機 PNG 視覚検証**:同 fixture を before/after で出力、章番号二重表記が解消(`第1章 第一章 …` → `第1章 …`)、pptx 扉スライドが中央配置、content slide で title-body separator が明確化されたことを confirm。
 
+### Phase γ-C1 — 編集モード固定 format ribbon(format-panel scrap-and-build、2026-05-20、stack PR-pgc-01〜08)
+
+v3.x architecture Phase γ の Group C(format panel ワープロ化)第 1 wave。旧 `format-panel.ts`(選択追従の floating 書式 panel、PR-2JJ v2)を user 判断「使いにくい」で **scrap-and-build**、編集モード上部に常駐する **固定 format ribbon** として再構築。main 着地せず stack(PR-pgc-01〜08)で積み上げ。
+
+- **PR-pgc-01 spec 訂正**:Group C spec の事実誤認(既存 `format-panel.ts` の見落とし)を訂正、scrap-and-build 方針を確定。
+- **PR-pgc-02 scrap-and-build 骨格**:旧 floating panel(global mount / 選択追従 / dismiss 永続化)を破棄、`renderFormatPanel()` が編集モード上部に 6 group(Font / 段落 / リスト・番号 / 表 / 挿入 / 検索)の固定 ribbon を描画。旧 14 operation を group に再配置、`wrapInline` 等の変換ロジックは再利用。flag `editor.format_panel_enabled`(default ON)を引き継ぎ。group 折りたたみは native `<details>`。
+- **PR-pgc-03 font-size / font-family picker**:simple-inline `:text:size:` / `:text:family:`。native `<details>` popup、attr 合成(同 category 排他)。
+- **PR-pgc-04 文字色 / 背景色 picker**:simple-inline `:text:color:` + highlight `==[color]text==`、色見本 swatch。
+- **PR-pgc-05 段落 align**:行頭 prefix `<|` / `||` / `|>` の toggle 適用。
+- **PR-pgc-06 表挿入**:GFM pipe table 雛形(2×2〜4×3)、block 境界を改行で保つ挿入。
+- **PR-pgc-07 挿入**:ふりがな `[[ruby:漢字|よみ]]` / 区切り線 `+++`。
+- **PR-pgc-08 本 CHANGELOG + doc 同期**(Group C γ-C1 stack 締め)。
+- **数値**:operation 19 種 + value picker 5 種、`tests/adapter/format-panel.test.ts` 74 件(registry / DOM / apply math case matrix / button click / flag-gated renderer integration)、smoke parity test を実 OS click ベースに刷新。bundle.js scrap 相殺で微増にとどまる。
+- **後続予定**:検索 group(text / textlog 別 dialog の archetype 解決が別設計)、表の行・列追加削除 / セル整列、両端揃え(justify、`:::paragraph{align=justify}` の renderer 対応待ち)。
+
 ---
 
 ## Schema migration
