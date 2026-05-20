@@ -11,6 +11,11 @@
 
 import { defineFlag } from '@core/flags';
 import { openTextReplaceDialog } from './text-replace-dialog';
+import {
+  addTableRow,
+  deleteTableRow,
+  type TableEditResult,
+} from '@features/markdown/pipe-table-edit';
 
 // 旧 floating panel から flag contract を引き継ぐ(scrap-and-build、spec §3.1)。
 export const formatPanelEnabled = defineFlag<boolean>(
@@ -218,6 +223,17 @@ export function insertPipeTable(sel: Selection, value: string): Selection {
   return insertBlock(sel, buildPipeTable(rows, cols));
 }
 
+// pipe table contextual 編集(行追加・削除)を FormatOp.apply 化する。caret が
+// 表内に無ければ TableEditResult が null となり、選択を変えず no-op。
+function tableEditOp(
+  fn: (value: string, caret: number) => TableEditResult | null,
+): (sel: Selection) => Selection {
+  return (sel) => {
+    const r = fn(sel.value, sel.start);
+    return r ? { value: r.value, start: r.caret, end: r.caret } : sel;
+  };
+}
+
 export interface FormatOp {
   label: string;
   title: string;
@@ -395,7 +411,16 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: '·', title: 'リスト(bullet)— - text', apply: (s) => prefixLines(s, '- ') },
     ],
   },
-  { id: 'table', label: '表', ops: [], pickers: [TABLE_INSERT_PICKER] },
+  {
+    id: 'table',
+    label: '表',
+    ops: [
+      { label: '行↑', title: '表:caret 行の上に行を追加', apply: tableEditOp((v, c) => addTableRow(v, c, 'above')) },
+      { label: '行↓', title: '表:caret 行の下に行を追加', apply: tableEditOp((v, c) => addTableRow(v, c, 'below')) },
+      { label: '行✕', title: '表:caret 行を削除', apply: tableEditOp(deleteTableRow) },
+    ],
+    pickers: [TABLE_INSERT_PICKER],
+  },
   {
     id: 'insert',
     label: '挿入',

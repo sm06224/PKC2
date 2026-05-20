@@ -38,9 +38,9 @@ describe('format-panel — FORMAT_GROUPS registry', () => {
     ]);
   });
 
-  it('has 19 operations total (14 carried + 3 align + ruby + section-break)', () => {
+  it('has 22 operations total (19 + 3 table row ops)', () => {
     const total = FORMAT_GROUPS.reduce((n, g) => n + g.ops.length, 0);
-    expect(total).toBe(19);
+    expect(total).toBe(22);
   });
 
   it('Font group has size / family / text-color / highlight-color pickers', () => {
@@ -86,9 +86,9 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     }
   });
 
-  it('renders 19 operation buttons (data-pkc-format-label)', () => {
+  it('renders 22 operation buttons (data-pkc-format-label)', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(19);
+    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(22);
   });
 
   it('renders 5 value pickers with their option buttons', () => {
@@ -475,6 +475,36 @@ describe('format-panel — button click applies to the editor textarea', () => {
 
     (panel.closest('.pkc-editor') as HTMLElement).remove();
   });
+
+  it('clicking 行↓ adds a row to the table the caret is in', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = '| h | h |\n| --- | --- |\n| a | b |';
+    ta.focus();
+    ta.setSelectionRange(28, 28); // body 行内
+
+    const addRow = panel.querySelector<HTMLButtonElement>(
+      '[data-pkc-format-label="行↓"]',
+    );
+    expect(addRow).not.toBeNull();
+    addRow!.click();
+    expect(ta.value).toBe('| h | h |\n| --- | --- |\n| a | b |\n|  |  |');
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
+
+  it('clicking 行↓ outside any table is a no-op', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = 'just plain text';
+    ta.focus();
+    ta.setSelectionRange(5, 5);
+
+    panel
+      .querySelector<HTMLButtonElement>('[data-pkc-format-label="行↓"]')!
+      .click();
+    expect(ta.value).toBe('just plain text');
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
 });
 
 describe('format-panel — 検索 launcher (spec §8)', () => {
@@ -569,7 +599,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     renderEditingText();
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
-    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(19);
+    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(22);
     expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(5);
     expect(panel!.querySelectorAll('[data-pkc-launcher]')).toHaveLength(1);
   });
