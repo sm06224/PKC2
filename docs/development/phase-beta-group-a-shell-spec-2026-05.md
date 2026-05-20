@@ -526,6 +526,21 @@ DnD 移動**:
   matrix)+ `tests/smoke/sidebar-filer-dnd.spec.ts`(Playwright parity 1
   件、実 OS `dragTo`)
 
+**pgc-34 UX 完成度向上**:filer-mode sidebar の表示 UX を tree-mode 並に
+仕上げる:
+
+- header に現スコープの **item 数**(`data-pkc-region="filer-sidebar-count"`)
+- item がある時の **操作ヒント**「ドラッグで移動 · ダブルクリックで別窓」
+  (pgc-33 の DnD 着地で「ドラッグで移動」が意味を持つ)
+- **空スコープ案内の改善**:従来「(empty)」→ root は「項目がありません」、
+  folder は「このフォルダは空です」。空 folder でも list に nav-up を残し
+  戻る導線を確保(従来は root の空のみ案内、scoped 空は無案内だった)
+
+`renderSidebarAsFiler` +20 行、CSS は count / hint / label ellipsis。
+非対話の表示要素のため Playwright parity は不要(対話のある click =
+pgc-32 / drag = pgc-33 は parity 済)、`sidebar-filer-mode.test.ts` に
+happy-dom 5 件追加。
+
 機能強化の残り(search / filter、multi-select + bulk action、entry
 metadata badge、copy-link 等)は後続 pgc で順次。default 切替(A1-4)+
 deprecated marker(A1-5)は user 判断保留。

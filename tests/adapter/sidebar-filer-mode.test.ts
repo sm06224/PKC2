@@ -166,4 +166,63 @@ describe('filer モード sidebar (Phase γ-A1)', () => {
       root.querySelector('.pkc-sidebar-filer-empty'),
     ).not.toBeNull();
   });
+
+  // ── pgc-34:result count / interaction hint / empty 案内 ──
+
+  it('flag ON:header に現スコープの item 数(root = 2)', () => {
+    setContainerFlagSource({ 'sidebar.mode': 'filer' });
+    boot(); // makeContainer:root は f1 + e2 の 2 件
+    const count = root.querySelector('[data-pkc-region="filer-sidebar-count"]');
+    expect(count).not.toBeNull();
+    expect(count!.textContent).toBe('2');
+  });
+
+  it('flag ON:scope 変更で count が追従(f1 内 = 1)', () => {
+    setContainerFlagSource({ 'sidebar.mode': 'filer' });
+    const d = boot();
+    d.dispatch({ type: 'SELECT_ENTRY', lid: 'f1' }); // f1 scope(child e1 のみ)
+    expect(
+      root.querySelector('[data-pkc-region="filer-sidebar-count"]')!.textContent,
+    ).toBe('1');
+  });
+
+  it('flag ON:item がある scope は操作ヒントを表示', () => {
+    setContainerFlagSource({ 'sidebar.mode': 'filer' });
+    boot();
+    expect(
+      root.querySelector('[data-pkc-region="filer-sidebar-hint"]'),
+    ).not.toBeNull();
+  });
+
+  it('flag ON:空 container はヒントを出さず empty 案内のみ', () => {
+    setContainerFlagSource({ 'sidebar.mode': 'filer' });
+    boot(emptyContainer());
+    expect(
+      root.querySelector('[data-pkc-region="filer-sidebar-hint"]'),
+    ).toBeNull();
+    expect(
+      root.querySelector('.pkc-sidebar-filer-empty')!.textContent,
+    ).toBe('項目がありません');
+  });
+
+  it('flag ON:空 folder に入ると empty 案内 + 戻る nav-up が共存', () => {
+    setContainerFlagSource({ 'sidebar.mode': 'filer' });
+    // 空 folder fe を 1 つだけ持つ container
+    const c = emptyContainer();
+    c.entries.push({
+      lid: 'fe',
+      title: '空フォルダ',
+      body: '',
+      archetype: 'folder',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+    const d = boot(c);
+    d.dispatch({ type: 'SELECT_ENTRY', lid: 'fe' }); // fe scope(0 children)
+    const empty = root.querySelector('.pkc-sidebar-filer-empty');
+    expect(empty).not.toBeNull();
+    expect(empty!.textContent).toBe('このフォルダは空です');
+    // 空でも上階層へ戻る導線(nav-up)は残る
+    expect(root.querySelector('.pkc-sidebar-filer-nav-up')).not.toBeNull();
+  });
 });

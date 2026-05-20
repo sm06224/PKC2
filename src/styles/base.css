@@ -6386,6 +6386,31 @@ mark.pkc-search-mark {
   opacity: 0.85;
   padding-bottom: var(--space-1, 0.25rem);
   border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.1));
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1, 0.25rem);
+}
+
+.pkc-sidebar-filer-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 現スコープの item 数(Group A、Phase γ-A1)。 */
+.pkc-sidebar-filer-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-weight: 400;
+  font-size: var(--fs-xs, 0.65rem);
+  opacity: 0.7;
+}
+
+/* filer 操作ヒント(Group A、Phase γ-A1)。 */
+.pkc-sidebar-filer-hint {
+  font-size: var(--fs-xs, 0.65rem);
+  opacity: 0.55;
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
 }
 
 .pkc-sidebar-filer-list {

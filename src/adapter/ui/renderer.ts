@@ -3012,16 +3012,21 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   sidebar.setAttribute('data-pkc-sidebar-mode', 'filer');
 
   const scope = resolveFilerScope(state);
-  const header = createElement('div', 'pkc-sidebar-filer-header');
-  const label = createElement('span', 'pkc-sidebar-filer-label');
-  label.textContent = scope ? (scope.title || scope.lid) : 'Root';
-  header.appendChild(label);
-  sidebar.appendChild(header);
-
   const children = scope
     ? getStructuralChildren(state.container?.relations ?? [], state.container?.entries ?? [], scope.lid)
     : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
   const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
+
+  const header = createElement('div', 'pkc-sidebar-filer-header');
+  const label = createElement('span', 'pkc-sidebar-filer-label');
+  label.textContent = scope ? (scope.title || scope.lid) : 'Root';
+  header.appendChild(label);
+  // Phase γ-A1:現スコープの item 数を表示。
+  const count = createElement('span', 'pkc-sidebar-filer-count');
+  count.setAttribute('data-pkc-region', 'filer-sidebar-count');
+  count.textContent = String(visibleChildren.length);
+  header.appendChild(count);
+  sidebar.appendChild(header);
 
   const nav = resolveFilerNavigation(state);
   const list = createElement('ul', 'pkc-sidebar-filer-list');
@@ -3058,12 +3063,21 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     li.textContent = `${archetypeIcon(child.archetype)} ${child.title || child.lid}`;
     list.appendChild(li);
   }
-  if (visibleChildren.length === 0 && !nav.parent) {
+  sidebar.appendChild(list);
+
+  if (visibleChildren.length === 0) {
+    // Phase γ-A1:空スコープの案内(従来の素っ気ない "(empty)" を改善)。
+    // scoped 時は list に nav-up があるので戻る導線は残る。
     const empty = createElement('div', 'pkc-sidebar-filer-empty');
-    empty.textContent = '(empty)';
+    empty.textContent = scope ? 'このフォルダは空です' : '項目がありません';
     sidebar.appendChild(empty);
   } else {
-    sidebar.appendChild(list);
+    // Phase γ-A1:操作ヒント(pgc-33 の DnD 着地で「ドラッグで移動」が
+    // 有効になった)。
+    const hint = createElement('div', 'pkc-sidebar-filer-hint');
+    hint.setAttribute('data-pkc-region', 'filer-sidebar-hint');
+    hint.textContent = 'ドラッグで移動 · ダブルクリックで別窓';
+    sidebar.appendChild(hint);
   }
 
   return sidebar;
