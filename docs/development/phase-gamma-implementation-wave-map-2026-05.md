@@ -203,8 +203,12 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 `sidebar.mode` と機能重複のため導入しない(γ-A3 / format-panel と同じく
 既存資産が spec を上回る事例)。`pgc-32` で filer モード sidebar の
 active test 被覆 0 件を解消(happy-dom 8 + Playwright parity 1)。
-default 切替(A1-4)+ deprecated marker(A1-5)は後続 PR / user 判断。
-詳細は shell spec §4.5。
+user direction「filer モードを機能強化して続行」を受け、tree-mode 比で
+minimal だった filer-mode sidebar の機能強化を開始:`pgc-33` で entry の
+folder 間 **drag-and-drop 移動**(action-binder 汎用 DnD 機構を再利用、
+happy-dom 12 + Playwright parity 1)。残り(search / filter、multi-select
++ bulk action、entry metadata 等)は後続 pgc。default 切替(A1-4)+
+deprecated marker(A1-5)は user 判断保留。詳細は shell spec §4.5。
 
 ### §4.2 γ-A2:編集 mode 3 分割(10 PR)
 

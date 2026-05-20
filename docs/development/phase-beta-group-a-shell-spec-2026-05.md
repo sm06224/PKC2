@@ -507,8 +507,28 @@ visual parity test 必須)に対し:
 - `tests/smoke/sidebar-filer-mode.spec.ts`(Playwright parity 1 件):実 OS
   click で sidebar item 選択遷移
 
-src 変更なし(既存実装は test で正当性確認、bug 0)。default 切替(A1-4)
-+ deprecated marker(A1-5)は後続 PR / user 判断。
+pgc-32 は src 変更なし(既存実装は test で正当性確認、bug 0)。
+
+**pgc-33 drag-and-drop**(user direction「filer モードを機能強化して
+続行」、2026-05-20):filer-mode sidebar は tree-mode 比で機能が minimal
+だったため、parity 向けの機能強化を開始。第 1 弾は **entry の folder 間
+DnD 移動**:
+
+- `renderSidebarAsFiler` の item に `draggable` / `data-pkc-draggable`、
+  folder item + nav-up に `data-pkc-drop-target`(nav-up は root sentinel
+  なら `root`)を付与
+- DnD 機構は action-binder の汎用 `handleDragStart` / `handleDragOver` /
+  `handleDrop`(`data-pkc-draggable` / `data-pkc-drop-target` を見て
+  structural relation を付け替える)を **再利用** — 新規 handler 不要
+- drag 状態の CSS も既存の `[data-pkc-dragging]` / `[data-pkc-drag-over]`
+  属性 selector が自動適用 — 新規 CSS 不要
+- `tests/adapter/sidebar-filer-dnd.test.ts`(happy-dom 12 件、case
+  matrix)+ `tests/smoke/sidebar-filer-dnd.spec.ts`(Playwright parity 1
+  件、実 OS `dragTo`)
+
+機能強化の残り(search / filter、multi-select + bulk action、entry
+metadata badge、copy-link 等)は後続 pgc で順次。default 切替(A1-4)+
+deprecated marker(A1-5)は user 判断保留。
 
 ---
 

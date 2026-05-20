@@ -3030,6 +3030,13 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     li.setAttribute('data-pkc-action', 'select-entry');
     li.setAttribute('data-pkc-lid', nav.parent.lid);
     li.setAttribute('data-pkc-archetype', 'folder');
+    // Phase γ-A1:nav-up を drop target に。entry を drop すると上階層へ
+    // 移動する。root sentinel への drop は root level 直下へ(structural
+    // relation 削除)、実 folder への drop はその folder へ移動。
+    li.setAttribute(
+      'data-pkc-drop-target',
+      nav.parentIsRootSentinel ? 'root' : 'true',
+    );
     li.textContent = `📁 ..  (${nav.parent.title || nav.parent.lid})`;
     list.appendChild(li);
   }
@@ -3038,6 +3045,15 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     li.setAttribute('data-pkc-action', 'select-entry');
     li.setAttribute('data-pkc-lid', child.lid);
     li.setAttribute('data-pkc-archetype', child.archetype);
+    // Phase γ-A1:filer item を draggable に(entry の folder 間移動)。
+    // DnD 機構は action-binder の handleDragStart / handleDrop が
+    // `data-pkc-draggable` / `data-pkc-drop-target` で汎用処理する。
+    li.setAttribute('draggable', 'true');
+    li.setAttribute('data-pkc-draggable', 'true');
+    // folder は drop target を兼ねる(entry を中へ移動)。
+    if (child.archetype === 'folder') {
+      li.setAttribute('data-pkc-drop-target', 'true');
+    }
     if (child.lid === state.selectedLid) li.setAttribute('data-pkc-active', 'true');
     li.textContent = `${archetypeIcon(child.archetype)} ${child.title || child.lid}`;
     list.appendChild(li);
