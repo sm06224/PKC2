@@ -3359,6 +3359,19 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     // を再利用し、検索結果を type で絞れるようにする。button は
     // `set-archetype-filter` を dispatch、`applyFilters` 経由で matched に反映。
     sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
+    // pgc-50:Recent Entries Pane。tree sidebar と同一の
+    // `renderRecentEntriesPane` を再利用 — `updated_at` desc の派生ビューを
+    // default 折りたたみ `<details>` で出す。query coupling なし(derived-
+    // only、`select-recent-entry` で選択するだけ)なので filer でもそのまま
+    // 機能する。tree と同じく archetype filter 直下に配置。
+    {
+      const recentPane = renderRecentEntriesPane(
+        userEntries,
+        state.selectedLid,
+        state.recentPaneCollapsed ?? true,
+      );
+      if (recentPane) sidebar.appendChild(recentPane);
+    }
     // pgc-48/49:⚙ Filters disclosure。tree sidebar(renderSidebarImpl)と
     // 共有する `renderAdvancedFiltersPanel` で color strip + showArchived /
     // treeHideBuckets / searchHideBuckets / unreferenced の 4 toggle を
