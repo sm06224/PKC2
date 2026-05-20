@@ -15,6 +15,8 @@ import {
   renderFormatPanel,
   parseSimpleInline,
   applySimpleInlineAttr,
+  parseHighlight,
+  applyHighlightColor,
 } from '@adapter/ui/format-panel';
 import { render } from '@adapter/ui/renderer';
 import { createDispatcher } from '@adapter/state/dispatcher';
@@ -37,17 +39,30 @@ describe('format-panel — FORMAT_GROUPS registry', () => {
     expect(total).toBe(14);
   });
 
-  it('Font group has the font-size and font-family pickers', () => {
+  it('Font group has size / family / text-color / highlight-color pickers', () => {
     const font = FORMAT_GROUPS.find((g) => g.id === 'font');
-    expect(font?.pickers?.map((p) => p.id)).toEqual(['font-size', 'font-family']);
+    expect(font?.pickers?.map((p) => p.id)).toEqual([
+      'font-size',
+      'font-family',
+      'text-color',
+      'highlight-color',
+    ]);
   });
 
-  it('font-size picker has 5 options, font-family has 3', () => {
+  it('picker option counts: size 5 / family 3 / colors 6', () => {
     const font = FORMAT_GROUPS.find((g) => g.id === 'font');
-    const size = font?.pickers?.find((p) => p.id === 'font-size');
-    const family = font?.pickers?.find((p) => p.id === 'font-family');
-    expect(size?.options).toHaveLength(5);
-    expect(family?.options).toHaveLength(3);
+    const byId = (id: string) => font?.pickers?.find((p) => p.id === id);
+    expect(byId('font-size')?.options).toHaveLength(5);
+    expect(byId('font-family')?.options).toHaveLength(3);
+    expect(byId('text-color')?.options).toHaveLength(6);
+    expect(byId('highlight-color')?.options).toHaveLength(6);
+  });
+
+  it('color pickers are swatch pickers', () => {
+    const font = FORMAT_GROUPS.find((g) => g.id === 'font');
+    const byId = (id: string) => font?.pickers?.find((p) => p.id === id);
+    expect(byId('text-color')?.swatch).toBe(true);
+    expect(byId('highlight-color')?.swatch).toBe(true);
   });
 });
 
@@ -72,17 +87,24 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(14);
   });
 
-  it('renders 2 value pickers with their option buttons', () => {
+  it('renders 4 value pickers with their option buttons', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-picker]')).toHaveLength(2);
-    const sizeOpts = panel.querySelectorAll(
-      '[data-pkc-picker="font-size"] [data-pkc-picker-value]',
+    expect(panel.querySelectorAll('[data-pkc-picker]')).toHaveLength(4);
+    const count = (id: string) =>
+      panel.querySelectorAll(`[data-pkc-picker="${id}"] [data-pkc-picker-value]`)
+        .length;
+    expect(count('font-size')).toBe(5);
+    expect(count('font-family')).toBe(3);
+    expect(count('text-color')).toBe(6);
+    expect(count('highlight-color')).toBe(6);
+  });
+
+  it('color picker options render as swatches', () => {
+    const panel = renderFormatPanel();
+    const swatches = panel.querySelectorAll(
+      '[data-pkc-picker="text-color"] .pkc-format-panel-swatch',
     );
-    const familyOpts = panel.querySelectorAll(
-      '[data-pkc-picker="font-family"] [data-pkc-picker-value]',
-    );
-    expect(sizeOpts).toHaveLength(5);
-    expect(familyOpts).toHaveLength(3);
+    expect(swatches).toHaveLength(6);
   });
 });
 
@@ -162,28 +184,78 @@ describe('format-panel — applySimpleInlineAttr (attr 合成、spec §4.4)', ()
   it('6. :text:lg,serif: + xl → size 置換・family 維持', () => {
     expect(apply(':hello:lg,serif:', 0, 16, 'xl')).toBe(':hello:serif,xl:');
   });
-  it('7. :text:red: + lg → 未知 category(色)は維持し合成', () => {
-    expect(apply(':hello:red:', 0, 11, 'lg')).toBe(':hello:red,lg:');
+  it('7. plain text + color → fresh :text:color:', () => {
+    expect(apply('hello', 0, 5, 'red')).toBe(':hello:red:');
   });
-  it('8. 空選択 + size → :​:size:(inner 空)', () => {
+  it('8. :text:red: + blue → color category 置換', () => {
+    expect(apply(':hello:red:', 0, 11, 'blue')).toBe(':hello:blue:');
+  });
+  it('9. :text:lg: + red → size + color 合成', () => {
+    expect(apply(':hello:lg:', 0, 10, 'red')).toBe(':hello:lg,red:');
+  });
+  it('10. :text:red,lg: + blue → color 置換・size 維持', () => {
+    expect(apply(':hello:red,lg:', 0, 14, 'blue')).toBe(':hello:lg,blue:');
+  });
+  it('11. 空選択 + size → ::size:(inner 空)', () => {
     expect(apply('', 0, 0, 'lg')).toBe('::lg:');
   });
-  it('9. CJK 選択 + size', () => {
+  it('12. CJK 選択 + size', () => {
     expect(apply('日本語', 0, 3, 'lg')).toBe(':日本語:lg:');
   });
-  it('10. 絵文字選択 + size', () => {
+  it('13. 絵文字選択 + size', () => {
     expect(apply('🎉', 0, 2, 'lg')).toBe(':🎉:lg:');
   });
-  it('11. 行中の選択のみ wrap、前後は不変', () => {
+  it('14. 行中の選択のみ wrap、前後は不変', () => {
     expect(apply('ab cd ef', 3, 5, 'lg')).toBe('ab :cd:lg: ef');
   });
-  it('12. コロン入り選択は simple-inline と見なさず fresh wrap', () => {
+  it('15. コロン入り選択は simple-inline と見なさず fresh wrap', () => {
     expect(apply(':a:b:c:', 0, 7, 'lg')).toBe('::a:b:c::lg:');
   });
   it('caret は置換後の simple-inline 全体を選択する', () => {
     const r = applySimpleInlineAttr({ value: 'hello', start: 0, end: 5 }, 'lg');
     expect(r.start).toBe(0);
     expect(r.end).toBe(':hello:lg:'.length);
+  });
+});
+
+describe('format-panel — parseHighlight / applyHighlightColor (背景色、spec §4.1)', () => {
+  function apply(value: string, start: number, end: number, color: string): string {
+    return applyHighlightColor({ value, start, end }, color).value;
+  }
+
+  it('parseHighlight extracts inner from ==X== / ==[color]X==', () => {
+    expect(parseHighlight('==hello==')).toEqual({ inner: 'hello' });
+    expect(parseHighlight('==[red]hello==')).toEqual({ inner: 'hello' });
+    expect(parseHighlight('==[#ff0000]x==')).toEqual({ inner: 'x' });
+    expect(parseHighlight('hello')).toBeNull();
+  });
+
+  // case matrix(CLAUDE.md §4 規約)
+  it('1. plain text + color → ==[color]text==', () => {
+    expect(apply('hello', 0, 5, 'red')).toBe('==[red]hello==');
+  });
+  it('2. plain highlight ==X== + color → ==[color]X==', () => {
+    expect(apply('==hello==', 0, 9, 'red')).toBe('==[red]hello==');
+  });
+  it('3. ==[red]X== + blue → 背景色 置換', () => {
+    expect(apply('==[red]hello==', 0, 14, 'blue')).toBe('==[blue]hello==');
+  });
+  it('4. 空選択 + color → ==[color]==', () => {
+    expect(apply('', 0, 0, 'red')).toBe('==[red]==');
+  });
+  it('5. CJK 選択 + color', () => {
+    expect(apply('日本語', 0, 3, 'green')).toBe('==[green]日本語==');
+  });
+  it('6. 絵文字選択 + color', () => {
+    expect(apply('🎉', 0, 2, 'purple')).toBe('==[purple]🎉==');
+  });
+  it('7. 行中の選択のみ wrap、前後は不変', () => {
+    expect(apply('ab cd ef', 3, 5, 'orange')).toBe('ab ==[orange]cd== ef');
+  });
+  it('caret は置換後の highlight 全体を選択する', () => {
+    const r = applyHighlightColor({ value: 'hello', start: 0, end: 5 }, 'red');
+    expect(r.start).toBe(0);
+    expect(r.end).toBe('==[red]hello=='.length);
   });
 });
 
@@ -227,6 +299,38 @@ describe('format-panel — button click applies to the editor textarea', () => {
     expect(lgOpt).not.toBeNull();
     lgOpt!.click();
     expect(ta.value).toBe(':big:lg:');
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
+
+  it('clicking a text-color swatch wraps the selection as :text:color:', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = 'warn';
+    ta.focus();
+    ta.setSelectionRange(0, 4);
+
+    const redOpt = panel.querySelector<HTMLButtonElement>(
+      '[data-pkc-picker="text-color"] [data-pkc-picker-value="red"]',
+    );
+    expect(redOpt).not.toBeNull();
+    redOpt!.click();
+    expect(ta.value).toBe(':warn:red:');
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
+
+  it('clicking a highlight-color swatch wraps the selection as ==[color]text==', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = 'mark';
+    ta.focus();
+    ta.setSelectionRange(0, 4);
+
+    const blueOpt = panel.querySelector<HTMLButtonElement>(
+      '[data-pkc-picker="highlight-color"] [data-pkc-picker-value="blue"]',
+    );
+    expect(blueOpt).not.toBeNull();
+    blueOpt!.click();
+    expect(ta.value).toBe('==[blue]mark==');
 
     (panel.closest('.pkc-editor') as HTMLElement).remove();
   });
@@ -278,7 +382,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
     expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(14);
-    expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(2);
+    expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(4);
   });
 
   it('flag OFF: the editor has no format ribbon', () => {

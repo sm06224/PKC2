@@ -9788,6 +9788,13 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   border-radius: var(--radius);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
+/* 文字色 / 背景色 picker の色見本 option。 */
+.pkc-format-panel-swatch {
+  width: 1.4rem;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+}
 
 /* ── Data.. dropdown menu(PR-2JJ v2、entry detail header、AST / Pandoc 出力)──
    現在 selected entry の body を AST / Canonical / Pandoc / HTML に変換して

@@ -232,10 +232,10 @@ test('Group C visual parity: 固定 format ribbon が編集モードで常駐し
   const panel = page.locator('[data-pkc-region="format-panel"]');
   await expect(panel).toBeVisible({ timeout: 3_000 });
 
-  // 6 group + 14 operation button + 2 value picker が描画されている
+  // 6 group + 14 operation button + 4 value picker が描画されている
   await expect(panel.locator('[data-pkc-region="format-panel-group"]')).toHaveCount(6);
   await expect(panel.locator('[data-pkc-format-label]')).toHaveCount(14);
-  await expect(panel.locator('[data-pkc-picker]')).toHaveCount(2);
+  await expect(panel.locator('[data-pkc-picker]')).toHaveCount(4);
 
   // textarea に text を入れて選択
   const body = page.locator('textarea.pkc-editor-body[data-pkc-field="body"]').first();
@@ -284,6 +284,34 @@ test('Group C visual parity: 固定 format ribbon が編集モードで常駐し
   );
   await page.waitForTimeout(100);
   expect(await body.inputValue()).toBe('**Hello** :ribbon:lg:');
+
+  // text-color swatch:既存 :ribbon:lg: に red を合成 → :ribbon:lg,red:
+  await body.evaluate((ta: HTMLTextAreaElement) => {
+    ta.setSelectionRange(10, 21); // ":ribbon:lg:"
+    ta.focus();
+  });
+  const colorTrigger = panel.locator('[data-pkc-picker="text-color"] summary');
+  const colorBox = await colorTrigger.boundingBox();
+  expect(colorBox).not.toBeNull();
+  if (!colorBox) throw new Error('text-color trigger no box');
+  await page.mouse.click(
+    colorBox.x + colorBox.width / 2,
+    colorBox.y + colorBox.height / 2,
+  );
+  await page.waitForTimeout(80);
+
+  const redSwatch = panel.locator(
+    '[data-pkc-picker="text-color"] [data-pkc-picker-value="red"]',
+  );
+  const swatchBox = await redSwatch.boundingBox();
+  expect(swatchBox).not.toBeNull();
+  if (!swatchBox) throw new Error('red swatch no box');
+  await page.mouse.click(
+    swatchBox.x + swatchBox.width / 2,
+    swatchBox.y + swatchBox.height / 2,
+  );
+  await page.waitForTimeout(100);
+  expect(await body.inputValue()).toBe('**Hello** :ribbon:lg,red:');
 
   await page.screenshot({ path: 'test-results/group-c-format-ribbon-parity.png' });
 });

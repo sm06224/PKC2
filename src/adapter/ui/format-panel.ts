@@ -73,8 +73,8 @@ function prefixLines(sel: Selection, prefix: string): Selection {
 //
 // simple-inline の attr は category を持ち、同 category は排他(size を 2 つ
 // 付けられない)。新 attr 適用時に同 category の既存 attr を置換し、別 category
-// は維持する(`:X:red:` に lg を足すと `:X:red,lg:`、lg に xl を足すと `:X:xl:`)。
-// color category は pgc-04 で追加予定、現状は size / family のみ。
+// は維持する(`:X:red:` に lg を足すと `:X:red,lg:`、red に blue を足すと
+// `:X:blue:`)。
 const ATTR_CATEGORY: Readonly<Record<string, string>> = {
   xs: 'size',
   sm: 'size',
@@ -84,6 +84,12 @@ const ATTR_CATEGORY: Readonly<Record<string, string>> = {
   serif: 'family',
   sans: 'family',
   mono: 'family',
+  red: 'color',
+  orange: 'color',
+  green: 'color',
+  blue: 'color',
+  purple: 'color',
+  gray: 'color',
 };
 
 // 選択テキストが simple-inline `:inner:attrs:` 全体ならパースする。inner に
@@ -120,20 +126,46 @@ export function applySimpleInlineAttr(sel: Selection, attr: string): Selection {
   };
 }
 
+// ── highlight 色 `==[color]text==`(spec §4.1 背景色)──
+
+// 選択が highlight `==X==` / `==[color]X==` 全体ならば inner を取り出す。
+export function parseHighlight(text: string): { inner: string } | null {
+  const m = /^==(?:\[[a-z0-9#]+\])?(.+)==$/.exec(text);
+  if (!m || m[1] === undefined) return null;
+  return { inner: m[1] };
+}
+
+// highlight 背景色を選択範囲に適用する。選択が既に highlight 全体なら色を
+// 差し替え(`==X==` → `==[color]X==`、`==[red]X==` → `==[blue]X==`)、
+// そうでなければ新規 wrap。
+export function applyHighlightColor(sel: Selection, color: string): Selection {
+  const selected = sel.value.slice(sel.start, sel.end);
+  const parsed = parseHighlight(selected);
+  const inner = parsed ? parsed.inner : selected;
+  const replacement = `==[${color}]${inner}==`;
+  return {
+    value: `${sel.value.slice(0, sel.start)}${replacement}${sel.value.slice(sel.end)}`,
+    start: sel.start,
+    end: sel.start + replacement.length,
+  };
+}
+
 export interface FormatOp {
   label: string;
   title: string;
   apply: (sel: Selection) => Selection;
 }
 
-// 値を選んで適用する operation(font-size / font-family 等)。trigger を押すと
-// option の popup が開き、option click で apply(spec §4.2)。
+// 値を選んで適用する operation(font-size / 文字色 等)。trigger を押すと
+// option の popup が開き、option click で apply(spec §4.2)。swatch=true の
+// 場合 option button を色見本(背景色)で描画する。
 export interface FormatPicker {
   id: string;
   triggerLabel: string;
   triggerTitle: string;
   options: readonly { label: string; value: string; title: string }[];
   apply: (sel: Selection, value: string) => Selection;
+  swatch?: boolean;
 }
 
 export type FormatGroupId =
@@ -179,9 +211,39 @@ const FONT_FAMILY_PICKER: FormatPicker = {
   apply: (sel, value) => applySimpleInlineAttr(sel, value),
 };
 
+// 文字色 / 背景色 picker 共通の色 option(named color、spec §4.2 preset)。
+const COLOR_OPTIONS: readonly { label: string; value: string; title: string }[] = [
+  { label: '赤', value: 'red', title: '赤(red)' },
+  { label: '橙', value: 'orange', title: '橙(orange)' },
+  { label: '緑', value: 'green', title: '緑(green)' },
+  { label: '青', value: 'blue', title: '青(blue)' },
+  { label: '紫', value: 'purple', title: '紫(purple)' },
+  { label: '灰', value: 'gray', title: '灰(gray)' },
+];
+
+// 文字色 picker(simple-inline `:text:color:`、spec §4.1)。
+const TEXT_COLOR_PICKER: FormatPicker = {
+  id: 'text-color',
+  triggerLabel: '文字色',
+  triggerTitle: '文字色(simple-inline :text:color:)',
+  options: COLOR_OPTIONS,
+  apply: (sel, value) => applySimpleInlineAttr(sel, value),
+  swatch: true,
+};
+
+// 背景色 picker(highlight `==[color]text==`、spec §4.1)。
+const HIGHLIGHT_COLOR_PICKER: FormatPicker = {
+  id: 'highlight-color',
+  triggerLabel: '背景色',
+  triggerTitle: '背景色(==[color]text==)',
+  options: COLOR_OPTIONS,
+  apply: (sel, value) => applyHighlightColor(sel, value),
+  swatch: true,
+};
+
 // 6 group(spec §3.2)+ operation / picker の定義。旧 panel の 14 operation を
-// group に再配置し、Font group に font-size / font-family picker を追加した。
-// 表 / 検索 group の operation、文字色 / 背景色 picker は後続 stack PR で追加。
+// group に再配置し、Font group に font-size / font-family / 文字色 / 背景色
+// picker を追加した。表 / 検索 group の operation は後続 stack PR で追加。
 export const FORMAT_GROUPS: readonly FormatGroup[] = [
   {
     id: 'font',
@@ -196,7 +258,12 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: 'sup', title: '上付き(sup)— <sup>text</sup>', apply: (s) => wrapAsymmetric(s, '<sup>', '</sup>') },
       { label: 'sub', title: '下付き(sub)— <sub>text</sub>', apply: (s) => wrapAsymmetric(s, '<sub>', '</sub>') },
     ],
-    pickers: [FONT_SIZE_PICKER, FONT_FAMILY_PICKER],
+    pickers: [
+      FONT_SIZE_PICKER,
+      FONT_FAMILY_PICKER,
+      TEXT_COLOR_PICKER,
+      HIGHLIGHT_COLOR_PICKER,
+    ],
   },
   {
     id: 'paragraph',
@@ -298,7 +365,13 @@ function renderPicker(panel: HTMLElement, picker: FormatPicker): HTMLElement {
     btn.setAttribute('data-pkc-picker-value', opt.value);
     btn.setAttribute('title', opt.title);
     btn.setAttribute('aria-label', opt.title);
-    btn.textContent = opt.label;
+    if (picker.swatch) {
+      // 色見本:UI chrome の inline style(user content ではないため許容)。
+      btn.classList.add('pkc-format-panel-swatch');
+      btn.style.backgroundColor = opt.value;
+    } else {
+      btn.textContent = opt.label;
+    }
     btn.addEventListener('mousedown', (e) => e.preventDefault());
     btn.addEventListener('click', (e) => {
       e.preventDefault();
