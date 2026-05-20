@@ -12,6 +12,7 @@ import {
 import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
+import { renderFormatPanel, formatPanelEnabled } from './format-panel';
 import { renderImagePreviewModal } from './image-preview';
 import {
   bindGraphCanvas,
@@ -8747,6 +8748,16 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
   archLabel.textContent = `${archetypeIcon(entry.archetype)} ${archetypeLabel(entry.archetype)}`;
   titleRow.appendChild(archLabel);
   editor.appendChild(titleRow);
+
+  // 編集モード固定 format ribbon(Group C ワープロ化、Phase γ-C)。Tier 0
+  // flag gated、text / textlog の markdown 編集時のみ。touch 端末では CSS で
+  // 非表示(snippet-toolbar の floating popup を使う)。
+  if (
+    formatPanelEnabled() &&
+    (entry.archetype === 'text' || entry.archetype === 'textlog')
+  ) {
+    editor.appendChild(renderFormatPanel());
+  }
 
   // Archetype-dispatched editor body
   const presenter = getPresenter(entry.archetype);

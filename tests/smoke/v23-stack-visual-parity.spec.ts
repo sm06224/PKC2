@@ -217,7 +217,7 @@ test('PR-V8 visual parity: 中央 pane で textlog log を scroll すると対�
   await page.screenshot({ path: 'test-results/pr-v8-toc-viewport-parity.png', fullPage: true });
 });
 
-test('PR-V10 visual parity: format panel × close → reload 後も非表示が維持される', async ({
+test('Group C visual parity: 固定 format ribbon が編集モードで常駐し B が選択を wrap する', async ({
   page,
 }) => {
   await page.goto('/pkc2.html');
@@ -227,57 +227,35 @@ test('PR-V10 visual parity: format panel × close → reload 後も非表示が�
   await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
   await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
 
+  // 固定 format ribbon が編集モードで常駐表示される(旧 floating panel と
+  // 違い、選択追従ではなく編集面の上部に常駐)
+  const panel = page.locator('[data-pkc-region="format-panel"]');
+  await expect(panel).toBeVisible({ timeout: 3_000 });
+
+  // 6 group + 14 operation button が描画されている
+  await expect(panel.locator('[data-pkc-region="format-panel-group"]')).toHaveCount(6);
+  await expect(panel.locator('.pkc-format-panel-btn')).toHaveCount(14);
+
+  // textarea に text を入れて選択
   const body = page.locator('textarea.pkc-editor-body[data-pkc-field="body"]').first();
-  await body.fill('Hello format panel persistence test');
+  await body.fill('Hello ribbon');
   await body.evaluate((ta: HTMLTextAreaElement) => {
     ta.setSelectionRange(0, 5);
     ta.focus();
   });
-  await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')));
 
-  // 1 回目:panel が出る
-  const panel = page.locator('[data-pkc-region="format-panel"]');
-  await expect(panel).toBeVisible({ timeout: 3_000 });
-
-  // × close button を実 OS click で叩く
-  const close = panel.locator('.pkc-format-panel-close');
-  const closeBox = await close.boundingBox();
-  expect(closeBox).not.toBeNull();
-  if (!closeBox) throw new Error('close button no box');
-  await page.mouse.click(closeBox.x + closeBox.width / 2, closeBox.y + closeBox.height / 2);
+  // B button を実 OS click で叩く → 選択範囲が ** で wrap される
+  const boldBtn = panel.locator('[data-pkc-format-label="B"]');
+  const box = await boldBtn.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) throw new Error('B button no box');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForTimeout(100);
 
-  // panel hidden を確認 + localStorage に persist されている
-  await expect(panel).not.toBeVisible();
-  const dismissed = await page.evaluate(() => localStorage.getItem('pkc2.formatPanelDismissed'));
-  expect(dismissed).toBe('true');
+  const value = await body.inputValue();
+  expect(value).toBe('**Hello** ribbon');
 
-  // reload して fresh module load を simulate
-  await page.reload();
-  await bootReady(page);
-
-  // 編集 mode に戻る
-  await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
-  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
-  const body2 = page.locator('textarea.pkc-editor-body[data-pkc-field="body"]').first();
-  await body2.fill('Second session test');
-  await body2.evaluate((ta: HTMLTextAreaElement) => {
-    ta.setSelectionRange(0, 6);
-    ta.focus();
-  });
-  await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')));
-  await page.waitForTimeout(200);
-
-  // panel が出ないことを確認
-  const panel2 = page.locator('[data-pkc-region="format-panel"]');
-  // panel 要素が存在しても display:none/visibility:hidden で見えない
-  const visible = await panel2.isVisible().catch(() => false);
-  expect(visible).toBe(false);
-
-  await page.screenshot({ path: 'test-results/pr-v10-format-panel-persist.png' });
-
-  // cleanup:dismissed 状態を解除しないと他 test が壊れるので localStorage clear
-  await page.evaluate(() => localStorage.removeItem('pkc2.formatPanelDismissed'));
+  await page.screenshot({ path: 'test-results/group-c-format-ribbon-parity.png' });
 });
 
 test('PR-V6 visual parity: derived-branches link を real click すると branch entry に SELECT_ENTRY', async ({

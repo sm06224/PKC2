@@ -9707,21 +9707,43 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: none;
 }
 
-/* ── 編集画面 floating format panel(PR-2JJ v2、2026-05-13)──
-   text body の選択部に追従する PKC MD フォーマット設定ツールバー。 */
+/* ── 編集モード固定 format panel(ribbon)— Group C ワープロ化, Phase γ-C ──
+   旧 floating panel(PR-2JJ v2)を scrap し、編集面上部に常駐する固定 ribbon
+   として build し直したもの。renderer.ts renderEditor() が描画する。 */
 .pkc-format-panel {
-  position: fixed;
-  z-index: 22500;
-  display: none;
+  display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
   padding: var(--space-1-5) var(--space-2);
   background: var(--c-surface);
-  border: 1px solid var(--c-accent);
+  border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  align-items: center;
-  max-width: min(90vw, 480px);
+}
+/* touch 端末は snippet-toolbar の floating popup を使うため非表示(spec §3.1)。 */
+@media (pointer: coarse) {
+  .pkc-format-panel { display: none; }
+}
+.pkc-format-panel-group {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+}
+.pkc-format-panel-group-summary {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--c-fg-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.pkc-format-panel-group-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1-5) var(--space-1-5);
+}
+.pkc-format-panel-group-body:empty {
+  display: none;
 }
 .pkc-format-panel-btn {
   background: var(--c-bg);
@@ -9740,16 +9762,6 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: 2px solid var(--c-accent);
   outline-offset: 1px;
 }
-.pkc-format-panel-close {
-  margin-left: var(--space-1-5);
-  background: transparent;
-  border: none;
-  color: var(--c-fg-dim);
-  font-size: var(--fs-base);
-  cursor: pointer;
-  padding: var(--space-1);
-}
-.pkc-format-panel-close:hover { color: var(--c-fg); }
 
 /* ── Data.. dropdown menu(PR-2JJ v2、entry detail header、AST / Pandoc 出力)──
    現在 selected entry の body を AST / Canonical / Pandoc / HTML に変換して
