@@ -99,6 +99,11 @@ export interface AppState {
   container: Container | null;
   selectedLid: string | null;
   editingLid: string | null;
+  /**
+   * Phase γ-A:編集モード。inline = 中央ペイン内編集(従来)、window =
+   * 専用 entry-window で編集。flag `shell.edit_mode_enabled` で gate。
+   */
+  editMode?: 'inline' | 'window';
   error: string | null;
   /** True when running inside an iframe. Set once at init. */
   embedded: boolean;
@@ -3052,6 +3057,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_META_PANE_MODE': {
       const next: AppState = { ...state, metaPaneMode: action.mode };
+      return { state: next, events: [] };
+    }
+    case 'SET_EDIT_MODE': {
+      // Phase γ-A1:編集モード(inline / window)の選択を保持するだけの
+      // foundation reducer。UI / wiring は γ-A2 で接続。flag
+      // `shell.edit_mode_enabled` が OFF の間は誰も dispatch しないため
+      // editMode は undefined のまま = 従来の inline 編集(完全後方互換)。
+      const next: AppState = { ...state, editMode: action.mode };
       return { state: next, events: [] };
     }
     case 'OPEN_GRAPH_FOR_ENTRY': {

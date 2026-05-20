@@ -245,6 +245,37 @@ PR #475 + #477 で baseline 済(再発防止規約は規約 doc に反映済)。
 - backward compat:Tier 0 flag `editor.mode_legacy = false`(default)で
   3 mode 経路を有効化、`= true` で旧 detail-edit + Split View に完全戻し
 
+### §2.5 γ-A 実装での mode model 精緻化(2026-05-20、γ-A1 着手時)
+
+§2.1 の 3 mode(`overlay` / `split` / `window`)は **2 軸を 1 列に潰して**
+いた:**編集 surface**(中央ペイン内 vs 子 window)と **中央ペイン内の
+layout**(plain / split-preview / 透過 overlay)。`split` は `window` の
+peer ではなく、中央ペイン編集の sub-layout に過ぎない。
+
+γ-A1 foundation では surface 軸のみを `AppState.editMode` として model
+化する:
+
+| `editMode` | 意味 | 既存実装との関係 |
+|---|---|---|
+| `'inline'`(default、undefined 含む)| 中央ペイン内編集(従来 detail-edit + Split View を包含)| 現状そのまま |
+| `'window'` | 専用 entry-window(子 window)編集 | `openEntryWindow` 拡張 |
+
+中央ペイン内の layout(split-preview ON/OFF、透過 overlay)は **直交した
+別 concern** として後段で扱う。透過 Overlay は §8 OQ-A-1 で UX 不確実と
+されているため、`editMode` enum には含めず deferred とする。
+
+foundation の構成要素(γ-A1、本 PR):
+
+- `AppState.editMode?: 'inline' | 'window'`(runtime state のみ、§6.3
+  schema 不変は維持)
+- `SET_EDIT_MODE` action + reducer(`reduceReady` 内、純粋 state mutation)
+- Tier 0 flag `shell.edit_mode_enabled`(default `false`、OFF で従来の
+  inline 編集のみ = 完全後方互換)
+
+UI / wiring(mode 選択 trigger、entry-window への分岐)は γ-A2 で接続。
+§5.2 の `editor.mode_*` 系 flag は 3-mode 経路を採る場合の予約であり、
+γ-A foundation は `shell.edit_mode_enabled` 1 本で gate する。
+
 ---
 
 ## §3 提案 #4 マルチウィンドウ + main 遷移抑制
@@ -378,6 +409,7 @@ entry のクリック挙動は **filer に navigate**(folderDetailAsFiler の意
 
 | flag key | type | default | scope |
 |---|---|---|---|
+| `shell.edit_mode_enabled` | bool | `false` | 編集モード選択(inline / window)を有効化(γ-A1 foundation、§2.5)|
 | `editor.mode_legacy` | bool | `false` | 3 mode 経路の無効化(旧 detail-edit + Split View に戻す)|
 | `editor.mode_default` | string | `'split'` | 新規 3 mode のうち初期値 |
 | `editor.mode_by_archetype` | object | `{}` | per-archetype override(`{ text: 'overlay', ... }`)|
