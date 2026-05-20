@@ -18,6 +18,8 @@ import {
   parseHighlight,
   applyHighlightColor,
   applyAlignPrefix,
+  buildPipeTable,
+  insertPipeTable,
 } from '@adapter/ui/format-panel';
 import { render } from '@adapter/ui/renderer';
 import { createDispatcher } from '@adapter/state/dispatcher';
@@ -88,9 +90,9 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(17);
   });
 
-  it('renders 4 value pickers with their option buttons', () => {
+  it('renders 5 value pickers with their option buttons', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-picker]')).toHaveLength(4);
+    expect(panel.querySelectorAll('[data-pkc-picker]')).toHaveLength(5);
     const count = (id: string) =>
       panel.querySelectorAll(`[data-pkc-picker="${id}"] [data-pkc-picker-value]`)
         .length;
@@ -98,6 +100,7 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     expect(count('font-family')).toBe(3);
     expect(count('text-color')).toBe(6);
     expect(count('highlight-color')).toBe(6);
+    expect(count('table-insert')).toBe(4);
   });
 
   it('color picker options render as swatches', () => {
@@ -304,6 +307,50 @@ describe('format-panel — applyAlignPrefix (段落 align、spec §5.2)', () => 
   });
 });
 
+describe('format-panel — buildPipeTable / insertPipeTable (表挿入、spec §6.1)', () => {
+  it('buildPipeTable(2,2) produces a GFM skeleton', () => {
+    expect(buildPipeTable(2, 2)).toBe(
+      '| 列1 | 列2 |\n| --- | --- |\n|  |  |\n|  |  |',
+    );
+  });
+  it('buildPipeTable(1,3) → header + sep + 1 body row, 3 columns', () => {
+    const lines = buildPipeTable(1, 3).split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe('| 列1 | 列2 | 列3 |');
+    expect(lines[1]).toBe('| --- | --- | --- |');
+  });
+  it('buildPipeTable(3,1) → header + sep + 3 body rows', () => {
+    expect(buildPipeTable(3, 1).split('\n')).toHaveLength(5);
+  });
+
+  it('inserts a table into an empty document', () => {
+    const r = insertPipeTable({ value: '', start: 0, end: 0 }, '2x2');
+    expect(r.value).toBe(buildPipeTable(2, 2));
+    expect(r.start).toBe(0);
+    expect(r.end).toBe(buildPipeTable(2, 2).length);
+  });
+  it('prepends a newline when the caret is mid-text', () => {
+    const r = insertPipeTable({ value: 'hello', start: 5, end: 5 }, '2x2');
+    expect(r.value).toBe(`hello\n${buildPipeTable(2, 2)}`);
+  });
+  it('appends a newline when text follows the caret', () => {
+    const r = insertPipeTable({ value: 'hello', start: 0, end: 0 }, '2x2');
+    expect(r.value).toBe(`${buildPipeTable(2, 2)}\nhello`);
+  });
+  it('does not double the newline when before already ends with one', () => {
+    const r = insertPipeTable({ value: 'a\n', start: 2, end: 2 }, '2x2');
+    expect(r.value).toBe(`a\n${buildPipeTable(2, 2)}`);
+  });
+  it('parses "cols x rows": "3x2" → 3 columns, 2 body rows', () => {
+    const r = insertPipeTable({ value: '', start: 0, end: 0 }, '3x2');
+    expect(r.value).toBe(buildPipeTable(2, 3));
+  });
+  it('falls back to 2x2 on a malformed value', () => {
+    const r = insertPipeTable({ value: '', start: 0, end: 0 }, 'bad');
+    expect(r.value).toBe(buildPipeTable(2, 2));
+  });
+});
+
 describe('format-panel — button click applies to the editor textarea', () => {
   function mountInEditor(): { panel: HTMLElement; ta: HTMLTextAreaElement } {
     const editor = document.createElement('div');
@@ -395,6 +442,23 @@ describe('format-panel — button click applies to the editor textarea', () => {
 
     (panel.closest('.pkc-editor') as HTMLElement).remove();
   });
+
+  it('clicking a table-insert option inserts a GFM pipe table', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = '';
+    ta.focus();
+    ta.setSelectionRange(0, 0);
+
+    const opt = panel.querySelector<HTMLButtonElement>(
+      '[data-pkc-picker="table-insert"] [data-pkc-picker-value="2x2"]',
+    );
+    expect(opt).not.toBeNull();
+    opt!.click();
+    expect(ta.value).toContain('| 列1 | 列2 |');
+    expect(ta.value).toContain('| --- | --- |');
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
 });
 
 describe('format-panel — renderer integration (flag-gated)', () => {
@@ -443,7 +507,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
     expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(17);
-    expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(4);
+    expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(5);
   });
 
   it('flag OFF: the editor has no format ribbon', () => {

@@ -183,6 +183,36 @@ export function applyHighlightColor(sel: Selection, color: string): Selection {
   };
 }
 
+// ── 表(GFM pipe table)挿入(spec §6.1)──
+
+// rows 本の body 行 × cols 列の GFM pipe table 雛形を生成する。
+export function buildPipeTable(rows: number, cols: number): string {
+  const headerCells = Array.from({ length: cols }, (_, i) => `列${i + 1}`);
+  const header = `| ${headerCells.join(' | ')} |`;
+  const sep = `| ${Array.from({ length: cols }, () => '---').join(' | ')} |`;
+  const bodyRow = `| ${Array.from({ length: cols }, () => '').join(' | ')} |`;
+  const body = Array.from({ length: rows }, () => bodyRow).join('\n');
+  return `${header}\n${sep}\n${body}`;
+}
+
+// caret 位置に GFM pipe table を挿入する。value は "cols x rows"。表は block
+// 要素なので、前後がテキスト行に隣接する場合は改行を補って行境界を保つ。
+export function insertPipeTable(sel: Selection, value: string): Selection {
+  const parts = value.split('x');
+  const cols = Math.max(1, Number(parts[0]) || 2);
+  const rows = Math.max(1, Number(parts[1]) || 2);
+  const table = buildPipeTable(rows, cols);
+  const before = sel.value.slice(0, sel.start);
+  const after = sel.value.slice(sel.end);
+  const lead = before.length > 0 && !before.endsWith('\n') ? '\n' : '';
+  const tail = after.length > 0 && !after.startsWith('\n') ? '\n' : '';
+  return {
+    value: `${before}${lead}${table}${tail}${after}`,
+    start: sel.start + lead.length,
+    end: sel.start + lead.length + table.length,
+  };
+}
+
 export interface FormatOp {
   label: string;
   title: string;
@@ -274,6 +304,20 @@ const HIGHLIGHT_COLOR_PICKER: FormatPicker = {
   swatch: true,
 };
 
+// 表挿入 picker(GFM pipe table、spec §6.1)。option value は "cols x rows"。
+const TABLE_INSERT_PICKER: FormatPicker = {
+  id: 'table-insert',
+  triggerLabel: '表',
+  triggerTitle: 'GFM pipe table を挿入',
+  options: [
+    { label: '2×2', value: '2x2', title: '2 列 × 2 行' },
+    { label: '3×2', value: '3x2', title: '3 列 × 2 行' },
+    { label: '3×3', value: '3x3', title: '3 列 × 3 行' },
+    { label: '4×3', value: '4x3', title: '4 列 × 3 行' },
+  ],
+  apply: (sel, value) => insertPipeTable(sel, value),
+};
+
 // 6 group(spec §3.2)+ operation / picker の定義。旧 panel の 14 operation を
 // group に再配置し、Font group に font-size / font-family / 文字色 / 背景色
 // picker を追加した。表 / 検索 group の operation は後続 stack PR で追加。
@@ -318,7 +362,7 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: '·', title: 'リスト(bullet)— - text', apply: (s) => prefixLines(s, '- ') },
     ],
   },
-  { id: 'table', label: '表', ops: [] },
+  { id: 'table', label: '表', ops: [], pickers: [TABLE_INSERT_PICKER] },
   {
     id: 'insert',
     label: '挿入',
