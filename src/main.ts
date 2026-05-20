@@ -38,7 +38,7 @@ import {
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
-import { getOpenEntryWindowLids } from './adapter/ui/entry-window';
+import { getOpenEntryWindowLids, setEntryWindowsChangedListener } from './adapter/ui/entry-window';
 import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
@@ -368,6 +368,18 @@ async function boot(): Promise<void> {
   // when the flag is off or no children are open. See
   // `src/adapter/ui/main-reload-guard.ts` + shell spec §3.2.
   installMainReloadGuard(getOpenEntryWindowLids);
+
+  // 2f. Phase γ-A3:child entry-window の open/close を state machine へ
+  // 同期する。window を開閉するたび現在の全 lid を `SYS_SYNC_CHILD_WINDOWS`
+  // で dispatch → `AppState.childWindowLids` が更新され、renderer の
+  // indicator と `BEGIN_EDIT` の二重編集 guard が機能する。これにより
+  // state machine が multi-window を「前提」として扱う。
+  setEntryWindowsChangedListener(() => {
+    dispatcher.dispatch({
+      type: 'SYS_SYNC_CHILD_WINDOWS',
+      lids: getOpenEntryWindowLids(),
+    });
+  });
 
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);

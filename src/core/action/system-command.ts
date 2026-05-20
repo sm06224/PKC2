@@ -164,6 +164,13 @@ export type SystemCommand =
   | { type: 'SYS_BATCH_IMPORT_PREVIEW'; preview: BatchImportPreviewInfo }
   | { type: 'SYS_APPLY_BATCH_IMPORT'; plan: BatchImportPlan }
   | { type: 'SYS_RECORD_OFFERED'; offer: PendingOfferRef }
+  /**
+   * Phase γ-A3:child entry-window の open/close 同期。entry-window.ts が
+   * window を開いた / 閉じたタイミングで、現在開いている全 lid を載せて
+   * dispatch する。reducer は phase に依らず `childWindowLids` を更新し、
+   * state machine が multi-window を前提として扱えるようにする。
+   */
+  | { type: 'SYS_SYNC_CHILD_WINDOWS'; lids: readonly string[] }
   | { type: 'SYS_ERROR'; error: string };
 
 /** Extract the type literal from a SystemCommand. */

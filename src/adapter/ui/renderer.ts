@@ -3057,13 +3057,37 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     // 領域 10-6 ζ'' Phase 4 follow-up: `sidebar.mode = 'filer'` で
     // 左ペインを compact filer-explorer に差し替え。tree (default) は
     // 既存実装を流用。
-    if (sidebarMode() === 'filer') {
-      return renderSidebarAsFiler(state);
-    }
-    return renderSidebarImpl(state, sharedLinkIndex);
+    const sidebar = sidebarMode() === 'filer'
+      ? renderSidebarAsFiler(state)
+      : renderSidebarImpl(state, sharedLinkIndex);
+    markChildWindowItems(sidebar, state.childWindowLids);
+    return sidebar;
   } finally {
     endProfile();
   }
+}
+
+/**
+ * Phase γ-A3:child entry-window で編集中の entry の sidebar 行に
+ * `data-pkc-in-window="true"` を付け、「別ウィンドウで編集中」marker を
+ * 出す。tree 行は memoize されるため、render 後の sidebar subtree 全体に
+ * 対し `data-pkc-lid` を持つ要素を走査して一括適用する(memo を貫通する
+ * state → DOM の decoration pass)。tree / filer どちらの sidebar 行も
+ * `data-pkc-lid` を持つため両 mode で機能する。
+ */
+function markChildWindowItems(
+  sidebar: HTMLElement,
+  lids: readonly string[] | undefined,
+): void {
+  if (!lids || lids.length === 0) return;
+  const inWindow = new Set(lids);
+  sidebar.querySelectorAll<HTMLElement>('[data-pkc-lid]').forEach((el) => {
+    const lid = el.getAttribute('data-pkc-lid');
+    if (lid && inWindow.has(lid)) {
+      el.setAttribute('data-pkc-in-window', 'true');
+      el.setAttribute('title', '別ウィンドウで編集中');
+    }
+  });
 }
 
 /**
@@ -4623,7 +4647,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
     }
     content.appendChild(renderEditor(selected, state.container));
   } else {
-    content.appendChild(renderView(selected, canEdit, state.container, state.searchQuery));
+    content.appendChild(renderView(selected, canEdit, state.container, state.searchQuery, state.childWindowLids ?? []));
   }
 
   // Compact drop zone strip when viewing an entry (not editing)
@@ -7461,7 +7485,13 @@ function renderActionBar(
   return bar;
 }
 
-function renderView(entry: Entry, _canEdit: boolean, container: Container | null, searchQuery: string = ''): HTMLElement {
+function renderView(
+  entry: Entry,
+  _canEdit: boolean,
+  container: Container | null,
+  searchQuery: string = '',
+  childWindowLids: readonly string[] = [],
+): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
   view.setAttribute('data-pkc-archetype', entry.archetype);
@@ -7517,6 +7547,16 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   }
 
   view.appendChild(titleRow);
+
+  // Phase γ-A3:この entry が child window で編集中なら、その旨を view
+  // 上部に明示する。BEGIN_EDIT は childWindowLids guard で inline 編集を
+  // 弾くため、user に「編集は別ウィンドウ側」という導線を見せる。
+  if (childWindowLids.includes(entry.lid)) {
+    const winHint = createElement('div', 'pkc-view-window-hint');
+    winHint.setAttribute('data-pkc-region', 'entry-in-window-hint');
+    winHint.textContent = '⧉ この entry は別ウィンドウで開いています。編集はそのウィンドウで続けてください。';
+    view.appendChild(winHint);
+  }
 
   // Breadcrumb: always show path trail (root marker, ancestors, current).
   // Spec: docs/development/breadcrumb-path-trail-v1.md

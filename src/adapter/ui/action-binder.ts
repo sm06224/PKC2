@@ -124,7 +124,7 @@ import {
   formatStorageProfileCsv,
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
-import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
+import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
 import { shellEditModeEnabled } from './shell-flags';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -7145,6 +7145,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ので surface 選択が一貫する。`target` は window 経路で
   // handleDblClickAction に渡すが、同関数内では未使用(`_target`)。
   function triggerEdit(lid: string, target: HTMLElement): void {
+    // Phase γ-A3:対象 entry が既に child window で開かれているなら、
+    // inline 編集に入らずその window を front へ focus する(同一 entry を
+    // 2 surface で同時編集 → save 衝突するのを防ぐ)。reducer 側 BEGIN_EDIT
+    // も childWindowLids guard で二重に防ぐが、ここで focus まで行うことで
+    // 「編集はあちらの window で」という導線が成立する。
+    if (focusEntryWindow(lid)) return;
     if (shellEditModeEnabled() && dispatcher.getState().editMode === 'window') {
       handleDblClickAction(target, lid);
       return;

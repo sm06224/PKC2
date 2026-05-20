@@ -639,6 +639,25 @@
   color: var(--c-fg);
 }
 
+/* Phase γ-A3:この entry が child window で編集中であることを示す
+   center pane の notice。inline 編集は BEGIN_EDIT guard で弾かれる。 */
+.pkc-view-window-hint {
+  font-size: var(--fs-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 10%, var(--c-bg));
+  color: var(--c-fg);
+}
+
+/* Phase γ-A3:child window で編集中の entry の sidebar 行 marker。
+   tree / filer どちらの行にも `data-pkc-lid` 経由で適用される。layout を
+   崩さない inset box-shadow の accent stripe。 */
+[data-pkc-in-window="true"] {
+  box-shadow: inset 2px 0 0 var(--c-accent);
+}
+
 /* ── Export / Import inline buttons (collapsed behind <details>) ── */
 /* Data… (export / import) wrapper. Sits flush against the create-
  * actions group (Text / Log / Todo / File / Folder) and carries a

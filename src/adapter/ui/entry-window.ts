@@ -105,6 +105,37 @@ function renderEntryPreview(
 const openWindows = new Map<string, Window>();
 
 /**
+ * Phase γ-A3:child window の open/close を state machine へ通知する
+ * listener。main.ts が boot 時に登録し、`SYS_SYNC_CHILD_WINDOWS` dispatch
+ * へ配線する。`openEntryWindow`(open 時)と close-poll(close 検知時)が
+ * `notifyWindowsChanged` を呼び、AppState.childWindowLids を同期させる。
+ */
+let windowsChangedListener: (() => void) | null = null;
+
+export function setEntryWindowsChangedListener(cb: (() => void) | null): void {
+  windowsChangedListener = cb;
+}
+
+function notifyWindowsChanged(): void {
+  if (windowsChangedListener) windowsChangedListener();
+}
+
+/**
+ * Phase γ-A3:既に開いている child window を front へ focus する。
+ * action-binder の `triggerEdit` から、同一 entry の inline 編集要求を
+ * 「その window へ切替える」挙動に振り替えるために呼ぶ。window が無ければ
+ * `false` を返す。
+ */
+export function focusEntryWindow(lid: string): boolean {
+  const child = openWindows.get(lid);
+  if (child && !child.closed) {
+    child.focus();
+    return true;
+  }
+  return false;
+}
+
+/**
  * Return the set of lids for which an entry-window child is currently
  * open. Used by the main-window state subscriber to decide which open
  * children should receive a live preview-context refresh when the
@@ -549,6 +580,8 @@ export function openEntryWindow(
   if (!child) return;
 
   openWindows.set(entry.lid, child);
+  // Phase γ-A3:state machine へ window open を同期。
+  notifyWindowsChanged();
 
   // Register the edit-mode Preview resolver context so the child's
   // `pkcRenderEntryPreview(lid, text)` call can resolve asset
@@ -607,6 +640,8 @@ export function openEntryWindow(
       openWindows.delete(entry.lid);
       previewResolverContexts.delete(entry.lid);
       window.removeEventListener('message', handleMessage);
+      // Phase γ-A3:state machine へ window close を同期。
+      notifyWindowsChanged();
     }
   }, 500);
 }

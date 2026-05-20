@@ -104,6 +104,15 @@ export interface AppState {
    * 専用 entry-window で編集。flag `shell.edit_mode_enabled` で gate。
    */
   editMode?: 'inline' | 'window';
+  /**
+   * Phase γ-A3:child entry-window で開いている entry の lid 集合。
+   * entry-window.ts が window の open/close 時に `SYS_SYNC_CHILD_WINDOWS`
+   * を dispatch して同期する。state machine が multi-window を「前提」
+   * として扱うための field — renderer の indicator と `BEGIN_EDIT` の
+   * 二重編集 guard が参照する。optional(既存 AppState fixture 互換、
+   * undefined は空集合扱い)。
+   */
+  childWindowLids?: string[];
   error: string | null;
   /** True when running inside an iframe. Set once at init. */
   embedded: boolean;
@@ -617,6 +626,7 @@ export function createInitialState(): AppState {
     container: null,
     selectedLid: null,
     editingLid: null,
+    childWindowLids: [],
     error: null,
     embedded: false,
     pendingOffers: [],
@@ -707,6 +717,13 @@ function reclassifyPreview(
  * plus a console.warn in development.
  */
 export function reduce(state: AppState, action: Dispatchable): ReduceResult {
+  // Phase γ-A3:child entry-window の open/close 同期。phase に依らず
+  // `childWindowLids` を更新する純粋な system sync(副作用なし)。phase
+  // switch より前で処理し、editing / exporting 等でも window 開閉を
+  // 取りこぼさない。
+  if (action.type === 'SYS_SYNC_CHILD_WINDOWS') {
+    return { state: { ...state, childWindowLids: [...action.lids] }, events: [] };
+  }
   switch (state.phase) {
     case 'initializing':
       return reduceInitializing(state, action);
@@ -1362,6 +1379,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'BEGIN_EDIT': {
       if (state.readonly) return blocked(state, action);
       if (isReservedLid(action.lid)) return blocked(state, action);
+      // Phase γ-A3:対象 entry が child window で開かれている間は inline
+      // 編集に入らない(同一 entry を 2 surface で編集 → save 衝突の防止)。
+      // action-binder の triggerEdit が代わりにその window を focus する。
+      if (state.childWindowLids?.includes(action.lid)) return blocked(state, action);
       // P1-1: BEGIN_EDIT terminates any in-progress transient UI flows
       // (log selection / preview modal). The user is switching to the
       // structured editor; carrying over a TEXTLOG selection toolbar
