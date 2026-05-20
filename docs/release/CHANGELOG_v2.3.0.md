@@ -224,6 +224,16 @@ v3.x architecture Phase γ の Group C(format panel ワープロ化)第 1 wave�
 - **数値**:固定 format ribbon = 6 group / **operation 28 種** / **value picker 6 種** / **launcher 1 種**。`tests/adapter/format-panel.test.ts` 99 件 + `tests/features/markdown/pipe-table-edit.test.ts` 31 件、smoke parity test は実 OS click ベース。
 - **後続予定**:採番正規化 / uniform-one(領域 8 番号体系の auto-renumber engine 待ち)、両端揃え(justify、`:::paragraph{align=justify}` の renderer 対応待ち)。
 
+### Phase γ-B — 右ペイン特化(YAML editor + relation wire editor + mode tabs、2026-05-20、stack PR-pgc-15〜26)
+
+v3.x architecture Phase γ の Group B(右ペイン特化)。meta pane と graph view を power user / AI authoring 向けに強化。main 着地せず stack(PR-pgc-15〜26)。すべて flag gate、OFF で従来挙動を完全維持。
+
+- **γ-B1 YAML graphical editor**(PR-pgc-15〜18):meta pane の frontmatter section を read-only `<dl>` から編集可能な form に。`serializeFrontmatter` / `setFrontmatter`(pure、round-trip 保証)+ key ごとの編集 control(enum key は `<select>`、writing / align / layout は strict enum、kind は free string)+ `parseFrontmatter` の warnings を赤バー可視化(silent fail 解消)。flag `meta_pane.yaml_graphical_enabled`。
+- **γ-B2 graph relation wire editor**(PR-pgc-19〜24):graph view に edit mode を追加し、node 間を drag して relation を作成。View / Edit toggle + wire drag → prototype line(neutral 灰色 点線)→ drop で kind selector popup → `CREATE_RELATION`。Shift+drag は従来の node-drag に退避。multi-select(region-select)→ 一括 relate(先頭 node を hub に放射状)。flag `graph.edit_mode_enabled`。visual parity test(実 OS click)添付。
+- **γ-B3 meta pane mode tabs**(PR-pgc-25):meta pane 上部に mode tab(すべて / Properties / 関連)。`AppState.metaPaneMode` + `SET_META_PANE_MODE`、mode で section 表示を絞る。flag `meta_pane.mode_tabs_enabled`。
+- **PR-pgc-26 本 CHANGELOG + doc 同期**。
+- **数値**:`pipe-table-edit.ts` / `relation-kind-popup.ts` / `meta-pane-flags.ts` 新設、frontmatter-editor / graph-edit-mode / graph-bulk-relate / relation-kind-popup / meta-pane-modes test 計 30 件超、graph wire editor の Playwright visual parity test。
+
 ---
 
 ## Schema migration

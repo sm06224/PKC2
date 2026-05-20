@@ -427,7 +427,8 @@ Phase γ 完了時に `docs/development/archived/phase-beta/` へ一括 archive
 | 2026-05-20 | **訂正(stack PR-pgc-01)**:γ-C 着手準備中に既存 `format-panel.ts`(選択追従 floating 書式 panel、本番稼働中)を発見。§2 を scrap-and-build に再定義(C1-1 = 旧 panel scrap + 新 ribbon build、flag は `editor.format_panel_enabled` 引き継ぎ)。詳細は [`phase-beta-group-c-format-panel-spec-2026-05.md`](./phase-beta-group-c-format-panel-spec-2026-05.md) 訂正 notice |
 | 2026-05-20 | **Phase γ-C1 実装(stack PR-pgc-02〜08、main 着地せず stack 運用)**:pgc-02 scrap-and-build 骨格 + 14 op / pgc-03 font-size・family picker / pgc-04 文字色・背景色 picker / pgc-05 段落 align / pgc-06 表挿入 / pgc-07 挿入(ruby / 区切り線)/ pgc-08 CHANGELOG + doc 同期。固定 format ribbon = 6 group / operation 19 種 / value picker 5 種。検索 group・表の行列編集・justify は後続(CHANGELOG v2.3.0 §Phase γ-C1 参照)|
 | 2026-05-20 | **Phase γ-C 続行(stack PR-pgc-09〜14)**:pgc-09 検索 launcher / pgc-10 表行編集(pipe-table-edit.ts pure parser 新設)/ pgc-11 表列編集 / pgc-12 表セル整列 / pgc-13 リスト・番号拡充 / pgc-14 doc 同期。固定 ribbon = operation 28 種 / picker 6 種 / launcher 1 種。採番正規化(領域 8 待ち)・justify(renderer 対応待ち)を残す |
-| TBD | Phase γ-C 残(採番正規化 / justify)、γ-B / γ-A wave |
+| 2026-05-20 | **Phase γ-B 実装(stack PR-pgc-15〜26)**:γ-B1 YAML graphical editor(serialize / 編集 form / field-type / warnings、pgc-15〜18)/ γ-B2 graph relation wire editor(edit mode / wire drag / kind popup / CREATE_RELATION / Shift+drag 退避 / multi-select 一括 / visual parity test、pgc-19〜24)/ γ-B3 meta pane mode tabs(pgc-25)/ doc 同期(pgc-26)。すべて flag gate。Group B 完了。詳細は CHANGELOG v2.3.0 §Phase γ-B |
+| TBD | Phase γ-C 残(採番正規化 / justify)、γ-A wave(shell 再構成)|
 
 ---
 
