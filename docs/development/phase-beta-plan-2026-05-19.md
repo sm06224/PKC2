@@ -372,10 +372,9 @@ parity-testing 準拠)。
 | 2026-05-19 | **PR-β2 起こし**:[`phase-beta-group-b-meta-pane-spec-2026-05.md`](./phase-beta-group-b-meta-pane-spec-2026-05.md) 着手。v3 提案 #6 = relation wire editor(graph view 統合)+ YAML frontmatter graphical editor を 1 spec に統合。case matrix 12 件 + 12 件で網羅、Tier 0 flag 6 件、新 OQ-B-1〜B-7 追加 |
 | 2026-05-19 | PR #482(PR-β2)merge:Group B 右ペイン特化 spec 着地 |
 | 2026-05-19 | **PR-β3 起こし**:[`phase-beta-group-c-format-panel-spec-2026-05.md`](./phase-beta-group-c-format-panel-spec-2026-05.md) 着手。v3 提案 #7 = format panel ワープロ化。現状調査で **desktop 固定 toolbar 未実装**(format affordance は `snippet-toolbar.ts` の floating popup 18 snippet のみ)が判明、roadmap §206 の「14 button」記述も古いと訂正。canonical 往復 invariant + 領域 8 / 領域 6 scope 境界を §2 で固定、case matrix 14+12+12+12 件、Tier 0 flag 7 件、新 OQ-C-1〜C-8 追加 |
-| TBD | PR-β2 Group B 右ペイン spec(`phase-beta-group-b-meta-pane-spec-2026-05.md`)|
-| TBD | PR-β3 Group C 書式機能 spec(`phase-beta-group-c-format-panel-spec-2026-05.md`)|
-| TBD | PR-β4 Phase γ 実装 wave map |
-| TBD | Phase β 着地、user 合意 → Phase γ 開始判断 |
+| 2026-05-19 | PR #483(PR-β3)merge:Group C 書式機能 spec 着地 |
+| 2026-05-19 | **PR-β4 起こし**:[`phase-gamma-implementation-wave-map-2026-05.md`](./phase-gamma-implementation-wave-map-2026-05.md) 着手。Phase γ を 9 sub-wave(γ-C1〜C3 / γ-B1〜B3 / γ-A1〜A4)= 68 PR に PR-by-PR 分解、3 merge train 構成、budget 推移試算(完了時 1934 / 175 KB)、visual parity test 9 件、20 OQ の wave gating checklist。本書 §5.1 の coarse な 6 wave 一覧は PR-β4 が supersede(本書は historical reference として残置)。**PR-β4 着地で Phase β 設計 wave 完了** |
+| TBD | PR-β4 着地 → 20 OQ 合意 → Phase γ-C1 着手判断 |
 
 ---
 
