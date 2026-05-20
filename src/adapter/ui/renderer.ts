@@ -8342,10 +8342,11 @@ function renderFrontmatterSection(
   // serialize body as JSON / CSV / opaque blob, where a leading
   // `---` is not a frontmatter fence.
   if (entry.archetype !== 'text') return null;
-  const { meta, found } = parseFrontmatter(entry.body ?? '');
+  const { meta, found, warnings } = parseFrontmatter(entry.body ?? '');
   if (!found) return null;
   const keys = Object.keys(meta);
-  if (keys.length === 0) return null;
+  // warnings があれば key 0 でも section を出す(silent fail 禁止)。
+  if (keys.length === 0 && warnings.length === 0) return null;
 
   const section = createElement('section', 'pkc-frontmatter');
   section.setAttribute('data-pkc-region', 'frontmatter');
@@ -8354,14 +8355,38 @@ function renderFrontmatterSection(
   heading.textContent = 'Properties';
   section.appendChild(heading);
 
+  // Phase γ-B1:parseFrontmatter の warnings(size cap 超過等)を可視化。
+  if (warnings.length > 0) {
+    section.appendChild(renderFrontmatterWarnings(warnings));
+  }
+
   // Phase γ-B1:flag ON + 編集可能なら graphical editor、それ以外は従来の
-  // read-only 表示。
-  if (metaPaneYamlGraphicalEnabled() && canEdit) {
-    section.appendChild(renderFrontmatterEditor(entry, meta, keys));
-  } else {
-    section.appendChild(renderFrontmatterReadonly(meta, keys));
+  // read-only 表示。size cap 超過時は meta が空になり得るのでその場合は省略。
+  if (keys.length > 0) {
+    if (metaPaneYamlGraphicalEnabled() && canEdit) {
+      section.appendChild(renderFrontmatterEditor(entry, meta, keys));
+    } else {
+      section.appendChild(renderFrontmatterReadonly(meta, keys));
+    }
   }
   return section;
+}
+
+// parseFrontmatter の warnings を赤バーで可視化する(silent fail 禁止、
+// spec §3.3 / reform-2026-05 §07.3)。
+function renderFrontmatterWarnings(
+  warnings: ReadonlyArray<{ kind: string; detail: string }>,
+): HTMLElement {
+  const bar = createElement('div', 'pkc-frontmatter-warning');
+  bar.setAttribute('data-pkc-region', 'frontmatter-warning');
+  bar.setAttribute('role', 'alert');
+  for (const w of warnings) {
+    const item = createElement('div', 'pkc-frontmatter-warning-item');
+    item.setAttribute('data-pkc-warning-kind', w.kind);
+    item.textContent = `⚠ ${w.detail}`;
+    bar.appendChild(item);
+  }
+  return bar;
 }
 
 // 従来の read-only `<dl>` 表示。

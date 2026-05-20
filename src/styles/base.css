@@ -5796,6 +5796,23 @@ mark.pkc-search-mark {
   word-break: break-word;
 }
 
+/* ── frontmatter warnings 赤バー(Group B、Phase γ-B1)── */
+.pkc-frontmatter-warning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  margin-bottom: var(--space-2, 0.5rem);
+  padding: var(--space-1-5) var(--space-2);
+  background: rgba(220, 60, 60, 0.12);
+  border: 1px solid var(--c-danger, #d23c3c);
+  border-radius: var(--radius-sm);
+}
+.pkc-frontmatter-warning-item {
+  font-size: var(--fs-sm);
+  color: var(--c-danger, #d23c3c);
+  word-break: break-word;
+}
+
 /* ── frontmatter graphical editor(Group B、Phase γ-B1)── */
 .pkc-frontmatter-editor {
   display: flex;

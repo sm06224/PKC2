@@ -142,4 +142,25 @@ describe('frontmatter graphical editor (Phase γ-B1)', () => {
     expect(Array.from(select!.options).map((o) => o.value)).toContain('weird');
     expect(select!.value).toBe('weird');
   });
+
+  it('size cap 超過の frontmatter は警告バーを出す(silent fail 禁止)', () => {
+    boot(`---\nbig: ${'a'.repeat(17000)}\n---\nbody`);
+    const section = root.querySelector('[data-pkc-region="frontmatter"]');
+    expect(section).not.toBeNull();
+    const warning = section!.querySelector(
+      '[data-pkc-region="frontmatter-warning"]',
+    );
+    expect(warning).not.toBeNull();
+    expect(
+      warning!.querySelector('[data-pkc-warning-kind="size_limit"]'),
+    ).not.toBeNull();
+  });
+
+  it('正常な frontmatter には警告バーが出ない', () => {
+    boot('---\nkind: book\n---\ntext');
+    const section = root.querySelector('[data-pkc-region="frontmatter"]');
+    expect(
+      section!.querySelector('[data-pkc-region="frontmatter-warning"]'),
+    ).toBeNull();
+  });
 });
