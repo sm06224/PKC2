@@ -11,6 +11,13 @@ import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import type { SavedSearch } from '@core/model/saved-search';
+import { setContainerFlagSource } from '@adapter/flags';
+
+// pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
+// tree sidebar の構造を検証する本 suite は tree mode に固定する。
+beforeEach(() => {
+  setContainerFlagSource({ 'sidebar.mode': 'tree' });
+});
 
 const mockContainer: Container = {
   meta: {

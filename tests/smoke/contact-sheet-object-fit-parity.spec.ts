@@ -148,7 +148,7 @@ async function seedFolderWithBookProfile(page: Page): Promise<void> {
 }
 
 test('book-base grid thumb img has computed object-fit: contain (PR-SS)', async ({ page }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   await seedFolderWithBookProfile(page);
   await page.reload();
@@ -181,7 +181,7 @@ test('book-base grid thumb img has computed object-fit: contain (PR-SS)', async 
 });
 
 test('contact-sheet thumb img has computed object-fit: contain (PR-KK)', async ({ page }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   await seedFolderWithImage(page);
   await page.reload();

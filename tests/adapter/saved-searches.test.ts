@@ -10,6 +10,13 @@ import { createDispatcher as _createRawDispatcher } from '@adapter/state/dispatc
 import { render } from '@adapter/ui/renderer';
 import type { Container } from '@core/model/container';
 import type { SavedSearch } from '@core/model/saved-search';
+import { setContainerFlagSource } from '@adapter/flags';
+
+// pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
+// tree sidebar の構造を検証する本 suite は tree mode に固定する。
+beforeEach(() => {
+  setContainerFlagSource({ 'sidebar.mode': 'tree' });
+});
 
 function mkContainer(saved: SavedSearch[] = []): Container {
   return {

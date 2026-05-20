@@ -213,8 +213,15 @@ Playwright parity 1)、`pgc-36` で **multi-select + 一括操作バー**
 (`buildFilerMultiActionBar` 再利用、happy-dom 7 + Playwright parity 1)。
 これで filer-mode sidebar は audit の critical gap(DnD・multi-select)を
 解消し **tree-mode と実用上同等の management 能力**に到達。entry
-metadata badge は後続候補。default 切替(A1-4)+ deprecated marker
-(A1-5)は user 判断保留。詳細は shell spec §4.5。
+metadata badge は後続候補。**A1-4 default 切替は `pgc-37` で着地**
+(user direction 2026-05-20「filer をデフォルト化まで進める」→「1 PR で
+一括移行」):A1-1 で新設しなかった `shell.sidebar_mode_default` の代わりに
+既存 `sidebar.mode` flag の `defineFlag` default を `'tree'` → `'filer'`
+に切替。tree-mode を暗黙 default 前提としていた既存 test 22 ファイル /
+204 件を `setContainerFlagSource({ 'sidebar.mode': 'tree' })` 明示固定へ
+移行(smoke 6 spec は `?pkc-flag=sidebar.mode=tree`)。tree mode は
+`sidebar.mode=tree` で opt-in する legacy 経路として保持。A1-5 deprecated
+marker は後続 PR。詳細は shell spec §4.5。
 
 ### §4.2 γ-A2:編集 mode 3 分割(10 PR)
 

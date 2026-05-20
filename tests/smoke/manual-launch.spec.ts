@@ -38,7 +38,7 @@ test('manual boots, renders a chapter, and entry: links navigate', async ({ page
     if (msg.type() === 'error') errors.push(`console.error: ${msg.text()}`);
   });
 
-  await page.goto('/pkc2-manual.html', { waitUntil: 'load' });
+  await page.goto('/pkc2-manual.html?pkc-flag=sidebar.mode=tree', { waitUntil: 'load' });
 
   // Boot gate — shell must reach phase 'ready'. This proves the
   // pkc-data parsed (Phase 1 regression target) and that the

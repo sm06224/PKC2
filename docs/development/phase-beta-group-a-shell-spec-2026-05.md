@@ -577,8 +577,18 @@ happy-dom 5 件追加。
 DnD 移動 / 絞り込み検索 / item 数 / 操作ヒントが揃い、audit が挙げた
 critical gap(DnD・multi-select)を解消、**tree-mode と実用上同等の
 management 能力**に到達。entry metadata badge(backlink / orphan /
-copy-link)は nice-to-have として後続候補。default 切替(A1-4)+
-deprecated marker(A1-5)は user 判断保留。
+copy-link)は nice-to-have として後続候補。
+
+**A1-4 default 切替は `pgc-37` で着地**(user direction 2026-05-20「filer
+をデフォルト化まで進める」→「1 PR で一括移行」)。A1-1 で新設しなかった
+`shell.sidebar_mode_default` の代わりに既存 `sidebar.mode` flag の
+`defineFlag` default を `'tree'` → `'filer'` へ切替。flag 未設定の全
+viewer が filer-explorer 風 sidebar を既定表示し、tree-mode は
+`sidebar.mode=tree` で opt-in する legacy 経路として保持(後方互換)。
+tree-mode を暗黙 default 前提としていた既存 test 22 ファイル / 204 件は
+`setContainerFlagSource({ 'sidebar.mode': 'tree' })` 明示固定へ移行
+(smoke 6 spec は `?pkc-flag=sidebar.mode=tree`)。A1-5 deprecated marker
+は後続 PR。
 
 ---
 

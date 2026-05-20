@@ -1,23 +1,28 @@
 /**
- * Sidebar mode flag (領域 10-6 ζ'' Phase 4 follow-up).
+ * Sidebar mode flag (領域 10-6 ζ'' Phase 4 follow-up / Phase γ-A1).
  *
  * User direction(2026-05-05):
  * > 左ペインをエクスプローラモードのファイラに入れ替える flags を追加して
  *
- * `sidebar.mode = 'tree' | 'filer'`. tree = legacy folder tree
- * (default). filer = a compact filer-explorer surface so the
- * user can navigate folders the same way as the center pane.
+ * `sidebar.mode = 'tree' | 'filer'`. filer = a compact filer-explorer
+ * surface(DnD 移動 / per-folder 絞り込み検索 / multi-select 一括操作
+ * を備え、pgc-32〜36 で tree-mode 同等の management 能力に到達)。
+ * tree = legacy folder tree。
+ *
+ * **Phase γ-A1(pgc-37、user direction「filer をデフォルト化まで
+ * 進める」)で default を `'tree'` → `'filer'` に切替**。tree mode は
+ * `sidebar.mode=tree` で opt-in できる legacy 経路として保持する。
  */
 
 import { defineFlag } from '../../core/flags';
 
 export const sidebarMode = defineFlag<string>(
   'sidebar.mode',
-  'tree',
+  'filer',
   {
     enum: ['tree', 'filer'],
     category: 'sidebar',
-    description: '左ペインの表示モード:tree=既存フォルダツリー / filer=エクスプローラ風 filer',
+    description: '左ペインの表示モード:filer=エクスプローラ風 filer(default)/ tree=旧フォルダツリー(legacy)',
     tier: 0,
   },
 );

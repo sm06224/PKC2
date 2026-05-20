@@ -28,7 +28,7 @@ async function shot(page: Page, name: string): Promise<void> {
 }
 
 async function bootAndCreateUrlBackedText(page: Page, url: string): Promise<void> {
-  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
@@ -71,7 +71,7 @@ test('Properties pane renders frontmatter url as a link with fragment badge', as
 
 test('Filer card grid shows fragment badge on book/video subset', async ({ page }) => {
   // Seed a folder + an URL-backed video TEXT entry under it.
-  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 

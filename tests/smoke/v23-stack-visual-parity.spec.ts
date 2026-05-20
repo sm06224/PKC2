@@ -51,7 +51,7 @@ async function seedContainer(
 test('PR-V5 visual parity: launcher tile に image icon が見えている座標で element_from_point が <img> を返す', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   const container = {
@@ -101,7 +101,7 @@ test('PR-V5 visual parity: launcher tile に image icon が見えている座標
     },
   };
   await seedContainer(page, container);
-  await page.goto('/pkc2.html?app=launcher');
+  await page.goto('/pkc2.html?app=launcher&pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   const tile = page.locator('.pkc-launcher-tile').first();
@@ -135,7 +135,7 @@ test('PR-V5 visual parity: launcher tile に image icon が見えている座標
 test('PR-V8 visual parity: 中央 pane で textlog log を scroll すると対応 TOC ボタンが highlight される', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // 30 件の log を持つ textlog を seed。各 log は固有 ID を持つ。
@@ -169,7 +169,7 @@ test('PR-V8 visual parity: 中央 pane で textlog log を scroll すると対�
     assets: {},
   };
   await seedContainer(page, container);
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // sidebar の entry-list に scope して 1 件に絞る(recent と重複するため)
@@ -220,7 +220,7 @@ test('PR-V8 visual parity: 中央 pane で textlog log を scroll すると対�
 test('Group C visual parity: 固定 format ribbon が編集モードで常駐し B が選択を wrap する', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // text create + 編集モードへ
@@ -320,7 +320,7 @@ test('Group C visual parity: 固定 format ribbon が編集モードで常駐し
 test('PR-V6 visual parity: derived-branches link を real click すると branch entry に SELECT_ENTRY', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   const now = '2026-05-14T00:00:00.000Z';
@@ -369,7 +369,7 @@ test('PR-V6 visual parity: derived-branches link を real click すると branch
     assets: {},
   };
   await seedContainer(page, container);
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // source entry を選択
@@ -422,7 +422,7 @@ test('PR-V6 visual parity: derived-branches link を real click すると branch
 test('PR-V14 visual parity: branch tree が多階層 nested で見える(depth 0/1 + guide marker)', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // 多階層 provenance:root → b1 / b2、b1 → b1a / b1b
@@ -456,7 +456,7 @@ test('PR-V14 visual parity: branch tree が多階層 nested で見える(depth 0
     assets: {},
   };
   await seedContainer(page, container);
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   // entry-list 内の root を click
   await page

@@ -75,7 +75,7 @@ async function seedFlatEntries(page: Page, count: number): Promise<void> {
 test('順序性: large sidebar — clicking a visible entry preserves entry-list scrollTop', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   await seedFlatEntries(page, 80);
   await page.reload();
