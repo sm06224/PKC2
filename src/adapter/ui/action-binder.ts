@@ -93,6 +93,7 @@ import {
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
+import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/frontmatter';
 import { openTextReplaceDialog } from './text-replace-dialog';
 import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
@@ -5437,6 +5438,30 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const body = target.value;
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body });
       }
+      return;
+    }
+    if (action === 'update-frontmatter-field') {
+      // Phase γ-B1:frontmatter graphical editor の input change。section 内の
+      // 全 key input を集めて meta を再構築、setFrontmatter で entry.body に
+      // 書き戻す(body-only update なので QUICK_UPDATE_ENTRY)。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (!lid || !(target instanceof HTMLInputElement)) return;
+      const section = target.closest('[data-pkc-region="frontmatter"]');
+      if (!section) return;
+      const entry = dispatcher
+        .getState()
+        .container?.entries.find((e) => e.lid === lid);
+      if (!entry) return;
+      const meta: Record<string, string | number | boolean | null> = {};
+      const inputs = section.querySelectorAll<HTMLInputElement>(
+        'input[data-pkc-frontmatter-key]',
+      );
+      for (const input of inputs) {
+        const key = input.getAttribute('data-pkc-frontmatter-key');
+        if (key) meta[key] = parseFrontmatterScalar(input.value);
+      }
+      const body = setFrontmatter(entry.body ?? '', meta);
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body });
       return;
     }
     if (action === 'set-display-profile') {

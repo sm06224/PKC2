@@ -249,6 +249,16 @@ function parseScalar(raw: string): string | number | boolean | null {
 }
 
 /**
+ * Public helper: 単一の scalar 文字列(graphical editor の input value 等)を
+ * frontmatter 値型に解釈する。`parseFlatYaml` 内の scalar 解釈と同一規則。
+ */
+export function parseFrontmatterScalar(
+  raw: string,
+): string | number | boolean | null {
+  return parseScalar(raw.trim());
+}
+
+/**
  * Public helper: returns the `kind` discriminator if present and valid.
  * Filer subset profiles look this up to decide which entries belong
  * to the `book-base` / `youtube-base` / etc. query.

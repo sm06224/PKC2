@@ -5796,6 +5796,36 @@ mark.pkc-search-mark {
   word-break: break-word;
 }
 
+/* ── frontmatter graphical editor(Group B、Phase γ-B1)── */
+.pkc-frontmatter-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+}
+.pkc-frontmatter-edit-row {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2, 0.5rem);
+  align-items: center;
+}
+.pkc-frontmatter-edit-label {
+  font-weight: 600;
+  opacity: 0.7;
+}
+.pkc-frontmatter-edit-input {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1-5);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+.pkc-frontmatter-edit-input:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+
 /* ── Filer View (領域 10-6 ζ'' Phase 1) ── */
 
 .pkc-filer {

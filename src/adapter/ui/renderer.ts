@@ -13,6 +13,7 @@ import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import { renderFormatPanel, formatPanelEnabled } from './format-panel';
+import { metaPaneYamlGraphicalEnabled } from './meta-pane-flags';
 import { renderImagePreviewModal } from './image-preview';
 import {
   bindGraphCanvas,
@@ -7502,7 +7503,7 @@ function renderMetaPaneImpl(
   // Body-leading `---\n…\n---\n` YAML produces a small key/value list
   // here so book / youtube / paper / film / album metadata is visible
   // in the meta pane without rendering it inside the markdown.
-  const frontmatterSection = renderFrontmatterSection(entry);
+  const frontmatterSection = renderFrontmatterSection(entry, canEdit);
   if (frontmatterSection) meta.appendChild(frontmatterSection);
 
   // Hidden entirely when the body produces zero headings, per spec §4.
@@ -8333,7 +8334,10 @@ function renderLinkRefsSection(
  * - `data-pkc-toc-slug`      — slug of the heading (heading nodes)
  * - `data-pkc-log-id`        — owning article for headings / logs
  */
-function renderFrontmatterSection(entry: Entry): HTMLElement | null {
+function renderFrontmatterSection(
+  entry: Entry,
+  canEdit: boolean,
+): HTMLElement | null {
   // Only TEXT bodies are markdown-rendered; other archetypes either
   // serialize body as JSON / CSV / opaque blob, where a leading
   // `---` is not a frontmatter fence.
@@ -8350,6 +8354,21 @@ function renderFrontmatterSection(entry: Entry): HTMLElement | null {
   heading.textContent = 'Properties';
   section.appendChild(heading);
 
+  // Phase γ-B1:flag ON + 編集可能なら graphical editor、それ以外は従来の
+  // read-only 表示。
+  if (metaPaneYamlGraphicalEnabled() && canEdit) {
+    section.appendChild(renderFrontmatterEditor(entry, meta, keys));
+  } else {
+    section.appendChild(renderFrontmatterReadonly(meta, keys));
+  }
+  return section;
+}
+
+// 従来の read-only `<dl>` 表示。
+function renderFrontmatterReadonly(
+  meta: Record<string, unknown>,
+  keys: string[],
+): HTMLElement {
   const dl = document.createElement('dl');
   dl.className = 'pkc-frontmatter-list';
   for (const key of keys) {
@@ -8385,8 +8404,42 @@ function renderFrontmatterSection(entry: Entry): HTMLElement | null {
     }
     dl.appendChild(dd);
   }
-  section.appendChild(dl);
-  return section;
+  return dl;
+}
+
+// Phase γ-B1:key ごとの編集 input を持つ graphical editor。input change を
+// action-binder の `update-frontmatter-field` が拾い、setFrontmatter で
+// entry.body へ書き戻す。
+function renderFrontmatterEditor(
+  entry: Entry,
+  meta: Record<string, unknown>,
+  keys: string[],
+): HTMLElement {
+  const form = createElement('div', 'pkc-frontmatter-editor');
+  for (const key of keys) {
+    const row = createElement('div', 'pkc-frontmatter-edit-row');
+    const label = createElement('label', 'pkc-frontmatter-edit-label');
+    label.textContent = key;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'pkc-frontmatter-edit-input';
+    input.value = frontmatterInputValue(meta[key]);
+    input.setAttribute('data-pkc-frontmatter-key', key);
+    input.setAttribute('data-pkc-action', 'update-frontmatter-field');
+    input.setAttribute('data-pkc-lid', entry.lid);
+    row.appendChild(label);
+    row.appendChild(input);
+    form.appendChild(row);
+  }
+  return form;
+}
+
+// 編集 input に表示する値。formatFrontmatterValue は表示用に null→'—' /
+// boolean→'yes' 等へ整形するため、再 parse 可能な edit 用 format を別に持つ。
+function frontmatterInputValue(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
 }
 
 // Re-export so callers (extensions, debug overlays) can reach the
