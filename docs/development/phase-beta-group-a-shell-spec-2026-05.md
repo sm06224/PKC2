@@ -555,9 +555,30 @@ happy-dom 5 件追加。
 - `tests/adapter/sidebar-filer-search.test.ts`(happy-dom 11 件)+
   `tests/smoke/sidebar-filer-search.spec.ts`(Playwright parity 1 件)
 
-機能強化の残り(multi-select + bulk action、entry metadata badge、
-copy-link 等)は後続 pgc で順次。default 切替(A1-4)+ deprecated
-marker(A1-5)は user 判断保留。
+**pgc-36 multi-select + 一括操作バー**:filer-mode sidebar に multi-select
+の視覚マーク + 一括操作バーを追加。
+
+- multi-select の **state**(Ctrl/Shift+click)は select-entry handler が
+  `data-pkc-action="select-entry"` 要素に対し既に汎用処理済 — filer item
+  も同 action を持つため state は元から動作していた。本 PR は欠けていた
+  **UI**(視覚マーク + バー)を補完
+- `multiSelectedLids` の item に `data-pkc-multi-selected="true"`(global
+  CSS rule が自動適用)
+- `multiSelectedLids.length > 0` のとき center filer / graph と共通の
+  `buildFilerMultiActionBar` を描画(`viewCtx` に `'sidebar'` を追加)。
+  一括 Delete / folder 移動 / tag / color / relation が sidebar から実行可
+- 新規 CSS 不要(`[data-pkc-multi-selected]` global + `.pkc-multi-action-bar`
+  flex-wrap を再利用)
+- `tests/adapter/sidebar-filer-multiselect.test.ts`(happy-dom 7 件)+
+  `tests/smoke/sidebar-filer-multiselect.spec.ts`(Playwright parity 1 件、
+  実 OS Ctrl+click)
+
+これで filer-mode sidebar は navigation / 選択 / multi-select + 一括操作 /
+DnD 移動 / 絞り込み検索 / item 数 / 操作ヒントが揃い、audit が挙げた
+critical gap(DnD・multi-select)を解消、**tree-mode と実用上同等の
+management 能力**に到達。entry metadata badge(backlink / orphan /
+copy-link)は nice-to-have として後続候補。default 切替(A1-4)+
+deprecated marker(A1-5)は user 判断保留。
 
 ---
 

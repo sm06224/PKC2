@@ -3038,6 +3038,13 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   header.appendChild(count);
   sidebar.appendChild(header);
 
+  // Phase γ-A1(pgc-36):multi-select 中は一括操作バーを出す。multi-select
+  // の state(Ctrl/Shift+click)は select-entry handler が汎用処理済。
+  // bar は center filer / graph と同じ buildFilerMultiActionBar を再利用。
+  if (state.multiSelectedLids.length > 0) {
+    sidebar.appendChild(buildFilerMultiActionBar(state, 'sidebar'));
+  }
+
   // Phase γ-A1(pgc-35):folder に item があるときだけ絞り込み検索窓を
   // 出す。data-pkc-field は render-continuity helper が focus + caret を
   // 復元するためのキー(full re-render を跨いで日本語 IME 入力が壊れない)。
@@ -3084,6 +3091,11 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
       li.setAttribute('data-pkc-drop-target', 'true');
     }
     if (child.lid === state.selectedLid) li.setAttribute('data-pkc-active', 'true');
+    // Phase γ-A1(pgc-36):multi-select 中の item を視覚マーク。
+    // `[data-pkc-multi-selected]` は global CSS rule が自動適用。
+    if (state.multiSelectedLids.includes(child.lid)) {
+      li.setAttribute('data-pkc-multi-selected', 'true');
+    }
     li.textContent = `${archetypeIcon(child.archetype)} ${child.title || child.lid}`;
     list.appendChild(li);
   }
@@ -4761,7 +4773,10 @@ function renderCalendarView(state: AppState): HTMLElement {
  * 描画。コードは sidebar 版をミラー(reducer は同一 dispatch を受ける)、
  * 重複は意図的(sidebar/filer の独立性確保)。
  */
-function buildFilerMultiActionBar(state: AppState, viewCtx: 'filer' | 'graph' = 'filer'): HTMLElement {
+function buildFilerMultiActionBar(
+  state: AppState,
+  viewCtx: 'filer' | 'graph' | 'sidebar' = 'filer',
+): HTMLElement {
   const bar = createElement('div', `pkc-multi-action-bar pkc-${viewCtx}-multi-action-bar`);
   bar.setAttribute('data-pkc-region', 'multi-action-bar');
   bar.setAttribute('data-pkc-view-ctx', viewCtx);

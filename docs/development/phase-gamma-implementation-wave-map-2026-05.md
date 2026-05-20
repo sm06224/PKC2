@@ -209,9 +209,12 @@ folder 間 **drag-and-drop 移動**(action-binder 汎用 DnD 機構を再利用�
 happy-dom 12 + Playwright parity 1)、`pgc-34` で **UX 完成度向上**
 (item 数表示 / 操作ヒント / 空スコープ案内の改善、happy-dom 5)、`pgc-35`
 で **per-folder 絞り込み検索**(`sidebarFilerQuery`、happy-dom 11 +
-Playwright parity 1)。残り(multi-select + bulk action、entry metadata
-等)は後続 pgc。default 切替(A1-4)+ deprecated marker(A1-5)は user
-判断保留。詳細は shell spec §4.5。
+Playwright parity 1)、`pgc-36` で **multi-select + 一括操作バー**
+(`buildFilerMultiActionBar` 再利用、happy-dom 7 + Playwright parity 1)。
+これで filer-mode sidebar は audit の critical gap(DnD・multi-select)を
+解消し **tree-mode と実用上同等の management 能力**に到達。entry
+metadata badge は後続候補。default 切替(A1-4)+ deprecated marker
+(A1-5)は user 判断保留。詳細は shell spec §4.5。
 
 ### §4.2 γ-A2:編集 mode 3 分割(10 PR)
 
