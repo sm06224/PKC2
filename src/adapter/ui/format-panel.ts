@@ -111,6 +111,64 @@ export function applyAlignPrefix(sel: Selection, target: string): Selection {
   };
 }
 
+// ── リスト・番号(spec §7)──
+
+// 選択範囲の各行(行全体に拡張)を fn で変換する。
+function transformBlockLines(
+  sel: Selection,
+  fn: (line: string) => string,
+): Selection {
+  const lineStart = sel.value.lastIndexOf('\n', sel.start - 1) + 1;
+  const lineEnd = sel.value.indexOf('\n', sel.end);
+  const lineEndIdx = lineEnd === -1 ? sel.value.length : lineEnd;
+  const block = sel.value.slice(lineStart, lineEndIdx);
+  const transformed = block.split('\n').map(fn).join('\n');
+  return {
+    value: `${sel.value.slice(0, lineStart)}${transformed}${sel.value.slice(lineEndIdx)}`,
+    start: lineStart,
+    end: lineStart + transformed.length,
+  };
+}
+
+// 行を indent / list marker(`- ` / `* ` / `N. `)/ 残りに分解する。
+function splitListMarker(line: string): {
+  indent: string;
+  kind: 'bullet' | 'ordered' | null;
+  rest: string;
+} {
+  const m = /^(\s*)([-*] |\d+\. )?(.*)$/.exec(line);
+  const indent = m?.[1] ?? '';
+  const mk = m?.[2];
+  const rest = m?.[3] ?? line;
+  let kind: 'bullet' | 'ordered' | null = null;
+  if (mk) kind = /^\d/.test(mk) ? 'ordered' : 'bullet';
+  return { indent, kind, rest };
+}
+
+// 選択行に list marker を toggle 適用する。同 kind なら除去、別 kind / 無し
+// なら付与(spec §7.1)。番号リストは素朴に各行 `1. `(render が自動採番、
+// 採番正規化は領域 8 待ち)。
+export function applyListMarker(
+  sel: Selection,
+  target: 'bullet' | 'ordered',
+): Selection {
+  return transformBlockLines(sel, (line) => {
+    const { indent, kind, rest } = splitListMarker(line);
+    if (kind === target) return `${indent}${rest}`;
+    return `${indent}${target === 'bullet' ? '- ' : '1. '}${rest}`;
+  });
+}
+
+// 選択行のインデントを 2 space 単位で増減する(spec §7.1)。
+export function applyIndent(sel: Selection, delta: 'in' | 'out'): Selection {
+  return transformBlockLines(sel, (line) => {
+    if (delta === 'in') return `  ${line}`;
+    if (line.startsWith('  ')) return line.slice(2);
+    if (line.startsWith(' ')) return line.slice(1);
+    return line;
+  });
+}
+
 // ── simple-inline `:text:attrs:` の attr 合成(spec §4.4)──
 //
 // simple-inline の attr は category を持ち、同 category は排他(size を 2 つ
@@ -428,7 +486,10 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
     id: 'list',
     label: 'リスト・番号',
     ops: [
-      { label: '·', title: 'リスト(bullet)— - text', apply: (s) => prefixLines(s, '- ') },
+      { label: '·', title: '箇条書き(- 、toggle)', apply: (s) => applyListMarker(s, 'bullet') },
+      { label: '1.', title: '番号リスト(1. 、toggle)', apply: (s) => applyListMarker(s, 'ordered') },
+      { label: '⇥', title: 'インデント増(2 space)', apply: (s) => applyIndent(s, 'in') },
+      { label: '⇤', title: 'インデント減(2 space)', apply: (s) => applyIndent(s, 'out') },
     ],
   },
   {

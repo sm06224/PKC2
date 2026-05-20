@@ -232,9 +232,9 @@ test('Group C visual parity: 固定 format ribbon が編集モードで常駐し
   const panel = page.locator('[data-pkc-region="format-panel"]');
   await expect(panel).toBeVisible({ timeout: 3_000 });
 
-  // 6 group + 25 operation button + 6 value picker + 1 launcher が描画されている
+  // 6 group + 28 operation button + 6 value picker + 1 launcher が描画されている
   await expect(panel.locator('[data-pkc-region="format-panel-group"]')).toHaveCount(6);
-  await expect(panel.locator('[data-pkc-format-label]')).toHaveCount(25);
+  await expect(panel.locator('[data-pkc-format-label]')).toHaveCount(28);
   await expect(panel.locator('[data-pkc-picker]')).toHaveCount(6);
   await expect(panel.locator('[data-pkc-launcher]')).toHaveCount(1);
 

@@ -18,6 +18,8 @@ import {
   parseHighlight,
   applyHighlightColor,
   applyAlignPrefix,
+  applyListMarker,
+  applyIndent,
   buildPipeTable,
   insertPipeTable,
   insertBlock,
@@ -38,9 +40,9 @@ describe('format-panel — FORMAT_GROUPS registry', () => {
     ]);
   });
 
-  it('has 25 operations total (19 + 3 table row + 3 table col)', () => {
+  it('has 28 operations total (25 + ordered + indent in/out)', () => {
     const total = FORMAT_GROUPS.reduce((n, g) => n + g.ops.length, 0);
-    expect(total).toBe(25);
+    expect(total).toBe(28);
   });
 
   it('Font group has size / family / text-color / highlight-color pickers', () => {
@@ -86,9 +88,9 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     }
   });
 
-  it('renders 25 operation buttons (data-pkc-format-label)', () => {
+  it('renders 28 operation buttons (data-pkc-format-label)', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(25);
+    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(28);
   });
 
   it('renders 6 value pickers with their option buttons', () => {
@@ -317,6 +319,74 @@ describe('format-panel — applyAlignPrefix (段落 align、spec §5.2)', () => 
   });
 });
 
+describe('format-panel — applyListMarker (リスト・番号、spec §7.1)', () => {
+  const mark = (
+    value: string,
+    start: number,
+    end: number,
+    target: 'bullet' | 'ordered',
+  ): string => applyListMarker({ value, start, end }, target).value;
+
+  it('1. plain → bullet', () => {
+    expect(mark('x', 0, 1, 'bullet')).toBe('- x');
+  });
+  it('2. bullet + bullet → toggle off', () => {
+    expect(mark('- x', 0, 3, 'bullet')).toBe('x');
+  });
+  it('3. bullet + ordered → 種別変換', () => {
+    expect(mark('- x', 0, 3, 'ordered')).toBe('1. x');
+  });
+  it('4. ordered + ordered → toggle off', () => {
+    expect(mark('1. x', 0, 4, 'ordered')).toBe('x');
+  });
+  it('5. ordered + bullet → 種別変換', () => {
+    expect(mark('1. x', 0, 4, 'bullet')).toBe('- x');
+  });
+  it('6. * 形 bullet も bullet と認識し toggle off', () => {
+    expect(mark('* x', 0, 3, 'bullet')).toBe('x');
+  });
+  it('7. 複数行 plain + bullet → 各行に付与', () => {
+    expect(mark('a\nb', 0, 3, 'bullet')).toBe('- a\n- b');
+  });
+  it('8. indent 付き bullet の toggle off は indent を保つ', () => {
+    expect(mark('  - x', 0, 5, 'bullet')).toBe('  x');
+  });
+  it('9. 空行 + bullet → "- "', () => {
+    expect(mark('', 0, 0, 'bullet')).toBe('- ');
+  });
+  it('10. CJK 行 + bullet', () => {
+    expect(mark('日本語', 0, 3, 'bullet')).toBe('- 日本語');
+  });
+  it('11. 2. 形(非 1)ordered も ordered と認識し toggle off', () => {
+    expect(mark('2. x', 0, 4, 'ordered')).toBe('x');
+  });
+});
+
+describe('format-panel — applyIndent (リスト・番号、spec §7.1)', () => {
+  const ind = (
+    value: string,
+    start: number,
+    end: number,
+    delta: 'in' | 'out',
+  ): string => applyIndent({ value, start, end }, delta).value;
+
+  it('12. plain + in → 2 space 前置', () => {
+    expect(ind('x', 0, 1, 'in')).toBe('  x');
+  });
+  it('13. 2 space + out → 除去', () => {
+    expect(ind('  x', 0, 3, 'out')).toBe('x');
+  });
+  it('14. indent なし + out → no-op', () => {
+    expect(ind('x', 0, 1, 'out')).toBe('x');
+  });
+  it('15. 1 space + out → 1 space のみ除去', () => {
+    expect(ind(' x', 0, 2, 'out')).toBe('x');
+  });
+  it('16. 複数行 + in → 各行に 2 space', () => {
+    expect(ind('a\nb', 0, 3, 'in')).toBe('  a\n  b');
+  });
+});
+
 describe('format-panel — buildPipeTable / insertPipeTable (表挿入、spec §6.1)', () => {
   it('buildPipeTable(2,2) produces a GFM skeleton', () => {
     expect(buildPipeTable(2, 2)).toBe(
@@ -538,6 +608,20 @@ describe('format-panel — button click applies to the editor textarea', () => {
 
     (panel.closest('.pkc-editor') as HTMLElement).remove();
   });
+
+  it('clicking 1. converts the line into an ordered list item', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = 'item';
+    ta.focus();
+    ta.setSelectionRange(0, 4);
+
+    panel
+      .querySelector<HTMLButtonElement>('[data-pkc-format-label="1."]')!
+      .click();
+    expect(ta.value).toBe('1. item');
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
 });
 
 describe('format-panel — 検索 launcher (spec §8)', () => {
@@ -632,7 +716,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     renderEditingText();
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
-    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(25);
+    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(28);
     expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(6);
     expect(panel!.querySelectorAll('[data-pkc-launcher]')).toHaveLength(1);
   });
