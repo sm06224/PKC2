@@ -20,6 +20,7 @@ import {
   applyAlignPrefix,
   buildPipeTable,
   insertPipeTable,
+  insertBlock,
 } from '@adapter/ui/format-panel';
 import { render } from '@adapter/ui/renderer';
 import { createDispatcher } from '@adapter/state/dispatcher';
@@ -37,9 +38,9 @@ describe('format-panel — FORMAT_GROUPS registry', () => {
     ]);
   });
 
-  it('has 17 operations total (14 carried + 3 align)', () => {
+  it('has 19 operations total (14 carried + 3 align + ruby + section-break)', () => {
     const total = FORMAT_GROUPS.reduce((n, g) => n + g.ops.length, 0);
-    expect(total).toBe(17);
+    expect(total).toBe(19);
   });
 
   it('Font group has size / family / text-color / highlight-color pickers', () => {
@@ -85,9 +86,9 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     }
   });
 
-  it('renders 17 operation buttons (data-pkc-format-label)', () => {
+  it('renders 19 operation buttons (data-pkc-format-label)', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(17);
+    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(19);
   });
 
   it('renders 5 value pickers with their option buttons', () => {
@@ -145,6 +146,14 @@ describe('format-panel — operation apply math (PKC MD canonical)', () => {
 
   it('link wraps the selection as [text](url)', () => {
     expect(applyByLabel('link', 'site', 0, 4).value).toBe('[site](url)');
+  });
+
+  it('ﾙﾋﾞ wraps the selection as [[ruby:X|]]', () => {
+    expect(applyByLabel('ﾙﾋﾞ', '漢字', 0, 2).value).toBe('[[ruby:漢字|]]');
+  });
+
+  it('+++ inserts a section break block', () => {
+    expect(applyByLabel('+++', '', 0, 0).value).toBe('+++');
   });
 });
 
@@ -349,6 +358,13 @@ describe('format-panel — buildPipeTable / insertPipeTable (表挿入、spec §
     const r = insertPipeTable({ value: '', start: 0, end: 0 }, 'bad');
     expect(r.value).toBe(buildPipeTable(2, 2));
   });
+
+  it('insertBlock inserts text as a standalone block with NL guards', () => {
+    expect(insertBlock({ value: '', start: 0, end: 0 }, '+++').value).toBe('+++');
+    expect(insertBlock({ value: 'hello', start: 5, end: 5 }, '+++').value).toBe(
+      'hello\n+++',
+    );
+  });
 });
 
 describe('format-panel — button click applies to the editor textarea', () => {
@@ -506,7 +522,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     renderEditingText();
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
-    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(17);
+    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(19);
     expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(5);
   });
 

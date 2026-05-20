@@ -195,22 +195,26 @@ export function buildPipeTable(rows: number, cols: number): string {
   return `${header}\n${sep}\n${body}`;
 }
 
-// caret 位置に GFM pipe table を挿入する。value は "cols x rows"。表は block
-// 要素なので、前後がテキスト行に隣接する場合は改行を補って行境界を保つ。
-export function insertPipeTable(sel: Selection, value: string): Selection {
-  const parts = value.split('x');
-  const cols = Math.max(1, Number(parts[0]) || 2);
-  const rows = Math.max(1, Number(parts[1]) || 2);
-  const table = buildPipeTable(rows, cols);
+// block 要素(表 / 区切り線 等)を caret 位置に挿入する。block は前後がテキスト
+// 行に隣接する場合に改行を補って行境界を保つ。
+export function insertBlock(sel: Selection, text: string): Selection {
   const before = sel.value.slice(0, sel.start);
   const after = sel.value.slice(sel.end);
   const lead = before.length > 0 && !before.endsWith('\n') ? '\n' : '';
   const tail = after.length > 0 && !after.startsWith('\n') ? '\n' : '';
   return {
-    value: `${before}${lead}${table}${tail}${after}`,
+    value: `${before}${lead}${text}${tail}${after}`,
     start: sel.start + lead.length,
-    end: sel.start + lead.length + table.length,
+    end: sel.start + lead.length + text.length,
   };
+}
+
+// caret 位置に GFM pipe table を挿入する。value は "cols x rows"。
+export function insertPipeTable(sel: Selection, value: string): Selection {
+  const parts = value.split('x');
+  const cols = Math.max(1, Number(parts[0]) || 2);
+  const rows = Math.max(1, Number(parts[1]) || 2);
+  return insertBlock(sel, buildPipeTable(rows, cols));
 }
 
 export interface FormatOp {
@@ -368,6 +372,8 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
     label: '挿入',
     ops: [
       { label: 'link', title: 'link — [text](url)', apply: (s) => wrapAsymmetric(s, '[', '](url)') },
+      { label: 'ﾙﾋﾞ', title: 'ふりがな — [[ruby:漢字|よみ]]', apply: (s) => wrapAsymmetric(s, '[[ruby:', '|]]') },
+      { label: '+++', title: '区切り線(section break)— +++', apply: (s) => insertBlock(s, '+++') },
     ],
   },
   { id: 'search', label: '検索', ops: [] },
