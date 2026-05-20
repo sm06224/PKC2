@@ -14,6 +14,8 @@ import { openTextReplaceDialog } from './text-replace-dialog';
 import {
   addTableRow,
   deleteTableRow,
+  addTableColumn,
+  deleteTableColumn,
   type TableEditResult,
 } from '@features/markdown/pipe-table-edit';
 
@@ -418,6 +420,9 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: '行↑', title: '表:caret 行の上に行を追加', apply: tableEditOp((v, c) => addTableRow(v, c, 'above')) },
       { label: '行↓', title: '表:caret 行の下に行を追加', apply: tableEditOp((v, c) => addTableRow(v, c, 'below')) },
       { label: '行✕', title: '表:caret 行を削除', apply: tableEditOp(deleteTableRow) },
+      { label: '列←', title: '表:caret 列の左に列を追加', apply: tableEditOp((v, c) => addTableColumn(v, c, 'left')) },
+      { label: '列→', title: '表:caret 列の右に列を追加', apply: tableEditOp((v, c) => addTableColumn(v, c, 'right')) },
+      { label: '列✕', title: '表:caret 列を削除', apply: tableEditOp(deleteTableColumn) },
     ],
     pickers: [TABLE_INSERT_PICKER],
   },

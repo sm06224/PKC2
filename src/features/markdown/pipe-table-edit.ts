@@ -17,6 +17,7 @@ interface ParsedTable {
   align: string[];
   body: string[][];
   caretLine: number;
+  caretCol: number;
 }
 
 // 行の各セルを取り出す(leading / trailing `|` を許容)。
@@ -56,6 +57,15 @@ function lineOffset(lines: string[], idx: number): number {
   return off;
 }
 
+// 行内 position の列 index(caret 前の `|` 数 - 1、0 以上に clamp)。
+function caretColIndex(line: string, posInLine: number): number {
+  let pipes = 0;
+  for (let i = 0; i < posInLine && i < line.length; i++) {
+    if (line[i] === '|') pipes++;
+  }
+  return Math.max(0, pipes - 1);
+}
+
 // caret 位置を含む pipe table を parse する。表でなければ null。
 function parseTableAt(value: string, caret: number): ParsedTable | null {
   const lines = value.split('\n');
@@ -87,6 +97,7 @@ function parseTableAt(value: string, caret: number): ParsedTable | null {
     const bl = lines[i];
     if (bl !== undefined) body.push(parseRowCells(bl));
   }
+  const posInLine = caret - lineOffset(lines, caretLine);
   return {
     firstLine: first,
     lastLine: last,
@@ -96,6 +107,7 @@ function parseTableAt(value: string, caret: number): ParsedTable | null {
     align: parseRowCells(sepLine),
     body,
     caretLine,
+    caretCol: caretColIndex(caretText, posInLine),
   };
 }
 
@@ -169,4 +181,51 @@ export function deleteTableRow(
   const body = [...t.body];
   body.splice(bodyRow, 1);
   return commitTable(value, t, t.header, t.align, body, 0);
+}
+
+// caret 位置を含む表で、caret 列の左 / 右に空列を追加する。
+export function addTableColumn(
+  value: string,
+  caret: number,
+  where: 'left' | 'right',
+): TableEditResult | null {
+  const t = parseTableAt(value, caret);
+  if (!t) return null;
+  const insertAt =
+    where === 'left'
+      ? t.caretCol
+      : Math.min(t.header.length, t.caretCol + 1);
+  const splice = (row: string[], cell: string): string[] => {
+    const r = [...row];
+    r.splice(insertAt, 0, cell);
+    return r;
+  };
+  return commitTable(
+    value,
+    t,
+    splice(t.header, ''),
+    splice(t.align, '---'),
+    t.body.map((row) => splice(row, '')),
+    t.caretLine - t.firstLine,
+  );
+}
+
+// caret 位置を含む表で、caret 列を削除する。最後の 1 列は削除不可。
+export function deleteTableColumn(
+  value: string,
+  caret: number,
+): TableEditResult | null {
+  const t = parseTableAt(value, caret);
+  if (!t) return null;
+  if (t.header.length <= 1) return null;
+  const col = Math.min(t.caretCol, t.header.length - 1);
+  const drop = (row: string[]): string[] => row.filter((_, i) => i !== col);
+  return commitTable(
+    value,
+    t,
+    drop(t.header),
+    drop(t.align),
+    t.body.map(drop),
+    t.caretLine - t.firstLine,
+  );
 }

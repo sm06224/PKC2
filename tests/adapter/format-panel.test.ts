@@ -38,9 +38,9 @@ describe('format-panel — FORMAT_GROUPS registry', () => {
     ]);
   });
 
-  it('has 22 operations total (19 + 3 table row ops)', () => {
+  it('has 25 operations total (19 + 3 table row + 3 table col)', () => {
     const total = FORMAT_GROUPS.reduce((n, g) => n + g.ops.length, 0);
-    expect(total).toBe(22);
+    expect(total).toBe(25);
   });
 
   it('Font group has size / family / text-color / highlight-color pickers', () => {
@@ -86,9 +86,9 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     }
   });
 
-  it('renders 22 operation buttons (data-pkc-format-label)', () => {
+  it('renders 25 operation buttons (data-pkc-format-label)', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(22);
+    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(25);
   });
 
   it('renders 5 value pickers with their option buttons', () => {
@@ -505,6 +505,22 @@ describe('format-panel — button click applies to the editor textarea', () => {
 
     (panel.closest('.pkc-editor') as HTMLElement).remove();
   });
+
+  it('clicking 列→ adds a column to the table the caret is in', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = '| h | h |\n| --- | --- |\n| a | b |';
+    ta.focus();
+    ta.setSelectionRange(28, 28);
+
+    panel
+      .querySelector<HTMLButtonElement>('[data-pkc-format-label="列→"]')!
+      .click();
+    expect(ta.value).toBe(
+      '| h |  | h |\n| --- | --- | --- |\n| a |  | b |',
+    );
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
 });
 
 describe('format-panel — 検索 launcher (spec §8)', () => {
@@ -599,7 +615,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     renderEditingText();
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
-    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(22);
+    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(25);
     expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(5);
     expect(panel!.querySelectorAll('[data-pkc-launcher]')).toHaveLength(1);
   });

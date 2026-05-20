@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { addTableRow, deleteTableRow } from '@features/markdown/pipe-table-edit';
+import {
+  addTableRow,
+  deleteTableRow,
+  addTableColumn,
+  deleteTableColumn,
+} from '@features/markdown/pipe-table-edit';
 
 // 2 列 × 2 body 行の基準表。
 //   line 0 `| h1 | h2 |`      offset 0-11
@@ -80,5 +85,50 @@ describe('pipe-table-edit — deleteTableRow (spec §6.2)', () => {
   });
   it('15. 表でない位置 → null', () => {
     expect(deleteTableRow('plain text', 2)).toBeNull();
+  });
+});
+
+describe('pipe-table-edit — addTableColumn (spec §6.2)', () => {
+  it('16. caret 列の右に空列', () => {
+    expect(addTableColumn(T, 28, 'right')?.value).toBe(
+      '| h1 |  | h2 |\n| --- | --- | --- |\n| a |  | b |\n| c |  | d |',
+    );
+  });
+  it('17. caret 列の左に空列', () => {
+    expect(addTableColumn(T, 28, 'left')?.value).toBe(
+      '|  | h1 | h2 |\n| --- | --- | --- |\n|  | a | b |\n|  | c | d |',
+    );
+  });
+  it('18. 最終列の右に追加', () => {
+    expect(addTableColumn(T, 32, 'right')?.value).toBe(
+      '| h1 | h2 |  |\n| --- | --- | --- |\n| a | b |  |\n| c | d |  |',
+    );
+  });
+  it('19. separator 行の新セルは ---', () => {
+    expect(addTableColumn(T, 28, 'right')?.value.split('\n')[1]).toBe(
+      '| --- | --- | --- |',
+    );
+  });
+  it('20. 表でない位置 → null', () => {
+    expect(addTableColumn('plain', 2, 'right')).toBeNull();
+  });
+});
+
+describe('pipe-table-edit — deleteTableColumn (spec §6.2)', () => {
+  it('21. caret 列 0 を削除', () => {
+    expect(deleteTableColumn(T, 28)?.value).toBe(
+      '| h2 |\n| --- |\n| b |\n| d |',
+    );
+  });
+  it('22. caret 列 1 を削除', () => {
+    expect(deleteTableColumn(T, 32)?.value).toBe(
+      '| h1 |\n| --- |\n| a |\n| c |',
+    );
+  });
+  it('23. 最後の 1 列は削除不可 → null', () => {
+    expect(deleteTableColumn('| h |\n| --- |\n| x |', 3)).toBeNull();
+  });
+  it('24. 表でない位置 → null', () => {
+    expect(deleteTableColumn('plain text', 2)).toBeNull();
   });
 });
