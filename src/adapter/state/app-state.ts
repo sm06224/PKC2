@@ -2906,7 +2906,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (existing.length >= SAVED_SEARCH_CAP) return blocked(state, action);
       const ts = new Date().toISOString();
       const saved = createSavedSearch(generateLid(), trimmed, ts, {
-        searchQuery: state.searchQuery,
+        // pgc-51:filer sidebar の検索 query は `sidebarFilerQuery`、tree
+        // sidebar は `searchQuery` と別 field。両者は active な sidebar
+        // mode で排他(描画されない側の input は dispatch されないので空
+        // のまま)なので、`searchQuery || sidebarFilerQuery` でどちらの
+        // sidebar から保存しても現在の query が捕捉される。
+        searchQuery: state.searchQuery || (state.sidebarFilerQuery ?? ''),
         archetypeFilter: state.archetypeFilter,
         categoricalPeerFilter: state.categoricalPeerFilter,
         // Slice E (2026-04-23) — Tag axis round-trip. `state.tagFilter`
@@ -2964,6 +2969,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         container,
         searchQuery: fields.searchQuery,
+        // pgc-51:saved search の query を filer sidebar 側の query field
+        // にも復元する。tree / filer どちらの sidebar mode でも saved
+        // search を apply すれば検索 query が効く(描画されない側の field
+        // は set されても無害)。
+        sidebarFilerQuery: fields.searchQuery,
         archetypeFilter: fields.archetypeFilter,
         categoricalPeerFilter: fields.categoricalPeerFilter,
         // Slice E: Tag axis round-trip. Missing `tag_filter_v2` in the

@@ -3347,6 +3347,10 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   // が focus + caret を full re-render 跨ぎで復元するキー(IME が壊れない)。
   const hasAnyEntry = userEntries.length > 0;
   if (hasAnyEntry) {
+    // pgc-51:検索窓 + ★ quick-save を 1 行に並べる(tree sidebar と同じ
+    // `.pkc-search-row` を再利用)。★ は現在の検索条件を saved search と
+    // して保存する(`quick-save-search` → SAVE_SEARCH、自動命名)。
+    const searchRow = createElement('div', 'pkc-search-row');
     const searchInput = document.createElement('input');
     searchInput.type = 'search';
     searchInput.className = 'pkc-sidebar-filer-search';
@@ -3354,11 +3358,27 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     searchInput.setAttribute('data-pkc-field', 'sidebar-filer-search');
     searchInput.setAttribute('placeholder', '🔍 全エントリを検索');
     searchInput.value = state.sidebarFilerQuery ?? '';
-    sidebar.appendChild(searchInput);
+    searchRow.appendChild(searchInput);
+    if (!state.readonly && !state.importPreview) {
+      const saveBtn = createElement('button', 'pkc-btn-small pkc-btn-quick-save');
+      saveBtn.setAttribute('data-pkc-action', 'quick-save-search');
+      saveBtn.setAttribute('title', '現在の検索条件を保存（自動命名）');
+      saveBtn.textContent = '★';
+      searchRow.appendChild(saveBtn);
+    }
+    sidebar.appendChild(searchRow);
     // pgc-47:archetype filter rail。tree sidebar と同じ `renderArchetypeFilter`
     // を再利用し、検索結果を type で絞れるようにする。button は
     // `set-archetype-filter` を dispatch、`applyFilters` 経由で matched に反映。
     sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
+    // pgc-51:Saved Searches Pane。tree sidebar と同一の
+    // `renderSavedSearchesPane` を再利用。APPLY_SAVED_SEARCH は pgc-51 で
+    // `sidebarFilerQuery` も復元するため、filer から saved search を apply
+    // すれば query + archetype / tag / color filter が連動する。
+    {
+      const savedPane = renderSavedSearchesPane(state);
+      if (savedPane) sidebar.appendChild(savedPane);
+    }
     // pgc-50:Recent Entries Pane。tree sidebar と同一の
     // `renderRecentEntriesPane` を再利用 — `updated_at` desc の派生ビューを
     // default 折りたたみ `<details>` で出す。query coupling なし(derived-

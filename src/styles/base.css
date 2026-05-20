@@ -6485,6 +6485,13 @@ mark.pkc-search-mark {
   font-size: var(--fs-sm, 0.7rem);
 }
 
+/* pgc-51: filer 検索窓を ★ quick-save と同じ `.pkc-search-row`
+   (flex)に収めるとき、入力欄が残り幅を埋め ★ ボタンは content 幅。 */
+.pkc-search-row .pkc-sidebar-filer-search {
+  flex: 1;
+  min-width: 0;
+}
+
 .pkc-sidebar-filer-list {
   list-style: none;
   margin: 0;
