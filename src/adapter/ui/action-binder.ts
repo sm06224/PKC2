@@ -125,6 +125,7 @@ import {
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
+import { shellEditModeEnabled } from './shell-flags';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
 import { parsePortablePkcReference } from '../../features/link/permalink';
@@ -1376,7 +1377,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'begin-edit':
-        if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+        if (lid) triggerEdit(lid, target);
         break;
       case 'commit-edit':
         dispatchCommitEdit(root, lid, dispatcher);
@@ -3557,6 +3558,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
+      case 'set-edit-mode': {
+        // Phase γ-A2:編集モード picker。dispatch → re-render で picker の
+        // active が更新され、以後あらゆる編集トリガが triggerEdit 経由で
+        // inline / window に分岐する。
+        const mode = target.getAttribute('data-pkc-edit-mode');
+        if (mode === 'inline' || mode === 'window') {
+          dispatcher.dispatch({ type: 'SET_EDIT_MODE', mode });
+        }
+        break;
+      }
       case 'bulk-relate-selected': {
         // Phase γ-B2-6:multi-select した node を、先頭 node を hub に放射状
         // (hub → 各 node)で一括 relate。kind は popup で選ぶ。各 dispatch は
@@ -4620,7 +4631,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const editLid = state.selectedLid;
       if (!editLid) return;
       e.preventDefault();
-      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: editLid });
+      triggerEdit(editLid, root);
       return;
     }
 
@@ -5128,7 +5139,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       e.preventDefault();
-      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: state.selectedLid });
+      triggerEdit(state.selectedLid, root);
       return;
     }
 
@@ -7109,6 +7120,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Called from handleClick when MouseEvent.detail >= 2.
   // Sidebar: opens detached read-only panel.
   // Calendar/Kanban: dispatches BEGIN_EDIT (editing in detail view).
+
+  // Phase γ-A2:編集トリガの共通経路。flag `shell.edit_mode_enabled` が
+  // ON かつ editMode='window' なら inline 編集に入らず entry-window を
+  // 開く。それ以外(flag OFF / editMode='inline' / undefined)は従来の
+  // BEGIN_EDIT。✏️ Edit button / Ctrl+E / Enter の全トリガがここを通る
+  // ので surface 選択が一貫する。`target` は window 経路で
+  // handleDblClickAction に渡すが、同関数内では未使用(`_target`)。
+  function triggerEdit(lid: string, target: HTMLElement): void {
+    if (shellEditModeEnabled() && dispatcher.getState().editMode === 'window') {
+      handleDblClickAction(target, lid);
+      return;
+    }
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+  }
 
   function handleDblClickAction(_target: HTMLElement, lid: string): void {
     const state = dispatcher.getState();

@@ -17,6 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
+import { shellEditModeEnabled } from './shell-flags';
 import { renderImagePreviewModal } from './image-preview';
 import {
   bindGraphCanvas,
@@ -4494,7 +4495,9 @@ function renderCenterImpl(state: AppState): HTMLElement {
   center.appendChild(content);
 
   // Fixed action bar at bottom
-  center.appendChild(renderActionBar(selected, state.phase, canEdit, state.container));
+  center.appendChild(
+    renderActionBar(selected, state.phase, canEdit, state.container, state.editMode ?? 'inline'),
+  );
 
   return center;
 }
@@ -7081,8 +7084,36 @@ function renderKanbanView(state: AppState): HTMLElement {
   return kanban;
 }
 
+// Phase γ-A2:編集モード picker(spec §2.5)。flag `shell.edit_mode_enabled`
+// が ON のとき action bar に表示。inline / window を選ぶと SET_EDIT_MODE が
+// dispatch され、以後あらゆる編集トリガ(✏️ Edit / Ctrl+E / Enter)がその
+// surface に分岐する。
+function renderEditModePicker(editMode: 'inline' | 'window'): HTMLElement {
+  const picker = createElement('div', 'pkc-edit-mode-picker');
+  picker.setAttribute('data-pkc-region', 'edit-mode-picker');
+  for (const m of [
+    { v: 'inline' as const, label: 'Inline', tip: '中央ペイン内で編集(従来)' },
+    { v: 'window' as const, label: 'Window', tip: '専用ウィンドウで編集' },
+  ]) {
+    const btn = createElement('button', 'pkc-edit-mode-btn');
+    btn.setAttribute('data-pkc-action', 'set-edit-mode');
+    btn.setAttribute('data-pkc-edit-mode', m.v);
+    btn.setAttribute('title', m.tip);
+    if (m.v === editMode) btn.classList.add('pkc-edit-mode-active');
+    btn.textContent = m.label;
+    picker.appendChild(btn);
+  }
+  return picker;
+}
+
 /** Fixed action bar at bottom of center pane. Shows contextual actions. */
-function renderActionBar(entry: Entry, phase: string, canEdit: boolean, container?: Container | null): HTMLElement {
+function renderActionBar(
+  entry: Entry,
+  phase: string,
+  canEdit: boolean,
+  container?: Container | null,
+  editMode: 'inline' | 'window' = 'inline',
+): HTMLElement {
   const bar = createElement('div', 'pkc-action-bar');
   bar.setAttribute('data-pkc-region', 'action-bar');
 
@@ -7126,6 +7157,10 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
       editBtn.setAttribute('title', 'Edit this entry');
       editBtn.textContent = '✏️ Edit';
       bar.appendChild(editBtn);
+
+      if (shellEditModeEnabled()) {
+        bar.appendChild(renderEditModePicker(editMode));
+      }
 
       const deleteBtn = createElement('button', 'pkc-btn pkc-btn-danger');
       deleteBtn.setAttribute('data-pkc-action', 'delete-entry');

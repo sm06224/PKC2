@@ -239,6 +239,7 @@ v3.x architecture Phase γ の Group B(右ペイン特化)。meta pane と graph
 v3.x architecture Phase γ の Group A(shell 再構築)。wave map §4 の γ-A サブウェーブ(γ-A1 sidebar 再編 / γ-A2 編集 mode / γ-A3 マルチウィンドウ / γ-A4 sidebar removal)を stack で積む。両 sub-wave は独立のため本 stack は γ-A2(編集 mode)から着手。main 着地せず stack(PR-pgc-27〜)。すべて flag gate、OFF で従来挙動を完全維持。
 
 - **γ-A2 編集モード foundation**(A2-1、PR-pgc-27):`AppState.editMode?: 'inline' | 'window'` field + `SET_EDIT_MODE` action / reducer(reduceReady 内、純粋 state mutation、副作用なし)+ Tier 0 flag `shell.edit_mode_enabled`(default OFF)。spec §2.1 の 3 mode(overlay / split / window)を **編集 surface 軸のみ** に精緻化(spec §2.5、overlay は OQ-A-1 UX 不確実で deferred、split は inline 内の sub-layout)。UI / wiring(mode 選択 trigger、entry-window 分岐)は後続 A2 PR。`tests/adapter/shell-edit-mode.test.ts` 13 件(reducer 9 + flag 4)。
+- **γ-A2 編集モード picker + window 配線**(A2-2、PR-pgc-28):center pane の action bar に inline / window の picker(flag ON 時のみ表示)。picker click → `SET_EDIT_MODE`。✏️ Edit button / Ctrl+E / Enter の **全編集トリガを `triggerEdit` 共通経路に集約**、`editMode='window'` なら inline 編集(`BEGIN_EDIT`)に入らず `openEntryWindow`(専用子ウィンドウ)へ分岐。flag OFF / `editMode='inline'` / undefined は従来の inline 編集に完全 fallback(後方互換)。`tests/adapter/shell-edit-mode-picker.test.ts` 9 件(picker 描画 + window 配線の Phase 8 順序性 end-to-end)+ Playwright parity `tests/smoke/shell-edit-mode-picker.spec.ts` 2 件(実 OS click で picker 切替 / window mode で popup 起動)。
 
 ---
 

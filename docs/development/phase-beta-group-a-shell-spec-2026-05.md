@@ -279,6 +279,25 @@ UI / wiring(mode 選択 trigger、entry-window への分岐)は後続 A2 PR で
 接続。§5.2 の `editor.mode_*` 系 flag は 3-mode 経路を採る場合の予約で
 あり、γ-A2 foundation は `shell.edit_mode_enabled` 1 本で gate する。
 
+### §2.6 γ-A2 A2-2:picker + window 配線(2026-05-20、pgc-28)
+
+A2-1 foundation の `editMode` を user-facing にする slice。
+
+- **picker UI**:center pane 下部の action bar(`renderActionBar`)に
+  inline / window の 2-button picker(`data-pkc-region="edit-mode-picker"`)。
+  flag `shell.edit_mode_enabled` ON かつ編集可能 entry 選択時のみ表示。
+  picker click → `SET_EDIT_MODE` dispatch → re-render で active 遷移。
+- **window 配線**:✏️ Edit button / `Ctrl+E` / `Enter` の 3 編集トリガを
+  action-binder の `triggerEdit(lid, target)` 共通経路に集約。`flag ON
+  かつ editMode==='window'` のとき `BEGIN_EDIT`(inline 編集)に入らず
+  `openEntryWindow`(既存の子 window 経路、double-click と同一)へ分岐。
+- **後方互換**:flag OFF / `editMode` が `'inline'` or undefined のときは
+  従来通り `BEGIN_EDIT`。picker も非表示。
+
+§2.2 の keyboard shortcut 体系(`Cmd/Ctrl+Shift+E` 等の mode 別 shortcut)
+と §2.3 の localStorage 永続化は後続 A2 PR。本 slice は editMode を runtime
+state として保持するのみ(reload で inline に戻る)。
+
 ---
 
 ## §3 提案 #4 マルチウィンドウ + main 遷移抑制
