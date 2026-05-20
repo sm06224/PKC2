@@ -110,6 +110,20 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.textlogSelection !== prev.textlogSelection) return 'full';
   if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
   if (state.dualEditConflict !== prev.dualEditConflict) return 'full';
+  // pgc-45(編集モード picker が実 OS click に無反応というバグの
+  // root-cause 修正):Phase γ stack で追加された AppState field が本
+  // full-trigger 一覧に未登録で、当該 field のみ変わる dispatch が
+  // `'none'` に落ち再描画されない bug。PR-NNN(`filerSearchQuery`)/
+  // PR-Δ9(`graph*`)と全く同型。happy-dom / vitest は render を
+  // `prev=null` で呼ぶため常に full となり、この穴を見逃していた。
+  //   - editMode         : SET_EDIT_MODE(γ-A2)— 編集モード picker
+  //   - childWindowLids  : SYS_SYNC_CHILD_WINDOWS(γ-A3)— 別窓 marker / hint
+  //   - sidebarFilerQuery: SET_SIDEBAR_FILER_QUERY(γ-A1)— filer 絞り込み検索
+  //   - metaPaneMode     : SET_META_PANE_MODE(γ-B3)— meta pane mode tab
+  if (state.editMode !== prev.editMode) return 'full';
+  if (state.childWindowLids !== prev.childWindowLids) return 'full';
+  if (state.sidebarFilerQuery !== prev.sidebarFilerQuery) return 'full';
+  if (state.metaPaneMode !== prev.metaPaneMode) return 'full';
 
   // ── Fields the SIDEBAR consumes exclusively ──────────────────────
   // When ONLY these change, the center / meta / header / overlays

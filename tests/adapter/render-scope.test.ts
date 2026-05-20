@@ -81,6 +81,33 @@ describe('computeRenderScope', () => {
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
+  // pgc-45:Phase γ stack で追加された AppState field が full-trigger に
+  // 未登録だと、当該 field のみ変わる dispatch が 'none' に落ちて再描画
+  // されない(編集モード picker 無反応バグの root-cause)。回帰防止。
+  it('returns "full" when editMode changes (γ-A2 編集モード picker)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, editMode: 'window' as const }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when childWindowLids changes (γ-A3 マルチウィンドウ)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, childWindowLids: ['e1'] }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when sidebarFilerQuery changes (γ-A1 filer 絞り込み検索)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, sidebarFilerQuery: 'foo' }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when metaPaneMode changes (γ-B3 meta pane mode tab)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, metaPaneMode: 'properties' as const }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
   it('returns "sidebar-only" when only searchQuery changes (PR #178)', () => {
     const prev = createInitialState();
     const next = withChange(prev, (s) => ({ ...s, searchQuery: 'meeting' }));
