@@ -317,6 +317,58 @@ test('Group C visual parity: 固定 format ribbon が編集モードで常駐し
   await page.screenshot({ path: 'test-results/group-c-format-ribbon-parity.png' });
 });
 
+test('Group C visual parity: 固定 format ribbon は editor scroll 後も上端に常駐する', async ({
+  page,
+}) => {
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
+  await bootReady(page);
+
+  await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
+  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
+
+  const panel = page.locator('[data-pkc-region="format-panel"]');
+  await expect(panel).toBeVisible({ timeout: 3_000 });
+
+  // 「常駐」契約の core は position: sticky。computed style を直接確認。
+  await expect(panel).toHaveCSS('position', 'sticky');
+
+  // editor 本文 textarea を十分 tall にして center pane(.pkc-center-content、
+  // overflow-y:auto)を scroll 可能にする。
+  await page
+    .locator('textarea.pkc-editor-body[data-pkc-field="body"]')
+    .first()
+    .evaluate((ta: HTMLTextAreaElement) => {
+      ta.style.height = '1800px';
+    });
+
+  // setup 健全性:center pane が実際に scroll 可能になった。
+  const scroller = page.locator('.pkc-center-content');
+  const scrollable = await scroller.evaluate(
+    (el) => el.scrollHeight > el.clientHeight + 50,
+  );
+  expect(scrollable).toBe(true);
+
+  const yBefore = (await panel.boundingBox())?.y ?? -1;
+  expect(yBefore).toBeGreaterThanOrEqual(0);
+
+  // 実 OS wheel event で center content を下方向へ scroll。
+  await page.mouse.move(400, 360);
+  await page.mouse.wheel(0, 1000);
+  await page.waitForTimeout(150);
+
+  // setup 健全性:center pane が実際に動いた。
+  const scrolledTop = await scroller.evaluate((el) => el.scrollTop);
+  expect(scrolledTop).toBeGreaterThan(100);
+
+  // 本題:scroll 後も ribbon は viewport 内に残る(sticky)。旧 static 実装なら
+  // ribbon は viewport 上端より上へ消え、toBeInViewport / y>=0 が fail する。
+  await expect(panel).toBeInViewport();
+  const yAfter = (await panel.boundingBox())?.y ?? -1;
+  expect(yAfter).toBeGreaterThanOrEqual(0);
+
+  await page.screenshot({ path: 'test-results/group-c-format-ribbon-sticky-parity.png' });
+});
+
 test('PR-V6 visual parity: derived-branches link を real click すると branch entry に SELECT_ENTRY', async ({
   page,
 }) => {

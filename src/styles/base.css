@@ -9890,7 +9890,10 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 
 /* ── 編集モード固定 format panel(ribbon)— Group C ワープロ化, Phase γ-C ──
    旧 floating panel(PR-2JJ v2)を scrap し、編集面上部に常駐する固定 ribbon
-   として build し直したもの。renderer.ts renderEditor() が描画する。 */
+   として build し直したもの。renderer.ts renderEditor() が描画する。
+   `position: sticky` で center pane(.pkc-center-content、overflow-y:auto)を
+   scroll しても ribbon が上端に残る — これが「常駐」契約の core。opaque な
+   --c-surface 背景で scroll する editor 本文を覆う。 */
 .pkc-format-panel {
   display: flex;
   flex-wrap: wrap;
@@ -9900,6 +9903,9 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 /* touch 端末は snippet-toolbar の floating popup を使うため非表示(spec §3.1)。 */
 @media (pointer: coarse) {
