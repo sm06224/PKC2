@@ -367,6 +367,34 @@ describe('graph canvas wire drag (Phase γ-B2-2)', () => {
     expect(fired).toBe(false);
   });
 
+  it('edit mode + Shift+drag は wire でなく node-drag に退避', () => {
+    bindGraphCanvas(
+      canvas,
+      mkPayload(960, 600, [
+        { id: 'n1', x: 100, y: 100 },
+        { id: 'n2', x: 300, y: 100 },
+      ]),
+    );
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('edit');
+
+    md(100, 100);
+    const mm = new Event('mousemove', { bubbles: true });
+    Object.defineProperty(mm, 'clientX', { value: 200 });
+    Object.defineProperty(mm, 'clientY', { value: 100 });
+    Object.defineProperty(mm, 'shiftKey', { value: true });
+    window.dispatchEvent(mm);
+
+    const v = __getGraphCanvasViewForTest(canvas)!;
+    expect(v.wireSource == null).toBe(true);
+    expect(v.dragLid).toBe('n1');
+
+    mup(200, 100);
+  });
+
   it('view mode: wire drag は起きず従来の node-drag のまま', () => {
     bindGraphCanvas(
       canvas,

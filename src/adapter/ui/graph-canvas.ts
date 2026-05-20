@@ -1153,10 +1153,11 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
     if (pressDownLid && mouseDownPos) {
       const movedDist = Math.hypot(me.clientX - mouseDownPos.x, me.clientY - mouseDownPos.y);
       const payload = payloads.get(canvas);
-      // Phase γ-B2:edit mode では node-drag ではなく wire drag(prototype
-      // line を引いて relation 作成へ)。drag-end の relation 確定は後続 PR。
-      if (getGraphEditMode() === 'edit') {
-        if (!view.wireSource && movedDist > 5) {
+      // Phase γ-B2:edit mode の node press は wire drag(prototype line →
+      // relation 作成)。Shift+drag は edit mode でも従来の node-drag に退避
+      // (spec §2.1)。node-drag が既に engage 済なら wire には入らない。
+      if (getGraphEditMode() === 'edit' && !view.dragLid) {
+        if (!view.wireSource && !me.shiftKey && movedDist > 5) {
           view.wireSource = pressDownLid;
         }
         if (view.wireSource) {
