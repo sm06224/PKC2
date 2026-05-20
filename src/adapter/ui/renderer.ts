@@ -8756,7 +8756,7 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
     formatPanelEnabled() &&
     (entry.archetype === 'text' || entry.archetype === 'textlog')
   ) {
-    editor.appendChild(renderFormatPanel());
+    editor.appendChild(renderFormatPanel(entry.archetype));
   }
 
   // Archetype-dispatched editor body

@@ -477,6 +477,53 @@ describe('format-panel — button click applies to the editor textarea', () => {
   });
 });
 
+describe('format-panel — 検索 launcher (spec §8)', () => {
+  it('検索 group has the search-replace launcher', () => {
+    const search = FORMAT_GROUPS.find((g) => g.id === 'search');
+    expect(search?.launchers?.map((l) => l.id)).toEqual(['search-replace']);
+  });
+
+  it('renderFormatPanel("text") renders the 検索 launcher', () => {
+    const panel = renderFormatPanel('text');
+    expect(panel.querySelectorAll('[data-pkc-launcher]')).toHaveLength(1);
+  });
+
+  it('renderFormatPanel("textlog") omits the 検索 launcher (archetype filter)', () => {
+    const panel = renderFormatPanel('textlog');
+    expect(panel.querySelectorAll('[data-pkc-launcher]')).toHaveLength(0);
+  });
+
+  it('clicking the 検索 launcher opens the text-replace dialog', () => {
+    const root = document.createElement('div');
+    root.id = 'pkc-root';
+    const editor = document.createElement('div');
+    editor.className = 'pkc-editor';
+    const panel = renderFormatPanel('text');
+    const ta = document.createElement('textarea');
+    ta.setAttribute('data-pkc-field', 'body');
+    editor.appendChild(panel);
+    editor.appendChild(ta);
+    root.appendChild(editor);
+    document.body.appendChild(root);
+
+    ta.value = 'find me';
+    ta.focus();
+    ta.setSelectionRange(0, 4);
+
+    const launcher = panel.querySelector<HTMLButtonElement>(
+      '[data-pkc-launcher="search-replace"]',
+    );
+    expect(launcher).not.toBeNull();
+    launcher!.click();
+    expect(
+      document.querySelector('[data-pkc-region="text-replace-dialog"]'),
+    ).not.toBeNull();
+
+    document.querySelector('[data-pkc-region="text-replace-dialog"]')?.remove();
+    root.remove();
+  });
+});
+
 describe('format-panel — renderer integration (flag-gated)', () => {
   let root: HTMLElement;
 
@@ -524,6 +571,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     expect(panel).not.toBeNull();
     expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(19);
     expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(5);
+    expect(panel!.querySelectorAll('[data-pkc-launcher]')).toHaveLength(1);
   });
 
   it('flag OFF: the editor has no format ribbon', () => {

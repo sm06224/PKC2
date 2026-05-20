@@ -10,6 +10,7 @@
 // floating 位置計算は持たない(旧実装から破棄)。
 
 import { defineFlag } from '@core/flags';
+import { openTextReplaceDialog } from './text-replace-dialog';
 
 // 旧 floating panel から flag contract を引き継ぐ(scrap-and-build、spec §3.1)。
 export const formatPanelEnabled = defineFlag<boolean>(
@@ -243,11 +244,22 @@ export type FormatGroupId =
   | 'insert'
   | 'search';
 
+// dialog 等を起動する button(検索置換 等)。selection transform ではない。
+export interface FormatLauncher {
+  id: string;
+  label: string;
+  title: string;
+  launch: (panel: HTMLElement) => void;
+  // 指定時はその archetype でのみ表示。未指定なら常時表示。
+  archetypes?: readonly string[];
+}
+
 export interface FormatGroup {
   id: FormatGroupId;
   label: string;
   ops: readonly FormatOp[];
   pickers?: readonly FormatPicker[];
+  launchers?: readonly FormatLauncher[];
 }
 
 // 文字サイズ picker(simple-inline `:text:size:`、spec §4.1)。
@@ -322,6 +334,23 @@ const TABLE_INSERT_PICKER: FormatPicker = {
   apply: (sel, value) => insertPipeTable(sel, value),
 };
 
+// 検索置換 dialog を起動する(spec §8)。openTextReplaceDialog は TEXT body
+// textarea(data-pkc-field="body")専用のため launcher は archetype text 限定。
+function openReplaceFromPanel(panel: HTMLElement): void {
+  const ta = resolveTargetTextarea(panel);
+  if (!ta) return;
+  const root = panel.closest('#pkc-root');
+  if (root instanceof HTMLElement) openTextReplaceDialog(ta, root);
+}
+
+const SEARCH_REPLACE_LAUNCHER: FormatLauncher = {
+  id: 'search-replace',
+  label: '🔎 検索置換',
+  title: '検索・置換(TEXT body)',
+  launch: openReplaceFromPanel,
+  archetypes: ['text'],
+};
+
 // 6 group(spec §3.2)+ operation / picker の定義。旧 panel の 14 operation を
 // group に再配置し、Font group に font-size / font-family / 文字色 / 背景色
 // picker を追加した。表 / 検索 group の operation は後続 stack PR で追加。
@@ -376,7 +405,7 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: '+++', title: '区切り線(section break)— +++', apply: (s) => insertBlock(s, '+++') },
     ],
   },
-  { id: 'search', label: '検索', ops: [] },
+  { id: 'search', label: '検索', ops: [], launchers: [SEARCH_REPLACE_LAUNCHER] },
 ];
 
 // クリックされた button から編集対象 textarea を解決する。button の mousedown が
@@ -481,9 +510,29 @@ function renderPicker(panel: HTMLElement, picker: FormatPicker): HTMLElement {
   return det;
 }
 
+// dialog 起動 launcher button を生成する。
+function renderLauncher(panel: HTMLElement, launcher: FormatLauncher): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pkc-format-panel-btn';
+  btn.setAttribute('data-pkc-launcher', launcher.id);
+  btn.setAttribute('title', launcher.title);
+  btn.setAttribute('aria-label', launcher.title);
+  btn.textContent = launcher.label;
+  // mousedown preventDefault で textarea focus を維持(launch が activeElement
+  // から編集対象 textarea を解決するため)。
+  btn.addEventListener('mousedown', (e) => e.preventDefault());
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    launcher.launch(panel);
+  });
+  return btn;
+}
+
 // 編集モード上部に常駐する固定 format ribbon を描画する。group の折りたたみは
 // native <details>(JS / dispatch 不要)。renderer.ts renderEditor() から呼ぶ。
-export function renderFormatPanel(): HTMLElement {
+// archetype は launcher の表示出し分けに使う(検索 group は text 限定)。
+export function renderFormatPanel(archetype = 'text'): HTMLElement {
   const panel = document.createElement('div');
   panel.className = 'pkc-format-panel';
   panel.setAttribute('data-pkc-region', 'format-panel');
@@ -509,6 +558,10 @@ export function renderFormatPanel(): HTMLElement {
     }
     for (const picker of group.pickers ?? []) {
       body.appendChild(renderPicker(panel, picker));
+    }
+    for (const launcher of group.launchers ?? []) {
+      if (launcher.archetypes && !launcher.archetypes.includes(archetype)) continue;
+      body.appendChild(renderLauncher(panel, launcher));
     }
     frame.appendChild(body);
 
