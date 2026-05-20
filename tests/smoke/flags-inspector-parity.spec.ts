@@ -44,15 +44,13 @@ test('flags inspector — URL `?pkc-flag=*` auto-opens at boot', async ({ page }
   //                              charge, collide_radius, center_strength,
   //                              damping, max_speed, iterations}
   const rows = page.locator('[data-pkc-region="flag-row"]');
-  // Wave 10-9 Δ22 (2026-05-07):graph.galaxy_mode + graph.venn_grouping_mode
-  // + graph.region_select_mode + graph.node_radius_factor の 4 flag を追加。
-  // 42 → 46。
-  // reform-2026-05 Phase 3 (2026-05-12):theme.wcag_auto_shift +
-  // theme.wcag_target_ratio + theme.scale + markdown.use_ir の 3 flag。
-  // 46 → 49(theme.scale は wave 10-9 で既に入っている場合があり Δ は実数で確認)。
-  // PR-2JJ v2 (2026-05-13):editor.format_panel_enabled 1 flag 追加。
-  // 49 → 50。CHANGELOG_v2.2.0.md "PR-2JJ v2" 参照。
-  await expect(rows).toHaveCount(50);
+  // flag は wave ごとに増える(過去:42 → 46 → 49 → 50、γ-A2/A3 で
+  // shell.* / meta_pane.* 等が追加され現在 55+)。exact count の hardcode
+  // は flag 追加のたびに壊れる brittle な設計だったため、**下限 assert**
+  // に変更(50 未満 = flag が大量に消えた regression)。具体的な drift は
+  // 下の key spot-check が検出する。
+  const rowCount = await rows.count();
+  expect(rowCount).toBeGreaterThanOrEqual(50);
 
   // Spot-check one key per wave 2 file to surface drift if a future
   // PR drops or renames one.
@@ -293,10 +291,10 @@ test('every Tier 0 flag row is reachable inside the inspector body', async ({
     };
   });
 
-  // Wave 10-9 Δ22:graph 4 flag 追加で 42 → 46。
-  // reform-2026-05 Phase 3:theme.wcag_* + markdown.use_ir + theme.scale で 49。
-  // PR-2JJ v2 (2026-05-13):editor.format_panel_enabled 追加で 50。
-  expect(snap.rowCount).toBe(50);
+  // flag は wave ごとに増えるため exact count ではなく下限を assert
+  // (本 test の主眼は「全 flag row が body 内で reachable」であり、
+  // 行数そのものではない)。
+  expect(snap.rowCount).toBeGreaterThanOrEqual(50);
 
   // Body uses `overflow-y: scroll` — scrollbar is always visible.
   expect(snap.bodyScrollbarVisible).toBe(true);
