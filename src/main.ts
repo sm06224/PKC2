@@ -51,6 +51,7 @@ import {
   loadCollapsedFolders,
   saveCollapsedFolders,
 } from './adapter/platform/folder-prefs';
+import { loadEditMode } from './adapter/platform/edit-mode-prefs';
 import { readPkcData, chooseBootSource, finalizeChooserChoice } from './adapter/platform/pkc-data-source';
 import { showBootSourceChooser } from './adapter/ui/boot-source-chooser';
 import {
@@ -767,6 +768,7 @@ async function boot(): Promise<void> {
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        restoreEditModeFromStorage(dispatcher);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
           console.log('[PKC2] Light export detected — IDB save suppressed');
@@ -793,6 +795,7 @@ async function boot(): Promise<void> {
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        restoreEditModeFromStorage(dispatcher);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
       }
@@ -813,6 +816,7 @@ async function boot(): Promise<void> {
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        restoreEditModeFromStorage(dispatcher);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
       }
@@ -846,6 +850,20 @@ function restoreSettingsFromContainer(
   );
   const settings = resolveSettingsPayload(entry?.body);
   dispatcher.dispatch({ type: 'RESTORE_SETTINGS', settings });
+}
+
+/**
+ * Phase γ-A2 (A2-3, 2026-05-20): after SYS_INIT_COMPLETE, restore the
+ * persisted editMode (inline / window) from localStorage and dispatch
+ * SET_EDIT_MODE. No-op when nothing is stored — the reducer's
+ * undefined default resolves to inline (= legacy behavior), so a
+ * first-ever boot stays fully backward-compatible. editMode is a
+ * viewer-local preference (localStorage, not container), mirroring
+ * `restoreCollapsedFoldersForContainer`. See `edit-mode-prefs.ts`.
+ */
+function restoreEditModeFromStorage(dispatcher: Dispatcher): void {
+  const mode = loadEditMode();
+  if (mode) dispatcher.dispatch({ type: 'SET_EDIT_MODE', mode });
 }
 
 /**

@@ -19,6 +19,7 @@ import {
 import { render } from '@adapter/ui/renderer';
 import { bindActions } from '@adapter/ui/action-binder';
 import { createDispatcher } from '@adapter/state/dispatcher';
+import { loadEditMode } from '@adapter/platform/edit-mode-prefs';
 import type { Container } from '@core/model/container';
 
 function makeContainer(): Container {
@@ -58,6 +59,7 @@ describe('編集モード picker + window 配線 (Phase γ-A2)', () => {
   beforeEach(() => {
     __resetRegistry();
     __resetUrlCache();
+    localStorage.clear();
     document.body.innerHTML = '';
     root = document.createElement('div');
     root.id = 'pkc-root';
@@ -147,6 +149,15 @@ describe('編集モード picker + window 配線 (Phase γ-A2)', () => {
     modeBtn('inline').click();
     expect(d.getState().editMode).toBe('inline');
     expect(isActive('inline')).toBe(true);
+  });
+
+  it('flag ON:picker click は localStorage に永続化(A2-3)', () => {
+    setContainerFlagSource({ 'shell.edit_mode_enabled': true });
+    boot();
+    modeBtn('window').click();
+    expect(loadEditMode()).toBe('window');
+    modeBtn('inline').click();
+    expect(loadEditMode()).toBe('inline');
   });
 
   it('flag ON:編集中(phase=editing)は picker を出さない', () => {

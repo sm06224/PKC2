@@ -216,15 +216,17 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 **前提**:A2-2 は **OQ-A-1(Overlay 精度)** 合意が必須。
 
 **実装記録(2026-05-20、stack PR-pgc-27〜)**:A2-1(foundation)を
-`pgc-27`、A2-2(picker UI + window 配線)を `pgc-28` で着地。本 stack は
-γ-A1(sidebar)より先に γ-A2(編集 mode)から着手(両 sub-wave は独立、
-editMode foundation は sidebar に非依存)。A2-1 着手時に 3 mode
-(`overlay` / `split` / `window`)を **編集 surface 軸のみ**(`editMode:
-'inline' | 'window'`)に精緻化 — `split` は inline 内 sub-layout、透過
-overlay は OQ-A-1 UX 不確実で deferred。詳細は shell spec §2.5 / §2.6。
-flag は `shell.edit_mode_enabled`(boolean gate)1 本に集約。keyboard
-shortcut 体系 + localStorage 永続化(A2-3 以降)は本 surface model に
-沿って後続 stack PR で精緻化する。
+`pgc-27`、A2-2(picker UI + window 配線)を `pgc-28`、A2-3(localStorage
+永続化)を `pgc-29` で着地。本 stack は γ-A1(sidebar)より先に γ-A2
+(編集 mode)から着手(両 sub-wave は独立、editMode foundation は
+sidebar に非依存)。A2-1 着手時に 3 mode(`overlay` / `split` /
+`window`)を **編集 surface 軸のみ**(`editMode: 'inline' | 'window'`)
+に精緻化 — `split` は inline 内 sub-layout、透過 overlay は OQ-A-1 UX
+不確実で deferred。詳細は shell spec §2.5〜§2.7。flag は
+`shell.edit_mode_enabled`(boolean gate)1 本に集約。**γ-A2 は picker /
+window 配線 / 永続化が揃い機能的に完了**:per-archetype default(A2-6)
++ mode 別 keyboard shortcut(A2-7)は 2-mode model で不採用 / 不要、
+flag default ON 切替(A2-10)は user 判断に委ねる。
 
 ### §4.3 γ-A3:マルチウィンドウ(11 PR)
 

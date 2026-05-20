@@ -3060,10 +3060,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       return { state: next, events: [] };
     }
     case 'SET_EDIT_MODE': {
-      // Phase γ-A1:編集モード(inline / window)の選択を保持するだけの
-      // foundation reducer。UI / wiring は γ-A2 で接続。flag
-      // `shell.edit_mode_enabled` が OFF の間は誰も dispatch しないため
-      // editMode は undefined のまま = 従来の inline 編集(完全後方互換)。
+      // Phase γ-A2(A2-1):編集モード(inline / window)の選択を保持する
+      // だけの foundation reducer。UI / wiring は A2-2(pgc-28)で接続。
+      // flag `shell.edit_mode_enabled` が OFF の間は誰も dispatch しない
+      // ため editMode は undefined のまま = 従来の inline 編集(後方互換)。
       const next: AppState = { ...state, editMode: action.mode };
       return { state: next, events: [] };
     }

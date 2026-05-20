@@ -126,6 +126,7 @@ import {
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
 import { shellEditModeEnabled } from './shell-flags';
+import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
 import { parsePortablePkcReference } from '../../features/link/permalink';
@@ -3561,10 +3562,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'set-edit-mode': {
         // Phase γ-A2:編集モード picker。dispatch → re-render で picker の
         // active が更新され、以後あらゆる編集トリガが triggerEdit 経由で
-        // inline / window に分岐する。
+        // inline / window に分岐する。A2-3:user 選択は localStorage に
+        // 永続化(boot 時に main.ts が復元)。
         const mode = target.getAttribute('data-pkc-edit-mode');
         if (mode === 'inline' || mode === 'window') {
           dispatcher.dispatch({ type: 'SET_EDIT_MODE', mode });
+          saveEditMode(mode);
         }
         break;
       }

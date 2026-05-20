@@ -1,5 +1,5 @@
 /**
- * Phase γ-A1:shell 編集モード foundation。
+ * Phase γ-A2(A2-1):shell 編集モード foundation。
  *
  * 3 点を検証する:
  *   - AppState `editMode` field(初期値 undefined = 従来 inline 編集)
@@ -49,7 +49,7 @@ function readyState(overrides: Partial<AppState> = {}): AppState {
   };
 }
 
-describe('SET_EDIT_MODE reducer (Phase γ-A1 foundation)', () => {
+describe('SET_EDIT_MODE reducer (Phase γ-A2 A2-1 foundation)', () => {
   it('createInitialState: editMode は undefined(従来 inline 編集 = 後方互換)', () => {
     expect(createInitialState().editMode).toBeUndefined();
   });
@@ -113,7 +113,7 @@ describe('SET_EDIT_MODE reducer (Phase γ-A1 foundation)', () => {
   });
 });
 
-describe('shell.edit_mode_enabled flag (Phase γ-A1 foundation)', () => {
+describe('shell.edit_mode_enabled flag (Phase γ-A2 A2-1 foundation)', () => {
   beforeEach(() => {
     __resetRegistry();
     delete (globalThis as { __PKC_FLAGS_URL__?: Record<string, string> })

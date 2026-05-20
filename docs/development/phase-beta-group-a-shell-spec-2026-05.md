@@ -298,6 +298,37 @@ A2-1 foundation の `editMode` を user-facing にする slice。
 と §2.3 の localStorage 永続化は後続 A2 PR。本 slice は editMode を runtime
 state として保持するのみ(reload で inline に戻る)。
 
+### §2.7 γ-A2 A2-3:editMode 永続化(2026-05-20、pgc-29)
+
+§2.6 で「reload で inline に戻る」とした runtime-only 制約を解消する slice。
+
+- **persistence module**:`src/adapter/platform/edit-mode-prefs.ts`
+  (`loadEditMode` / `saveEditMode`)。localStorage key は `pkc2.editMode`、
+  値は `'inline'` / `'window'` の文字列そのもの。
+- **write**:action-binder の `set-edit-mode` handler が user の picker
+  選択時に `saveEditMode(mode)` を呼ぶ(boot restore の dispatch は
+  handler を通らないので user 操作のみ永続化される)。
+- **read**:main.ts の `restoreEditModeFromStorage` が SYS_INIT_COMPLETE
+  後に `loadEditMode()` → 非 null なら `SET_EDIT_MODE` を dispatch。
+  `restoreSettings` / `restoreCollapsedFolders` と同じ boot-restore pattern。
+
+§2.3 の key 名は当初 `pkc2.editMode.default`(3-mode + per-archetype
+override `pkc2.editMode.byArchetype` 前提)だったが、§2.5 の 2-mode
+surface model では per-archetype override を採らないため単一 key
+`pkc2.editMode` に簡約した。
+
+editMode は **viewer-local preference**:`container.meta` には書かず、
+export / import に不参加、device 間同期なし(§6.3 / `folder-prefs.ts` と
+同方針)。localStorage 不可環境では runtime state のみ(reload で inline)
+= 完全後方互換。
+
+**γ-A2 の到達点**:foundation(A2-1)+ picker / window 配線(A2-2)+
+永続化(A2-3)で編集 mode 選択は機能的に完了。A2-6 per-archetype default
+は §2.5 の方針で不採用、A2-7 mode 別 keyboard shortcut は picker + 既存
+`Ctrl+E`(triggerEdit 経由で editMode 尊重)で充足のため不要。A2-10 の
+flag default ON 切替は user 判断に委ねる(本 stack では
+`shell.edit_mode_enabled` は OFF のまま)。
+
 ---
 
 ## §3 提案 #4 マルチウィンドウ + main 遷移抑制
