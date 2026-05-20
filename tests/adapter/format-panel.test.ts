@@ -17,6 +17,7 @@ import {
   applySimpleInlineAttr,
   parseHighlight,
   applyHighlightColor,
+  applyAlignPrefix,
 } from '@adapter/ui/format-panel';
 import { render } from '@adapter/ui/renderer';
 import { createDispatcher } from '@adapter/state/dispatcher';
@@ -34,9 +35,9 @@ describe('format-panel — FORMAT_GROUPS registry', () => {
     ]);
   });
 
-  it('carries the 14 existing operations across groups', () => {
+  it('has 17 operations total (14 carried + 3 align)', () => {
     const total = FORMAT_GROUPS.reduce((n, g) => n + g.ops.length, 0);
-    expect(total).toBe(14);
+    expect(total).toBe(17);
   });
 
   it('Font group has size / family / text-color / highlight-color pickers', () => {
@@ -82,9 +83,9 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     }
   });
 
-  it('renders 14 operation buttons (data-pkc-format-label)', () => {
+  it('renders 17 operation buttons (data-pkc-format-label)', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(14);
+    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(17);
   });
 
   it('renders 4 value pickers with their option buttons', () => {
@@ -259,6 +260,50 @@ describe('format-panel — parseHighlight / applyHighlightColor (背景色、spe
   });
 });
 
+describe('format-panel — applyAlignPrefix (段落 align、spec §5.2)', () => {
+  function apply(value: string, start: number, end: number, target: string): string {
+    return applyAlignPrefix({ value, start, end }, target).value;
+  }
+
+  // case matrix(CLAUDE.md §4 規約、最低 10 件)
+  it('1. plain line + || → ||line', () => {
+    expect(apply('hello', 0, 5, '||')).toBe('||hello');
+  });
+  it('2. ||line + || → toggle off', () => {
+    expect(apply('||hello', 0, 7, '||')).toBe('hello');
+  });
+  it('3. ||line + |> → align 置換', () => {
+    expect(apply('||hello', 0, 7, '|>')).toBe('|>hello');
+  });
+  it('4. <|line + || → align 置換', () => {
+    expect(apply('<|hello', 0, 7, '||')).toBe('||hello');
+  });
+  it('5. |>line + |> → toggle off', () => {
+    expect(apply('|>hello', 0, 7, '|>')).toBe('hello');
+  });
+  it('6. 複数行(prefix なし)+ || → 各行に付与', () => {
+    expect(apply('a\nb\nc', 0, 5, '||')).toBe('||a\n||b\n||c');
+  });
+  it('7. 複数行混在 + || → 各行独立に toggle', () => {
+    expect(apply('||x\ny', 0, 5, '||')).toBe('x\n||y');
+  });
+  it('8. 空行 + || → || のみ', () => {
+    expect(apply('', 0, 0, '||')).toBe('||');
+  });
+  it('9. prefix のみの行 + 同 prefix → 空行に', () => {
+    expect(apply('||', 0, 2, '||')).toBe('');
+  });
+  it('10. CJK 行 + ||', () => {
+    expect(apply('日本語', 0, 3, '||')).toBe('||日本語');
+  });
+  it('11. quote 行 + || → align prefix を quote の前に', () => {
+    expect(apply('> quote', 0, 7, '||')).toBe('||> quote');
+  });
+  it('12. 行中選択でも行全体に適用', () => {
+    expect(apply('hello world', 3, 5, '|>')).toBe('|>hello world');
+  });
+});
+
 describe('format-panel — button click applies to the editor textarea', () => {
   function mountInEditor(): { panel: HTMLElement; ta: HTMLTextAreaElement } {
     const editor = document.createElement('div');
@@ -334,6 +379,22 @@ describe('format-panel — button click applies to the editor textarea', () => {
 
     (panel.closest('.pkc-editor') as HTMLElement).remove();
   });
+
+  it('clicking || sets the center-align prefix on the line', () => {
+    const { panel, ta } = mountInEditor();
+    ta.value = 'centered';
+    ta.focus();
+    ta.setSelectionRange(0, 8);
+
+    const centerBtn = panel.querySelector<HTMLButtonElement>(
+      '[data-pkc-format-label="||"]',
+    );
+    expect(centerBtn).not.toBeNull();
+    centerBtn!.click();
+    expect(ta.value).toBe('||centered');
+
+    (panel.closest('.pkc-editor') as HTMLElement).remove();
+  });
 });
 
 describe('format-panel — renderer integration (flag-gated)', () => {
@@ -381,7 +442,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     renderEditingText();
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
-    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(14);
+    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(17);
     expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(4);
   });
 

@@ -69,6 +69,39 @@ function prefixLines(sel: Selection, prefix: string): Selection {
   };
 }
 
+// ── 段落 align prefix `||` / `|>` / `<|`(spec §5.1 / §5.2)──
+//
+// align prefix は行頭の 2 文字。同 prefix が既にあれば除去(toggle off)、
+// 別 align prefix があれば置換、無ければ付与。3 種は排他。
+const ALIGN_PREFIXES = ['||', '|>', '<|'] as const;
+
+function stripAlignPrefix(line: string): { stripped: string; prefix: string | null } {
+  for (const p of ALIGN_PREFIXES) {
+    if (line.startsWith(p)) return { stripped: line.slice(p.length), prefix: p };
+  }
+  return { stripped: line, prefix: null };
+}
+
+// 選択範囲の各行に align prefix を toggle 適用する。
+export function applyAlignPrefix(sel: Selection, target: string): Selection {
+  const lineStart = sel.value.lastIndexOf('\n', sel.start - 1) + 1;
+  const lineEnd = sel.value.indexOf('\n', sel.end);
+  const lineEndIdx = lineEnd === -1 ? sel.value.length : lineEnd;
+  const block = sel.value.slice(lineStart, lineEndIdx);
+  const transformed = block
+    .split('\n')
+    .map((line) => {
+      const { stripped, prefix } = stripAlignPrefix(line);
+      return prefix === target ? stripped : `${target}${stripped}`;
+    })
+    .join('\n');
+  return {
+    value: `${sel.value.slice(0, lineStart)}${transformed}${sel.value.slice(lineEndIdx)}`,
+    start: lineStart,
+    end: lineStart + transformed.length,
+  };
+}
+
 // ── simple-inline `:text:attrs:` の attr 合成(spec §4.4)──
 //
 // simple-inline の attr は category を持ち、同 category は排他(size を 2 つ
@@ -273,6 +306,9 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: 'H2', title: '見出し 2 — ## text', apply: (s) => prefixLines(s, '## ') },
       { label: 'H3', title: '見出し 3 — ### text', apply: (s) => prefixLines(s, '### ') },
       { label: '>', title: '引用(quote)— > text', apply: (s) => prefixLines(s, '> ') },
+      { label: '<|', title: '左揃え(行頭 <| prefix、toggle)', apply: (s) => applyAlignPrefix(s, '<|') },
+      { label: '||', title: '中央揃え(行頭 || prefix、toggle)', apply: (s) => applyAlignPrefix(s, '||') },
+      { label: '|>', title: '右揃え(行頭 |> prefix、toggle)', apply: (s) => applyAlignPrefix(s, '|>') },
     ],
   },
   {
