@@ -456,11 +456,20 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: 'B', title: '太字(strong)— **text**', apply: (s) => wrapInline(s, '**') },
       { label: 'I', title: '斜体(emphasis)— *text*', apply: (s) => wrapInline(s, '*') },
       { label: 'S', title: '打ち消し(strike)— ~~text~~', apply: (s) => wrapInline(s, '~~') },
+      // 下線は PKC MD に専用 marker が無く simple-inline `:text:underline:` で表現
+      // する(renderer L-6、markdown-render.ts の attr `underline`)。
+      { label: 'U', title: '下線(underline)— :text:underline:', apply: (s) => applySimpleInlineAttr(s, 'underline') },
       { label: '`', title: 'inline code — `text`', apply: (s) => wrapInline(s, '`') },
       { label: '==', title: 'マーカー(mark)— ==text==', apply: (s) => wrapInline(s, '==') },
-      { label: '..', title: '強調点(em-dot)— ..text..', apply: (s) => wrapInline(s, '..') },
-      { label: 'sup', title: '上付き(sup)— <sup>text</sup>', apply: (s) => wrapAsymmetric(s, '<sup>', '</sup>') },
-      { label: 'sub', title: '下付き(sub)— <sub>text</sub>', apply: (s) => wrapAsymmetric(s, '<sub>', '</sub>') },
+      // 強調点(圏点)の canonical delimiter は `^^`(renderer L-2 pkc_em_dot_caret)。
+      // 旧 ribbon は `..` を使っていたが PKC MD に `..` 強調点は存在せず literal
+      // のまま残る不具合だった(pgc-39 で修正)。
+      { label: '^^', title: '強調点(em-dot)— ^^text^^', apply: (s) => wrapInline(s, '^^') },
+      // 上付き / 下付きは PKC MD では formal inline role `:sup:[…]` / `:sub:[…]`。
+      // markdown-it は `html: false` のため生 `<sup>` タグは escape されて
+      // literal 表示になる(旧 ribbon の不具合、pgc-39 で修正)。
+      { label: 'sup', title: '上付き(sup)— :sup:[text]', apply: (s) => wrapAsymmetric(s, ':sup:[', ']') },
+      { label: 'sub', title: '下付き(sub)— :sub:[text]', apply: (s) => wrapAsymmetric(s, ':sub:[', ']') },
     ],
     pickers: [
       FONT_SIZE_PICKER,
@@ -477,9 +486,13 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       { label: 'H2', title: '見出し 2 — ## text', apply: (s) => prefixLines(s, '## ') },
       { label: 'H3', title: '見出し 3 — ### text', apply: (s) => prefixLines(s, '### ') },
       { label: '>', title: '引用(quote)— > text', apply: (s) => prefixLines(s, '> ') },
-      { label: '<|', title: '左揃え(行頭 <| prefix、toggle)', apply: (s) => applyAlignPrefix(s, '<|') },
-      { label: '||', title: '中央揃え(行頭 || prefix、toggle)', apply: (s) => applyAlignPrefix(s, '||') },
-      { label: '|>', title: '右揃え(行頭 |> prefix、toggle)', apply: (s) => applyAlignPrefix(s, '|>') },
+      // PKC MD の段落 align(renderer L-5)は logical で **中央(||)と行末(|>)の
+      // 2 prefix のみ**。`<|` は renderer 上 `|>` と同じ end へ写像され「左揃え」
+      // にならないため ribbon からは除外(左 = prefix 無し = 既定の流れ方向、
+      // || / |> を toggle off で戻る)。applyAlignPrefix は旧 `<|` 入りの本文を
+      // 置換できるよう ALIGN_PREFIXES に `<|` を保持している。
+      { label: '||', title: '中央揃え(行頭 || prefix、toggle、解除で既定の左に戻る)', apply: (s) => applyAlignPrefix(s, '||') },
+      { label: '|>', title: '行末揃え(行頭 |> prefix、LTR では右、toggle)', apply: (s) => applyAlignPrefix(s, '|>') },
     ],
   },
   {

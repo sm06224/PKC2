@@ -40,9 +40,27 @@ describe('format-panel — FORMAT_GROUPS registry', () => {
     ]);
   });
 
-  it('has 28 operations total (25 + ordered + indent in/out)', () => {
+  it('has 28 operations total', () => {
     const total = FORMAT_GROUPS.reduce((n, g) => n + g.ops.length, 0);
     expect(total).toBe(28);
+  });
+
+  it('Font group includes underline (U) and em-dot (^^), drops the bogus `..`', () => {
+    const font = FORMAT_GROUPS.find((g) => g.id === 'font');
+    const labels = font?.ops.map((o) => o.label) ?? [];
+    expect(labels).toContain('U');
+    expect(labels).toContain('^^');
+    // 旧 ribbon の `..` は PKC MD に存在しない em-dot delimiter で除去済(pgc-39)。
+    expect(labels).not.toContain('..');
+  });
+
+  it('paragraph group offers || / |> align but not the mislabeled <|', () => {
+    const para = FORMAT_GROUPS.find((g) => g.id === 'paragraph');
+    const labels = para?.ops.map((o) => o.label) ?? [];
+    expect(labels).toContain('||');
+    expect(labels).toContain('|>');
+    // `<|` は renderer L-5 で `|>` と同じ end へ写像され「左揃え」にならないため除去(pgc-39)。
+    expect(labels).not.toContain('<|');
   });
 
   it('Font group has size / family / text-color / highlight-color pickers', () => {
@@ -157,6 +175,32 @@ describe('format-panel — operation apply math (PKC MD canonical)', () => {
 
   it('+++ inserts a section break block', () => {
     expect(applyByLabel('+++', '', 0, 0).value).toBe('+++');
+  });
+
+  // pgc-39:書式 ribbon ↔ PKC Markdown 不一致の修正(em-dot delimiter / sup-sub /
+  // underline)。旧 ribbon は `..` 強調点・生 `<sup>` タグを出していたが、
+  // renderer はどちらも render しない(literal 残り / html:false で escape)。
+  it('^^ wraps the selection in ^^ (em-dot canonical delimiter, not `..`)', () => {
+    const r = applyByLabel('^^', 'ここ', 0, 2);
+    expect(r.value).toBe('^^ここ^^');
+    expect(r.start).toBe(2);
+    expect(r.end).toBe(4);
+  });
+
+  it('sup wraps as :sup:[text] formal inline role (not raw <sup>, which html:false escapes)', () => {
+    expect(applyByLabel('sup', '2', 0, 1).value).toBe(':sup:[2]');
+  });
+
+  it('sub wraps as :sub:[text] formal inline role (not raw <sub>)', () => {
+    expect(applyByLabel('sub', 'n', 0, 1).value).toBe(':sub:[n]');
+  });
+
+  it('U wraps plain text as :text:underline: simple-inline', () => {
+    expect(applyByLabel('U', '下線', 0, 2).value).toBe(':下線:underline:');
+  });
+
+  it('U on an existing simple-inline appends underline (category-less, keeps size)', () => {
+    expect(applyByLabel('U', ':X:lg:', 0, 6).value).toBe(':X:lg,underline:');
   });
 });
 
