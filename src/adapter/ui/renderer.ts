@@ -3172,6 +3172,14 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     // を再利用し、検索結果を type で絞れるようにする。button は
     // `set-archetype-filter` を dispatch、`applyFilters` 経由で matched に反映。
     sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
+    // pgc-48:color filter strip。color tag 付き entry があるときだけ出る
+    // (renderColorFilterStrip は色無しなら null)。applyFilters は pgc-47 で
+    // colorTagFilter を受けるため、strip で色を選べば検索結果に連動する。
+    const colorStrip = renderColorFilterStrip(
+      state.container?.entries ?? [],
+      state.colorTagFilter ?? new Set(),
+    );
+    if (colorStrip) sidebar.appendChild(colorStrip);
   }
 
   const nav = resolveFilerNavigation(state);

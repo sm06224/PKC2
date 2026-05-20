@@ -1,11 +1,13 @@
 /**
  * @vitest-environment happy-dom
  *
- * Phase γ-A1(pgc-35):filer モード sidebar の per-folder 絞り込み検索。
+ * filer モード sidebar の検索。pgc-35 の per-folder 絞り込みを起点に、
+ * pgc-46 で global 検索化、pgc-47 で `applyFilters` full-text + archetype
+ * filter、pgc-48 で color filter strip へ拡張した経緯を被覆する。
  *
- * `SET_SIDEBAR_FILER_QUERY` reducer + 検索窓描画 + query による list 絞り
- * 込み + 一致なし案内 + 実 input event → filter の reform-2026-05 Phase 8
- * 順序性を検証する。
+ * `SET_SIDEBAR_FILER_QUERY` reducer + 検索窓描画 + query / archetype /
+ * color による list 絞り込み + 一致なし案内 + 実 input event → filter の
+ * reform-2026-05 Phase 8 順序性を検証する。
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
@@ -368,5 +370,66 @@ describe('filer モード sidebar の archetype filter (pgc-47)', () => {
       .querySelector<HTMLElement>('[data-pkc-action="set-archetype-filter"][data-pkc-archetype=""]')!
       .click();
     expect(itemLids().sort()).toEqual(['e1', 'e2', 'f1']);
+  });
+});
+
+describe('filer モード sidebar の color filter (pgc-48)', () => {
+  let root: HTMLElement;
+  let teardown: (() => void) | null = null;
+
+  const META = { container_id: 't', title: 'T', created_at: TS, updated_at: TS, schema_version: 1 };
+
+  beforeEach(() => {
+    __resetRegistry();
+    __resetUrlCache();
+    setContainerFlagSource({ 'sidebar.mode': 'filer' });
+    document.body.innerHTML = '';
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+    document.body.appendChild(root);
+    teardown = null;
+  });
+
+  afterEach(() => {
+    if (teardown) { teardown(); teardown = null; }
+  });
+
+  function bootWith(container: Container): void {
+    const d = createDispatcher();
+    d.onState((s) => render(s, root));
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(d.getState(), root);
+    teardown = bindActions(root, d);
+  }
+  function colorStrip(): HTMLElement | null {
+    return root.querySelector<HTMLElement>(
+      '[data-pkc-region="sidebar"][data-pkc-sidebar-mode="filer"] .pkc-color-filter-strip',
+    );
+  }
+
+  it('color tag 付き entry があると filer に color filter strip が出る', () => {
+    bootWith({
+      meta: META,
+      entries: [
+        { lid: 'e1', title: 'A', body: '', archetype: 'text', color_tag: 'red', created_at: TS, updated_at: TS },
+      ],
+      relations: [],
+      revisions: [],
+      assets: {},
+    });
+    expect(colorStrip()).not.toBeNull();
+  });
+
+  it('color tag が無ければ color filter strip は出ない', () => {
+    bootWith({
+      meta: META,
+      entries: [
+        { lid: 'e1', title: 'A', body: '', archetype: 'text', created_at: TS, updated_at: TS },
+      ],
+      relations: [],
+      revisions: [],
+      assets: {},
+    });
+    expect(colorStrip()).toBeNull();
   });
 });
