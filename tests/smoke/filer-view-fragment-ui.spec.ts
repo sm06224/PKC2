@@ -28,7 +28,13 @@ async function shot(page: Page, name: string): Promise<void> {
 }
 
 async function bootAndCreateUrlBackedText(page: Page, url: string): Promise<void> {
-  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree', { waitUntil: 'load' });
+  // pgc-40 で meta pane frontmatter は editor(input)が default になった。
+  // 本 test は read-only 表示の url→link / fragment badge を検証するため、
+  // `meta_pane.yaml_graphical_enabled=false` を明示して read-only 経路に固定。
+  await page.goto(
+    '/pkc2.html?pkc-flag=sidebar.mode=tree&pkc-flag=meta_pane.yaml_graphical_enabled=false',
+    { waitUntil: 'load' },
+  );
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 
