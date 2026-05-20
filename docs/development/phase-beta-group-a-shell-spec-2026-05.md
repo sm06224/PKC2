@@ -245,14 +245,17 @@ PR #475 + #477 で baseline 済(再発防止規約は規約 doc に反映済)。
 - backward compat:Tier 0 flag `editor.mode_legacy = false`(default)で
   3 mode 経路を有効化、`= true` で旧 detail-edit + Split View に完全戻し
 
-### §2.5 γ-A 実装での mode model 精緻化(2026-05-20、γ-A1 着手時)
+### §2.5 γ-A2 実装での mode model 精緻化(2026-05-20、γ-A2 A2-1 着手時)
+
+編集 mode は wave map §4.2 の **γ-A2**(sub-wave、A2-1〜A2-10)。本 §2.5
+は A2-1(foundation)着手時の model 精緻化記録。
 
 §2.1 の 3 mode(`overlay` / `split` / `window`)は **2 軸を 1 列に潰して**
 いた:**編集 surface**(中央ペイン内 vs 子 window)と **中央ペイン内の
 layout**(plain / split-preview / 透過 overlay)。`split` は `window` の
 peer ではなく、中央ペイン編集の sub-layout に過ぎない。
 
-γ-A1 foundation では surface 軸のみを `AppState.editMode` として model
+γ-A2 foundation では surface 軸のみを `AppState.editMode` として model
 化する:
 
 | `editMode` | 意味 | 既存実装との関係 |
@@ -264,7 +267,7 @@ peer ではなく、中央ペイン編集の sub-layout に過ぎない。
 別 concern** として後段で扱う。透過 Overlay は §8 OQ-A-1 で UX 不確実と
 されているため、`editMode` enum には含めず deferred とする。
 
-foundation の構成要素(γ-A1、本 PR):
+foundation の構成要素(γ-A2 A2-1、本 PR):
 
 - `AppState.editMode?: 'inline' | 'window'`(runtime state のみ、§6.3
   schema 不変は維持)
@@ -272,9 +275,9 @@ foundation の構成要素(γ-A1、本 PR):
 - Tier 0 flag `shell.edit_mode_enabled`(default `false`、OFF で従来の
   inline 編集のみ = 完全後方互換)
 
-UI / wiring(mode 選択 trigger、entry-window への分岐)は γ-A2 で接続。
-§5.2 の `editor.mode_*` 系 flag は 3-mode 経路を採る場合の予約であり、
-γ-A foundation は `shell.edit_mode_enabled` 1 本で gate する。
+UI / wiring(mode 選択 trigger、entry-window への分岐)は後続 A2 PR で
+接続。§5.2 の `editor.mode_*` 系 flag は 3-mode 経路を採る場合の予約で
+あり、γ-A2 foundation は `shell.edit_mode_enabled` 1 本で gate する。
 
 ---
 

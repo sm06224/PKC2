@@ -215,6 +215,15 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 **累積**:+9.6 KB js / +3.5 KB css。
 **前提**:A2-2 は **OQ-A-1(Overlay 精度)** 合意が必須。
 
+**実装記録(2026-05-20、stack PR-pgc-27〜)**:A2-1 を `pgc-27` で着地。
+本 stack は γ-A1(sidebar)より先に γ-A2(編集 mode)から着手(両 sub-wave
+は独立、editMode foundation は sidebar に非依存)。A2-1 着手時に 3 mode
+(`overlay` / `split` / `window`)を **編集 surface 軸のみ**(`editMode:
+'inline' | 'window'`)に精緻化 — `split` は inline 内 sub-layout、透過
+overlay は OQ-A-1 UX 不確実で deferred。詳細は shell spec §2.5。flag は
+`shell.edit_mode_enabled`(boolean gate)1 本に集約。A2-2〜A2-10 の
+PR-by-PR 内訳は本 surface model に沿って後続 stack PR で精緻化する。
+
 ### §4.3 γ-A3:マルチウィンドウ(11 PR)
 
 | PR | scope | Tier 0 flag | budget |

@@ -234,11 +234,11 @@ v3.x architecture Phase γ の Group B(右ペイン特化)。meta pane と graph
 - **PR-pgc-26 本 CHANGELOG + doc 同期**。
 - **数値**:`pipe-table-edit.ts` / `relation-kind-popup.ts` / `meta-pane-flags.ts` 新設、frontmatter-editor / graph-edit-mode / graph-bulk-relate / relation-kind-popup / meta-pane-modes test 計 30 件超、graph wire editor の Playwright visual parity test。
 
-### Phase γ-A — shell 編集モード基盤(editMode foundation、2026-05-20、stack PR-pgc-27〜)
+### Phase γ-A — shell 再構築(2026-05-20、stack PR-pgc-27〜)
 
-v3.x architecture Phase γ の Group A(shell 再構築)。編集の **surface**(中央ペイン inline / 専用 window)を選べる基盤を整える。main 着地せず stack(PR-pgc-27〜)。すべて flag gate、OFF で従来の inline 編集を完全維持。
+v3.x architecture Phase γ の Group A(shell 再構築)。wave map §4 の γ-A サブウェーブ(γ-A1 sidebar 再編 / γ-A2 編集 mode / γ-A3 マルチウィンドウ / γ-A4 sidebar removal)を stack で積む。両 sub-wave は独立のため本 stack は γ-A2(編集 mode)から着手。main 着地せず stack(PR-pgc-27〜)。すべて flag gate、OFF で従来挙動を完全維持。
 
-- **γ-A1 編集モード foundation**(PR-pgc-27):`AppState.editMode?: 'inline' | 'window'` field + `SET_EDIT_MODE` action / reducer(reduceReady 内、純粋 state mutation、副作用なし)+ Tier 0 flag `shell.edit_mode_enabled`(default OFF)。spec §2.1 の 3 mode(overlay / split / window)を **編集 surface 軸のみ** に精緻化(spec §2.5、overlay は OQ-A-1 UX 不確実で deferred、split は inline 内の sub-layout)。UI / wiring(mode 選択 trigger、entry-window 分岐)は γ-A2。`tests/adapter/shell-edit-mode.test.ts` 13 件(reducer 9 + flag 4)。
+- **γ-A2 編集モード foundation**(A2-1、PR-pgc-27):`AppState.editMode?: 'inline' | 'window'` field + `SET_EDIT_MODE` action / reducer(reduceReady 内、純粋 state mutation、副作用なし)+ Tier 0 flag `shell.edit_mode_enabled`(default OFF)。spec §2.1 の 3 mode(overlay / split / window)を **編集 surface 軸のみ** に精緻化(spec §2.5、overlay は OQ-A-1 UX 不確実で deferred、split は inline 内の sub-layout)。UI / wiring(mode 選択 trigger、entry-window 分岐)は後続 A2 PR。`tests/adapter/shell-edit-mode.test.ts` 13 件(reducer 9 + flag 4)。
 
 ---
 
