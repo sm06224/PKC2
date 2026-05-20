@@ -232,9 +232,10 @@ test('Group C visual parity: 固定 format ribbon が編集モードで常駐し
   const panel = page.locator('[data-pkc-region="format-panel"]');
   await expect(panel).toBeVisible({ timeout: 3_000 });
 
-  // 6 group + 14 operation button が描画されている
+  // 6 group + 14 operation button + 2 value picker が描画されている
   await expect(panel.locator('[data-pkc-region="format-panel-group"]')).toHaveCount(6);
-  await expect(panel.locator('.pkc-format-panel-btn')).toHaveCount(14);
+  await expect(panel.locator('[data-pkc-format-label]')).toHaveCount(14);
+  await expect(panel.locator('[data-pkc-picker]')).toHaveCount(2);
 
   // textarea に text を入れて選択
   const body = page.locator('textarea.pkc-editor-body[data-pkc-field="body"]').first();
@@ -254,6 +255,35 @@ test('Group C visual parity: 固定 format ribbon が編集モードで常駐し
 
   const value = await body.inputValue();
   expect(value).toBe('**Hello** ribbon');
+
+  // font-size picker:trigger を実 OS click で開き、L option を click すると
+  // 選択範囲が simple-inline :text:lg: で wrap される
+  await body.evaluate((ta: HTMLTextAreaElement) => {
+    ta.setSelectionRange(10, 16); // "ribbon"
+    ta.focus();
+  });
+  const sizeTrigger = panel.locator('[data-pkc-picker="font-size"] summary');
+  const triggerBox = await sizeTrigger.boundingBox();
+  expect(triggerBox).not.toBeNull();
+  if (!triggerBox) throw new Error('font-size trigger no box');
+  await page.mouse.click(
+    triggerBox.x + triggerBox.width / 2,
+    triggerBox.y + triggerBox.height / 2,
+  );
+  await page.waitForTimeout(80);
+
+  const lgOption = panel.locator(
+    '[data-pkc-picker="font-size"] [data-pkc-picker-value="lg"]',
+  );
+  const optionBox = await lgOption.boundingBox();
+  expect(optionBox).not.toBeNull();
+  if (!optionBox) throw new Error('lg option no box');
+  await page.mouse.click(
+    optionBox.x + optionBox.width / 2,
+    optionBox.y + optionBox.height / 2,
+  );
+  await page.waitForTimeout(100);
+  expect(await body.inputValue()).toBe('**Hello** :ribbon:lg:');
 
   await page.screenshot({ path: 'test-results/group-c-format-ribbon-parity.png' });
 });

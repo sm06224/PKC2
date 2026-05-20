@@ -9762,6 +9762,32 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: 2px solid var(--c-accent);
   outline-offset: 1px;
 }
+/* 値選択 picker(font-size / font-family 等)— trigger + option popup。 */
+.pkc-format-panel-picker {
+  position: relative;
+  display: inline-block;
+}
+.pkc-format-panel-picker-trigger {
+  list-style: none;
+}
+.pkc-format-panel-picker-trigger::-webkit-details-marker {
+  display: none;
+}
+.pkc-format-panel-picker-body {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
 
 /* ── Data.. dropdown menu(PR-2JJ v2、entry detail header、AST / Pandoc 出力)──
    現在 selected entry の body を AST / Canonical / Pandoc / HTML に変換して
