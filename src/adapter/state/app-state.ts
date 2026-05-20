@@ -333,6 +333,11 @@ export interface AppState {
    */
   graphMode?: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
   /**
+   * Phase γ-B3:meta pane の表示 mode。all = 全 section、properties =
+   * frontmatter のみ、references = 関連 section のみ。flag gate(spec §4)。
+   */
+  metaPaneMode?: 'all' | 'properties' | 'references';
+  /**
    * Optional focus lid for graph view. When set, the graph centers on
    * this entry and includes its 1-hop neighbourhood. When unset, the
    * graph shows the full container.
@@ -3043,6 +3048,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     }
     case 'SET_GRAPH_MODE': {
       const next: AppState = { ...state, graphMode: action.mode };
+      return { state: next, events: [] };
+    }
+    case 'SET_META_PANE_MODE': {
+      const next: AppState = { ...state, metaPaneMode: action.mode };
       return { state: next, events: [] };
     }
     case 'OPEN_GRAPH_FOR_ENTRY': {

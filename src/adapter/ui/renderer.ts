@@ -13,7 +13,10 @@ import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
 import { renderFormatPanel, formatPanelEnabled } from './format-panel';
-import { metaPaneYamlGraphicalEnabled } from './meta-pane-flags';
+import {
+  metaPaneYamlGraphicalEnabled,
+  metaPaneModeTabsEnabled,
+} from './meta-pane-flags';
 import { renderImagePreviewModal } from './image-preview';
 import {
   bindGraphCanvas,
@@ -828,7 +831,7 @@ function renderShell(state: AppState): HTMLElement {
     main.appendChild(rightHandle);
 
     const canEdit = state.phase === 'ready' && !state.readonly;
-    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter);
+    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter, state.metaPaneMode ?? 'all');
     if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(metaPane);
   }
@@ -7485,12 +7488,60 @@ function renderMetaPane(
    * every caller that pre-dates the Tag filter axis.
    */
   activeTagFilter: ReadonlySet<string> | undefined = undefined,
+  metaPaneMode: 'all' | 'properties' | 'references' = 'all',
 ): HTMLElement {
   const endProfile = profileStart('render:meta');
   try {
-    return renderMetaPaneImpl(entry, canEdit, container, sharedLinkIndex, activeTagFilter);
+    return renderMetaPaneImpl(
+      entry,
+      canEdit,
+      container,
+      sharedLinkIndex,
+      activeTagFilter,
+      metaPaneMode,
+    );
   } finally {
     endProfile();
+  }
+}
+
+// Phase γ-B3:meta pane mode bar(spec §4)。
+function renderMetaPaneModeBar(mode: string): HTMLElement {
+  const bar = createElement('div', 'pkc-meta-pane-mode-bar');
+  bar.setAttribute('data-pkc-region', 'meta-pane-mode-bar');
+  for (const m of [
+    { v: 'all', label: 'すべて' },
+    { v: 'properties', label: 'Properties' },
+    { v: 'references', label: '関連' },
+  ]) {
+    const btn = createElement('button', 'pkc-meta-pane-mode-btn');
+    btn.setAttribute('data-pkc-action', 'set-meta-pane-mode');
+    btn.setAttribute('data-pkc-meta-pane-mode', m.v);
+    if (m.v === mode) btn.classList.add('pkc-meta-pane-mode-active');
+    btn.textContent = m.label;
+    bar.appendChild(btn);
+  }
+  return bar;
+}
+
+// mode に応じて meta pane の section 表示を絞る。all は全表示。region 無し
+// (header / timestamps)と mode bar は常時表示。
+const META_PANE_MODE_VISIBLE: Readonly<
+  Record<string, readonly string[] | null>
+> = {
+  all: null,
+  properties: ['frontmatter'],
+  references: ['references', 'tags', 'entry-tags', 'relation-create'],
+};
+function applyMetaPaneModeFilter(pane: HTMLElement, mode: string): void {
+  const visible = META_PANE_MODE_VISIBLE[mode];
+  if (!visible) return;
+  for (const child of Array.from(pane.children)) {
+    const region = child.getAttribute('data-pkc-region');
+    if (!region || region === 'meta-pane-mode-bar') continue;
+    if (!visible.includes(region)) {
+      (child as HTMLElement).style.display = 'none';
+    }
   }
 }
 
@@ -7500,6 +7551,7 @@ function renderMetaPaneImpl(
   container: Container | null,
   sharedLinkIndex: LinkIndex | null = null,
   activeTagFilter: ReadonlySet<string> | undefined = undefined,
+  metaPaneMode: 'all' | 'properties' | 'references' = 'all',
 ): HTMLElement {
   const meta = createElement('aside', 'pkc-meta-pane');
   meta.setAttribute('data-pkc-region', 'meta');
@@ -7523,6 +7575,11 @@ function renderMetaPaneImpl(
   infoHeader.appendChild(copyLinkBtn);
 
   meta.appendChild(infoHeader);
+
+  // Phase γ-B3:flag ON で meta pane mode bar(すべて / Properties / 関連)。
+  if (metaPaneModeTabsEnabled()) {
+    meta.appendChild(renderMetaPaneModeBar(metaPaneMode));
+  }
 
   // Created / Updated timestamps
   const timestamps = createElement('div', 'pkc-meta-timestamps');
@@ -8209,6 +8266,12 @@ function renderMetaPaneImpl(
 
       meta.appendChild(sandboxSection);
     }
+  }
+
+  // Phase γ-B3:flag ON で mode に応じて section 表示を絞る。
+  if (metaPaneModeTabsEnabled()) {
+    meta.setAttribute('data-pkc-meta-pane-mode', metaPaneMode);
+    applyMetaPaneModeFilter(meta, metaPaneMode);
   }
 
   return meta;

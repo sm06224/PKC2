@@ -3548,6 +3548,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (canvas) resetGraphCanvasZoom(canvas);
         break;
       }
+      case 'set-meta-pane-mode': {
+        // Phase γ-B3:meta pane mode tab。dispatch → re-render で section が
+        // mode に応じて絞られる。
+        const mode = target.getAttribute('data-pkc-meta-pane-mode');
+        if (mode === 'all' || mode === 'properties' || mode === 'references') {
+          dispatcher.dispatch({ type: 'SET_META_PANE_MODE', mode });
+        }
+        break;
+      }
       case 'bulk-relate-selected': {
         // Phase γ-B2-6:multi-select した node を、先頭 node を hub に放射状
         // (hub → 各 node)で一括 relate。kind は popup で選ぶ。各 dispatch は

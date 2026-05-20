@@ -5849,6 +5849,28 @@ mark.pkc-search-mark {
   color: var(--c-bg);
 }
 
+/* ── meta pane mode bar(Group B、Phase γ-B3)── */
+.pkc-meta-pane-mode-bar {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+.pkc-meta-pane-mode-btn {
+  flex: 1;
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1-5);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-meta-pane-mode-btn.pkc-meta-pane-mode-active {
+  background: var(--c-accent);
+  color: var(--c-bg);
+}
+
 /* ── frontmatter warnings 赤バー(Group B、Phase γ-B1)── */
 .pkc-frontmatter-warning {
   display: flex;

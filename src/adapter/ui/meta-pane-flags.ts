@@ -12,3 +12,14 @@ export const metaPaneYamlGraphicalEnabled = defineFlag<boolean>(
       'meta pane の frontmatter section を編集可能な graphical editor にする。OFF で従来の read-only 表示',
   },
 );
+
+// Phase γ-B3:meta pane の mode tab(all / properties / references)。
+export const metaPaneModeTabsEnabled = defineFlag<boolean>(
+  'meta_pane.mode_tabs_enabled',
+  false,
+  {
+    category: 'meta_pane',
+    description:
+      'meta pane 上部に mode tab(すべて / Properties / 関連)を表示し、section を mode で絞る。OFF で従来の全 section 表示',
+  },
+);
