@@ -3108,19 +3108,24 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
   const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
 
-  // Phase γ-A1(pgc-35):現フォルダ内の絞り込み。query は per-folder
-  // filter(center filer の subtree 検索 filerSearchQuery とは別概念)。
+  // pgc-46:query があれば現フォルダ内ではなく container 全体を title
+  // 部分一致で検索する(user 指摘「ツリー表示の検索オプションが無くなって
+  // いる」への対応 — pgc-35 の per-folder filter を global search へ拡張)。
+  // query 空時は従来どおり現スコープの folder navigation を表示。
   const query = (state.sidebarFilerQuery ?? '').trim().toLowerCase();
-  const matched =
-    query.length > 0
-      ? visibleChildren.filter((e) =>
-          (e.title || e.lid).toLowerCase().includes(query),
-        )
-      : visibleChildren;
+  const searching = query.length > 0;
+  const matched = searching
+    ? (state.container?.entries ?? [])
+        .filter((e) => !isSystemArchetype(e.archetype))
+        .filter((e) => (e.title || e.lid).toLowerCase().includes(query))
+    : visibleChildren;
 
   const header = createElement('div', 'pkc-sidebar-filer-header');
   const label = createElement('span', 'pkc-sidebar-filer-label');
-  label.textContent = scope ? (scope.title || scope.lid) : 'Root';
+  // pgc-46:検索中は scope 名でなく「検索結果」であることを示す。
+  label.textContent = searching
+    ? '🔍 検索結果'
+    : scope ? (scope.title || scope.lid) : 'Root';
   header.appendChild(label);
   // Phase γ-A1:現スコープの(絞り込み後の)item 数を表示。
   const count = createElement('span', 'pkc-sidebar-filer-count');
@@ -3136,23 +3141,29 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     sidebar.appendChild(buildFilerMultiActionBar(state, 'sidebar'));
   }
 
-  // Phase γ-A1(pgc-35):folder に item があるときだけ絞り込み検索窓を
-  // 出す。data-pkc-field は render-continuity helper が focus + caret を
-  // 復元するためのキー(full re-render を跨いで日本語 IME 入力が壊れない)。
-  if (visibleChildren.length > 0) {
+  // pgc-46:global search 窓。container に entry があれば常時表示する
+  // (空 folder からでも全体検索できるよう、pgc-35 の「現 folder に item が
+  // あるときだけ」gate を撤廃)。data-pkc-field は render-continuity helper
+  // が focus + caret を full re-render 跨ぎで復元するキー(IME が壊れない)。
+  const hasAnyEntry = (state.container?.entries ?? []).some(
+    (e) => !isSystemArchetype(e.archetype),
+  );
+  if (hasAnyEntry) {
     const searchInput = document.createElement('input');
     searchInput.type = 'search';
     searchInput.className = 'pkc-sidebar-filer-search';
     searchInput.setAttribute('data-pkc-action', 'set-sidebar-filer-query');
     searchInput.setAttribute('data-pkc-field', 'sidebar-filer-search');
-    searchInput.setAttribute('placeholder', '🔍 このフォルダ内を絞り込み');
+    searchInput.setAttribute('placeholder', '🔍 全エントリを検索');
     searchInput.value = state.sidebarFilerQuery ?? '';
     sidebar.appendChild(searchInput);
   }
 
   const nav = resolveFilerNavigation(state);
   const list = createElement('ul', 'pkc-sidebar-filer-list');
-  if (nav.parent) {
+  // pgc-46:検索中は folder navigation でなく flat な検索結果なので nav-up
+  // を出さない(query を消すと folder view へ戻る)。
+  if (nav.parent && !searching) {
     const li = createElement('li', 'pkc-sidebar-filer-item pkc-sidebar-filer-nav-up');
     li.setAttribute('data-pkc-action', 'select-entry');
     li.setAttribute('data-pkc-lid', nav.parent.lid);
@@ -3192,21 +3203,19 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   }
   sidebar.appendChild(list);
 
-  if (visibleChildren.length === 0) {
-    // Phase γ-A1:空スコープの案内(従来の素っ気ない "(empty)" を改善)。
-    // scoped 時は list に nav-up があるので戻る導線は残る。
-    const empty = createElement('div', 'pkc-sidebar-filer-empty');
-    empty.textContent = scope ? 'このフォルダは空です' : '項目がありません';
-    sidebar.appendChild(empty);
-  } else if (matched.length === 0) {
-    // Phase γ-A1(pgc-35):検索 query に一致なし。
+  if (searching && matched.length === 0) {
+    // pgc-46:global 検索 query に一致なし。
     const noMatch = createElement('div', 'pkc-sidebar-filer-empty');
     noMatch.setAttribute('data-pkc-region', 'filer-sidebar-no-match');
     noMatch.textContent = `「${state.sidebarFilerQuery ?? ''}」に一致なし`;
     sidebar.appendChild(noMatch);
-  } else {
-    // Phase γ-A1:操作ヒント(pgc-33 の DnD 着地で「ドラッグで移動」が
-    // 有効になった)。
+  } else if (!searching && visibleChildren.length === 0) {
+    // Phase γ-A1:空スコープの案内。scoped 時は nav-up が戻る導線。
+    const empty = createElement('div', 'pkc-sidebar-filer-empty');
+    empty.textContent = scope ? 'このフォルダは空です' : '項目がありません';
+    sidebar.appendChild(empty);
+  } else if (!searching) {
+    // Phase γ-A1:操作ヒント(pgc-33 の DnD 着地で「ドラッグで移動」が有効)。
     const hint = createElement('div', 'pkc-sidebar-filer-hint');
     hint.setAttribute('data-pkc-region', 'filer-sidebar-hint');
     hint.textContent = 'ドラッグで移動 · ダブルクリックで別窓';

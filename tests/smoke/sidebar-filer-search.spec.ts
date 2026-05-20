@@ -1,10 +1,11 @@
 /**
- * filer モード sidebar の per-folder 検索 — visual parity(Group A、
- * γ-A1、pgc-35)。
+ * filer モード sidebar の global 検索 — visual parity(Group A、γ-A1)。
+ * pgc-46 で per-folder filter → container 全体の global search に拡張。
  *
  * reform-2026-05 §6 visual-state-parity-testing 準拠。実ブラウザの検索窓
  * に実入力(`fill` = focus + 実 input event)を行い、list が絞り込まれ
- * no-match 案内が出る consumer 挙動まで verify する。
+ * no-match 案内が出る consumer 挙動まで verify する。global 検索の
+ * cross-folder 動作は `sidebar-filer-search.test.ts`(happy-dom)が被覆。
  */
 
 import { test, expect, type Page } from '@playwright/test';

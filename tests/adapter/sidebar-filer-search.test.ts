@@ -183,3 +183,100 @@ describe('filer モード sidebar の per-folder 検索 (Phase γ-A1, pgc-35)', 
     expect(d.getState().sidebarFilerQuery).toBe('りんご'); // 確定で 1 回 dispatch
   });
 });
+
+describe('filer モード sidebar の global 検索 (pgc-46)', () => {
+  let root: HTMLElement;
+  let teardown: (() => void) | null = null;
+
+  /** f1 > e1(りんご)、f2 > e2(ばなな)の 2 階層 nested container。 */
+  function nestedContainer(): Container {
+    const e = (lid: string, title: string, archetype: 'text' | 'folder') => ({
+      lid, title, body: '', archetype, created_at: TS, updated_at: TS,
+    });
+    return {
+      meta: { container_id: 't', title: 'T', created_at: TS, updated_at: TS, schema_version: 1 },
+      entries: [
+        e('f1', 'フォルダ1', 'folder'),
+        e('f2', 'フォルダ2', 'folder'),
+        e('e1', 'りんご', 'text'),
+        e('e2', 'ばなな', 'text'),
+      ],
+      relations: [
+        { id: 'r1', from: 'f1', to: 'e1', kind: 'structural', created_at: TS, updated_at: TS },
+        { id: 'r2', from: 'f2', to: 'e2', kind: 'structural', created_at: TS, updated_at: TS },
+      ],
+      revisions: [],
+      assets: {},
+    };
+  }
+
+  beforeEach(() => {
+    __resetRegistry();
+    __resetUrlCache();
+    setContainerFlagSource({ 'sidebar.mode': 'filer' });
+    document.body.innerHTML = '';
+    root = document.createElement('div');
+    root.id = 'pkc-root';
+    document.body.appendChild(root);
+    teardown = null;
+  });
+
+  afterEach(() => {
+    if (teardown) { teardown(); teardown = null; }
+  });
+
+  function boot(selectLid?: string): ReturnType<typeof createDispatcher> {
+    const dispatcher = createDispatcher();
+    dispatcher.onState((s) => render(s, root));
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: nestedContainer() });
+    if (selectLid) dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: selectLid });
+    render(dispatcher.getState(), root);
+    teardown = bindActions(root, dispatcher);
+    return dispatcher;
+  }
+
+  function itemLids(): string[] {
+    return Array.from(
+      root.querySelectorAll<HTMLElement>('.pkc-sidebar-filer-item[data-pkc-draggable]'),
+    ).map((li) => li.getAttribute('data-pkc-lid') ?? '');
+  }
+
+  it('query 空 + folder scope:現フォルダの直下の子のみ表示(folder navigation)', () => {
+    boot('f1');
+    expect(itemLids()).toEqual(['e1']);
+  });
+
+  it('query 入力:現スコープ外の entry も container 全体から見つかる(global)', () => {
+    const d = boot('f1');
+    d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: 'ばなな' });
+    // e2 は f2 の子で f1 scope 外。global search なので見つかる。
+    expect(itemLids()).toContain('e2');
+  });
+
+  it('global 検索はフォルダも entry も横断ヒットする', () => {
+    const d = boot();
+    d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: 'フォルダ' });
+    expect(itemLids().sort()).toEqual(['f1', 'f2']);
+  });
+
+  it('global 検索中は nav-up を出さない(flat な検索結果)', () => {
+    const d = boot('f1');
+    d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: 'りんご' });
+    expect(root.querySelector('.pkc-sidebar-filer-nav-up')).toBeNull();
+  });
+
+  it('global 検索 query を消すと folder navigation に戻る', () => {
+    const d = boot('f1');
+    d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: 'ばなな' });
+    d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: '' });
+    expect(itemLids()).toEqual(['e1']);
+  });
+
+  it('一致なしは no-match 案内を出す', () => {
+    const d = boot('f1');
+    d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: 'zzz存在しない語' });
+    expect(
+      root.querySelector('[data-pkc-region="filer-sidebar-no-match"]'),
+    ).not.toBeNull();
+  });
+});
