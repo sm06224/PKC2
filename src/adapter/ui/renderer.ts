@@ -21,8 +21,10 @@ import {
   buildTimeAxisHint,
   archetypeEmoji,
   relationColor,
+  getGraphEditMode,
   type GraphCanvasPayload,
 } from './graph-canvas';
+import { graphEditModeEnabled } from '../../features/graph/flags';
 import { autoDetectFilerProfile } from '../../features/filer/auto-display-profile';
 import { isExplicitAlbum } from '../../features/album/album-metadata';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
@@ -6098,6 +6100,25 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   });
   select.setAttribute('data-pkc-graph-mode', mode);
   toolbar.appendChild(select);
+
+  // Phase γ-B2:relation wire editor の View / Edit toggle(flag gate)。
+  if (graphEditModeEnabled()) {
+    const editToggle = createElement('div', 'pkc-graph-edit-toggle');
+    editToggle.setAttribute('data-pkc-region', 'graph-edit-toggle');
+    const current = getGraphEditMode();
+    for (const m of [
+      { v: 'view', label: '👁 View' },
+      { v: 'edit', label: '✎ Edit' },
+    ]) {
+      const btn = createElement('button', 'pkc-graph-edit-toggle-btn');
+      btn.setAttribute('data-pkc-action', 'set-graph-edit-mode');
+      btn.setAttribute('data-pkc-graph-edit-mode', m.v);
+      if (m.v === current) btn.classList.add('pkc-graph-edit-toggle-active');
+      btn.textContent = m.label;
+      editToggle.appendChild(btn);
+    }
+    toolbar.appendChild(editToggle);
+  }
 
   if (state.graphFocusLid && state.container) {
     const focus = state.container.entries.find((e) => e.lid === state.graphFocusLid);

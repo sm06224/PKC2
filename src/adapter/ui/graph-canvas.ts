@@ -155,6 +155,23 @@ function getOrInitView(canvas: HTMLCanvasElement): CanvasViewState {
   return v;
 }
 
+// ── Phase γ-B2:relation wire editor の edit mode ──
+//
+// graph view の view / edit mode を保持する canvas-local runtime state。
+// edit mode では node 間 drag で relation を作成する(drag 実装は後続 PR)。
+// AppState には載せない(graph view の runtime 操作 state、persistence 不要)。
+export type GraphEditMode = 'view' | 'edit';
+
+let graphEditMode: GraphEditMode = 'view';
+
+export function getGraphEditMode(): GraphEditMode {
+  return graphEditMode;
+}
+
+export function setGraphEditMode(mode: GraphEditMode): void {
+  graphEditMode = mode;
+}
+
 /**
  * Public — renderer calls this to (re)bind the data + draw. Idempotent.
  * The view state(zoom / pan)survives re-binding so the user's zoom

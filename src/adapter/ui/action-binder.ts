@@ -36,7 +36,7 @@ import {
   isMediaViewerOpen,
 } from './media-viewer';
 import { openImagePreview } from './image-preview';
-import { resetGraphCanvasZoom } from './graph-canvas';
+import { resetGraphCanvasZoom, setGraphEditMode } from './graph-canvas';
 import {
   enhanceTable,
   sortColumn,
@@ -3545,6 +3545,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           '[data-pkc-region="graph-canvas"]',
         );
         if (canvas) resetGraphCanvasZoom(canvas);
+        break;
+      }
+      case 'set-graph-edit-mode': {
+        // Phase γ-B2:graph view の View / Edit toggle。edit mode は
+        // canvas-local runtime state(dispatch でない)なので、toggle の
+        // active class も直接更新する。
+        const mode = target.getAttribute('data-pkc-graph-edit-mode');
+        if (mode === 'view' || mode === 'edit') {
+          setGraphEditMode(mode);
+          const toggle = target.closest(
+            '[data-pkc-region="graph-edit-toggle"]',
+          );
+          toggle
+            ?.querySelectorAll('[data-pkc-graph-edit-mode]')
+            .forEach((b) => {
+              b.classList.toggle(
+                'pkc-graph-edit-toggle-active',
+                b.getAttribute('data-pkc-graph-edit-mode') === mode,
+              );
+            });
+        }
         break;
       }
       case 'toggle-graph-region-select-mode': {
