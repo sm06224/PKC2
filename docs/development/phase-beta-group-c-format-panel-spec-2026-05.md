@@ -12,13 +12,38 @@
 
 ---
 
+## 訂正 notice(2026-05-20、reform / scrap-and-build)
+
+本 spec 初版(PR-β3 = PR #483)の §1 / §3 は **事実誤認** を含んでいた。
+
+- **誤**:「desktop 固定 toolbar は未実装、format affordance は
+  `snippet-toolbar.ts` の floating popup のみ」
+- **実態**:`src/adapter/ui/format-panel.ts`(PR-2JJ v2、398 行、本番
+  稼働中)= **選択追従の floating 書式 panel(14 button)** が既に存在
+- **原因**:Group C 調査の Explore agent が `format-panel.ts` を grep し
+  損ね、Claude が agent report を verify せず spec 化した
+  (CLAUDE.md「trust but verify」違反)
+- **roadmap §206「14 button」記述は古くない** — この既存 panel を正しく
+  指していた
+
+**user 判断(2026-05-20)**:既存 floating panel は **floating + 選択追従
+の UX が使いにくい** ため **scrap-and-build**(破棄 → desktop 固定 ribbon
+を建て直し)。本訂正 PR(stack PR-pgc-01)で §0 / §1.1 / §3.1 を実態に
+合わせ、Phase γ-C wave を scrap-and-build 構成に再定義した。flag は scrap
+後 `editor.format_panel_enabled` 1 本を新 panel が引き継ぐ(§5 の
+`format_panel.*` 多段 flag 案は破棄、実装 PR で確定)。
+
+---
+
 ## §0 本書の位置付け
 
 v3 提案 #7 は「**Word / Notion から来た非プログラマ user の引き止め**」を
-狙う UX 提案。現状の PKC2 の書式入力 affordance は touch 向け floating
-popup(`snippet-toolbar.ts`、§1.1)に限られ、**desktop 向けの常駐リッチ
-パネルが存在しない**。Group C はこの空白を埋め、font / 段落 / 表 / 番号
-リスト / 検索置換を **1 つの format panel** に集約する。
+狙う UX 提案。現状の PKC2 には書式入力 affordance が **2 つ** ある:touch
+向け floating popup(`snippet-toolbar.ts`)と、選択追従の floating 書式
+panel(`format-panel.ts`、14 button、§1.1)。後者は **floating + 選択追従
+の UX が使いにくい**(2026-05-20 user 判断)。Group C は `format-panel.ts`
+を **scrap-and-build** し、font / 段落 / 表 / 番号リスト / 検索置換を
+**1 つの desktop 固定 format panel** に集約・再設計する。
 
 **最重要の縛り条件**:Group C は **新しい markdown 記法を作らない**(原則)。
 panel の各 operation は **既存 PKC Markdown canonical 記法に書き戻せる
@@ -33,18 +58,43 @@ Group C は **領域 6(markdown 方言)** および **領域 8(番号体系)** �
 
 ## §1 現状の事実関係(spec の前提)
 
-### §1.1 現 format toolbar(floating、18 snippet、desktop 固定 未実装)
+### §1.1 現 format 入力 affordance(2 つ存在、format-panel.ts は scrap 対象)
+
+PKC2 の編集モードには書式入力の affordance が **2 つ** 存在する。
+
+#### (a) snippet-toolbar.ts — touch 向け floating popup(維持)
 
 **File**:[`src/adapter/ui/snippet-toolbar.ts:120-157`](../../src/adapter/ui/snippet-toolbar.ts)
 
-実装:
-- `renderFloatingTrigger()`(L.120):`+` トリガーボタン
-- `renderFloatingPopup()`(L.137):`+` click で開く横一列ボタン群
-- **iOS / iPad 浮動型 floating toolbar として実装**、**desktop 向け固定
-  (常駐)toolbar は未実装**
-- ボタン総数 **18**(roadmap §206 の「14 button」記述は古い、実際は 18)
+- `renderFloatingTrigger()` / `renderFloatingPopup()`:caret 追従の `+`
+  trigger → 横一列 **18 snippet** popup
+- iOS / iPad 浮動型、CSS で `pointer: coarse` に gate
+- Group C は **これは scrap しない**(touch の素早い記号入力は floating が
+  最適、§3.3 で touch 経路として維持)
 
-**18 snippet 一覧**(`data-pkc-snippet` 値):
+#### (b) format-panel.ts — 選択追従 floating 書式 panel(★ scrap 対象)
+
+**File**:[`src/adapter/ui/format-panel.ts`](../../src/adapter/ui/format-panel.ts)
+(398 行、PR-2JJ v2、本番稼働中)
+
+- 編集モードの textarea で text を **選択すると選択範囲に追従** して出る
+  floating panel
+- **14 button**:B / I / S / `` ` `` / `==` / `..` / sup / sub / link /
+  H1 / H2 / H3 / `>` / `·`(全て PKC MD canonical wrap)
+- pure helper:`wrapInline()` / `wrapAsymmetric()` / `prefixLines()` —
+  **記法変換ロジックは正しい**、scrap-and-build でも再利用可能
+- Tier 0 flag `editor.format_panel_enabled`(default **ON**、現在ユーザーに
+  表示中)、`mountFormatPanel()` を `main.ts:386` で wiring
+- CSS:`base.css:9712-9752`、test:`tests/adapter/format-panel.test.ts`
+- **scrap-and-build 対象**:floating + 選択追従の UX が使いにくい
+  (2026-05-20 user 判断)。Group C は本 file を破棄し、desktop 固定
+  ribbon として建て直す(§3.1)
+
+**roadmap §206「14 button」記述は古くない** — (b) の format-panel.ts を
+正しく指していた。本 spec 初版が「snippet-toolbar の 18 が実態、14 は
+古い」と書いたのは誤り(冒頭の訂正 notice 参照)。
+
+**18 snippet 一覧**(snippet-toolbar.ts、`data-pkc-snippet` 値):
 
 | group | snippet 名 |
 |---|---|
@@ -56,7 +106,7 @@ Group C は **領域 6(markdown 方言)** および **領域 8(番号体系)** �
 | align | `align-center` / `align-right` / `align-left` |
 | 装飾 | `highlight`(`==X==`)/ `simple-inline`(`:X:attrs:`)/ `ruby`(`[[ruby:X|Y]]`)/ `em-dot`(`^^X^^`)/ `comment-inline`(`%%X%%`)|
 
-archetype:**TEXT / TEXTLOG 両対応**。
+archetype:snippet-toolbar / format-panel とも **TEXT / TEXTLOG 両対応**。
 
 ### §1.2 applySnippet ロジック(wrap / toggle / insert)
 
@@ -253,15 +303,26 @@ Group C で「画像挿入」button を作る場合、出力する記法は領�
 
 ## §3 format panel の構造刷新
 
-### §3.1 floating(現状)+ desktop 固定 toolbar の二経路
+### §3.1 scrap-and-build:format-panel.ts を desktop 固定 ribbon に建て直す
 
-現状 §1.1 の floating popup は **touch 環境向け**。Group C は **desktop
-向け固定(常駐)format panel** を新設し、二経路を出し分ける:
+§1.1 (b) の既存 `format-panel.ts`(floating + 選択追従)は **scrap**、
+同 file を **desktop 固定 format panel** として **build** し直す。
 
 | 環境 | format affordance |
 |---|---|
-| desktop(pointer: fine + 画面幅広)| **固定 format panel**(編集 mode の上部 or 側部に常駐)|
-| iOS / iPad / touch | 現状の floating popup(`snippet-toolbar.ts`)を維持 |
+| desktop(pointer: fine + 画面幅広)| **新 desktop 固定 format panel**(編集 mode 上部に常駐 ribbon、本 spec の主対象)|
+| iOS / iPad / touch | snippet-toolbar.ts の floating popup を維持(§1.1 (a)、scrap しない)|
+
+scrap-and-build の要点:
+
+- 旧 floating panel の DOM / `mountFormatPanel` / 選択追従ロジック / 旧
+  CSS は **全て破棄**
+- 旧 `wrapInline()` / `wrapAsymmetric()` / `prefixLines()` の **記法変換
+  ロジックは正しいので再利用**(使いにくい UX を捨て、変換 math は残す)
+- 旧 flag `editor.format_panel_enabled` は新 panel の gate として引き継ぐ
+  (flag contract 維持、§5)
+- `data-pkc-region="format-panel"` / `.pkc-format-panel` は新 panel が
+  引き継ぐ(旧実装が使っていた名前を再利用、collision ではなく置換)
 
 判定:`matchMedia('(pointer: fine)')` + viewport 幅。OQ-C-6 で最終決定。
 
@@ -723,8 +784,10 @@ case 精査。
 | 2026-05-19 | PR #481(PR-β1)merge:Group A 統合 spec 着地 |
 | 2026-05-19 | PR #482(PR-β2)merge:Group B 右ペイン特化 spec 着地 |
 | 2026-05-19 | **本書起こし(PR-β3)**:Group C 書式機能 spec。現状 format toolbar(snippet-toolbar.ts、floating 18 snippet、desktop 固定 未実装)+ PKC Markdown 全記法整理 + ワープロ化 invariant(canonical 往復 / inline style 禁止 / 領域 8・6 scope 境界)+ Font / 段落 / 表 / 番号 / 検索 の panel 設計 + case matrix 14+12+12+12 件 + Tier 0 flag 7 件 + visual parity 計画 + 新 OQ-C-1〜C-8 |
-| TBD | PR-β4 Phase γ 実装 wave map(optional)|
-| TBD | OQ-A / OQ-B / OQ-C 合意 → Phase γ 着手判断 |
+| 2026-05-19 | PR #483(PR-β3)merge:Group C 書式機能 spec 着地 |
+| 2026-05-19 | PR #484(PR-β4)merge:Phase γ 実装 wave map 着地、Phase β 設計 wave 完了 |
+| 2026-05-20 | **訂正(stack PR-pgc-01)**:§1 / §3 の事実誤認を訂正。既存 `format-panel.ts`(選択追従 floating 書式 panel、14 button、本番稼働中)を見落としていた。user 判断で scrap-and-build に方針確定、§0 / §1.1 / §3.1 を実態に合わせ、冒頭に訂正 notice を追加。Phase γ-C は wave map 側で scrap-and-build 構成に再定義 |
+| TBD | stack PR-pgc-02 以降:format-panel.ts を scrap → 新 desktop 固定 ribbon を build |
 
 ---
 

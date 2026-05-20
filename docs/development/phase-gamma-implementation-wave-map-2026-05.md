@@ -76,11 +76,26 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 
 ## §2 Phase γ-C wave 詳細(format panel ワープロ化)
 
-### §2.1 γ-C1:desktop 固定 panel + Font group + 段落 group(7 PR)
+> **【2026-05-20 訂正:scrap-and-build】** 本 §2 初版は「desktop 固定
+> panel を **新設**」前提だったが、実際は `src/adapter/ui/format-panel.ts`
+> (選択追従 floating 書式 panel、14 button、本番稼働中)が既存。user 判断
+> で **scrap-and-build**(既存 floating panel を破棄 → desktop 固定 ribbon
+> を建て直し)に方針確定。stack PR-pgc-01 で本訂正。変更点:
+> (1) C1-1 を「`format_panel.desktop_fixed_enabled` 新設」から
+>     「**旧 format-panel.ts を scrap + 新 ribbon 骨格 build**」に再定義、
+>     flag は旧 `editor.format_panel_enabled` を引き継ぐ(`format_panel.*`
+>     多段 flag 案は破棄)。
+> (2) Font group の bold / italic / strike / code、段落の heading /
+>     quote、list の bullet は **旧 panel に実装済の `wrapInline` /
+>     `prefixLines` を再利用** するため、各 PR の budget は下振れる。
+> (3) stack 番号は PR-pgc-NN(main 着地せず stack を積む運用、2026-05-20
+>     user 指示)。下表の C1-NN は論理 wave、実 PR は pgc-NN に対応。
+
+### §2.1 γ-C1:scrap-and-build + Font group + 段落 group(7 PR)
 
 | PR | scope | Tier 0 flag | budget |
 |---|---|---|---|
-| C1-1 | `FORMAT_OPERATIONS` registry + desktop 固定 panel 骨格(空 panel + 6 group 折りたたみ枠)| `format_panel.desktop_fixed_enabled` 導入(default OFF)| +1.5 KB js / +1 KB css |
+| C1-1 | **旧 `format-panel.ts` を scrap**(floating panel / `mountFormatPanel` / 旧 CSS 破棄)+ **新 desktop 固定 ribbon 骨格**(6 group 折りたたみ枠)を同 file に build | 旧 `editor.format_panel_enabled` を新 panel が引き継ぐ | +0.5 KB js / +0 KB css(scrap 相殺)|
 | C1-2 | Font group — bold / italic / strike / code toggle(`**X**` / `*X*` / `~~X~~` / `` `X` ``)| `format_panel.font_group_enabled` 導入 | +1 KB js |
 | C1-3 | Font group — 文字色 / 背景色 popup(`:X:red:` / `==[red]X==`)| - | +1 KB js / +0.5 KB css |
 | C1-4 | Font group — font-size / font-family popup(`:X:lg:` / `:X:mono:`、attr 合成 contract §4.4)| - | +1 KB js |
@@ -407,7 +422,10 @@ Phase γ 完了時に `docs/development/archived/phase-beta/` へ一括 archive
 | 2026-05-19 | PR #482(PR-β2)merge:Group B 右ペイン特化 spec 着地 |
 | 2026-05-19 | PR #483(PR-β3)merge:Group C 書式機能 spec 着地 |
 | 2026-05-19 | **本書起こし(PR-β4)**:Phase γ 実装 wave map。9 sub-wave(γ-C1〜C3 / γ-B1〜B3 / γ-A1〜A4)を 68 PR に PR-by-PR 分解、3 merge train 構成、budget 推移試算(完了時 1934 / 175 KB)、visual parity test 9 件、20 OQ の wave gating checklist、CLAUDE.md Wave §1〜§11 の Phase γ 適用表。**本書着地で Phase β 設計 wave 完了** |
-| TBD | 20 OQ 合意 → Phase γ-C1 着手判断 |
+| 2026-05-19 | PR #484(PR-β4)merge:Phase γ 実装 wave map 着地 |
+| 2026-05-20 | user 判断:20 OQ 暫定回答を全承認、Phase γ-C1 着手。以後は **main 着地せず stack 運用**(PR-pgc-NN) |
+| 2026-05-20 | **訂正(stack PR-pgc-01)**:γ-C 着手準備中に既存 `format-panel.ts`(選択追従 floating 書式 panel、本番稼働中)を発見。§2 を scrap-and-build に再定義(C1-1 = 旧 panel scrap + 新 ribbon build、flag は `editor.format_panel_enabled` 引き継ぎ)。詳細は [`phase-beta-group-c-format-panel-spec-2026-05.md`](./phase-beta-group-c-format-panel-spec-2026-05.md) 訂正 notice |
+| TBD | stack PR-pgc-02 以降:Phase γ-C1 実装(scrap-and-build)|
 
 ---
 
