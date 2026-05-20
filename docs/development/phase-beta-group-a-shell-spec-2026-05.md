@@ -488,6 +488,28 @@ detail view で開く場合の挙動制御として有効)。
 entry のクリック挙動は **filer に navigate**(folderDetailAsFiler の意味
 が薄まる)。flag の default を `true` に変更検討は Phase γ-A2 で再評価。
 
+### §4.5 γ-A1 実装記録(2026-05-20、stack pgc-32〜)
+
+**filer モード sidebar の現状**:`sidebar.mode = 'filer'`(`sidebar-flags.ts`、
+領域 10-6 ζ'' Phase 4 follow-up で導入済)で左ペインを filer-explorer 化
+する `renderSidebarAsFiler` が **既に実装済**。wave map §4.1 A1-1 が新設を
+想定する `shell.sidebar_mode_default` は既存 `sidebar.mode` と機能重複の
+ため **導入しない**(γ-A3 / format-panel と同じく既存資産が spec を上回る
+事例)。
+
+**pgc-32 品質固め**:`renderSidebarAsFiler` は shipped 機能ながら active
+test 被覆が皆無だった。clickable な navigation surface(CLAUDE.md §5 で
+visual parity test 必須)に対し:
+
+- `tests/adapter/sidebar-filer-mode.test.ts`(happy-dom 8 件):flag gate /
+  root scope 列挙 / item 属性 / folder scope ナビゲーション / nav-up /
+  active marker / click→SELECT_ENTRY→再 scope(Phase 8 順序性)/ 空状態
+- `tests/smoke/sidebar-filer-mode.spec.ts`(Playwright parity 1 件):実 OS
+  click で sidebar item 選択遷移
+
+src 変更なし(既存実装は test で正当性確認、bug 0)。default 切替(A1-4)
++ deprecated marker(A1-5)は後続 PR / user 判断。
+
 ---
 
 ## §5 migration plan + Tier 0 flag 一覧
@@ -505,7 +527,7 @@ entry のクリック挙動は **filer に navigate**(folderDetailAsFiler の意
 
 | flag key | type | default | scope |
 |---|---|---|---|
-| `shell.edit_mode_enabled` | bool | `false` | 編集モード選択(inline / window)を有効化(γ-A1 foundation、§2.5)|
+| `shell.edit_mode_enabled` | bool | `false` | 編集モード選択(inline / window)を有効化(γ-A2 foundation、§2.5)|
 | `editor.mode_legacy` | bool | `false` | 3 mode 経路の無効化(旧 detail-edit + Split View に戻す)|
 | `editor.mode_default` | string | `'split'` | 新規 3 mode のうち初期値 |
 | `editor.mode_by_archetype` | object | `{}` | per-archetype override(`{ text: 'overlay', ... }`)|

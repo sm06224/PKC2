@@ -197,6 +197,15 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 **累積**:+5.8 KB js / +2.4 KB css。
 **前提**:A1-2 は **OQ-A-3(sidebar tree port の範囲)** 合意が必須。
 
+**実装記録(2026-05-20、stack pgc-32〜)**:filer モード sidebar
+(`sidebar.mode='filer'` → `renderSidebarAsFiler`)は領域 10-6 で **実装
+済**。A1-1 が新設を想定する flag `shell.sidebar_mode_default` は既存
+`sidebar.mode` と機能重複のため導入しない(γ-A3 / format-panel と同じく
+既存資産が spec を上回る事例)。`pgc-32` で filer モード sidebar の
+active test 被覆 0 件を解消(happy-dom 8 + Playwright parity 1)。
+default 切替(A1-4)+ deprecated marker(A1-5)は後続 PR / user 判断。
+詳細は shell spec §4.5。
+
 ### §4.2 γ-A2:編集 mode 3 分割(10 PR)
 
 | PR | scope | Tier 0 flag | budget |
