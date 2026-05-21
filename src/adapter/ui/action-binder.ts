@@ -2302,33 +2302,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
         break;
-      case 'convert-attachment-to-text': {
-        // 領域 3: テキスト系添付(.md / .txt / text MIME)を新しい TEXT
-        // エントリへ変換。base64 を UTF-8 復号して CREATE_ENTRY の初期
-        // body に渡し、添付と同じ親フォルダに配置する。
-        if (!lid) break;
-        const st = dispatcher.getState();
-        const attEntry = st.container?.entries.find((en) => en.lid === lid);
-        if (!attEntry || attEntry.archetype !== 'attachment') break;
-        const att = parseAttachmentBody(attEntry.body);
-        if (!isTextConvertibleAttachment(att)) break;
-        const text = decodeAttachmentText(att, st.container?.assets);
-        if (text === null) break;
-        // 添付の structural 親が folder ならそこへ、なければ root へ。
-        const parentRel = (st.container?.relations ?? []).find(
-          (r) => r.kind === 'structural' && r.to === lid,
-        );
-        const parentEntry = parentRel
-          ? st.container?.entries.find((en) => en.lid === parentRel.from)
-          : undefined;
-        const parentFolder = parentEntry?.archetype === 'folder' ? parentEntry.lid : undefined;
-        const title = att.name.replace(/\.(md|markdown|txt|text)$/i, '').trim()
-          || attEntry.title;
-        dispatcher.dispatch({
-          type: 'CREATE_ENTRY', archetype: 'text', title, body: text, parentFolder,
-        });
+      case 'convert-attachment-to-text':
+        // 領域 3: テキスト系添付を新しい TEXT エントリへ変換。
+        if (lid) convertAttachmentEntryToText(lid, dispatcher);
         break;
-      }
       case 'open-html-attachment': {
         // Direct surfacing of `createHtmlOpenButton` at the attachment
         // card level so HTML / SVG users do not need to scroll into the
@@ -6615,7 +6592,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (i + 1 < totalFiles) await yieldToEventLoop();
       }
       if (items.length > 0) {
+        // 領域 3: drop 後に新規 attachment を diff で特定し、テキスト系の
+        // ものは「TEXT に変換」提案 toast を出す(default は添付のまま)。
+        const beforeLids = new Set(
+          (dispatcher.getState().container?.entries ?? []).map((en) => en.lid),
+        );
         dispatcher.dispatch({ type: 'BATCH_PASTE_ATTACHMENTS', items });
+        const newAttachments = (dispatcher.getState().container?.entries ?? []).filter(
+          (en) => !beforeLids.has(en.lid) && en.archetype === 'attachment',
+        );
+        offerTextConversionToasts(newAttachments, dispatcher);
       }
       zone.setAttribute('data-pkc-drop-success', 'true');
       setTimeout(() => zone.removeAttribute('data-pkc-drop-success'), 600);
@@ -8569,6 +8555,66 @@ function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, 100);
+}
+
+/**
+ * 領域 3: attachment エントリの内容を新しい TEXT エントリへ変換する。
+ * テキスト系でない / 復号不能なら何もせず `false` を返す。`convert-
+ * attachment-to-text` action と drop 後の変換提案 toast が共有する。
+ * decode 済み内容を `CREATE_ENTRY` の `body` に渡し、添付と同じ structural
+ * 親 folder に配置する。
+ */
+export function convertAttachmentEntryToText(lid: string, dispatcher: Dispatcher): boolean {
+  const st = dispatcher.getState();
+  const attEntry = st.container?.entries.find((en) => en.lid === lid);
+  if (!attEntry || attEntry.archetype !== 'attachment') return false;
+  const att = parseAttachmentBody(attEntry.body);
+  if (!isTextConvertibleAttachment(att)) return false;
+  const text = decodeAttachmentText(att, st.container?.assets);
+  if (text === null) return false;
+  const parentRel = (st.container?.relations ?? []).find(
+    (r) => r.kind === 'structural' && r.to === lid,
+  );
+  const parentEntry = parentRel
+    ? st.container?.entries.find((en) => en.lid === parentRel.from)
+    : undefined;
+  const parentFolder = parentEntry?.archetype === 'folder' ? parentEntry.lid : undefined;
+  const title = att.name.replace(/\.(md|markdown|txt|text)$/i, '').trim() || attEntry.title;
+  dispatcher.dispatch({
+    type: 'CREATE_ENTRY', archetype: 'text', title, body: text, parentFolder,
+  });
+  return true;
+}
+
+/**
+ * 領域 3: drop で新規作成された attachment のうちテキスト系のものに
+ * 「TEXT に変換」を提案する toast を出す。toast を無視すれば添付のまま
+ * (設計骨子 item 3 の非破壊 default)。toast stack は `#pkc-root` 外に
+ * あり `bindActions` の delegation が届かないため、変換ボタンは明示的な
+ * click listener を持つ(`data-pkc-action` / `data-pkc-lid` は test 用)。
+ */
+export function offerTextConversionToasts(attachments: Entry[], dispatcher: Dispatcher): void {
+  for (const att of attachments) {
+    if (att.archetype !== 'attachment') continue;
+    const body = parseAttachmentBody(att.body);
+    if (!isTextConvertibleAttachment(body)) continue;
+    const name = body.name || att.title;
+    const toastEl = showToast({
+      kind: 'info',
+      message: `📄 「${name}」を添付しました。TEXT エントリに変換できます。`,
+      autoDismissMs: 12000,
+    });
+    const convertBtn = document.createElement('button');
+    convertBtn.className = 'pkc-btn pkc-btn-small pkc-toast-convert-text';
+    convertBtn.setAttribute('data-pkc-action', 'convert-attachment-to-text');
+    convertBtn.setAttribute('data-pkc-lid', att.lid);
+    convertBtn.textContent = 'TEXT に変換';
+    convertBtn.addEventListener('click', () => {
+      convertAttachmentEntryToText(att.lid, dispatcher);
+      toastEl.remove();
+    });
+    toastEl.appendChild(convertBtn);
+  }
 }
 
 /**
