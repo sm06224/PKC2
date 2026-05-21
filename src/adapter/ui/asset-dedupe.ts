@@ -102,31 +102,34 @@ function getSizeByAssetKey(container: Container): Map<string, number> {
 }
 
 /**
- * Return true when `base64Data` + `fileSize` matches an existing asset.
+ * `base64Data` + `fileSize` が既存 asset と一致すれば、その既存
+ * `asset_key` を返す(複数一致時は最初の一致 key)。一致しなければ `null`。
  *
- * Matching criteria (both required):
+ * 一致条件(両方必須):
  *   A. fnv1a64Hex(base64Data) === fnv1a64Hex(existingAssetValue)
- *   B. fileSize === body.size of the attachment entry that references the key
+ *   B. fileSize === 当該 key を参照する attachment entry の body.size
  *
- * Returns false when:
- *   - container is null
- *   - container.assets is empty
- *   - hash computation fails for either side
- *   - no matching entry body can be parsed
+ * `null` を返すケース:
+ *   - container が null
+ *   - container.assets が空
+ *   - hash 計算が失敗
+ *   - 一致 entry body が parse 不能
+ *
+ * safe-biased:いずれの異常も `null`(重複の取りこぼし < 誤った再利用)。
  */
-export function checkAssetDuplicate(
+export function findDuplicateAssetKey(
   base64Data: string,
   fileSize: number,
   container: Container | null,
-): boolean {
-  if (!container) return false;
+): string | null {
+  if (!container) return null;
   maybeResetForContainerSwap(container);
 
   let newHash: string;
   try {
     newHash = getAssetHash(base64Data);
   } catch {
-    return false;
+    return null;
   }
 
   const sizeByKey = getSizeByAssetKey(container);
@@ -141,10 +144,22 @@ export function checkAssetDuplicate(
     if (existingHash !== newHash) continue;
 
     const ownerSize = sizeByKey.get(key);
-    if (typeof ownerSize === 'number' && ownerSize === fileSize) return true;
+    if (typeof ownerSize === 'number' && ownerSize === fileSize) return key;
   }
 
-  return false;
+  return null;
+}
+
+/**
+ * Return true when `base64Data` + `fileSize` matches an existing asset.
+ * `findDuplicateAssetKey` の boolean ラッパー(既存呼び出し互換)。
+ */
+export function checkAssetDuplicate(
+  base64Data: string,
+  fileSize: number,
+  container: Container | null,
+): boolean {
+  return findDuplicateAssetKey(base64Data, fileSize, container) !== null;
 }
 
 /**

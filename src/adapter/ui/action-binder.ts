@@ -175,7 +175,7 @@ import {
   openAssetAutocomplete,
   updateAssetAutocompleteQuery,
 } from './asset-autocomplete';
-import { checkAssetDuplicate } from './asset-dedupe';
+import { checkAssetDuplicate, findDuplicateAssetKey } from './asset-dedupe';
 import {
   closeEntryRefAutocomplete,
   handleEntryRefAutocompleteKeydown,
@@ -6733,19 +6733,38 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         };
       }
 
-      const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-      dispatcher.dispatch({
-        type: 'PASTE_ATTACHMENT',
-        name: file.name,
-        mime: payload.mime,
-        size: payload.size,
-        assetKey,
-        assetData: payload.assetData,
-        contextLid,
-        originalAssetData: payload.originalAssetData,
-        optimizationMeta: payload.optimizationMeta,
-      });
+      // ② ハッシュ重複排除:同一内容の asset が既に container にあれば、
+      // 新規 attachment entry も storage も作らず、既存 `asset_key` を
+      // 参照する anchor だけを挿入する(無駄な重複格納の回避)。anchor が
+      // markdown ref として既存 asset への参照(リレーション)になる。
+      // 重複でなければ従来どおり新規 key + PASTE_ATTACHMENT。
+      const dupKey = findDuplicateAssetKey(
+        payload.assetData,
+        payload.size,
+        dispatcher.getState().container,
+      );
+      let assetKey: string;
+      if (dupKey !== null) {
+        assetKey = dupKey;
+        showToast({
+          kind: 'info',
+          message: `「${file.name}」は既存の添付と同一内容です。重複格納せず既存を参照します。`,
+          autoDismissMs: 4000,
+        });
+      } else {
+        assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        dispatcher.dispatch({
+          type: 'PASTE_ATTACHMENT',
+          name: file.name,
+          mime: payload.mime,
+          size: payload.size,
+          assetKey,
+          assetData: payload.assetData,
+          contextLid,
+          originalAssetData: payload.originalAssetData,
+          optimizationMeta: payload.optimizationMeta,
+        });
+      }
 
       if (insertCtx) {
         const ref = buildAssetRef(file.name, assetKey, payload.mime);
