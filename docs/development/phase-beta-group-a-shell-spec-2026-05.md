@@ -593,6 +593,24 @@ tree-sidebar test 22 ファイルの明示 `sidebar.mode=tree` 固定(+ smoke
 12 spec)は無害なため保持する。A1-4 の再実施は A1-2/A1-3(検索系の
 filer 移植)完了が前提。A1-5 deprecated marker も保留。
 
+**pgc-46〜51 で A1-2/A1-3(検索系の filer 移植)完了**(2026-05-21):
+revert 理由だった 7 機能を filer へ移植 ── pgc-46(global 検索化)/
+pgc-47(full-text + archetype filter)/ pgc-48(color filter strip)/
+pgc-49(⚙ Filters disclosure:showArchived / treeHideBuckets /
+searchHideBuckets / unreferenced の 4 toggle、tree と共有 helper
+`renderAdvancedFiltersPanel` 化)/ pgc-50(Recent Entries Pane)/
+pgc-51(Saved Searches Pane、query 軸を `searchQuery` ↔
+`sidebarFilerQuery` で reducer reconcile)。filer は search / archetype /
+color / 4 toggle / Recent / Saved Searches を獲得し tree と検索能力
+同等に到達。
+
+**pgc-52 で A1-4 再挑戦**(2026-05-21):A1-2/A1-3 完了で前提が揃った
+ため `sidebar.mode` の default を `'tree'` → `'filer'` へ再切替。pgc-37
+の tree-sidebar test 固定(`sidebar.mode=tree`)が pgc-41 revert 後も
+保持されていたため、default 反転による既存 test 破壊は 1 件のみ
+(`sidebar-filer-mode.test.ts` の default 値 assert)、本 PR で新 default
+仕様へ更新。A1-5 deprecated marker は引き続き保留。
+
 ---
 
 ## §5 migration plan + Tier 0 flag 一覧

@@ -8,27 +8,27 @@
  * a compact filer-explorer surface(DnD 移動 / per-folder 絞り込み検索 /
  * multi-select 一括操作 を備える)。
  *
- * **Phase γ-A1 pgc-37 で default を `'filer'` に切替えたが、pgc-41 で
- * `'tree'` に revert**。user 指摘(2026-05-20「左 pane を不完全な
- * ファイラーにした / ツリー表示の検索オプションが無くなった / 機能ダウン
- * しすぎ」)の通り、filer sidebar は tree sidebar が持つ検索窓・hide-buckets
- * ・archetype filter・saved searches・advanced filters・unreferenced-
- * attachments filter・recent-entries pane 等を欠いており、default 化は
- * 機能ダウンだった。wave map A1-2/A1-3(filer の tree-port / navigation
- * parity)が未達のまま A1-4(default 切替)を行った手順ミス。filer を
- * default にするのは上記検索機能を filer へ移植してからとし、それまでは
- * `sidebar.mode=filer` で opt-in する。
+ * **Default 変遷**:Phase γ-A1 pgc-37 で default を `'filer'` に切替えた
+ * ものの、filer sidebar が tree の検索系(検索窓・hide-buckets・archetype
+ * filter・saved searches・advanced filters・unreferenced-attachments
+ * filter・recent-entries pane)を欠いており機能ダウンだったため pgc-41 で
+ * `'tree'` に revert。その後 **pgc-46〜51 で上記 7 機能すべてを filer へ
+ * 移植完了**(wave map A1-2/A1-3「検索系の filer 移植」)── filer は
+ * search(full-text)/ archetype / color / 4 toggle filter / Recent pane /
+ * Saved Searches を獲得し tree と検索能力同等に到達した。前提が揃った
+ * ため **pgc-52(A1-4 再挑戦)で default を `'filer'` に再切替**。tree は
+ * `sidebar.mode=tree` で opt-in に変わる。
  */
 
 import { defineFlag } from '../../core/flags';
 
 export const sidebarMode = defineFlag<string>(
   'sidebar.mode',
-  'tree',
+  'filer',
   {
     enum: ['tree', 'filer'],
     category: 'sidebar',
-    description: '左ペインの表示モード:tree=フォルダツリー(default、検索/フィルタ完備)/ filer=エクスプローラ風 filer(opt-in、検索機能は移植途上)',
+    description: '左ペインの表示モード:filer=エクスプローラ風 filer(default、検索/フィルタ/Saved Searches 完備)/ tree=フォルダツリー(opt-in)',
     tier: 0,
   },
 );

@@ -94,7 +94,17 @@ describe('filer モード sidebar (Phase γ-A1)', () => {
     );
   }
 
-  it('flag 未設定(default tree):filer モード sidebar は出ない', () => {
+  it('flag 未設定(default filer):filer モード sidebar が描画される', () => {
+    // pgc-52(A1-4 再挑戦):pgc-46〜51 で検索系の filer 移植が完了し前提が
+    // 揃ったため、`sidebar.mode` の default を 'tree' → 'filer' に再切替。
+    // flag 未設定時は filer モード sidebar が描画される。
+    boot();
+    expect(filerSidebar()).not.toBeNull();
+  });
+
+  it('flag tree:filer モード sidebar は出ない(tree へ opt-out)', () => {
+    // default 反転後、tree sidebar は `sidebar.mode=tree` で opt-in。
+    setContainerFlagSource({ 'sidebar.mode': 'tree' });
     boot();
     expect(filerSidebar()).toBeNull();
   });

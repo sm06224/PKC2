@@ -229,6 +229,18 @@ pgc-37 で `sidebar.mode` の default を `'tree'` → `'filer'` に切替えた
 の filer 移植)完了が前提。A1-5 deprecated marker も同様に保留。詳細は
 shell spec §4.5。
 
+**pgc-46〜52 で A1-2/A1-3/A1-4 完了**(2026-05-21):pgc-46〜51 で tree
+sidebar の検索系 7 機能(検索窓 / archetype filter / color filter /
+4 toggle filter / Recent pane / Saved Searches)を filer へ全面移植 ──
+A1-2/A1-3(検索系の filer 移植)達成。前提が揃ったため **pgc-52 で
+A1-4 を再挑戦**、`sidebar.mode` の default を `'tree'` → `'filer'` に
+再切替した。pgc-37 で入れた tree-sidebar test の `sidebar.mode=tree`
+固定が pgc-41 revert 後も保持されていたため、default 反転で破壊された
+既存 test は 1 件のみ(default 値そのものを assert する filer-mode
+test)で、本 PR 内で新 default 仕様へ更新済。filer は tree と検索能力
+同等に到達しており A1-4 は機能ダウンではない。A1-5 deprecated marker
+は引き続き保留。
+
 ### §4.2 γ-A2:編集 mode 3 分割(10 PR)
 
 | PR | scope | Tier 0 flag | budget |
