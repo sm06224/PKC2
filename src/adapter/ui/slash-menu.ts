@@ -120,7 +120,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   //    syntax は tests/features/ast/fixtures/full-pkc-fixture.md 準拠。
   //    inline wrap 系は caret をマーカー間に、block 系は本文行に落とす。
   { id: 'highlight', label: '/highlight — ==marked==', insert: '====', cursorOffset: 2 },
-  { id: 'emdot', label: '/emdot — ..圏点..(emphasis dots)', insert: '....', cursorOffset: 2 },
+  { id: 'emdot', label: '/emdot — ^^圏点^^(emphasis dots)', insert: '^^^^', cursorOffset: 2 },
   { id: 'sup', label: '/sup — :sup:[superscript]', insert: ':sup:[]', cursorOffset: 6 },
   { id: 'ruby', label: '/ruby — [[ruby:漢字|かな]]', insert: '[[ruby:漢字|かな]]' },
   { id: 'footnote', label: '/footnote — [^1] footnote reference', insert: '[^1]' },

@@ -33,7 +33,7 @@ afterEach(() => {
 /** 領域 5 で追加した 9 コマンドの定義(id → insert / cursorOffset)。 */
 const NEW_COMMANDS: { id: string; insert: string; cursorOffset?: number }[] = [
   { id: 'highlight', insert: '====', cursorOffset: 2 },
-  { id: 'emdot', insert: '....', cursorOffset: 2 },
+  { id: 'emdot', insert: '^^^^', cursorOffset: 2 },
   { id: 'sup', insert: ':sup:[]', cursorOffset: 6 },
   { id: 'ruby', insert: '[[ruby:漢字|かな]]' },
   { id: 'footnote', insert: '[^1]' },
@@ -81,9 +81,9 @@ describe('領域 5: slash command 挿入(end-to-end)', () => {
     expect(ta.selectionStart).toBe(2);
   });
 
-  it('/emdot は .... を挿入しキャレットをマーカー間に置く', () => {
+  it('/emdot は ^^^^ を挿入しキャレットをマーカー間に置く', () => {
     const ta = runInsert('emdot');
-    expect(ta.value).toBe('....');
+    expect(ta.value).toBe('^^^^');
     expect(ta.selectionStart).toBe(2);
   });
 
