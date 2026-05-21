@@ -1896,6 +1896,27 @@
 .pkc-md-rendered .pkc-section-warning  { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.08); }
 .pkc-md-rendered .pkc-section-caution  { border-left-color: #d97706; background: rgba(217, 119, 6, 0.08); }
 .pkc-md-rendered .pkc-section-danger   { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+/* 領域 6:`:::details` 折りたたみブロック。開閉は native <details> が担う。 */
+.pkc-md-rendered .pkc-details {
+  margin: var(--space-3) 0;
+  border: 1px solid var(--c-border, #d1d5db);
+  border-radius: var(--radius);
+  padding: 0 var(--space-4);
+  background: rgba(0, 0, 0, 0.015);
+}
+.pkc-md-rendered .pkc-details > .pkc-details-summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: var(--space-2) 0;
+  margin: 0 calc(-1 * var(--space-4));
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+}
+.pkc-md-rendered .pkc-details[open] > .pkc-details-summary {
+  border-bottom: 1px solid var(--c-border, #d1d5db);
+  margin-bottom: var(--space-2);
+}
+.pkc-md-rendered .pkc-details > :last-child { margin-bottom: var(--space-2); }
 .pkc-md-rendered blockquote.pkc-quote-citation::after {
   content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
   display: block;

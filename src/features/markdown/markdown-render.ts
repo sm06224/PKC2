@@ -1992,6 +1992,116 @@ function postProcessSectionSentinels(
   return html;
 }
 
+// ── 領域 6:`:::details{summary="…"}` 折りたたみブロック方言 ──
+//
+// 任意位置の content を native <details> / <summary> で畳む方言。
+//   :::details{summary="クリックで開く見出し"}
+//   折りたたまれる本文。**markdown** 可。
+//   :::
+//
+// HTML 出力(レンダラ生成 — ユーザーは生 HTML を書かない):
+//   <details class="pkc-details"><summary class="pkc-details-summary">…
+//     </summary>…content…</details>
+// 既定は畳んだ状態(native <details> 準拠)、`{open}` で既定展開。
+// summary 省略時は「詳細」。:::section と同じ PUA sentinel pattern で
+// markdown-it `html: false` 制約を回避する。
+const DETAILS_SENTINEL_OPEN = '\u{E16C}';
+const DETAILS_SENTINEL_SEP = '\u{E16D}';
+
+interface DetailsEntry {
+  summary: string;
+  open: boolean;
+}
+
+function processDetailsBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<number, DetailsEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<number, DetailsEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let counter = 0;
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || open.name !== 'details') {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const rawSummary = open.attrs.kvs.summary;
+    const summary = typeof rawSummary === 'string' && rawSummary.length > 0
+      ? rawSummary
+      : '詳細';
+    const openDefault = open.attrs.kvs.open === true;
+    counter++;
+    const id = counter;
+    registry.set(id, { summary, open: openDefault });
+    const openInputIdx = inputIdx;
+    i++;
+    out.push(`${DETAILS_SENTINEL_OPEN}${id}${DETAILS_SENTINEL_SEP}OPEN${DETAILS_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      out.push(lines[i]!);
+      lineMapOut.push(lineMapIn[i] ?? i);
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++;
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${DETAILS_SENTINEL_OPEN}${id}${DETAILS_SENTINEL_SEP}CLOSE${DETAILS_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+function postProcessDetailsSentinels(
+  html: string,
+  registry: Map<number, DetailsEntry>,
+): string {
+  // OPEN sentinel → <details class="pkc-details" [open]><summary>…</summary>
+  html = html.replace(
+    new RegExp(
+      `<p([^>]*)>${DETAILS_SENTINEL_OPEN}(\\d+)${DETAILS_SENTINEL_SEP}OPEN${DETAILS_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, pAttrs: string, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      const openAttr = entry.open ? ' open' : '';
+      return `<details class="pkc-details"${openAttr}${pAttrs}>`
+        + `<summary class="pkc-details-summary">${escapeAttrForHtml(entry.summary)}</summary>`;
+    },
+  );
+  // CLOSE sentinel → </details>
+  html = html.replace(
+    new RegExp(
+      `<p[^>]*>${DETAILS_SENTINEL_OPEN}\\d+${DETAILS_SENTINEL_SEP}CLOSE${DETAILS_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    '</details>',
+  );
+  return html;
+}
+
 function processQuoteBlocks(source: string, lineMapIn: number[]): {
   transformed: string;
   registry: Map<number, QuoteEntry>;
@@ -3440,6 +3550,11 @@ export function renderMarkdown(
   const sectionResult = processSectionBlocks(text, lineMap);
   text = sectionResult.transformed;
   lineMap = sectionResult.lineMap;
+  // 領域 6:`:::details{summary=…}` 折りたたみブロック(sentinel 化、挿入
+  // あり、lineMap 更新)。:::section の後に処理(両者 orthogonal)。
+  const detailsResult = processDetailsBlocks(text, lineMap);
+  text = detailsResult.transformed;
+  lineMap = detailsResult.lineMap;
   // reform-2026-05 Phase 3 PR-2W:`:::frontmatter` / `:::body` region marker
   // を sentinel 化、postProcessRegionSentinels で <aside> / <section> に展開。
   // section と orthogonal、後段 align や figure とも干渉しない passthrough。
@@ -3492,6 +3607,8 @@ export function renderMarkdown(
   // reform-2026-05 PR-D:`:::quote{author=...}` sentinel → <blockquote class="pkc-quote-citation">
   html = postProcessQuoteSentinels(html, quoteResult.registry);
   html = postProcessSectionSentinels(html, sectionResult.registry);
+  // 領域 6:`:::details` sentinel → <details class="pkc-details">
+  html = postProcessDetailsSentinels(html, detailsResult.registry);
   // PR-2W:`:::frontmatter` / `:::body` sentinel → <aside> / <section>
   html = postProcessRegionSentinels(html, regionResult.registry);
   // L-1:section break sentinel → <hr>
@@ -3526,7 +3643,7 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^\+\+\+\s*(?:\{[^}]*\})?\s*$/m.test(text)) return true; // L-1 section break
   if (/==[^=]+==|\[\[(?:ruby|em):/.test(text)) return true;     // L-2 highlight / ruby / em-dot
   if (/^:::(?:figure|table|equation)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure / table / equation block(reform-2026-05 で kv quoted 形も受理)
-  if (/^:::(?:quote|if)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // reform-2026-05 PR-D/F :::quote / :::if
+  if (/^:::(?:quote|if|section|details)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // :::quote / :::if / :::section / :::details(領域 6。section は既存欠落の同時修正)
   if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
   if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
   if (/^\s*_\d*\s*$/m.test(text)) return true;                  // L-8 blank-line marker

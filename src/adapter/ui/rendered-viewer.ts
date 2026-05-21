@@ -389,6 +389,24 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered .pkc-section-warning  { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.08); }
     .pkc-md-rendered .pkc-section-caution  { border-left-color: #d97706; background: rgba(217, 119, 6, 0.08); }
     .pkc-md-rendered .pkc-section-danger   { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+    .pkc-md-rendered .pkc-details {
+      margin: 0.5rem 0;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      padding: 0 0.75rem;
+      background: rgba(0, 0, 0, 0.015);
+    }
+    .pkc-md-rendered .pkc-details > .pkc-details-summary {
+      cursor: pointer;
+      font-weight: 600;
+      padding: 0.375rem 0.75rem;
+      margin: 0 -0.75rem;
+    }
+    .pkc-md-rendered .pkc-details[open] > .pkc-details-summary {
+      border-bottom: 1px solid #d1d5db;
+      margin-bottom: 0.375rem;
+    }
+    .pkc-md-rendered .pkc-details > :last-child { margin-bottom: 0.375rem; }
     .pkc-md-rendered blockquote.pkc-quote-citation::after {
       content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
       display: block;
