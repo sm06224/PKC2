@@ -1758,6 +1758,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
+      case 'go-back':
+        dispatcher.dispatch({ type: 'GO_BACK' });
+        break;
+      case 'go-forward':
+        dispatcher.dispatch({ type: 'GO_FORWARD' });
+        break;
       case 'save-search': {
         // Saved Searches v1 — spec: docs/development/saved-searches-v1.md §5.1.
         // window.prompt is a minimal v1 label-entry UX; empty / cancel
@@ -4173,6 +4179,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Slash menu gets first shot at keyboard events when open
     if (isSlashMenuOpen()) {
       if (handleSlashMenuKeydown(e)) return;
+    }
+
+    // 領域 1: Alt+←/→ で entry navigation history を移動。テキスト入力中
+    // (textarea / input)は OS ネイティブの単語移動を尊重するため発火
+    // しない。`preventDefault` でブラウザ標準の戻る/進む(ページ離脱)を
+    // 抑止し内部 navigation に置き換える。
+    if (
+      e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
+      && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && !(e.target instanceof HTMLTextAreaElement)
+      && !(e.target instanceof HTMLInputElement)
+    ) {
+      e.preventDefault();
+      dispatcher.dispatch({ type: e.key === 'ArrowLeft' ? 'GO_BACK' : 'GO_FORWARD' });
+      return;
     }
 
     // PR #198: markdown editor enhancements — Enter (indent + list

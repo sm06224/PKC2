@@ -42,7 +42,7 @@ const impContainer = makeContainer([makeEntry({ lid: 'i-1', title: 'Report' })],
 function baseState(overrides?: Partial<AppState>): AppState {
   return {
     phase: 'ready', container: hostContainer,
-    selectedLid: null, editingLid: null, error: null, embedded: false,
+    selectedLid: null, navHistory: [], navIndex: -1, editingLid: null, error: null, embedded: false,
     pendingOffers: [],
     importPreview: {
       container: impContainer, source: 'test.pkc2', entry_count: 1,

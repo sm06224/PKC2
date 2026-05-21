@@ -1010,6 +1010,28 @@ function renderHeader(state: AppState): HTMLElement {
     header.appendChild(backBtn);
   }
 
+  // 領域 1: entry navigation history の戻る / 進む。常に描画し、stack の
+  // 端では `disabled`(disabled button は click event を出さないため
+  // action-binder の event delegation に乗らず自然に inert になる)。
+  const navGroup = createElement('div', 'pkc-header-nav');
+  const histBackBtn = createElement('button', 'pkc-header-nav-btn');
+  histBackBtn.setAttribute('data-pkc-action', 'go-back');
+  histBackBtn.setAttribute('title', '前のエントリへ戻る (Alt+←)');
+  histBackBtn.setAttribute('aria-label', '戻る');
+  histBackBtn.textContent = '◀';
+  if (state.navIndex <= 0) histBackBtn.setAttribute('disabled', '');
+  navGroup.appendChild(histBackBtn);
+  const histFwdBtn = createElement('button', 'pkc-header-nav-btn');
+  histFwdBtn.setAttribute('data-pkc-action', 'go-forward');
+  histFwdBtn.setAttribute('title', '次のエントリへ進む (Alt+→)');
+  histFwdBtn.setAttribute('aria-label', '進む');
+  histFwdBtn.textContent = '▶';
+  if (state.navIndex >= state.navHistory.length - 1) {
+    histFwdBtn.setAttribute('disabled', '');
+  }
+  navGroup.appendChild(histFwdBtn);
+  header.appendChild(navGroup);
+
   const title = createElement('span', 'pkc-header-title');
   title.textContent = state.container?.meta?.title ?? 'PKC2';
   header.appendChild(title);

@@ -528,6 +528,28 @@
   letter-spacing: 0.05em;
 }
 
+/* 領域 1: entry navigation history の戻る / 進むボタン群。 */
+.pkc-header-nav {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.pkc-header-nav-btn {
+  font-size: var(--fs-sm);
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  cursor: pointer;
+}
+
+.pkc-header-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* Top-header 階層パス(Explorer 風 path trail、pgc-42)。.pkc-header は
    flex-wrap:wrap なので flex-basis:100% で最下段に独立 1 行となる。
    segment click は data-pkc-action="select-entry" で jump。 */

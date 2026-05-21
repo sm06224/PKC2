@@ -98,6 +98,14 @@ export interface AppState {
   phase: AppPhase;
   container: Container | null;
   selectedLid: string | null;
+  /**
+   * 領域 1: navigation history。`navHistory` は訪問した entry lid の
+   * 順序付きリスト、`navIndex` が現在位置を指す。SELECT_ENTRY が push
+   * (前方履歴は truncate)、GO_BACK / GO_FORWARD が index を移動する。
+   * 空のとき `navIndex === -1`。
+   */
+  navHistory: string[];
+  navIndex: number;
   editingLid: string | null;
   /**
    * Phase γ-A:編集モード。inline = 中央ペイン内編集(従来)、window =
@@ -620,11 +628,16 @@ export interface ReduceResult {
   events: DomainEvent[];
 }
 
+/** 領域 1: navHistory の上限。超過時は最古を捨てる。 */
+const NAV_HISTORY_CAP = 100;
+
 export function createInitialState(): AppState {
   return {
     phase: 'initializing',
     container: null,
     selectedLid: null,
+    navHistory: [],
+    navIndex: -1,
     editingLid: null,
     childWindowLids: [],
     error: null,
@@ -1307,15 +1320,56 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const textToTextlogModal = (state.textToTextlogModal && state.textToTextlogModal.sourceLid !== action.lid)
         ? null
         : state.textToTextlogModal;
+      // 領域 1: navigation history に push。現在のエントリを再選択した
+      // 場合は履歴 no-op。新規選択は前方履歴を truncate して append し、
+      // 直近 NAV_HISTORY_CAP 件に丸める。
+      let navHistory = state.navHistory;
+      let navIndex = state.navIndex;
+      if (state.navHistory[state.navIndex] !== action.lid) {
+        navHistory = [...state.navHistory.slice(0, state.navIndex + 1), action.lid]
+          .slice(-NAV_HISTORY_CAP);
+        navIndex = navHistory.length - 1;
+      }
       const next: AppState = {
         ...state,
         selectedLid: action.lid,
+        navHistory,
+        navIndex,
         multiSelectedLids: [],
         collapsedFolders,
         textlogSelection,
         textToTextlogModal,
       };
       return { state: next, events: [{ type: 'ENTRY_SELECTED', lid: action.lid }] };
+    }
+    case 'GO_BACK':
+    case 'GO_FORWARD': {
+      // 領域 1: navigation history を index 移動する。stack の端では
+      // no-op。navHistory 自体は変更せず navIndex のみ動かす。
+      const delta = action.type === 'GO_BACK' ? -1 : 1;
+      const navIndex = state.navIndex + delta;
+      if (navIndex < 0 || navIndex >= state.navHistory.length) {
+        return { state, events: [] };
+      }
+      const lid = state.navHistory[navIndex]!;
+      // SELECT_ENTRY と同じ per-entry transient UI の掃除(P1-1)。
+      const textlogSelection =
+        state.textlogSelection && state.textlogSelection.activeLid !== lid
+          ? null
+          : state.textlogSelection;
+      const textToTextlogModal =
+        state.textToTextlogModal && state.textToTextlogModal.sourceLid !== lid
+          ? null
+          : state.textToTextlogModal;
+      const next: AppState = {
+        ...state,
+        selectedLid: lid,
+        navIndex,
+        multiSelectedLids: [],
+        textlogSelection,
+        textToTextlogModal,
+      };
+      return { state: next, events: [{ type: 'ENTRY_SELECTED', lid }] };
     }
     case 'NAVIGATE_TO_LOCATION': {
       // S-18 (A-4 FULL): same selection semantics as SELECT_ENTRY

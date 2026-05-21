@@ -34,6 +34,13 @@ export type UserAction =
    */
   | { type: 'SELECT_ENTRY'; lid: string; revealInSidebar?: boolean }
   | { type: 'DESELECT_ENTRY' }
+  /**
+   * GO_BACK / GO_FORWARD — 領域 1: move through the navigation history
+   * stack. Pure index move — selects `navHistory[navIndex ∓ 1]` without
+   * pushing a new history entry. No-op at the ends of the stack.
+   */
+  | { type: 'GO_BACK' }
+  | { type: 'GO_FORWARD' }
   | { type: 'BEGIN_EDIT'; lid: string }
   /**
    * COMMIT_EDIT — confirm the user's in-progress edit back to the

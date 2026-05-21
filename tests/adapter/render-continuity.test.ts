@@ -221,6 +221,8 @@ function makeState(overrides: Partial<AppState> = {}): AppState {
     phase: 'ready',
     container: makeContainer(),
     selectedLid: 'e1',
+    navHistory: [],
+    navIndex: -1,
     editingLid: null,
     error: null,
     embedded: false,

@@ -47,6 +47,8 @@ function mkState(container: Container, selectedLid: string | null): AppState {
     phase: 'ready',
     container,
     selectedLid,
+    navHistory: [],
+    navIndex: -1,
     editingLid: null,
     error: null,
     embedded: false,
