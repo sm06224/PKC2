@@ -395,9 +395,11 @@ PR 順:
 
 ---
 
-## 領域 8: 番号体系 — 順序リスト + 章節項アウトライン番号(未決定)
+## 領域 8: 番号体系 — 順序リスト + 章節項アウトライン番号(Layer 1〜3 完了)
 
-**Status**: 未決定 / 凍結中(2026-04-29 ユーザー判断で保留)
+**Status**: Layer 1 + Layer 2 + Layer 3 完了(v2.3.x stack pgc-65 / pgc-66、
+2026-05-21)。残りは Layer 3 → Word docx export 経路でのアウトライン番号
+1:1 写像(PR-D)のみ ── docx export wave(reform-2026-05)合流時に実施。
 
 ### 要望
 
@@ -428,13 +430,13 @@ PR 順:
 
 ### 3 層スケール設計案
 
-| Layer | 範囲 | 複雑度 |
-|---|---|---|
-| **Layer 1** | 平坦な順序リストの auto-renumber + uniform-one toggle(`1. 2. 3.` 連続 / `1. 1. 1.` 統一 を選択) | 小 |
-| **Layer 2** | ネストした順序リストの indent-aware 再採番(同 indent 内のみ連続、深い indent は独立カウンタ) | 小 ~ 中 |
-| **Layer 3** | 見出しベースの章節項アウトライン番号(`# 1.` / `## 1.1` / `### 1.2.1`)。Word/PPT export と直結 | 大 |
+| Layer | 範囲 | 複雑度 | 状態 |
+|---|---|---|---|
+| **Layer 1** | 平坦な順序リストの auto-renumber + uniform-one toggle(`1. 2. 3.` 連続 / `1. 1. 1.` 統一 を選択) | 小 | **完了**(pgc-66) |
+| **Layer 2** | ネストした順序リストの indent-aware 再採番(同 indent 内のみ連続、深い indent は独立カウンタ) | 小 ~ 中 | **完了**(pgc-66、Layer 1 と同一 scan で同時実装) |
+| **Layer 3** | 見出しベースの章節項アウトライン番号(`# 1.` / `## 1.1` / `### 1.2.1`)。Word/PPT export と直結 | 大 | **完了**(pgc-65、案 C ── レンダラ前置、frontmatter opt-in) |
 
-### Layer 3 の方式分岐(未決)
+### Layer 3 の方式分岐(決定済 ── 案 C)
 
 | 案 | source | レンダリング | strip 容易性 | Word 写像 |
 |---|---|---|---|---|
@@ -443,16 +445,26 @@ PR 順:
 | C | A/B ハイブリッド + `{# 1.}` 風アンカーで上書き許容 | 既定 B、必要時 A | ◎ | ◎ |
 
 設計原則(領域 6)— 1:1 写像 / strip 可 / forward-compat — を満たすのは
-B / C。デフォルト B、将来 C へ拡張という路線が妥当だが**判断は保留**。
+B / C。**案 C を採用**(2026-05、ユーザー判断「オプトインとし、手書きも
+許容、開始番号指定可能とする」)── pgc-65 で実装。既定はレンダラ前置
+(B 相当)、手書き番号(`# 5. …`)はレンダラが尊重(A 相当)、両者は
+位置基準カウンタで混在可。
 
-### 想定スコープ刻み(未確定)
+### 想定スコープ刻み(進捗)
 
-- PR-A: Layer 1 平坦 auto-renumber + uniform-one toggle(編集支援)
-- PR-B: Layer 2 ネスト対応(同じ scan 関数を indent-aware 化)
-- PR-C: Layer 3 案 B レンダラ(プリプロセッサ、container 設定で
-  on/off)
+- ~~PR-A: Layer 1 平坦 auto-renumber + uniform-one toggle(編集支援)~~
+  **完了**(pgc-66、`list-renumber.ts` + `handleEditorEnter` 配線 +
+  format panel 採番ボタン)
+- ~~PR-B: Layer 2 ネスト対応(同じ scan 関数を indent-aware 化)~~
+  **完了**(pgc-66、PR-A と同一 scan で同時実装。`findRuns` が深い
+  indent を素通し → 上位連続、ネストは独立 run)
+- ~~PR-C: Layer 3 レンダラ(プリプロセッサ)~~ **完了**(pgc-65、案 C ──
+  既定 B 相当のレンダラ前置 + 手書き番号尊重、frontmatter opt-in)
 - PR-D: Layer 3 → Word docx export 経路でのアウトライン番号 1:1 写像
-- PR-E: strip-dialect 関数で番号も剥がせるように
+  ── docx export wave(reform-2026-05)合流時に実施。**未着手**
+- ~~PR-E: strip-dialect 関数で番号も剥がせるように~~ **不要**(案 C は
+  source に番号を実体化しない → strip 対象が存在しない。順序リストの
+  `1. 2. 3.` は素の CommonMark のため strip 不要)
 
 ### 依存 / 注意
 
@@ -467,12 +479,14 @@ B / C。デフォルト B、将来 C へ拡張という路線が妥当だが**�
 
 ### サイズ: 大(複数 PR、設計合意 → 実装で 2 段階)
 
-### 再開時の判断ポイント
+### 再開時の判断ポイント(すべて解決済)
 
-1. Layer 1 だけ先行で実装するか、Layer 3 含めて方針合意してから
-   実装するか
-2. Layer 3 は案 B(プリプロセッサ)/ 案 C(ハイブリッド)どちらか
-3. container 設定への露出か、frontmatter 駆動か
+1. ~~Layer 1 だけ先行か、Layer 3 含め方針合意してからか~~ → Layer 3
+   を先に着地(pgc-65)、続けて Layer 1 + 2(pgc-66)。
+2. ~~Layer 3 は案 B / 案 C どちらか~~ → 案 C(pgc-65)。
+3. ~~container 設定への露出か、frontmatter 駆動か~~ → frontmatter 駆動
+   (`heading-number` / `list-number`)。document 単位で設定が export に
+   同伴し、heading-number / list-number で一貫。
 
 ---
 

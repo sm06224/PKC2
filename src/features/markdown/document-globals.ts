@@ -26,6 +26,7 @@
  */
 
 import { parseFrontmatter } from './frontmatter';
+import type { ListNumberMode } from './list-renumber';
 
 export type Writing = 'horizontal' | 'vertical';
 export type Direction = 'ltr' | 'rtl';
@@ -208,4 +209,22 @@ export function extractHeadingNumberConfig(body: string): { start: number } | nu
     if (Number.isFinite(n) && n >= 1) return { start: Math.floor(n) };
   }
   return null;
+}
+
+/**
+ * 領域 8 Layer 1:frontmatter `list-number` から順序リストの採番モードを
+ * 抽出する。`uniform` で「全項目を開始番号へ統一(`1. 1. 1.`)」、それ以外 /
+ * 未指定は `sequential`(`1. 2. 3.` 連番、既定)。
+ *
+ *   list-number: uniform     → 'uniform'
+ *   list-number: sequential  → 'sequential'
+ *   (未指定 / 無効値)        → 'sequential'
+ *
+ * editor の Enter 採番 / format panel の採番ボタンが全文 body を渡す。
+ */
+export function extractListNumberMode(body: string): ListNumberMode {
+  if (!body) return 'sequential';
+  return parseFrontmatter(body).meta['list-number'] === 'uniform'
+    ? 'uniform'
+    : 'sequential';
 }

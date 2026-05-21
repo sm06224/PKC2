@@ -19,6 +19,7 @@ import {
   applyHighlightColor,
   applyAlignPrefix,
   applyListMarker,
+  applyRenumberList,
   applyIndent,
   buildPipeTable,
   insertPipeTable,
@@ -40,9 +41,9 @@ describe('format-panel — FORMAT_GROUPS registry', () => {
     ]);
   });
 
-  it('has 28 operations total', () => {
+  it('has 29 operations total', () => {
     const total = FORMAT_GROUPS.reduce((n, g) => n + g.ops.length, 0);
-    expect(total).toBe(28);
+    expect(total).toBe(29);
   });
 
   it('Font group includes underline (U) and em-dot (^^), drops the bogus `..`', () => {
@@ -106,9 +107,9 @@ describe('format-panel — renderFormatPanel (fixed ribbon)', () => {
     }
   });
 
-  it('renders 28 operation buttons (data-pkc-format-label)', () => {
+  it('renders 29 operation buttons (data-pkc-format-label)', () => {
     const panel = renderFormatPanel();
-    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(28);
+    expect(panel.querySelectorAll('[data-pkc-format-label]')).toHaveLength(29);
   });
 
   it('renders 6 value pickers with their option buttons', () => {
@@ -403,6 +404,52 @@ describe('format-panel — applyListMarker (リスト・番号、spec §7.1)', (
   });
   it('11. 2. 形(非 1)ordered も ordered と認識し toggle off', () => {
     expect(mark('2. x', 0, 4, 'ordered')).toBe('x');
+  });
+});
+
+describe('format-panel — applyListMarker ordered 採番(領域 8 Layer 1)', () => {
+  it('複数行 plain → ordered は 1,2,3 と連番採番される', () => {
+    expect(
+      applyListMarker({ value: 'a\nb\nc', start: 0, end: 5 }, 'ordered').value,
+    ).toBe('1. a\n2. b\n3. c');
+  });
+
+  it('frontmatter list-number: uniform なら 1,1,1 で統一する', () => {
+    const fm = '---\nlist-number: uniform\n---\n';
+    const r = applyListMarker(
+      { value: `${fm}a\nb\nc`, start: fm.length, end: fm.length + 5 },
+      'ordered',
+    );
+    expect(r.value).toBe(`${fm}1. a\n1. b\n1. c`);
+  });
+});
+
+describe('format-panel — applyRenumberList(領域 8 Layer 1 / 2)', () => {
+  it('選択なし → caret 行の run 全体を連番へ直す', () => {
+    const r = applyRenumberList({ value: '1. a\n4. b\n5. c', start: 2, end: 2 });
+    expect(r.value).toBe('1. a\n2. b\n3. c');
+    expect(r.start).toBe(2);
+    expect(r.end).toBe(2);
+  });
+
+  it('選択あり → 選択行ブロック内の順序リストを採番する', () => {
+    const r = applyRenumberList({ value: '1. a\n4. b\n5. c', start: 0, end: 14 });
+    expect(r.value).toBe('1. a\n2. b\n3. c');
+  });
+
+  it('frontmatter list-number: uniform を尊重する', () => {
+    const fm = '---\nlist-number: uniform\n---\n';
+    const r = applyRenumberList({
+      value: `${fm}1. a\n2. b`,
+      start: fm.length,
+      end: fm.length + 9,
+    });
+    expect(r.value).toBe(`${fm}1. a\n1. b`);
+  });
+
+  it('caret が順序リスト外なら no-op', () => {
+    const r = applyRenumberList({ value: 'ただの本文', start: 2, end: 2 });
+    expect(r.value).toBe('ただの本文');
   });
 });
 
@@ -760,7 +807,7 @@ describe('format-panel — renderer integration (flag-gated)', () => {
     renderEditingText();
     const panel = root.querySelector('[data-pkc-region="format-panel"]');
     expect(panel).not.toBeNull();
-    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(28);
+    expect(panel!.querySelectorAll('[data-pkc-format-label]')).toHaveLength(29);
     expect(panel!.querySelectorAll('[data-pkc-picker]')).toHaveLength(6);
     expect(panel!.querySelectorAll('[data-pkc-launcher]')).toHaveLength(1);
   });

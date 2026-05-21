@@ -19,6 +19,11 @@ import {
   setTableColumnAlign,
   type TableEditResult,
 } from '@features/markdown/pipe-table-edit';
+import { extractListNumberMode } from '@features/markdown/document-globals';
+import {
+  renumberOrderedLists,
+  renumberOrderedListRunAt,
+} from '@features/markdown/list-renumber';
 
 // 旧 floating panel から flag contract を引き継ぐ(scrap-and-build、spec §3.1)。
 export const formatPanelEnabled = defineFlag<boolean>(
@@ -146,17 +151,47 @@ function splitListMarker(line: string): {
 }
 
 // 選択行に list marker を toggle 適用する。同 kind なら除去、別 kind / 無し
-// なら付与(spec §7.1)。番号リストは素朴に各行 `1. `(render が自動採番、
-// 採番正規化は領域 8 待ち)。
+// なら付与(spec §7.1)。ordered 化した行は素朴な `1. ` の連続になるので、
+// 領域 8 Layer 1 の採番エンジンで正しい連番 / 統一へ整える(連番 / 統一は
+// frontmatter `list-number` に従う)。
 export function applyListMarker(
   sel: Selection,
   target: 'bullet' | 'ordered',
 ): Selection {
-  return transformBlockLines(sel, (line) => {
+  const result = transformBlockLines(sel, (line) => {
     const { indent, kind, rest } = splitListMarker(line);
     if (kind === target) return `${indent}${rest}`;
     return `${indent}${target === 'bullet' ? '- ' : '1. '}${rest}`;
   });
+  if (target !== 'ordered') return result;
+  const block = result.value.slice(result.start, result.end);
+  const renumbered = renumberOrderedLists(block, extractListNumberMode(sel.value));
+  return {
+    value: `${result.value.slice(0, result.start)}${renumbered}${result.value.slice(result.end)}`,
+    start: result.start,
+    end: result.start + renumbered.length,
+  };
+}
+
+// 順序リストの採番を振り直す(領域 8 Layer 1 / 2)。選択ありなら選択行
+// ブロック内の全 run を、選択なしなら caret 位置の run 全体を再採番する。
+// 連番 / 統一は frontmatter `list-number` に従う。
+export function applyRenumberList(sel: Selection): Selection {
+  const mode = extractListNumberMode(sel.value);
+  if (sel.start === sel.end) {
+    const r = renumberOrderedListRunAt(sel.value, sel.start, mode);
+    return { value: r.text, start: r.caret, end: r.caret };
+  }
+  const lineStart = sel.value.lastIndexOf('\n', sel.start - 1) + 1;
+  const lineEnd = sel.value.indexOf('\n', sel.end);
+  const lineEndIdx = lineEnd === -1 ? sel.value.length : lineEnd;
+  const block = sel.value.slice(lineStart, lineEndIdx);
+  const renumbered = renumberOrderedLists(block, mode);
+  return {
+    value: `${sel.value.slice(0, lineStart)}${renumbered}${sel.value.slice(lineEndIdx)}`,
+    start: lineStart,
+    end: lineStart + renumbered.length,
+  };
 }
 
 // 選択行のインデントを 2 space 単位で増減する(spec §7.1)。
@@ -501,6 +536,11 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
     ops: [
       { label: '·', title: '箇条書き(- 、toggle)', apply: (s) => applyListMarker(s, 'bullet') },
       { label: '1.', title: '番号リスト(1. 、toggle)', apply: (s) => applyListMarker(s, 'ordered') },
+      {
+        label: '1.↻',
+        title: '番号振り直し(順序リストを再採番。連番 / 統一は frontmatter list-number で選択)',
+        apply: applyRenumberList,
+      },
       { label: '⇥', title: 'インデント増(2 space)', apply: (s) => applyIndent(s, 'in') },
       { label: '⇤', title: 'インデント減(2 space)', apply: (s) => applyIndent(s, 'out') },
     ],
