@@ -54,8 +54,8 @@ describe('領域 6:applyHeadingFold', () => {
     applyHeadingFold(c);
     expect(c.children).toHaveLength(2);
     const [dA, dC] = Array.from(c.children) as HTMLDetailsElement[];
-    expect(dA.querySelector(':scope > details > summary > h3')?.textContent).toBe('B');
-    expect(dC.querySelector(':scope > details')).toBeNull();
+    expect(dA!.querySelector(':scope > details > summary > h3')?.textContent).toBe('B');
+    expect(dC!.querySelector(':scope > details')).toBeNull();
   });
 
   it('レベル飛び(h2 → h4)でも h4 は h2 内に nest する', () => {
