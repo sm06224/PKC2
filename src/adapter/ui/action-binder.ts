@@ -1759,10 +1759,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
       case 'go-back':
-        dispatcher.dispatch({ type: 'GO_BACK' });
+        // pgc-55: 全 back/forward を browser history へ集約。
+        // history.back() → popstate → nav-history bridge が GO_BACK を
+        // dispatch する単一経路(分岐 = stack 二重化を構造的に排除)。
+        window.history.back();
         break;
       case 'go-forward':
-        dispatcher.dispatch({ type: 'GO_FORWARD' });
+        window.history.forward();
         break;
       case 'save-search': {
         // Saved Searches v1 — spec: docs/development/saved-searches-v1.md §5.1.
@@ -4183,8 +4186,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // 領域 1: Alt+←/→ で entry navigation history を移動。テキスト入力中
     // (textarea / input)は OS ネイティブの単語移動を尊重するため発火
-    // しない。`preventDefault` でブラウザ標準の戻る/進む(ページ離脱)を
-    // 抑止し内部 navigation に置き換える。
+    // しない。pgc-55: `history.back()` / `forward()` を呼び popstate 経路へ
+    // 集約する(Windows/Linux の native Alt+←→ も popstate 経由なので、
+    // `preventDefault` で native を止めて二重移動を防ぐ。macOS は native の
+    // Alt+←→ が無いため本ハンドラが唯一の経路)。
     if (
       e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
       && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
@@ -4192,7 +4197,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       && !(e.target instanceof HTMLInputElement)
     ) {
       e.preventDefault();
-      dispatcher.dispatch({ type: e.key === 'ArrowLeft' ? 'GO_BACK' : 'GO_FORWARD' });
+      if (e.key === 'ArrowLeft') window.history.back();
+      else window.history.forward();
       return;
     }
 

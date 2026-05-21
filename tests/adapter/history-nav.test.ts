@@ -10,7 +10,7 @@
  * reform-2026-05 Phase 8 順序性に従い、dispatch → selectedLid /
  * navIndex の consumer 観測点までを end-to-end で assert する。
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from '@adapter/ui/renderer';
 import { bindActions } from '@adapter/ui/action-binder';
 import { createDispatcher } from '@adapter/state/dispatcher';
@@ -196,41 +196,45 @@ describe('領域 1: header ◀ / ▶ ボタン', () => {
     expect(fwd().hasAttribute('disabled')).toBe(false);
   });
 
-  it('go-back ボタン click で selectedLid が前のエントリへ戻る', () => {
+  it('go-back ボタン click は history.back() を呼ぶ', () => {
+    // pgc-55: 全 back/forward は browser history へ集約。ボタンは
+    // history.back() を呼び、popstate 経由で nav-history bridge が
+    // GO_BACK を dispatch する(full flow は nav-history bridge test +
+    // smoke parity が担保)。
     const d = boot();
     d.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
     d.dispatch({ type: 'SELECT_ENTRY', lid: 'e2' });
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {});
     (root.querySelector('[data-pkc-action="go-back"]') as HTMLElement).click();
-    expect(d.getState().selectedLid).toBe('e1');
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    backSpy.mockRestore();
   });
 });
 
 describe('領域 1: Alt+←/→ キーボード', () => {
-  it('Alt+ArrowLeft が GO_BACK を dispatch する', () => {
-    const d = boot();
-    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
-    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e2' });
+  it('Alt+ArrowLeft が history.back() を呼ぶ', () => {
+    boot();
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {});
     pressKey(document.body, 'ArrowLeft', { altKey: true });
-    expect(d.getState().selectedLid).toBe('e1');
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    backSpy.mockRestore();
   });
 
-  it('Alt+ArrowRight が GO_FORWARD を dispatch する', () => {
-    const d = boot();
-    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
-    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e2' });
-    d.dispatch({ type: 'GO_BACK' });
+  it('Alt+ArrowRight が history.forward() を呼ぶ', () => {
+    boot();
+    const fwdSpy = vi.spyOn(window.history, 'forward').mockImplementation(() => {});
     pressKey(document.body, 'ArrowRight', { altKey: true });
-    expect(d.getState().selectedLid).toBe('e2');
+    expect(fwdSpy).toHaveBeenCalledTimes(1);
+    fwdSpy.mockRestore();
   });
 
-  it('textarea にフォーカス中の Alt+← は GO_BACK を発火しない(単語移動を尊重)', () => {
-    const d = boot();
-    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
-    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e2' });
+  it('textarea にフォーカス中の Alt+← は history.back() を呼ばない(単語移動を尊重)', () => {
+    boot();
     const ta = document.createElement('textarea');
     root.appendChild(ta);
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {});
     pressKey(ta, 'ArrowLeft', { altKey: true });
-    // selectedLid は e2 のまま(GO_BACK しない)。
-    expect(d.getState().selectedLid).toBe('e2');
+    expect(backSpy).not.toHaveBeenCalled();
+    backSpy.mockRestore();
   });
 });
