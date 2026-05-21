@@ -15,6 +15,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { createHash } from 'crypto';
+import { gzipSync } from 'zlib';
 import { computeGitStamp } from './git-stamp';
 import { buildAboutEntry } from './about-entry-builder';
 
@@ -68,6 +69,13 @@ function main(): void {
 
   const js = readFileSync(jsPath, 'utf8');
   const css = existsSync(cssPath) ? readFileSync(cssPath, 'utf8') : '';
+
+  // pgc-53: CSS / JS 本体を gzip+base64 化して shell へ埋め込む。plain
+  // inline 比で初期ダウンロードサイズが約 1/3 に縮む(展開は shell の
+  // pkc-loader が DecompressionStream で行う)。code_integrity は従来
+  // どおり未圧縮 js の SHA-256(loader 展開後の pkc-core 内容と一致)。
+  const cssGzB64 = gzipSync(Buffer.from(css, 'utf8'), { level: 9 }).toString('base64');
+  const jsGzB64 = gzipSync(Buffer.from(js, 'utf8'), { level: 9 }).toString('base64');
 
   // Build metadata
   const kind = process.env.PKC_KIND ?? 'dev';
@@ -136,9 +144,9 @@ function main(): void {
   html = html.replace('{{KIND}}', kind);
   html = html.replace('{{FAVICON_LINK}}', () => faviconLink);
   html = html.replace('{{PKC_DATA}}', () => pkcData);
-  html = html.replace('{{STYLES}}', () => css);
+  html = html.replace('{{STYLES_GZ}}', () => cssGzB64);
   html = html.replace('{{META}}', () => metaJson);
-  html = html.replace('{{CORE}}', () => js);
+  html = html.replace('{{CORE_GZ}}', () => jsGzB64);
 
   if (!existsSync(DIST)) {
     mkdirSync(DIST, { recursive: true });
@@ -148,6 +156,8 @@ function main(): void {
   writeFileSync(outPath, html, 'utf8');
 
   console.log(`✓ ${outPath} (${(html.length / 1024).toFixed(1)} KB)`);
+  console.log(`  payload: js ${(js.length / 1024).toFixed(0)}→${(jsGzB64.length / 1024).toFixed(0)} KB, `
+    + `css ${(css.length / 1024).toFixed(0)}→${(cssGzB64.length / 1024).toFixed(0)} KB (gzip+base64)`);
   console.log(`  version: ${pkg.version}-${kind}+${timestamp}`);
   console.log(`  schema:  ${SCHEMA_VERSION}`);
   console.log(`  commit:  ${source_commit}`);
