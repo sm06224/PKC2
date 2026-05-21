@@ -18,7 +18,10 @@ import {
   toggleLogFlag,
   deleteLogEntry,
 } from '../../features/textlog/textlog-body';
-import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
+import {
+  collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType,
+  isTextConvertibleAttachment, decodeAttachmentText,
+} from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
@@ -2299,6 +2302,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
         break;
+      case 'convert-attachment-to-text': {
+        // 領域 3: テキスト系添付(.md / .txt / text MIME)を新しい TEXT
+        // エントリへ変換。base64 を UTF-8 復号して CREATE_ENTRY の初期
+        // body に渡し、添付と同じ親フォルダに配置する。
+        if (!lid) break;
+        const st = dispatcher.getState();
+        const attEntry = st.container?.entries.find((en) => en.lid === lid);
+        if (!attEntry || attEntry.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(attEntry.body);
+        if (!isTextConvertibleAttachment(att)) break;
+        const text = decodeAttachmentText(att, st.container?.assets);
+        if (text === null) break;
+        // 添付の structural 親が folder ならそこへ、なければ root へ。
+        const parentRel = (st.container?.relations ?? []).find(
+          (r) => r.kind === 'structural' && r.to === lid,
+        );
+        const parentEntry = parentRel
+          ? st.container?.entries.find((en) => en.lid === parentRel.from)
+          : undefined;
+        const parentFolder = parentEntry?.archetype === 'folder' ? parentEntry.lid : undefined;
+        const title = att.name.replace(/\.(md|markdown|txt|text)$/i, '').trim()
+          || attEntry.title;
+        dispatcher.dispatch({
+          type: 'CREATE_ENTRY', archetype: 'text', title, body: text, parentFolder,
+        });
+        break;
+      }
       case 'open-html-attachment': {
         // Direct surfacing of `createHtmlOpenButton` at the attachment
         // card level so HTML / SVG users do not need to scroll into the

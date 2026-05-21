@@ -94,8 +94,11 @@ export type UserAction =
    * - Atomic placement matters here because CREATE_ENTRY itself moves
    *   the state machine into `editing`, where follow-up
    *   CREATE_RELATION / CREATE_ENTRY would be blocked.
+   * - `body` (領域 3): optional initial body for the new entry. Used by
+   *   "attachment → TEXT 変換" to seed the decoded file content. Omitted
+   *   for normal creation (entry starts empty).
    */
-  | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string; parentFolder?: string; ensureSubfolder?: string }
+  | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string; parentFolder?: string; ensureSubfolder?: string; body?: string }
   | { type: 'DELETE_ENTRY'; lid: string }
   | { type: 'BEGIN_EXPORT'; mode: ExportMode; mutability: ExportMutability }
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }

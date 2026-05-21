@@ -1539,6 +1539,17 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       container = addEntry(container, lid, action.archetype, action.title, ts);
       events.push({ type: 'ENTRY_CREATED', lid, archetype: action.archetype });
 
+      // 領域 3: optional 初期 body(attachment → TEXT 変換が decode 済み
+      // ファイル内容を seed する経路)。通常作成では未指定 = 空のまま。
+      if (typeof action.body === 'string' && action.body.length > 0) {
+        const seeded = action.body;
+        container = {
+          ...container,
+          entries: container.entries.map((e) =>
+            e.lid === lid ? { ...e, body: seeded } : e),
+        };
+      }
+
       if (placementParentLid) {
         const relId = generateLid();
         container = addRelation(container, relId, placementParentLid, lid, 'structural', ts);
