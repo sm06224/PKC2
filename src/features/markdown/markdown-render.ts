@@ -2487,13 +2487,16 @@ function applyAlignAttrs(
 ): void {
   if (alignMap.size === 0 && indentMap.size === 0) return;
   for (const tok of tokens) {
-    if (tok.type === 'paragraph_open' && tok.map) {
+    // align(L-5 行頭 prefix `||` / `|>` / `<|`)は段落 + 見出し両方に
+    // 適用する(`||## 見出し` 等)。indent(L-9 字下げ `__`)は段落専用
+    // ── 見出しの 1 字下げは意味を成さないため除外する。
+    if ((tok.type === 'paragraph_open' || tok.type === 'heading_open') && tok.map) {
       const startLine = tok.map[0];
       const align = alignMap.get(startLine);
       if (align) {
         tok.attrSet('data-pkc-align', align);
       }
-      if (indentMap.get(startLine)) {
+      if (tok.type === 'paragraph_open' && indentMap.get(startLine)) {
         tok.attrSet('data-pkc-indent', '1');
       }
     }

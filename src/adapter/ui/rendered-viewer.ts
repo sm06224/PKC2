@@ -358,11 +358,11 @@ export function buildRenderedViewerHtml(
        色は theme var ではなく hard code(export HTML は runtime theme を持た
        ないため、base.css と同じ fallback 値を採用)。 */
     /* L-5 行頭 align prefix */
-    .pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
-    .pkc-md-rendered p[data-pkc-align="end"]    { text-align: end;    }
-    .pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
-    .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
-    .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+    .pkc-md-rendered [data-pkc-align="center"] { text-align: center; }
+    .pkc-md-rendered [data-pkc-align="end"]    { text-align: end;    }
+    .pkc-md-rendered [data-pkc-align="start"]  { text-align: start;  }
+    .pkc-md-rendered [data-pkc-align="right"]  { text-align: right;  }
+    .pkc-md-rendered [data-pkc-align="left"]   { text-align: left;   }
     /* reform-2026-05 PR-D: :::quote block citation */
     .pkc-md-rendered blockquote.pkc-quote-citation {
       background: rgba(0, 0, 0, 0.03);

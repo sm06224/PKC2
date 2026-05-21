@@ -1935,11 +1935,11 @@
  * - center は物理中央(書字方向 不変)
  * - end / start は CSS logical value、`writing-mode` / `direction` で自動 flip
  * - right / left は formal `:::paragraph{align=right|left}` 経由の物理強制 */
-.pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
-.pkc-md-rendered p[data-pkc-align="end"]    { text-align: end;    }
-.pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
-.pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
-.pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+.pkc-md-rendered [data-pkc-align="center"] { text-align: center; }
+.pkc-md-rendered [data-pkc-align="end"]    { text-align: end;    }
+.pkc-md-rendered [data-pkc-align="start"]  { text-align: start;  }
+.pkc-md-rendered [data-pkc-align="right"]  { text-align: right;  }
+.pkc-md-rendered [data-pkc-align="left"]   { text-align: left;   }
 
 /* L-9(2026-05-08):段落先頭 1 字下げ(行頭 `__` / `＿` プレフィックス、
  * 日本語文書の段落字下げ慣習)。data-pkc-indent="1" は paragraph 起点を
