@@ -1217,6 +1217,13 @@ export interface RenderMarkdownOptions {
    * へ流す(AI test runner / Playwright `page.on('console', …)` が拾える)。
    */
   readonly silentHallucinationWarnings?: boolean;
+  /**
+   * 領域 8 Layer 3:見出しアウトライン番号(opt-in)。指定時、レンダラが
+   * `#` / `##` / `###` に `start.` / `start.M` / `start.M.L` を前置する
+   * (`####` 以降は無番号)。frontmatter `heading-number` から caller が
+   * 抽出して渡す。
+   */
+  readonly headingNumber?: { start: number } | null;
 }
 
 /**
@@ -3403,6 +3410,66 @@ function postProcessBlankLineMarkers(html: string): string {
  * HTML tags in source are escaped (not rendered) for XSS safety.
  * Returns safe HTML suitable for innerHTML assignment.
  */
+
+/**
+ * 領域 8 Layer 3:見出しアウトライン番号(案 C)。opt-in 時、`#` / `##` /
+ * `###` の行頭に `N.` / `N.M` / `N.M.L` を前置する(`####` 以降は無番号)。
+ *
+ * - `start` は L1 の開始値。
+ * - 見出しテキストが既に手書き番号(`3. ` 等)で始まる行は尊重し前置しない
+ *   (案 C「手書きも許容」)。カウンタは位置基準で全見出しを数えるため、
+ *   auto / 手書き 混在でも順序が整合する。
+ * - fenced code(``` / ~~~)内の `#` 行は見出し扱いしない。
+ * - 行の挿入 / 削除はせず content を前置するのみ(lineMap 不変)。
+ */
+function preprocessHeadingNumbers(text: string, start: number): string {
+  const lines = text.split('\n');
+  const out: string[] = [];
+  const counters = [0, 0, 0];
+  let fenceChar = '';
+  for (const line of lines) {
+    const fenceM = /^\s*([`~]{3,})/.exec(line);
+    if (fenceChar !== '') {
+      out.push(line);
+      if (fenceM && fenceM[1]![0] === fenceChar && /^\s*[`~]{3,}\s*$/.test(line)) {
+        fenceChar = '';
+      }
+      continue;
+    }
+    if (fenceM) {
+      fenceChar = fenceM[1]![0]!;
+      out.push(line);
+      continue;
+    }
+    const hM = /^(#{1,6})[ \t]+(.*)$/.exec(line);
+    if (!hM) {
+      out.push(line);
+      continue;
+    }
+    const level = hM[1]!.length;
+    if (level > 3) {
+      out.push(line);
+      continue;
+    }
+    // counter 更新(位置基準 ── 手書き / auto 問わず数える)。
+    counters[level - 1]!++;
+    for (let l = level; l < 3; l++) counters[l] = 0;
+    const content = hM[2]!;
+    // 手書き番号で始まる見出しは尊重(前置しない)。
+    if (/^\d+(?:\.\d+)*\.?[ \t]+/.test(content)) {
+      out.push(line);
+      continue;
+    }
+    const parts: number[] = [];
+    for (let l = 0; l < level; l++) {
+      parts.push(l === 0 ? counters[0]! + start - 1 : counters[l]!);
+    }
+    const num = parts.join('.') + (level === 1 ? '.' : '');
+    out.push(`${hM[1]} ${num} ${content}`);
+  }
+  return out.join('\n');
+}
+
 export function renderMarkdown(
   text: string,
   opts: RenderMarkdownOptions = {},
@@ -3576,7 +3643,12 @@ export function renderMarkdown(
   };
   // L-5 align prefix + L-9 indent prefix を pre-process で strip(挿入あり)。
   const alignResult = preprocessAlignPrefix(text, lineMap);
-  const stripped = alignResult.stripped;
+  let stripped = alignResult.stripped;
+  // 領域 8 Layer 3:見出しアウトライン番号(opt-in)。align prefix strip 後の
+  // 行に番号を前置する(行の挿入なし → lineMap / alignMap は不変)。
+  if (opts.headingNumber) {
+    stripped = preprocessHeadingNumbers(stripped, opts.headingNumber.start);
+  }
   // PR-2E paragraph directive で register された align も merge
   // (preprocessAlignPrefix で同 line に行頭 prefix もあれば後者が上書き)
   const alignMap = new Map<number, AlignKind>([

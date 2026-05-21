@@ -1,7 +1,11 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
-import { extractDocumentGlobals, globalsToDataAttrs } from '../../features/markdown/document-globals';
+import {
+  extractDocumentGlobals,
+  globalsToDataAttrs,
+  extractHeadingNumberConfig,
+} from '../../features/markdown/document-globals';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { expandTransclusions } from './transclusion';
@@ -99,7 +103,11 @@ const textPresenter: DetailPresenter = {
     if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
-      body.innerHTML = renderMarkdown(source, { currentContainerId, vars });
+      body.innerHTML = renderMarkdown(source, {
+        currentContainerId,
+        vars,
+        headingNumber: extractHeadingNumberConfig(entry.body),
+      });
       // PR-2A:document globals を data-pkc-* + dir attr で root に反映
       for (const [k, v] of Object.entries(globalsToDataAttrs(globals))) {
         body.setAttribute(k, v);
@@ -217,6 +225,7 @@ const textPresenter: DetailPresenter = {
       preview.innerHTML = renderMarkdown(previewSource, {
         sourceLineAnchors: true,
         vars: previewVars,
+        headingNumber: extractHeadingNumberConfig(initialSource),
       });
     } else if (initialSource) {
       const pre = document.createElement('pre');

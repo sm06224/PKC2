@@ -33,7 +33,11 @@ import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { extractVars, parseFrontmatter } from '../../features/markdown/frontmatter';
-import { extractDocumentGlobals, globalsToDataAttrs } from '../../features/markdown/document-globals';
+import {
+  extractDocumentGlobals,
+  globalsToDataAttrs,
+  extractHeadingNumberConfig,
+} from '../../features/markdown/document-globals';
 import {
   extractTocFromEntry,
   renderStaticTocHtml,
@@ -1007,7 +1011,10 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
   const vars = extractVars(rawBody);
   const stripped = parseFrontmatter(rawBody).body;
   const resolved = resolveAssetSource(stripped, container);
-  const html = renderMarkdown(resolved, { vars });
+  const html = renderMarkdown(resolved, {
+    vars,
+    headingNumber: extractHeadingNumberConfig(rawBody),
+  });
   // 2026-05-08 user 報告:`![label](entry:LID)` の transclusion が center
   // pane(detail-presenter)では expand されるが Viewer popup では placeholder
   // のまま表示されない。Viewer は detail-presenter と同じ expandTransclusions

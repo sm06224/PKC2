@@ -184,3 +184,28 @@ export function globalsToDataAttrs(globals: DocumentGlobals): Record<string, str
   if (globals.layout) attrs['data-pkc-layout'] = globals.layout;
   return attrs;
 }
+
+/**
+ * 領域 8 Layer 3:frontmatter `heading-number` から見出しアウトライン番号
+ * の設定を抽出する(opt-in)。未指定 / false / 無効値なら `null`。
+ *
+ *   heading-number: true   → { start: 1 }
+ *   heading-number: on     → { start: 1 }
+ *   heading-number: 3      → { start: 3 }(数値 = 有効化 + L1 開始番号)
+ *
+ * caller(presenter)は全文 body(frontmatter 込み)を渡し、戻り値を
+ * `renderMarkdown` の `opts.headingNumber` へ渡す。
+ */
+export function extractHeadingNumberConfig(body: string): { start: number } | null {
+  if (!body) return null;
+  const raw = parseFrontmatter(body).meta['heading-number'];
+  if (raw === true || raw === 'true' || raw === 'on') return { start: 1 };
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 1) {
+    return { start: Math.floor(raw) };
+  }
+  if (typeof raw === 'string') {
+    const n = Number(raw.trim());
+    if (Number.isFinite(n) && n >= 1) return { start: Math.floor(n) };
+  }
+  return null;
+}

@@ -80,6 +80,7 @@ import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { htmlForRichCopy } from '../../features/markdown/rich-copy-transform';
 import { extractVars, parseFrontmatter as parseLivePreviewFrontmatter } from '../../features/markdown/frontmatter';
+import { extractHeadingNumberConfig } from '../../features/markdown/document-globals';
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
@@ -7598,6 +7599,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       preview.innerHTML = renderMarkdown(livePreviewSource, {
         sourceLineAnchors: true,
         vars: livePreviewVars,
+        headingNumber: extractHeadingNumberConfig(src),
       });
     } else {
       preview.innerHTML = '';
