@@ -144,7 +144,7 @@ describe('filer Saved Searches の query 軸 reconcile (pgc-51)', () => {
     // query をクリアしてから apply → sidebarFilerQuery が復元されれば
     // SAVE が filer query を捕捉できていた証拠。
     d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: '' });
-    const id = d.getState().container!.meta.saved_searches![0].id;
+    const id = d.getState().container!.meta.saved_searches![0]!.id;
     d.dispatch({ type: 'APPLY_SAVED_SEARCH', id });
     expect(d.getState().sidebarFilerQuery).toBe('りんご');
   });
@@ -154,7 +154,7 @@ describe('filer Saved Searches の query 軸 reconcile (pgc-51)', () => {
     d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: 'みかん' });
     d.dispatch({ type: 'SAVE_SEARCH', name: 'みかん検索' });
     d.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: '' });
-    const id = d.getState().container!.meta.saved_searches![0].id;
+    const id = d.getState().container!.meta.saved_searches![0]!.id;
     d.dispatch({ type: 'APPLY_SAVED_SEARCH', id });
     // tree / filer どちらの sidebar mode でも効くよう両 field へ復元。
     expect(d.getState().searchQuery).toBe('みかん');
@@ -206,7 +206,7 @@ describe('filer Saved Searches の順序性 (pgc-51)', () => {
     expect(filerLids()).toHaveLength(4);
 
     // saved search を apply → archetype=folder が復活し folder のみ。
-    const id = d.getState().container!.meta.saved_searches![0].id;
+    const id = d.getState().container!.meta.saved_searches![0]!.id;
     d.dispatch({ type: 'APPLY_SAVED_SEARCH', id });
     render(d.getState(), root);
     expect(filerLids()).toEqual(['f1']);
