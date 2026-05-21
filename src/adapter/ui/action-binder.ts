@@ -6797,6 +6797,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     e.stopPropagation();
 
     const insertCtx = captureInsertContext();
+    // ① 編集中ドロップ:drop した正確な位置に anchor を入れる。`e.target`
+    // が textarea なら drop 座標 → 文字オフセットへ変換して `cursorPos` を
+    // 上書きする。変換不能(API 非対応 / 座標が外)なら captureInsertContext
+    // が読んだ selectionStart のまま = 既存挙動で回帰なし。
+    if (insertCtx) {
+      const dropTa = (e.target as HTMLElement).closest('textarea');
+      if (
+        dropTa instanceof HTMLTextAreaElement
+        && dropTa.getAttribute('data-pkc-field') === insertCtx.fieldAttr
+      ) {
+        const dropOffset = textareaOffsetAtPoint(dropTa, e.clientX, e.clientY);
+        if (dropOffset !== null) insertCtx.cursorPos = dropOffset;
+      }
+    }
     const files = Array.from(e.dataTransfer.files);
     const contextLid = state.editingLid ?? state.selectedLid;
     if (!contextLid) return;
@@ -8584,6 +8598,36 @@ export function convertAttachmentEntryToText(lid: string, dispatcher: Dispatcher
     type: 'CREATE_ENTRY', archetype: 'text', title, body: text, parentFolder,
   });
   return true;
+}
+
+/**
+ * ① 編集中ドロップ:textarea 上の screen 座標 (x, y) を value の文字
+ * オフセットへ変換する。`caretPositionFromPoint`(Firefox)/
+ * `caretRangeFromPoint`(Chrome / Safari)が form control に対し
+ * 当該 textarea を node として offset を返す挙動を利用。座標が textarea
+ * 外 / API 非対応のときは `null`(呼び出し側は selectionStart へ
+ * fallback するので回帰なし)。
+ */
+export function textareaOffsetAtPoint(
+  ta: HTMLTextAreaElement,
+  x: number,
+  y: number,
+): number | null {
+  const doc = ta.ownerDocument;
+  const max = ta.value.length;
+  type CPFP = (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  const cpfp = (doc as Document & { caretPositionFromPoint?: CPFP }).caretPositionFromPoint;
+  if (typeof cpfp === 'function') {
+    const pos = cpfp.call(doc, x, y);
+    if (pos && pos.offsetNode === ta) return Math.max(0, Math.min(pos.offset, max));
+  }
+  if (typeof doc.caretRangeFromPoint === 'function') {
+    const range = doc.caretRangeFromPoint(x, y);
+    if (range && range.startContainer === ta) {
+      return Math.max(0, Math.min(range.startOffset, max));
+    }
+  }
+  return null;
 }
 
 /**
