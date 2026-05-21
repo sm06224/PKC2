@@ -47,7 +47,7 @@ function makeContainer(): Container {
       att('att-png', { name: 'pic.png', mime: 'image/png', asset_key: 'k-png' }),
     ],
     relations: [
-      { id: 'r1', from: 'folder-1', to: 'att-md', kind: 'structural', created_at: T },
+      { id: 'r1', from: 'folder-1', to: 'att-md', kind: 'structural', created_at: T, updated_at: T },
     ],
     revisions: [],
     assets: { 'k-md': b64utf8(MD_CONTENT), 'k-png': b64utf8('not-real-png') },
