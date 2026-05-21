@@ -1917,6 +1917,14 @@
   margin-bottom: var(--space-2);
 }
 .pkc-md-rendered .pkc-details > :last-child { margin-bottom: var(--space-2); }
+/* 領域 6:見出し折りたたみ。見出しを native <details>/<summary> で畳む。
+   既定は open ── 見た目は従来どおり、見出しがクリックで畳めるだけ。 */
+.pkc-md-rendered .pkc-heading-fold { margin: var(--space-3) 0 0; }
+.pkc-md-rendered .pkc-heading-fold-summary { cursor: pointer; }
+.pkc-md-rendered .pkc-heading-fold-summary > :first-child {
+  display: inline;
+  margin: 0;
+}
 .pkc-md-rendered blockquote.pkc-quote-citation::after {
   content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
   display: block;

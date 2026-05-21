@@ -3,6 +3,7 @@ import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markd
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import { extractDocumentGlobals, globalsToDataAttrs } from '../../features/markdown/document-globals';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
 import { isSyncEnabled } from './source-preview-sync';
@@ -125,6 +126,9 @@ const textPresenter: DetailPresenter = {
           currentContainerId: currentContainerId ?? '',
         });
       }
+      // 領域 6:top-level 見出しを native <details> で畳めるよう再構成。
+      // 純 DOM 操作のため entries 有無に依らず無条件で適用する。
+      applyHeadingFold(body);
       return body;
     }
 

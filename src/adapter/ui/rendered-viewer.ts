@@ -46,6 +46,7 @@ import { parseAttachmentBody } from './attachment-presenter';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import { expandTransclusions } from './transclusion';
+import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { buildAssetMimeMap, buildAssetNameMap } from './renderer';
 
 /**
@@ -407,6 +408,9 @@ export function buildRenderedViewerHtml(
       margin-bottom: 0.375rem;
     }
     .pkc-md-rendered .pkc-details > :last-child { margin-bottom: 0.375rem; }
+    .pkc-md-rendered .pkc-heading-fold { margin: 0.5rem 0 0; }
+    .pkc-md-rendered .pkc-heading-fold-summary { cursor: pointer; }
+    .pkc-md-rendered .pkc-heading-fold-summary > :first-child { display: inline; margin: 0; }
     .pkc-md-rendered blockquote.pkc-quote-citation::after {
       content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
       display: block;
@@ -1021,6 +1025,9 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
     nameByKey: buildAssetNameMap(container),
     hostLid: entry.lid,
   });
+  // 領域 6:detail-presenter と同様、見出しを native <details> で畳める
+  // よう再構成(CLAUDE.md §9 の 3 surface 一致)。
+  applyHeadingFold(tmp);
   return tmp.innerHTML;
 }
 
