@@ -115,6 +115,39 @@ export const SLASH_COMMANDS: SlashCommand[] = [
       if (assetPickerCallback) assetPickerCallback(ctx);
     },
   },
+
+  // ── PKC-Markdown 拡張記法(領域 5)── AST 対応済の記法のみ。
+  //    syntax は tests/features/ast/fixtures/full-pkc-fixture.md 準拠。
+  //    inline wrap 系は caret をマーカー間に、block 系は本文行に落とす。
+  { id: 'highlight', label: '/highlight — ==marked==', insert: '====', cursorOffset: 2 },
+  { id: 'emdot', label: '/emdot — ..圏点..(emphasis dots)', insert: '....', cursorOffset: 2 },
+  { id: 'sup', label: '/sup — :sup:[superscript]', insert: ':sup:[]', cursorOffset: 6 },
+  { id: 'ruby', label: '/ruby — [[ruby:漢字|かな]]', insert: '[[ruby:漢字|かな]]' },
+  { id: 'footnote', label: '/footnote — [^1] footnote reference', insert: '[^1]' },
+  {
+    id: 'note',
+    label: '/note — :::section note callout',
+    insert: ':::section{role=note}\n\n:::',
+    cursorOffset: 22,
+  },
+  {
+    id: 'warning',
+    label: '/warning — :::section warning callout',
+    insert: ':::section{role=warning}\n\n:::',
+    cursorOffset: 25,
+  },
+  {
+    id: 'tip',
+    label: '/tip — :::section tip callout',
+    insert: ':::section{role=tip}\n\n:::',
+    cursorOffset: 21,
+  },
+  {
+    id: 'figure',
+    label: '/figure — :::figure with caption',
+    insert: ':::figure{id=fig-1}\n\n:::',
+    cursorOffset: 20,
+  },
 ];
 
 /**
