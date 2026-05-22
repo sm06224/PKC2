@@ -7282,8 +7282,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           });
         }
 
-        // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update with revision)
-        dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid });
+        // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update
+        // with revision). γ-A5 bugfix:`windowSave: true` で BEGIN_EDIT の
+        // childWindowLids ガードを免除する ── この save は子 entry-window
+        // 自身の編集 commit であり、ガードに弾かれると main へ伝搬しない。
+        dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid, windowSave: true });
         dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: saveLid, title, body });
       },
       !!state.lightSource,

@@ -1436,7 +1436,17 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // Phase γ-A3:対象 entry が child window で開かれている間は inline
       // 編集に入らない(同一 entry を 2 surface で編集 → save 衝突の防止)。
       // action-binder の triggerEdit が代わりにその window を focus する。
-      if (state.childWindowLids?.includes(action.lid)) return blocked(state, action);
+      //
+      // γ-A5(2026-05-22 bugfix):ただし `windowSave`(子 entry-window
+      // 自身の save 経路が発行する transient begin)は免除する ── 子窓は
+      // 自分の編集を commit する正当な経路で、二重編集防止ガードに
+      // 引っかかると save が main へ伝搬しなくなる(user 報告)。
+      if (
+        state.childWindowLids?.includes(action.lid) &&
+        !action.windowSave
+      ) {
+        return blocked(state, action);
+      }
       // P1-1: BEGIN_EDIT terminates any in-progress transient UI flows
       // (log selection / preview modal). The user is switching to the
       // structured editor; carrying over a TEXTLOG selection toolbar
@@ -1451,6 +1461,22 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const base = state.container
         ? captureEditBase(state.container, action.lid)
         : null;
+      // γ-A5:windowSave は直後に COMMIT_EDIT が続く transient begin。
+      // viewMode / selectedLid / 過渡 UI を変えない minimal begin にして、
+      // 子窓の save が main window の表示を奪わないようにする。EDIT_BEGUN
+      // も出さない(main の編集 UI を開く begin ではないため)。
+      if (action.windowSave) {
+        return {
+          state: {
+            ...state,
+            phase: 'editing',
+            editingLid: action.lid,
+            editingBase: base,
+            dualEditConflict: null,
+          },
+          events: [],
+        };
+      }
       const next: AppState = {
         ...state,
         phase: 'editing',

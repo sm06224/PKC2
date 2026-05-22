@@ -41,7 +41,18 @@ export type UserAction =
    */
   | { type: 'GO_BACK' }
   | { type: 'GO_FORWARD' }
-  | { type: 'BEGIN_EDIT'; lid: string }
+  /**
+   * BEGIN_EDIT — enter the editing phase for `lid`.
+   *
+   * γ-A5(2026-05-22):`windowSave` は「子 entry-window 自身の save 経路」
+   * から発行される transient な begin であることを示す。true のとき
+   * reducer は (1) `childWindowLids` ガードを免除し(子窓は自分の編集を
+   * commit する正当な経路 ── 同一 entry の main inline 二重編集防止が
+   * 目的のガードに引っかかってはいけない)、(2) `viewMode` / `selectedLid`
+   * を変更しない minimal begin にする(子窓 save で main の表示を奪わない)。
+   * 直後に `COMMIT_EDIT` が続く前提。
+   */
+  | { type: 'BEGIN_EDIT'; lid: string; windowSave?: boolean }
   /**
    * COMMIT_EDIT — confirm the user's in-progress edit back to the
    * container.
