@@ -39,6 +39,7 @@ import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refre
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
+import { wireWindowLayoutRestore } from './adapter/ui/window-layout-restore-prompt';
 import { getOpenEntryWindowLids, setEntryWindowsChangedListener } from './adapter/ui/entry-window';
 import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
@@ -367,6 +368,12 @@ async function boot(): Promise<void> {
   // (TOC etc.) gets a fresh derived-data push via `pushMonitorUpdate`.
   // See `src/adapter/ui/entry-window-monitor-refresh.ts`.
   wireEntryWindowMonitorRefresh(dispatcher);
+
+  // 2d-3. Window layout restore prompt (γ-A5-4). On the first ready
+  // state, if `shell.window_layout_persist` is on and a saved layout
+  // exists, offer to reopen the previous session's viewer / monitor
+  // windows. See `src/adapter/ui/window-layout-restore-prompt.ts`.
+  wireWindowLayoutRestore(dispatcher, document.body);
 
   // 2e. main reload guard (Phase γ-A3 A3-4). When child entry-windows
   // are open, `beforeunload` raises the browser-native confirm so a

@@ -35,6 +35,7 @@ import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
 import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled } from './shell-flags';
 import {
+  readWindowLayout,
   upsertWindowLayout,
   removeWindowLayout,
   type WindowLayoutEntry,
@@ -256,6 +257,46 @@ export function pushMonitorUpdate(
     '*',
   );
   return true;
+}
+
+/**
+ * γ-A5-4:保存済み layout から viewer / monitor window を再オープンする
+ * (spec §4.3)。editor は復元対象外 ── 参照系の viewer / monitor のみ
+ * (editor 復元は onSave 等の callback 配線が要るため A5-4 scope 外)。
+ *
+ * 戻り値 = 復元試行後もまだ開いていない window 数。0 なら全復元成功、
+ * >0 は browser popup blocker 等で開けなかった分(呼び出し側が再クリック
+ * を促す)。entry が container から消えている layout 項目は skip(pending
+ * にも数えない)。同じ window が既に開いていれば dedup focus され、open
+ * 済み判定に入るため再クリックは安全に冪等。
+ */
+export function restoreWindowLayout(entries: Entry[]): number {
+  const layout = readWindowLayout().filter(
+    (e) => e.role === 'viewer' || e.role === 'monitor',
+  );
+  for (const item of layout) {
+    const entry = entries.find((e) => e.lid === item.lid);
+    if (!entry) continue;
+    if (item.role === 'viewer') {
+      openViewerWindow(entry);
+    } else {
+      openMonitorWindow((item.monitorKind ?? 'toc') as MonitorKind, entry);
+    }
+  }
+  const openViewers = new Set(getOpenViewerWindowLids());
+  const openMonitors = new Set(
+    getOpenMonitorTargets().map((t) => `${t.kind}:${t.lid}`),
+  );
+  let pending = 0;
+  for (const item of layout) {
+    if (!entries.some((e) => e.lid === item.lid)) continue;
+    if (item.role === 'viewer') {
+      if (!openViewers.has(item.lid)) pending++;
+    } else if (!openMonitors.has(`${item.monitorKind ?? 'toc'}:${item.lid}`)) {
+      pending++;
+    }
+  }
+  return pending;
 }
 
 /**
