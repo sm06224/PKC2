@@ -38,6 +38,7 @@ import {
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
+import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
 import { getOpenEntryWindowLids, setEntryWindowsChangedListener } from './adapter/ui/entry-window';
 import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
@@ -360,6 +361,12 @@ async function boot(): Promise<void> {
   // `src/adapter/ui/entry-window-title-refresh.ts` and
   // `docs/development/entry-window-title-live-refresh-v1.md`.
   wireEntryWindowTitleRefresh(dispatcher);
+
+  // 2d-2. Entry-window monitor refresh wiring (γ-A5-2). Whenever the
+  // container's `entries` identity changes, every open monitor window
+  // (TOC etc.) gets a fresh derived-data push via `pushMonitorUpdate`.
+  // See `src/adapter/ui/entry-window-monitor-refresh.ts`.
+  wireEntryWindowMonitorRefresh(dispatcher);
 
   // 2e. main reload guard (Phase γ-A3 A3-4). When child entry-windows
   // are open, `beforeunload` raises the browser-native confirm so a

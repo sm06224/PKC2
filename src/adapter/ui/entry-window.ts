@@ -16,7 +16,7 @@
 
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
-import { extractTocFromEntry, renderStaticTocHtml } from '../../features/markdown/markdown-toc';
+import { extractTocFromEntry, renderStaticTocHtml, extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import {
@@ -114,6 +114,30 @@ const openWindows = new Map<string, Window>();
 const viewerWindows = new Map<string, Window>();
 
 /**
+ * γ-A5(multi-window-vscode-extension-spec §3.3):monitor role の子 window
+ * 一覧。monitor は特定 entry の編集ではなく container 由来のライブ panel
+ * (現状は `toc` = 本文見出しアウトライン)を表示する。key は `${kind}:${lid}`。
+ */
+export type MonitorKind = 'toc';
+
+interface MonitorWindowEntry {
+  win: Window;
+  kind: MonitorKind;
+  lid: string;
+}
+
+const monitorWindows = new Map<string, MonitorWindowEntry>();
+
+/** monitor panel の 1 行(level = 見出し深さ、text = 表示文字列)。 */
+export interface MonitorItem {
+  level: number;
+  text: string;
+}
+
+/** monitor へ派生データを push する postMessage type。 */
+export const ENTRY_WINDOW_MONITOR_UPDATE_MSG = 'pkc-monitor-update';
+
+/**
  * Phase γ-A3:child window の open/close を state machine へ通知する
  * listener。main.ts が boot 時に登録し、`SYS_SYNC_CHILD_WINDOWS` dispatch
  * へ配線する。`openEntryWindow`(open 時)と close-poll(close 検知時)が
@@ -178,6 +202,55 @@ export function getOpenViewerWindowLids(): string[] {
     if (!child.closed) lids.push(lid);
   }
   return lids;
+}
+
+/**
+ * γ-A5:monitor kind に応じて entry から派生データを計算する。
+ * `toc` は本文の見出しアウトライン。
+ */
+function deriveMonitorItems(kind: MonitorKind, entry: Entry): MonitorItem[] {
+  if (kind === 'toc') {
+    return extractHeadingsFromMarkdown(entry.body).map((h) => ({
+      level: h.level,
+      text: h.text,
+    }));
+  }
+  return [];
+}
+
+/**
+ * γ-A5:現在開いている monitor 一覧(kind + 対象 lid)。monitor refresh
+ * 配線が container 変更時に再計算 → push するために参照する。
+ */
+export function getOpenMonitorTargets(): { kind: MonitorKind; lid: string }[] {
+  const out: { kind: MonitorKind; lid: string }[] = [];
+  for (const m of monitorWindows.values()) {
+    if (!m.win.closed) out.push({ kind: m.kind, lid: m.lid });
+  }
+  return out;
+}
+
+/**
+ * γ-A5:monitor window へ最新の派生データを push する(spec §3.3)。
+ * 描画済み HTML ではなく **データ**(`MonitorItem[]`)を送り、子側 inline
+ * script が描画する(spec §11.3 ── canvas 前方互換のためデータ経路)。
+ */
+export function pushMonitorUpdate(
+  kind: MonitorKind,
+  lid: string,
+  entry: Entry,
+): boolean {
+  const m = monitorWindows.get(`${kind}:${lid}`);
+  if (!m || m.win.closed) return false;
+  m.win.postMessage(
+    {
+      type: ENTRY_WINDOW_MONITOR_UPDATE_MSG,
+      kind,
+      items: deriveMonitorItems(kind, entry),
+    },
+    '*',
+  );
+  return true;
 }
 
 /**
@@ -657,6 +730,11 @@ export function openEntryWindow(
       openViewerWindow(entry, lightSource, assetContext, onDownloadAsset);
       return;
     }
+    if (e.data.type === 'pkc-open-monitor') {
+      // γ-A5:editor window の「TOC 別窓」ボタン → monitor role の子 window。
+      if (e.data.kind === 'toc') openMonitorWindow('toc', entry);
+      return;
+    }
   }
   window.addEventListener('message', handleMessage);
 
@@ -749,6 +827,111 @@ export function openViewerWindow(
       window.removeEventListener('message', handleMessage);
     }
   }, 500);
+}
+
+/**
+ * γ-A5(spec §3):monitor role の子 window を開く。現状は `toc`(本文見出し
+ * アウトラインのライブ panel)。editor / viewer の `openWindows` /
+ * `viewerWindows` とは別の `monitorWindows` Map で管理する。`shell.window_roles`
+ * flag が OFF のときは no-op(完全後方互換)。
+ */
+export function openMonitorWindow(kind: MonitorKind, entry: Entry): void {
+  if (!shellWindowRolesEnabled()) return;
+
+  const key = `${kind}:${entry.lid}`;
+  const existing = monitorWindows.get(key);
+  if (existing && !existing.win.closed) {
+    existing.win.focus();
+    return;
+  }
+
+  const child = window.open(
+    '',
+    `pkc-monitor-${kind}-${entry.lid}`,
+    'width=320,height=560,menubar=no,toolbar=no',
+  );
+  if (!child) return;
+
+  monitorWindows.set(key, { win: child, kind, lid: entry.lid });
+
+  child.document.open();
+  child.document.write(buildMonitorHtml(kind, entry, deriveMonitorItems(kind, entry)));
+  child.document.close();
+
+  const pollClose = setInterval(() => {
+    if (typeof window === 'undefined') {
+      clearInterval(pollClose);
+      return;
+    }
+    if (child!.closed) {
+      clearInterval(pollClose);
+      monitorWindows.delete(key);
+    }
+  }, 500);
+}
+
+/**
+ * γ-A5:monitor window の HTML を組む。テーマ CSS 変数を親から引き継ぎ、
+ * inline script が `pkc-monitor-update` を受けて panel を再描画する。初期
+ * データは HTML へ JSON literal で埋め込む(`<` は `\\u003c` へ escape し
+ * inline script の閉じ漏れを防ぐ)。
+ */
+function buildMonitorHtml(
+  kind: MonitorKind,
+  entry: Entry,
+  items: MonitorItem[],
+): string {
+  const heading = kind === 'toc' ? `TOC — ${entry.title}` : 'Monitor';
+  const initialJson = JSON.stringify(items).replace(/</g, '\\u003c');
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeForAttr(heading)}</title>
+<style>
+:root {
+${getParentCssVars()}
+}
+* { box-sizing: border-box; }
+body { margin:0; font-family:var(--font-sans); background:var(--c-bg); color:var(--c-fg); }
+.pkc-monitor-head { padding:8px 12px; border-bottom:1px solid var(--c-border); font-weight:600; font-size:13px; position:sticky; top:0; background:var(--c-bg); }
+#monitor-panel { padding:6px 2px; }
+.pkc-monitor-item { padding:3px 8px; font-size:13px; line-height:1.5; color:var(--c-body-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pkc-monitor-empty { padding:14px 12px; color:var(--c-muted); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="pkc-monitor-head">${escapeForAttr(heading)}</div>
+<div id="monitor-panel"></div>
+<script>
+var monitorKind = ${escapeForScript(kind)};
+function renderMonitor(items) {
+  var panel = document.getElementById('monitor-panel');
+  panel.textContent = '';
+  if (!items || items.length === 0) {
+    var empty = document.createElement('div');
+    empty.className = 'pkc-monitor-empty';
+    empty.textContent = '(見出しなし)';
+    panel.appendChild(empty);
+    return;
+  }
+  for (var i = 0; i < items.length; i++) {
+    var row = document.createElement('div');
+    row.className = 'pkc-monitor-item';
+    row.style.paddingLeft = (8 + (items[i].level - 1) * 14) + 'px';
+    row.textContent = items[i].text;
+    panel.appendChild(row);
+  }
+}
+window.addEventListener('message', function (e) {
+  if (e.data && e.data.type === 'pkc-monitor-update' && e.data.kind === monitorKind) {
+    renderMonitor(e.data.items);
+  }
+});
+renderMonitor(${initialJson});
+</script>
+</body>
+</html>`;
 }
 
 /**
@@ -1892,6 +2075,7 @@ ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</di
   <div class="pkc-action-bar" id="action-bar">
     ${readonly ? '' : '<button class="pkc-btn" id="btn-edit" onclick="enterEdit()">✏️ Edit</button>'}
     ${!readonly && shellWindowRolesEnabled() ? '<button class="pkc-btn" id="btn-viewer" onclick="openViewerWin()" title="このエントリを読み取り専用の別ウィンドウで開く(編集保存で反映)">🔍 別窓プレビュー</button>' : ''}
+    ${!readonly && shellWindowRolesEnabled() ? '<button class="pkc-btn" id="btn-toc-monitor" onclick="openTocMonitor()" title="このエントリの見出しアウトラインを別ウィンドウで常時表示">📑 TOC 別窓</button>' : ''}
     <button class="pkc-btn-primary" id="btn-save" style="display:none" onclick="saveEntry()">💾 Save</button>
     <button class="pkc-btn" id="btn-cancel" style="display:none" onclick="cancelEdit()">Cancel</button>
     <span class="pkc-action-bar-status" id="bar-status"></span>
@@ -2856,6 +3040,13 @@ function closeEntryWindow() {
 function openViewerWin() {
   if (window.opener) {
     window.opener.postMessage({ type: 'pkc-open-viewer', lid: lid }, '*');
+  }
+}
+
+/* γ-A5: TOC 別窓(monitor role)を開く。parent が openMonitorWindow を呼ぶ。 */
+function openTocMonitor() {
+  if (window.opener) {
+    window.opener.postMessage({ type: 'pkc-open-monitor', kind: 'toc', lid: lid }, '*');
   }
 }
 
