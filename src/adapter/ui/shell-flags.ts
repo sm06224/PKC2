@@ -42,3 +42,17 @@ export const shellWindowRolesEnabled = defineFlag<boolean>(
       'window role 分離(editor / viewer)を有効化。OFF で editor window のみ',
   },
 );
+
+// window layout 永続化(γ-A5-3、multi-window-vscode-extension-spec §4 / §8)。
+// ON で子 window(editor / viewer / monitor)が geometry を main へ報告し、
+// main が `localStorage['pkc2.windowLayout']` へ保存する。OFF で報告も保存も
+// 行わない(完全 no-op)。復元 UI は後続スライス(A5-4)。
+export const shellWindowLayoutPersistEnabled = defineFlag<boolean>(
+  'shell.window_layout_persist',
+  false,
+  {
+    category: 'shell',
+    description:
+      '子 window の geometry を localStorage に保存(マルチウィンドウ layout 永続化)',
+  },
+);

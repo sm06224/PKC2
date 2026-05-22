@@ -33,7 +33,12 @@ import {
 import { parseFormBody, formPresenter } from './form-presenter';
 import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
-import { shellWindowRolesEnabled } from './shell-flags';
+import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled } from './shell-flags';
+import {
+  upsertWindowLayout,
+  removeWindowLayout,
+  type WindowLayoutEntry,
+} from '../platform/window-layout-store';
 
 /**
  * Expose renderMarkdown on the parent window so child windows
@@ -735,6 +740,10 @@ export function openEntryWindow(
       if (e.data.kind === 'toc') openMonitorWindow('toc', entry);
       return;
     }
+    if (e.data.type === 'pkc-window-geometry') {
+      handleGeometryMessage(e.data);
+      return;
+    }
   }
   window.addEventListener('message', handleMessage);
 
@@ -757,6 +766,7 @@ export function openEntryWindow(
       openWindows.delete(entry.lid);
       previewResolverContexts.delete(entry.lid);
       window.removeEventListener('message', handleMessage);
+      if (shellWindowLayoutPersistEnabled()) removeWindowLayout('editor', entry.lid);
       // Phase γ-A3:state machine へ window close を同期。
       notifyWindowsChanged();
     }
@@ -813,6 +823,9 @@ export function openViewerWindow(
         onDownloadAsset(e.data.assetKey);
       }
     }
+    if (e.data.type === 'pkc-window-geometry') {
+      handleGeometryMessage(e.data);
+    }
   }
   window.addEventListener('message', handleMessage);
 
@@ -825,6 +838,7 @@ export function openViewerWindow(
       clearInterval(pollClose);
       viewerWindows.delete(entry.lid);
       window.removeEventListener('message', handleMessage);
+      if (shellWindowLayoutPersistEnabled()) removeWindowLayout('viewer', entry.lid);
     }
   }, 500);
 }
@@ -858,6 +872,14 @@ export function openMonitorWindow(kind: MonitorKind, entry: Entry): void {
   child.document.write(buildMonitorHtml(kind, entry, deriveMonitorItems(kind, entry)));
   child.document.close();
 
+  function handleMessage(e: MessageEvent): void {
+    if (e.source !== child) return;
+    if (e.data && e.data.type === 'pkc-window-geometry') {
+      handleGeometryMessage(e.data);
+    }
+  }
+  window.addEventListener('message', handleMessage);
+
   const pollClose = setInterval(() => {
     if (typeof window === 'undefined') {
       clearInterval(pollClose);
@@ -866,6 +888,8 @@ export function openMonitorWindow(kind: MonitorKind, entry: Entry): void {
     if (child!.closed) {
       clearInterval(pollClose);
       monitorWindows.delete(key);
+      window.removeEventListener('message', handleMessage);
+      if (shellWindowLayoutPersistEnabled()) removeWindowLayout('monitor', entry.lid, kind);
     }
   }, 500);
 }
@@ -929,6 +953,7 @@ window.addEventListener('message', function (e) {
   }
 });
 renderMonitor(${initialJson});
+${shellWindowLayoutPersistEnabled() ? geometryReportScript('monitor', entry.lid, kind) : ''}
 </script>
 </body>
 </html>`;
@@ -954,6 +979,52 @@ function escapeForAttr(text: string): string {
 
 function escapeForScript(text: string): string {
   return JSON.stringify(text);
+}
+
+/**
+ * γ-A5-3:子 window 内に仕込む geometry 報告 IIFE。load / resize / blur /
+ * beforeunload で自 window の screenX/Y/outerW/H を親へ postMessage し、
+ * 親が `window-layout-store` へ保存する(spec §4)。`<script>` の中身として
+ * 埋め込む(タグは含まない)。flag OFF のときは builder 側で埋め込まない。
+ */
+function geometryReportScript(
+  role: string,
+  lid: string,
+  monitorKind: string | null,
+): string {
+  return `
+(function () {
+  function pkcReportGeo() {
+    if (!window.opener) return;
+    try {
+      window.opener.postMessage({
+        type: 'pkc-window-geometry',
+        role: ${escapeForScript(role)},
+        lid: ${escapeForScript(lid)},
+        monitorKind: ${monitorKind === null ? 'null' : escapeForScript(monitorKind)},
+        geometry: {
+          screenX: window.screenX, screenY: window.screenY,
+          outerWidth: window.outerWidth, outerHeight: window.outerHeight
+        }
+      }, '*');
+    } catch (e) { /* opener gone */ }
+  }
+  window.addEventListener('load', pkcReportGeo);
+  window.addEventListener('resize', pkcReportGeo);
+  window.addEventListener('blur', pkcReportGeo);
+  window.addEventListener('beforeunload', pkcReportGeo);
+})();`;
+}
+
+/**
+ * γ-A5-3:子 window から届いた `pkc-window-geometry` message を layout
+ * store へ反映する。flag OFF なら no-op。`upsertWindowLayout` が shape を
+ * 検証するため、不正 message は store 側で弾かれる。
+ */
+function handleGeometryMessage(data: unknown): void {
+  if (!shellWindowLayoutPersistEnabled()) return;
+  if (!data || typeof data !== 'object') return;
+  upsertWindowLayout(data as WindowLayoutEntry);
 }
 
 /**
@@ -3311,6 +3382,7 @@ if (useStructuredEditor && entryArchetype === 'textlog') {
   });
 }
 ${!readonly && startEditing ? "/* Auto-enter edit mode on open */\nenterEdit();" : ''}
+${shellWindowLayoutPersistEnabled() ? geometryReportScript(readonly ? 'viewer' : 'editor', entry.lid, null) : ''}
 </script>
 </body>
 </html>`;
