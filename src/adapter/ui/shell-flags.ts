@@ -29,3 +29,16 @@ export const shellMainReloadGuardEnabled = defineFlag<boolean>(
       '子 entry-window が開いている間、main の reload / close 時に確認ダイアログを出す',
   },
 );
+
+// window role 分離(γ-A5、multi-window-vscode-extension-spec §3 / §8)。
+// ON で editor entry-window から「別窓プレビュー」= viewer role の子 window
+// を分離できる。OFF で従来どおり editor window のみ(完全後方互換)。
+export const shellWindowRolesEnabled = defineFlag<boolean>(
+  'shell.window_roles',
+  false,
+  {
+    category: 'shell',
+    description:
+      'window role 分離(editor / viewer)を有効化。OFF で editor window のみ',
+  },
+);

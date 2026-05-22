@@ -33,6 +33,7 @@ import {
 import { parseFormBody, formPresenter } from './form-presenter';
 import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
+import { shellWindowRolesEnabled } from './shell-flags';
 
 /**
  * Expose renderMarkdown on the parent window so child windows
@@ -105,6 +106,14 @@ function renderEntryPreview(
 const openWindows = new Map<string, Window>();
 
 /**
+ * γ-A5(multi-window-vscode-extension-spec §3):viewer role の子 window
+ * 一覧。editor の `openWindows` とは **別 Map** で管理するため、同じ entry
+ * を editor と viewer の両方で同時に開ける。既存 editor 機構(`openWindows`
+ * / reload guard / 競合検知)には一切影響しない。
+ */
+const viewerWindows = new Map<string, Window>();
+
+/**
  * Phase γ-A3:child window の open/close を state machine へ通知する
  * listener。main.ts が boot 時に登録し、`SYS_SYNC_CHILD_WINDOWS` dispatch
  * へ配線する。`openEntryWindow`(open 時)と close-poll(close 検知時)が
@@ -153,6 +162,19 @@ export function focusEntryWindow(lid: string): boolean {
 export function getOpenEntryWindowLids(): string[] {
   const lids: string[] = [];
   for (const [lid, child] of openWindows) {
+    if (!child.closed) lids.push(lid);
+  }
+  return lids;
+}
+
+/**
+ * γ-A5:現在開いている viewer role の子 window の lid 一覧。
+ * view-body live-refresh(`wireEntryWindowViewBodyRefresh`)が editor と
+ * viewer の両方へ push するために参照する。
+ */
+export function getOpenViewerWindowLids(): string[] {
+  const lids: string[] = [];
+  for (const [lid, child] of viewerWindows) {
     if (!child.closed) lids.push(lid);
   }
   return lids;
@@ -355,15 +377,25 @@ export function pushViewBodyUpdate(
   lid: string,
   resolvedBody: string,
 ): boolean {
-  const child = openWindows.get(lid);
-  if (!child || child.closed) return false;
+  // γ-A5:同じ lid の editor window と viewer window の両方へ push する。
+  // どちらの child も `buildWindowHtml` 由来の同一 `#body-view` を持つため
+  // 同じ message で再描画でき、editor 保存 → viewer 反映(spec §3.4)が
+  // この両投で成立する。
+  const targets: Window[] = [];
+  const editor = openWindows.get(lid);
+  if (editor && !editor.closed) targets.push(editor);
+  const viewer = viewerWindows.get(lid);
+  if (viewer && !viewer.closed) targets.push(viewer);
+  if (targets.length === 0) return false;
   const html =
     renderMarkdown(resolvedBody || '') ||
     '<em style="color:var(--c-muted)">(empty)</em>';
-  child.postMessage(
-    { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
-    '*',
-  );
+  for (const child of targets) {
+    child.postMessage(
+      { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
+      '*',
+    );
+  }
   return true;
 }
 
@@ -618,6 +650,13 @@ export function openEntryWindow(
       }
       return;
     }
+    if (e.data.type === 'pkc-open-viewer') {
+      // γ-A5:editor window の「別窓プレビュー」ボタン → viewer role の
+      // 子 window を分離する(spec §3.4 / §6.1)。flag OFF なら
+      // `openViewerWindow` 側で no-op。
+      openViewerWindow(entry, lightSource, assetContext, onDownloadAsset);
+      return;
+    }
   }
   window.addEventListener('message', handleMessage);
 
@@ -642,6 +681,72 @@ export function openEntryWindow(
       window.removeEventListener('message', handleMessage);
       // Phase γ-A3:state machine へ window close を同期。
       notifyWindowsChanged();
+    }
+  }, 500);
+}
+
+/**
+ * γ-A5(multi-window-vscode-extension-spec §3):entry を **viewer role**
+ * (読み取り専用)の別 window で開く。
+ *
+ * editor window(`openEntryWindow` / `openWindows`)とは独立した
+ * `viewerWindows` Map で管理するため、同じ entry を editor + viewer で
+ * 同時に開ける。viewer は `buildWindowHtml` を `readonly = true` で呼ぶ
+ * ── Edit ボタン / 自動編集開始は既存の readonly 経路で抑止される。
+ * entry が保存されると `pushViewBodyUpdate`(editor + viewer 両投)で
+ * viewer の `#body-view` が再描画される(spec §3.4「真のマルチウィンドウ」)。
+ *
+ * `shell.window_roles` flag が OFF のときは **no-op**(完全後方互換)。
+ * viewer は未保存編集を持たないため reload guard(`notifyWindowsChanged`)
+ * には連動させない。
+ */
+export function openViewerWindow(
+  entry: Entry,
+  lightSource = false,
+  assetContext?: EntryWindowAssetContext,
+  onDownloadAsset?: (assetKey: string) => void,
+): void {
+  if (!shellWindowRolesEnabled()) return;
+
+  const existing = viewerWindows.get(entry.lid);
+  if (existing && !existing.closed) {
+    existing.focus();
+    return;
+  }
+
+  const child = window.open(
+    '',
+    `pkc-viewer-${entry.lid}`,
+    'width=720,height=600,menubar=no,toolbar=no',
+  );
+  if (!child) return;
+
+  viewerWindows.set(entry.lid, child);
+
+  child.document.open();
+  child.document.write(buildWindowHtml(entry, true, lightSource, assetContext, false));
+  child.document.close();
+
+  function handleMessage(e: MessageEvent): void {
+    if (e.source !== child) return;
+    if (!e.data) return;
+    if (e.data.type === 'pkc-entry-download-asset') {
+      if (typeof e.data.assetKey === 'string' && onDownloadAsset) {
+        onDownloadAsset(e.data.assetKey);
+      }
+    }
+  }
+  window.addEventListener('message', handleMessage);
+
+  const pollClose = setInterval(() => {
+    if (typeof window === 'undefined') {
+      clearInterval(pollClose);
+      return;
+    }
+    if (child!.closed) {
+      clearInterval(pollClose);
+      viewerWindows.delete(entry.lid);
+      window.removeEventListener('message', handleMessage);
     }
   }, 500);
 }
@@ -1786,6 +1891,7 @@ ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</di
   <!-- Fixed action bar at bottom (mirrors center pane) -->
   <div class="pkc-action-bar" id="action-bar">
     ${readonly ? '' : '<button class="pkc-btn" id="btn-edit" onclick="enterEdit()">✏️ Edit</button>'}
+    ${!readonly && shellWindowRolesEnabled() ? '<button class="pkc-btn" id="btn-viewer" onclick="openViewerWin()" title="このエントリを読み取り専用の別ウィンドウで開く(編集保存で反映)">🔍 別窓プレビュー</button>' : ''}
     <button class="pkc-btn-primary" id="btn-save" style="display:none" onclick="saveEntry()">💾 Save</button>
     <button class="pkc-btn" id="btn-cancel" style="display:none" onclick="cancelEdit()">Cancel</button>
     <span class="pkc-action-bar-status" id="bar-status"></span>
@@ -2742,6 +2848,14 @@ function closeEntryWindow() {
   try { window.close(); } catch (e) { /* fall through */ }
   if (!window.closed && window.history.length > 1) {
     window.history.back();
+  }
+}
+
+/* γ-A5: 別窓プレビュー(viewer role)を分離する。parent が openViewerWindow
+ * を呼ぶ。flag OFF のときは btn-viewer 自体が描画されないため到達しない。 */
+function openViewerWin() {
+  if (window.opener) {
+    window.opener.postMessage({ type: 'pkc-open-viewer', lid: lid }, '*');
   }
 }
 
