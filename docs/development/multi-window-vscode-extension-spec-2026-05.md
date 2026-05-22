@@ -169,6 +169,34 @@ main は購読中 monitor を `monitorWindows: Map<windowId, monitorKind>` で
 **monitor も IDB を読まない**(§2-1)── 派生は main の `state.container`
 から計算する。
 
+### §3.4 editor → viewer / monitor の保存時反映(「真のマルチウィンドウ」)
+
+複数 window が同じ entry を **別 role** で同時に開ける(§3.2、window name
+`pkc-${role}-${lid}` で role 別 dedup)。典型シナリオ:
+
+- window A = entry L の **editor**(window 内に split preview を持つ ──
+  **同一 window 内**のプレビューは従来どおり打鍵ごとに live)
+- window B = entry L の **viewer**(プレビューのみ分離した別 window)
+
+window A で **保存**すると:
+
+1. A → `pkc-entry-save` → main
+2. main の reducer が container を更新(§1.3 single authority)
+3. main が **同 lid を映す全 viewer**(と関連 monitor)に更新を push
+   (`pkc-entry-update-view-body` / `pkc-monitor-update`、§7)
+4. window B の viewer が再レンダリング
+
+→「window A で書いて保存」→「window B が反映」が成立する。これが
+**真のマルチウィンドウ** ── 各 window は独立した popup ではなく、main を
+単一権威として **協調**する。1 window = 1 role(1 作業に特化)でも、
+editor 1 window で編集 + split preview を兼ねるのでも、どちらも選べる。
+
+**反映タイミング**:cross-window は **保存時**(同一 window 内 split
+preview は live のまま)。未保存 draft は別 window へ push しない ──
+中途半端な打鍵状態を他 window に出さない。これは user direction
+(2026-05-22「編集保存時にレンダリング反映」)に一致し、OQ-MW-5 を
+解決する。
+
 ---
 
 ## §4 E2 — window layout 保存 / 復元
@@ -326,8 +354,10 @@ user direction「window role を先に → layout 永続化、競合 UI は独�
   「データ経路・子 window 自前描画」に確定済。
 - **OQ-MW-4**:window 間 drag を将来やるか、「送る」command で恒久的に
   足りるとするか。
-- **OQ-MW-5**:viewer window が editor で編集中の entry を映している時、
-  未保存 draft を viewer に push するか(保存済のみ反映か)。
+- ~~**OQ-MW-5**~~:**解決済**(user direction 2026-05-22)── viewer /
+  monitor への cross-window 反映は **保存時のみ**(保存済のみ反映、未保存
+  draft は push しない)。同一 window 内 split preview は live のまま。
+  §3.4 参照。
 
 ---
 
@@ -414,3 +444,4 @@ v3.0 canvas line に carry over する。canvas 固有で書き直すのは各 r
 |---|---|
 | 2026-05-22 | 本書起こし。user direction「VSCode 並みのマルチウィンドウ、設計を先に」。γ-A3 基盤が機能的完了済であることを code(`entry-window.ts` / `main-reload-guard.ts`)+ shell spec §3.6 で確認し、その上に積む 4 拡張(role / layout / diff / 移動)を spec 化。重複 spec ではなく **拡張 spec** |
 | 2026-05-22 | user 質問「canvas 化に対応可能か」を受け §11「canvas 化(Phase δ)との前方互換性」を追加。本 spec は window orchestration 層、canvas 化は rendering surface 層で直交 ── 前方互換と結論。併せて §5.3 / OQ-MW-3 を「diff はデータ経路・子 window 自前描画」に確定(HTML push 案は canvas 非互換のため不採用)|
+| 2026-05-22 | user 確認「editor + viewer 分離、保存時にレンダリング反映 = 真のマルチウィンドウか」を受け §3.4「editor → viewer / monitor の保存時反映」を追加。editor 保存 → main 単一権威 → 同 lid の viewer へ push → 再レンダリングの鎖を明示。cross-window 反映は保存時のみ(同一 window 内 split preview は live)で OQ-MW-5 を解決 |
