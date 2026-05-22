@@ -327,18 +327,24 @@ window に broadcast → 対象 window が drop 受理 → main に通知)は実
 
 user direction「window role を先に → layout 永続化、競合 UI は独立」を反映:
 
-| slice | scope | 依存 | 規模 |
+| slice | scope | 規模 | 状態 |
 |---|---|---|---|
-| A5-1 | `openEntryWindow` → `openWindow(spec)` 一般化 + viewer role | — | 小 |
-| A5-2 | monitor role(toc / recent 始点)+ `pkc-monitor-*` | A5-1 | 中 |
-| A5-3 | `pkc-window-geometry` + layout の localStorage 保存 | A5-1 | 小 |
-| A5-4 | layout 復元ボタン(popup 制約対応)| A5-3 | 小〜中 |
-| A5-5 | 競合 diff view(features 層 diff 純関数 + overlay 2-pane)| 独立 | 中 |
-| A5-6 | 「新しいウィンドウで開く」command + role picker | A5-1 | 小 |
-| A5-7 | visual parity test(role 別 window / layout 復元 / diff)+ 各 flag default 判断 | 全 | 小 |
+| A5-1 | `openEntryWindow` → viewer role 一般化 | 小 | **完了**(pgc-68)|
+| A5-2 | monitor role(toc)+ `pkc-monitor-*` | 中 | **完了**(pgc-69、`recent` は A5-6 後追い)|
+| A5-3 | `pkc-window-geometry` + layout の localStorage 保存 | 小 | **完了**(pgc-70)|
+| A5-4 | layout 復元プロンプト(popup 制約対応)| 小〜中 | **完了**(pgc-71)|
+| A5-5 | 競合 diff view(features 層 diff 純関数 + overlay 2-pane)| 中 | **完了**(pgc-72 main overlay、pgc-75 §5.3 子 window)|
+| A5-6 | 「別ウィンドウで開く」context menu 動線 | 小 | **完了**(pgc-74、user 報告対応)|
+| A5-7 | visual parity test + 各 flag default 判断 | 小 | **保留** ── 本環境で Playwright chromium が DL 不可。γ-A5 の全 flag は default OFF 維持、parity 検証(実ブラウザ / CI)後に default ON を判断する |
 
-各 slice = 1 PR、Tier 0 flag で gate、視覚機能は parity test を添付
-(CLAUDE.md Wave §5)。A5-5(競合 diff)は A5-1〜A5-4 と独立に着手可。
+各 slice = 1 PR、Tier 0 flag で gate。A5-1〜A5-6 + §5.3 は unit test
+約 90 件で orchestration を被覆。A5-7 の視覚 parity は browser 環境
+回復後 or CI で実施し、それまで `shell.window_roles` /
+`shell.window_layout_persist` / `shell.conflict_diff_view` は OFF 出荷。
+
+**bugfix(pgc-73)**:γ-A3 の `BEGIN_EDIT` childWindowLids ガードが子窓
+自身の save 経路まで弾いていた不具合を、`BEGIN_EDIT.windowSave` 免除で
+修正(user 報告「別窓 Save が main に伝搬しない」)。
 
 ---
 
@@ -445,3 +451,4 @@ v3.0 canvas line に carry over する。canvas 固有で書き直すのは各 r
 | 2026-05-22 | 本書起こし。user direction「VSCode 並みのマルチウィンドウ、設計を先に」。γ-A3 基盤が機能的完了済であることを code(`entry-window.ts` / `main-reload-guard.ts`)+ shell spec §3.6 で確認し、その上に積む 4 拡張(role / layout / diff / 移動)を spec 化。重複 spec ではなく **拡張 spec** |
 | 2026-05-22 | user 質問「canvas 化に対応可能か」を受け §11「canvas 化(Phase δ)との前方互換性」を追加。本 spec は window orchestration 層、canvas 化は rendering surface 層で直交 ── 前方互換と結論。併せて §5.3 / OQ-MW-3 を「diff はデータ経路・子 window 自前描画」に確定(HTML push 案は canvas 非互換のため不採用)|
 | 2026-05-22 | user 確認「editor + viewer 分離、保存時にレンダリング反映 = 真のマルチウィンドウか」を受け §3.4「editor → viewer / monitor の保存時反映」を追加。editor 保存 → main 単一権威 → 同 lid の viewer へ push → 再レンダリングの鎖を明示。cross-window 反映は保存時のみ(同一 window 内 split preview は live)で OQ-MW-5 を解決 |
+| 2026-05-22 | **γ-A5 実装 wave 着地(pgc-68〜75、10 PR)**:A5-1 viewer / A5-2 monitor / A5-3 layout 保存 / A5-4 layout 復元 / A5-5 競合 diff(main + 子 window §5.3)/ A5-6 別窓動線、+ bugfix pgc-73。§9 状態欄を更新。A5-7 視覚 parity は本環境の Playwright DL 不可で保留、γ-A5 flag は OFF 出荷維持 |
