@@ -56,3 +56,16 @@ export const shellWindowLayoutPersistEnabled = defineFlag<boolean>(
       '子 window の geometry を localStorage に保存(マルチウィンドウ layout 永続化)',
   },
 );
+
+// 競合解決 diff view(γ-A5-5、multi-window-vscode-extension-spec §5 / §8)。
+// ON で dual-edit 競合 overlay に「現 container body / 自分の draft」の
+// 2-pane 行 diff を表示する。OFF で従来どおり 3 択ボタンのみ(diff なし)。
+export const shellConflictDiffViewEnabled = defineFlag<boolean>(
+  'shell.conflict_diff_view',
+  false,
+  {
+    category: 'shell',
+    description:
+      'dual-edit 競合 overlay に 2-pane 行 diff を表示(現 body と draft の差分)',
+  },
+);

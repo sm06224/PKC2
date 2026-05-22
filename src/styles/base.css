@@ -8655,6 +8655,52 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   font-style: italic;
 }
 
+/* ── γ-A5-5 競合 diff view(dual-edit-conflict overlay 内の 2-pane 行 diff)── */
+.pkc-conflict-diff {
+  margin: var(--space-3) 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.pkc-conflict-diff-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--c-border);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-conflict-diff-head > span {
+  background: var(--c-surface);
+  padding: var(--space-2) var(--space-3);
+}
+.pkc-conflict-diff-body {
+  max-height: 14rem;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.pkc-conflict-diff-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+}
+.pkc-conflict-diff-cell {
+  padding: var(--space-1) var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.4em;
+}
+.pkc-conflict-diff-cell[data-op="del"] {
+  background: color-mix(in srgb, var(--c-danger) 20%, transparent);
+}
+.pkc-conflict-diff-cell[data-op="add"] {
+  background: color-mix(in srgb, var(--c-success) 20%, transparent);
+}
+.pkc-conflict-diff-cell[data-op="empty"] {
+  background: var(--c-hover);
+}
+
 /* ── About view ── */
 .pkc-about-scroll {
   flex: 1;
