@@ -4762,22 +4762,23 @@ describe('DnD + Context Menu Foundation', () => {
     expect(menu.style.top).toBe('200px');
 
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Move to Root (shown because hasParent=true),
-    // Markdown link, Markdown embed (Phase 1 step 5 rename).
-    expect(items.length).toBe(5);
+    // Edit, 別ウィンドウで開く (γ-A5-6), Delete, Move to Root (shown
+    // because hasParent=true), Markdown link, Markdown embed.
+    expect(items.length).toBe(6);
     expect(items[0]!.textContent).toContain('Edit');
-    expect(items[1]!.textContent).toContain('Delete');
-    expect(items[2]!.textContent).toContain('Root');
-    expect(items[3]!.textContent).toContain('Markdown link');
-    expect(items[4]!.textContent).toContain('Markdown embed');
+    expect(items[1]!.textContent).toContain('別ウィンドウで開く');
+    expect(items[2]!.textContent).toContain('Delete');
+    expect(items[3]!.textContent).toContain('Root');
+    expect(items[4]!.textContent).toContain('Markdown link');
+    expect(items[5]!.textContent).toContain('Markdown embed');
   });
 
   it('renderContextMenu hides Move to Root when no parent', () => {
     const menu = renderContextMenu('test-lid', 0, 0, false);
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Markdown link, Markdown embed
-    //   (Move to Root hidden, hasParent=false).
-    expect(items.length).toBe(4);
+    // Edit, 別ウィンドウで開く (γ-A5-6), Delete, Markdown link,
+    // Markdown embed (Move to Root hidden, hasParent=false).
+    expect(items.length).toBe(5);
     const texts = Array.from(items).map(i => i.textContent);
     expect(texts.some(t => t!.includes('Root'))).toBe(false);
     expect(texts.some(t => t!.includes('Markdown link'))).toBe(true);

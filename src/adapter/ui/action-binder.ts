@@ -1152,7 +1152,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             sidebarSelectTimer = null;
             sidebarSelectLid = null;
           }
-          handleDblClickAction(target, lid);
+          handleDblClickAction(lid);
         } else if (me.ctrlKey || me.metaKey) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
         } else if (me.shiftKey) {
@@ -1299,7 +1299,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!lid) break;
         const me = e as MouseEvent;
         if (me.detail >= 2) {
-          handleDblClickAction(target, lid);
+          handleDblClickAction(lid);
           break;
         }
         if (dispatcher.getState().viewMode !== 'detail') {
@@ -1382,7 +1382,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'begin-edit':
-        if (lid) triggerEdit(lid, target);
+        if (lid) triggerEdit(lid);
         break;
       case 'commit-edit':
         dispatchCommitEdit(root, lid, dispatcher);
@@ -3104,6 +3104,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         break;
       }
+      case 'ctx-open-window': {
+        // γ-A5-6(user 報告「メインウィンドウで別窓を開く動線が不足」):
+        // context menu からこのエントリを独立した編集ウィンドウで開く。
+        // handleDblClickAction が SELECT_ENTRY + openEntryWindow を担う。
+        if (!lid) break;
+        handleDblClickAction(lid);
+        break;
+      }
       case 'ctx-preview': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -4669,7 +4677,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const editLid = state.selectedLid;
       if (!editLid) return;
       e.preventDefault();
-      triggerEdit(editLid, root);
+      triggerEdit(editLid);
       return;
     }
 
@@ -5177,7 +5185,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       e.preventDefault();
-      triggerEdit(state.selectedLid, root);
+      triggerEdit(state.selectedLid);
       return;
     }
 
@@ -7219,9 +7227,8 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // ON かつ editMode='window' なら inline 編集に入らず entry-window を
   // 開く。それ以外(flag OFF / editMode='inline' / undefined)は従来の
   // BEGIN_EDIT。✏️ Edit button / Ctrl+E / Enter の全トリガがここを通る
-  // ので surface 選択が一貫する。`target` は window 経路で
-  // handleDblClickAction に渡すが、同関数内では未使用(`_target`)。
-  function triggerEdit(lid: string, target: HTMLElement): void {
+  // ので surface 選択が一貫する。
+  function triggerEdit(lid: string): void {
     // Phase γ-A3:対象 entry が既に child window で開かれているなら、
     // inline 編集に入らずその window を front へ focus する(同一 entry を
     // 2 surface で同時編集 → save 衝突するのを防ぐ)。reducer 側 BEGIN_EDIT
@@ -7229,13 +7236,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // 「編集はあちらの window で」という導線が成立する。
     if (focusEntryWindow(lid)) return;
     if (shellEditModeEnabled() && dispatcher.getState().editMode === 'window') {
-      handleDblClickAction(target, lid);
+      handleDblClickAction(lid);
       return;
     }
     dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
   }
 
-  function handleDblClickAction(_target: HTMLElement, lid: string): void {
+  function handleDblClickAction(lid: string): void {
     const state = dispatcher.getState();
     if (!state.container) return;
 
@@ -7379,7 +7386,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const lid = entryItem.getAttribute('data-pkc-lid');
     if (!lid) return;
     e.preventDefault();
-    handleDblClickAction(entryItem, lid);
+    handleDblClickAction(lid);
   }
 
   // ── Resize handle logic ──
