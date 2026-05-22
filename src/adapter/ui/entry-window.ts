@@ -34,6 +34,7 @@ import { parseFormBody, formPresenter } from './form-presenter';
 import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
 import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled } from './shell-flags';
+import type { DiffRow } from '../../features/diff/line-diff';
 import {
   readWindowLayout,
   upsertWindowLayout,
@@ -1002,11 +1003,22 @@ ${shellWindowLayoutPersistEnabled() ? geometryReportScript('monitor', entry.lid,
 
 /**
  * Notify a child window of a conflict.
+ *
+ * γ-A5-5 §5.3:`diff`(`DiffRow[]`)を渡すと子 window が banner の下に
+ * 2-pane 行 diff を描画する。HTML ではなくデータを送る(canvas 前方互換、
+ * spec §11.3)。
  */
-export function notifyConflict(lid: string, message: string): void {
+export function notifyConflict(
+  lid: string,
+  message: string,
+  diff?: DiffRow[],
+): void {
   const child = openWindows.get(lid);
   if (child && !child.closed) {
-    child.postMessage({ type: 'pkc-entry-conflict', message }, '*');
+    child.postMessage(
+      { type: 'pkc-entry-conflict', message, diff: diff ?? null },
+      '*',
+    );
   }
 }
 
@@ -1872,6 +1884,19 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   padding: 0.4rem 0.75rem; font-size: 0.8rem; margin: 0.5rem 0;
   border-radius: var(--radius);
 }
+/* γ-A5-5 §5.3:競合 banner の下に出す 2-pane 行 diff(子 window 自前描画)。 */
+.pkc-conflict-diff {
+  display: none; margin: 0.5rem 0; border: 1px solid var(--c-border);
+  border-radius: var(--radius); max-height: 12rem; overflow-y: auto;
+  font-family: var(--font-mono); font-size: 0.72rem;
+}
+.pkc-conflict-diff-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
+.pkc-conflict-diff-cell {
+  padding: 1px 6px; white-space: pre-wrap; word-break: break-word; min-height: 1.3em;
+}
+.pkc-conflict-diff-cell[data-op="del"] { background: color-mix(in srgb, var(--c-danger) 22%, transparent); }
+.pkc-conflict-diff-cell[data-op="add"] { background: color-mix(in srgb, var(--c-success) 22%, transparent); }
+.pkc-conflict-diff-cell[data-op="empty"] { background: var(--c-hover); }
 
 /* ── Pending view-refresh notice ──
    Shown when a parent → child view-body rerender was received while
@@ -2124,6 +2149,7 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 <body>
   <!-- Conflict banner (hidden by default) -->
   <div class="pkc-conflict-banner" id="conflict-banner"></div>
+  <div class="pkc-conflict-diff" id="conflict-diff"></div>
   <!-- Pending view-refresh notice (hidden by default) -->
   <div class="pkc-pending-view-notice" id="pending-view-notice" style="display:none">View refresh pending &mdash; will apply on save or cancel.</div>
   <!-- Pending title-refresh notice (hidden by default) -->
@@ -3162,6 +3188,32 @@ function openTocMonitor() {
   }
 }
 
+/* γ-A5-5 §5.3: 競合 banner の下に 2-pane 行 diff を自前描画する。
+ * diff(DiffRow[])は parent が computeして postMessage で渡す(データ経路)。 */
+function renderConflictDiff(diff) {
+  var box = document.getElementById('conflict-diff');
+  if (!box) return;
+  box.textContent = '';
+  if (!diff || !diff.length) { box.style.display = 'none'; return; }
+  for (var i = 0; i < diff.length; i++) {
+    var r = diff[i];
+    var row = document.createElement('div');
+    row.className = 'pkc-conflict-diff-row';
+    var L = document.createElement('div');
+    L.className = 'pkc-conflict-diff-cell';
+    L.setAttribute('data-op', r.op === 'add' ? 'empty' : r.op);
+    L.textContent = r.left == null ? '' : r.left;
+    var R = document.createElement('div');
+    R.className = 'pkc-conflict-diff-cell';
+    R.setAttribute('data-op', r.op === 'del' ? 'empty' : r.op);
+    R.textContent = r.right == null ? '' : r.right;
+    row.appendChild(L);
+    row.appendChild(R);
+    box.appendChild(row);
+  }
+  box.style.display = '';
+}
+
 function enterEdit() {
   currentMode = 'edit';
   document.getElementById('view-pane').style.display = 'none';
@@ -3299,6 +3351,7 @@ window.addEventListener('message', function(e) {
     var banner = document.getElementById('conflict-banner');
     banner.textContent = e.data.message;
     banner.style.display = '';
+    renderConflictDiff(e.data.diff);
   }
   if (e.data && e.data.type === 'pkc-entry-update-preview-ctx') {
     /*

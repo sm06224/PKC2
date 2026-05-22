@@ -129,7 +129,8 @@ import {
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
-import { shellEditModeEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellConflictDiffViewEnabled } from './shell-flags';
+import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
@@ -7283,9 +7284,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // Conflict detection: check if entry was modified after the window opened
         const currentEntry = currentState.container.entries.find((e) => e.lid === saveLid);
         if (currentEntry && currentEntry.updated_at !== openedAt) {
-          // Entry was modified in the parent window after the child window opened
+          // Entry was modified in the parent window after the child window opened.
+          // γ-A5-5 §5.3:flag ON なら現 body と子窓 draft の行 diff を計算し、
+          // 子 window が banner 下に 2-pane diff を描画できるよう渡す。
+          const conflictDiff = shellConflictDiffViewEnabled()
+            ? diffRows(currentEntry.body, body)
+            : undefined;
           import('./entry-window').then(({ notifyConflict }) => {
-            notifyConflict(saveLid, 'Warning: this entry was modified in the main window. Your save will overwrite those changes. Use the revision history in the right pane to recover if needed.');
+            notifyConflict(
+              saveLid,
+              'Warning: this entry was modified in the main window. Your save will overwrite those changes. Use the revision history in the right pane to recover if needed.',
+              conflictDiff,
+            );
           });
         }
 
