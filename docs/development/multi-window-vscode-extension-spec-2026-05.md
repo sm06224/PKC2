@@ -236,9 +236,11 @@ container の body / 右 = 自分の draft、行単位 diff ハイライト)を�
 
 子 window 側 `pkc-entry-conflict` は、message を `{ message, currentBody }`
 に拡張する。子 window は main の overlay DOM を共有できないため、子 window
-内で同じ 2-pane diff を **自前描画**(diff 純関数は同じものを inline
-script から呼べないため、`viewBody` 同様 main で diff HTML を組んで渡す
-案も可 ── §10 OQ-MW-3)。
+内で 2-pane diff を **自前描画**する。diff の **計算** は子 window から
+`window.opener` 経由で features 層の diff 純関数を呼び **データ**で受け取る
+(既存の `window.opener.pkcRenderMarkdown` 等と同じパターン)── main が
+diff 済み HTML を組んで push する案は canvas 化非互換のため採らない
+(§11.3)。
 
 ---
 
@@ -320,8 +322,8 @@ user direction「window role を先に → layout 永続化、競合 UI は独�
   geometry のみで足りるか。
 - **OQ-MW-3**:競合解決は 2-pane diff view(見るだけ)で確定か、将来
   3-pane 手動 merge まで行くか(vision §5 は **楽観的** merge を禁止 ──
-  手動 merge は禁止対象外、ただし規模大)。子 window の diff 描画は子内
-  自前 / main 生成 HTML を渡す のどちらにするか。
+  手動 merge は禁止対象外、ただし規模大)。diff の描画方式は §11.3 で
+  「データ経路・子 window 自前描画」に確定済。
 - **OQ-MW-4**:window 間 drag を将来やるか、「送る」command で恒久的に
   足りるとするか。
 - **OQ-MW-5**:viewer window が editor で編集中の entry を映している時、
@@ -329,7 +331,75 @@ user direction「window role を先に → layout 永続化、競合 UI は独�
 
 ---
 
-## §11 関連 doc / history
+## §11 canvas 化(Phase δ)との前方互換性
+
+v3 提案 #2 + #8(editor / parser core の wasm 化 + 編集・レンダリング両面の
+canvas 化)は Phase δ で v2.x とは別 line(別 repo branch、switchover 方式)
+として進む。本 spec が canvas 化後も生き残るかを整理する。
+
+### §11.1 層が直交している
+
+本 spec が扱うのは **window orchestration 層**(window を開く / role を
+与える / geometry を持つ / postMessage で繋ぐ / 単一権威データモデル)。
+canvas 化が書き換えるのは **rendering surface 層**(window の中身を
+textarea + DOM で描くか canvas で描くか)。この 2 層は直交する ── canvas
+化しても browser window は browser window のままで、`window.open` /
+postMessage / IndexedDB / dispatcher は不変。
+
+### §11.2 そのまま carry over するもの
+
+- **§2-1 single authority** ── main = 唯一の dispatcher / IDB writer。
+  canvas 化は core / features(pure 層)を温存し adapter/ui の描画のみ
+  書き換えるため、データ・状態アーキテクチャは不変。
+- **§3 role 概念** ── editor / viewer / monitor は「振る舞いの種別」で
+  あり DOM 構造ではない。canvas window にも同じ role がそのまま載る。
+- **§4 layout(geometry)** ── `window.screenX/Y/outerWidth/Height` +
+  localStorage。描画方式と完全に無関係。
+- **§7 postMessage protocol** ── window 間の通信契約。canvas 化で window
+  の数や繋ぎ方は変わらない。
+
+### §11.3 canvas 化を見据えた設計判断
+
+本 spec の新 message は **すべて「データ」を運び、描画済み HTML を運ば
+ない**:`pkc-window-geometry`(数値)/ `pkc-monitor-update`(`derived`
+データ)/ `pkc-entry-conflict` 拡張(`currentBody` = 文字列)。canvas
+renderer はデータを受け取り自前で paint できる ── HTML 文字列を inject
+する設計だと canvas 化で破綻するため、本 spec は最初からデータ経路を採る。
+
+(対照:既存 `pkc-entry-update-view-body` は HTML 文字列を push する旧式。
+これは本 spec の導入ではなく γ-A3 以前からの既存 message で、canvas 化時
+に data 経路へ要改修 ── 本 spec の責務外だが記録する。)
+
+§5 競合 diff も **features 層の純関数**(`src/features/diff/`)として定義
+する。純関数は DOM にも canvas にも依存しない ── canvas 化後は diff の
+**描画**だけ canvas に差し替わり、diff の **計算**は不変。§5.3 が子
+window 側で diff を「データ経由で受け取り自前描画」とするのもこの理由。
+
+### §11.4 caveat
+
+- canvas 化は v3.0 の **rewrite / switchover**。「互換」とは **設計概念が
+  carry over する**意であり、v2.x の DOM 実装がそのまま動く意ではない。
+  viewer / monitor / diff の **描画コード**は canvas 用に書き直される
+  ── ただしこれは v2.x UI 全般に言えることで、本 spec 固有の弱点ではない。
+- canvas 化が同時にデータモデルを `body: string` から内部中間表現(IR /
+  AST、`src/features/ast/` 既存)へ移す場合、diff の粒度は行ベースから
+  block / AST ベースへ **格上げ**され得る。その場合も window orchestration
+  層(本 spec の主題)は無影響、diff 純関数の差し替えで済む。
+- 本 spec の orchestration 層(`openWindow(spec)` + role + postMessage)は
+  vision doc §6 が構想する `WindowBus` 抽象の実体に相当する ── canvas
+  時代に再利用される resilient な部品。
+
+### §11.5 結論
+
+本 spec は canvas 化と **直交し、前方互換**。window orchestration の設計
+概念(role / geometry / single authority / data 経路の message)はそのまま
+v3.0 canvas line に carry over する。canvas 固有で書き直すのは各 role の
+**中身の描画**のみで、それは canvas 化の本来の仕事そのもの ── 本 spec が
+それを阻害する箇所は無い。
+
+---
+
+## §12 関連 doc / history
 
 - [`phase-beta-group-a-shell-spec-2026-05.md`](./phase-beta-group-a-shell-spec-2026-05.md)
   §3 — γ-A3 基盤(本書の前提)
@@ -343,3 +413,4 @@ user direction「window role を先に → layout 永続化、競合 UI は独�
 | date | event |
 |---|---|
 | 2026-05-22 | 本書起こし。user direction「VSCode 並みのマルチウィンドウ、設計を先に」。γ-A3 基盤が機能的完了済であることを code(`entry-window.ts` / `main-reload-guard.ts`)+ shell spec §3.6 で確認し、その上に積む 4 拡張(role / layout / diff / 移動)を spec 化。重複 spec ではなく **拡張 spec** |
+| 2026-05-22 | user 質問「canvas 化に対応可能か」を受け §11「canvas 化(Phase δ)との前方互換性」を追加。本 spec は window orchestration 層、canvas 化は rendering surface 層で直交 ── 前方互換と結論。併せて §5.3 / OQ-MW-3 を「diff はデータ経路・子 window 自前描画」に確定(HTML push 案は canvas 非互換のため不採用)|
