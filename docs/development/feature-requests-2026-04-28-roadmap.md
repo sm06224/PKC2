@@ -647,7 +647,15 @@ PKC2 単一 HTML 内に複数の「アプリ」(別目的の view / mode)を切�
 
 ### 10-8: Sandbox iframe ワークスペースコントローラ / マルチウィンドウコントローラ
 
-attachment sandbox(既存)の延長で、複数 iframe を「workspace」として束ねる controller。または OS native のマルチウィンドウを管理する controller。詳細仕様は user 議論待ち。
+attachment sandbox(既存)の延長で、複数 iframe を「workspace」として束ねる controller。または OS native のマルチウィンドウを管理する controller。
+
+**Status 更新(2026-05-22)**:マルチウィンドウは v3 提案 #4 として既に
+spec 化 + 基盤実装済。`phase-beta-group-a-shell-spec-2026-05.md` §3 が設計、
+γ-A3(子 window / 複数同時 / `main-reload-guard.ts` / 競合検知)が機能的に
+完了。VSCode 級拡張(window role / layout 保存 / 競合 diff / window 間
+移動)は `multi-window-vscode-extension-spec-2026-05.md` で spec 化済、
+実装は Phase γ-A5。本 §10-8 の「詳細仕様は user 議論待ち」は解消済。
+sandbox iframe を「workspace」として束ねる別解釈は依然 vision 段階。
 
 サイズ: 大(spec audit が必要)。前提: 既存 sandbox / detached window / postMessage transport の整理。
 
