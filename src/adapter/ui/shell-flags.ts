@@ -217,3 +217,23 @@ export const shellActivityBarEnabled = defineFlag<boolean>(
       'sidebar の左に Activity Bar(VSCode 流の縦 strip tab)を表示。Explorer / Search / Outline / Relations / Recent / Pinned の 6 tab、本 PR は scaffold のみ',
   },
 );
+
+// meta pane Inspector tab strip(MASTER.md §6.3、pgc-109 wave-γ #10)。
+// ON で meta pane(右ペイン)の頭に 5 tab(Properties / References /
+// History / Style / AI)の tab strip を **prepend**、tab 別に section
+// 可視性を切替える(VSCode の Inspector / Tool Window 相当)。OFF で
+// 従来どおり 13+ section の縦長 list(`renderMetaPaneModeBar` の 3 mode
+// は flag に関わらず常時残り、Inspector は更に上位の chunk 分け)。
+//
+// 本 PR(pgc-109)は scaffold のみ ── 各 tab で見せる section の filter
+// 表は META_PANE_INSPECTOR_TABS で定義、Style / AI は placeholder
+// (Coming soon)。後続 PR で各 tab の中身を肉付け。
+export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
+  'shell.meta_pane_inspector_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'meta pane の頭に Inspector tab strip(Properties / References / History / Style / AI)を prepend、tab 別 section 可視性切替',
+  },
+);

@@ -17,7 +17,8 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled } from './shell-flags';
+import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
 import { buildOutlineTab } from './activity-outline-tab';
 import { buildRecentTab } from './activity-recent-tab';
@@ -8847,6 +8848,18 @@ function renderMetaPaneImpl(
   if (metaPaneModeTabsEnabled()) {
     meta.setAttribute('data-pkc-meta-pane-mode', metaPaneMode);
     applyMetaPaneModeFilter(meta, metaPaneMode);
+  }
+
+  // pgc-109 wave-γ #10(MASTER.md §6.3):Inspector tab strip(flag ON 時)。
+  // meta pane の頭に 5 tab(Properties / References / History / Style /
+  // AI)の strip を prepend、各 tab の visibleRegions に応じて section
+  // 表示を絞る。Style / AI は placeholder。本 PR は scaffold のみ、
+  // 各 tab の中身は後続 PR で肉付け。
+  if (shellMetaPaneInspectorEnabled()) {
+    const strip = buildMetaPaneInspectorTabStrip();
+    // tab strip は header / timestamps の直前(meta pane の最上段)に挿入
+    meta.insertBefore(strip, meta.firstChild);
+    applyInspectorTabFilter(meta);
   }
 
   return meta;

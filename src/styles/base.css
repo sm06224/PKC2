@@ -6413,6 +6413,57 @@ mark.pkc-search-mark {
   color: var(--c-bg);
 }
 
+/* pgc-109 wave-γ #10(MASTER.md §6.3):meta pane Inspector tab strip。
+   flag ON 時に renderMetaPaneImpl が meta pane の頭に prepend する 5 tab
+   strip(Properties / References / History / Style / AI)。active tab は
+   accent border-bottom で強調、placeholder tab は中央寄せ "Coming soon" を
+   pane 中央に出す。 */
+.pkc-meta-inspector-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+.pkc-meta-inspector-tab {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-1) 0;
+  font-size: 1.05rem;
+  color: var(--c-fg-dim);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pkc-meta-inspector-tab:hover {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-fg);
+}
+.pkc-meta-inspector-tab[data-pkc-active="true"] {
+  color: var(--c-accent);
+  border-bottom-color: var(--c-accent);
+}
+.pkc-meta-inspector-placeholder {
+  margin: var(--space-4) auto;
+  text-align: center;
+  color: var(--c-fg-dim);
+  padding: var(--space-3);
+}
+.pkc-meta-inspector-placeholder-icon {
+  font-size: 2.5rem;
+  margin-bottom: var(--space-2);
+}
+.pkc-meta-inspector-placeholder-title {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.pkc-meta-inspector-placeholder-note {
+  font-size: var(--fs-sm);
+  opacity: 0.7;
+}
+
 /* ── 編集モード picker(Group A、Phase γ-A2)── */
 .pkc-edit-mode-picker {
   display: inline-flex;
