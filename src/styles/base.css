@@ -10594,3 +10594,62 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 .pkc-tab-pin:hover {
   background: var(--c-border);
 }
+
+/* ─── Split View(pgc-89、MASTER.md §4.3 / §5.5)────────────────────
+ * Tier 0 flag `shell.split_view_enabled` ON のとき center pane を grid
+ * 2-column に変えて secondary pane(read-only viewer)を右側に置く。
+ * close button でいつでも閉じる。
+ */
+.pkc-center-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  column-gap: 0;
+}
+.pkc-center-split > .pkc-split-view {
+  /* secondary pane は 2 行目に span(tab strip / view-mode bar の下に) */
+  grid-column: 2 / 3;
+  grid-row: 1 / -1;
+  border-left: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.pkc-split-view-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.7rem;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  font-size: 0.85rem;
+}
+.pkc-split-view-title {
+  color: var(--c-muted);
+  font-weight: 500;
+}
+.pkc-split-view-close {
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
+  text-align: center;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: 0.9rem;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+.pkc-split-view-close:hover {
+  background: var(--c-hover);
+}
+.pkc-split-view-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.85rem 1rem;
+  background: var(--c-bg);
+  color: var(--c-fg);
+}

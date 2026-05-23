@@ -17,8 +17,9 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled } from './shell-flags';
 import { buildTabStripElement } from './tab-strip';
+import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
 import {
   bindGraphCanvas,
@@ -4695,7 +4696,15 @@ function renderSubLocationItem(hit: SubLocationHit): HTMLElement {
 function renderCenter(state: AppState): HTMLElement {
   const endProfile = profileStart('render:center');
   try {
-    return renderCenterImpl(state);
+    const center = renderCenterImpl(state);
+    // pgc-89:Split View — renderCenterImpl が view mode 別の早期 return を
+    // 多数持つので、全 return path に対して append する wrapper layer。
+    if (shellSplitViewEnabled() && isSplitViewOpen()) {
+      const splitPane = buildSplitViewElement(state);
+      center.appendChild(splitPane);
+      center.classList.add('pkc-center-split');
+    }
+    return center;
   } finally {
     endProfile();
   }

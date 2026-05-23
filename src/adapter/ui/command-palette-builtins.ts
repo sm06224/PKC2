@@ -17,6 +17,7 @@ import type { ArchetypeId } from '../../core/model/record';
 import type { CommandMeta } from '../../features/command/types';
 import { registerCommand } from './command-palette';
 import { openViewTab, persistTabState, togglePinTab, getActiveTabLid } from './tab-strip';
+import { toggleSplitView } from './split-view';
 
 /**
  * 既存 `data-pkc-action` button を root から探して click を emit する
@@ -200,6 +201,21 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       if (!lid) return;
       togglePinTab(lid);
       persistTabState();
+      const st = dispatcher.getState();
+      dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+    },
+  );
+
+  // ─── Split View(pgc-89、MASTER.md §5.5)─────
+  registerCommand(
+    {
+      id: 'split-view.toggle',
+      titleJa: 'Split View を toggle(右に read-only viewer)',
+      titleEn: 'Toggle Split View(right read-only viewer)',
+      category: 'View',
+    },
+    () => {
+      toggleSplitView('right');
       const st = dispatcher.getState();
       dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
     },

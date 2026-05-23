@@ -137,3 +137,16 @@ export const shellTabsEnabled = defineFlag<boolean>(
       'Tab system(center pane に open entry の tab strip を描画)',
   },
 );
+
+// Split View(MASTER.md §4.3 / §5.5、pgc-89 POC)を有効化。ON で center
+// pane を 2 半に split し、secondary pane に read-only viewer を出す。
+// OFF で従来 1-pane 表示。
+export const shellSplitViewEnabled = defineFlag<boolean>(
+  'shell.split_view_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Split View(center pane を 2 半に split、secondary は read-only viewer)を有効化',
+  },
+);
