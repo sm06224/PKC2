@@ -26,6 +26,9 @@ const ALL_TABS: ReadonlyArray<{ id: ActivityTab; icon: string; label: string; ti
 
 let activeTab: ActivityTab = 'explorer';
 
+export type ActivityBarSide = 'left' | 'right';
+let barSide: ActivityBarSide = 'left';
+
 export function getActivityBarActiveTab(): ActivityTab {
   return activeTab;
 }
@@ -34,15 +37,32 @@ export function setActivityBarActiveTab(tab: ActivityTab): void {
   activeTab = tab;
 }
 
+// pgc-116 wave-γ #16(MASTER.md §6.2 後続):Activity Bar の左 / 右 配置
+// 切替。default 'left'(VSCode 既定)、'right' で sidebar の右へ。
+// 位置自体は renderer.ts 側で main の prepend / append を決定する。
+export function getActivityBarSide(): ActivityBarSide {
+  return barSide;
+}
+
+export function setActivityBarSide(side: ActivityBarSide): void {
+  barSide = side;
+}
+
+export function toggleActivityBarSide(): void {
+  barSide = barSide === 'left' ? 'right' : 'left';
+}
+
 // テスト用の reset helper。
 export function resetActivityBarState(): void {
   activeTab = 'explorer';
+  barSide = 'left';
 }
 
 export function buildActivityBarElement(): HTMLElement {
   const bar = document.createElement('aside');
   bar.className = 'pkc-activity-bar';
   bar.setAttribute('data-pkc-region', 'activity-bar');
+  bar.setAttribute('data-pkc-side', barSide);
   bar.setAttribute('aria-label', 'Activity Bar');
   bar.setAttribute('role', 'tablist');
   for (const { id, icon, label, tip } of ALL_TABS) {
@@ -62,6 +82,23 @@ export function buildActivityBarElement(): HTMLElement {
     btn.textContent = icon;
     bar.appendChild(btn);
   }
+  // pgc-116 wave-γ #16:Activity Bar 末尾に left/right 切替 button(↔)
+  // を追加。click で `toggle-activity-bar-side` action 経由で bar の位置が
+  // flip する(left ↔ right)。spacer で間隔を取って separator 効果。
+  const spacer = document.createElement('div');
+  spacer.className = 'pkc-activity-bar-spacer';
+  bar.appendChild(spacer);
+  const sideToggle = document.createElement('button');
+  sideToggle.className = 'pkc-activity-bar-btn pkc-activity-bar-side-toggle';
+  sideToggle.setAttribute('data-pkc-action', 'toggle-activity-bar-side');
+  sideToggle.setAttribute('data-pkc-current-side', barSide);
+  sideToggle.setAttribute(
+    'title',
+    barSide === 'left' ? 'Move Activity Bar to right' : 'Move Activity Bar to left',
+  );
+  sideToggle.setAttribute('aria-label', 'Toggle Activity Bar side');
+  sideToggle.textContent = '↔';
+  bar.appendChild(sideToggle);
   return bar;
 }
 

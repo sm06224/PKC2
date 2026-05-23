@@ -77,8 +77,10 @@ describe('pgc-102 Activity Bar scaffold', () => {
     return root.querySelector('[data-pkc-region="activity-bar"]');
   }
   function tabBtns(): HTMLElement[] {
+    // pgc-116:Activity Bar に side-toggle button(`↔`)が追加されたので
+    // tab button のみを selector で絞る(`data-pkc-activity-tab` 必須)。
     return Array.from(root.querySelectorAll<HTMLElement>(
-      '[data-pkc-region="activity-bar"] .pkc-activity-bar-btn',
+      '[data-pkc-region="activity-bar"] .pkc-activity-bar-btn[data-pkc-activity-tab]',
     ));
   }
   function placeholder(): HTMLElement | null {

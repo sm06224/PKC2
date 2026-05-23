@@ -897,7 +897,25 @@
   flex-direction: column;
   align-items: center;
   padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
   gap: var(--space-0-5);
+}
+/* pgc-116 wave-γ #16:right-side configuration ── border が右側ではなく
+   左側になる(逆対称)。`data-pkc-side="right"` で flip。 */
+.pkc-activity-bar[data-pkc-side="right"] {
+  border-right: 0;
+  border-left: 1px solid var(--c-border);
+}
+.pkc-activity-bar-spacer {
+  flex: 1; /* 残り高さを spacer で占有して side-toggle を bar 下端に押す */
+}
+.pkc-activity-bar-side-toggle {
+  font-size: 1rem !important;
+  color: var(--c-fg-dim) !important;
+  opacity: 0.6;
+}
+.pkc-activity-bar-side-toggle:hover {
+  opacity: 1;
 }
 .pkc-activity-bar-btn {
   width: 36px;

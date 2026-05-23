@@ -21,7 +21,7 @@ import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNew
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
-import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
+import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab, getActivityBarSide } from './activity-bar';
 import { buildOutlineTab } from './activity-outline-tab';
 import { buildRecentTab } from './activity-recent-tab';
 import { buildPinnedTab } from './activity-pinned-tab';
@@ -807,11 +807,12 @@ function renderShell(state: AppState): HTMLElement {
   const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
 
   // pgc-102 wave-γ #4(MASTER.md §6.2):flag ON 時に Activity Bar(VSCode
-  // 流の縦 strip)を sidebar の左に prepend。本 PR は visual scaffold +
-  // tab selection のみ ── Explorer 以外を選んだ場合に sidebar の代わりに
-  // placeholder("Coming soon")を出す。後続 pgc-103〜107 で各 tab の
-  // 中身を実装(Search / Outline / Relations / Recent / Pinned)。
-  if (shellActivityBarEnabled()) {
+  // 流の縦 strip)を sidebar の左に prepend。pgc-116 wave-γ #16:
+  // `getActivityBarSide()` が 'left' なら従来どおり main 先頭、'right' なら
+  // 全 pane が append された後に末尾(meta pane の更に右)に置く。後者は
+  // 下の "After all panes" 直前で append される。
+  const activityBarSide = shellActivityBarEnabled() ? getActivityBarSide() : null;
+  if (activityBarSide === 'left') {
     main.appendChild(buildActivityBarElement());
   }
 
@@ -897,6 +898,12 @@ function renderShell(state: AppState): HTMLElement {
   rightTray.style.display = panePrefs.meta && hasMetaPane ? '' : 'none';
   rightTray.setAttribute('data-pkc-region', 'tray-right');
   main.appendChild(rightTray);
+
+  // pgc-116 wave-γ #16:Activity Bar が 'right' 側設定なら ここで append。
+  // すべての pane(sidebar / center / meta / right tray)の右隣に置かれる。
+  if (activityBarSide === 'right') {
+    main.appendChild(buildActivityBarElement());
+  }
 
   shell.appendChild(main);
 

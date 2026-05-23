@@ -137,7 +137,7 @@ import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
 import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab } from './tab-strip';
 import { toggleSplitView } from './split-view';
-import { setActivityBarActiveTab } from './activity-bar';
+import { setActivityBarActiveTab, toggleActivityBarSide } from './activity-bar';
 import { setActivitySearchQuery } from './activity-search-tab';
 import { setMetaPaneInspectorActiveTab } from './meta-pane-inspector';
 import { toggleFormatPanelVisible } from './format-panel-visibility';
@@ -1252,6 +1252,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           const st = dispatcher.getState();
           dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         }
+        break;
+      }
+      case 'toggle-activity-bar-side': {
+        // pgc-116 wave-γ #16(MASTER.md §6.2 後続):Activity Bar の
+        // left / right を flip。module-local state を反転 + SYS_SYNC で
+        // 再描画(activity bar が main の先頭 / 末尾に切替わる)。
+        e.preventDefault();
+        e.stopPropagation();
+        toggleActivityBarSide();
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         break;
       }
       case 'select-activity-tab': {
