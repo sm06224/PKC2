@@ -26,27 +26,47 @@ interface InspectorTabMeta {
 // `data-pkc-region` の値)を tab に振り分ける。`null` = 常時表示(header /
 // timestamps 等の framework parts)。
 //
-// Note:`References` は従来 mode bar の 'references' と同じ region 集合
-// (references / tags / entry-tags / relation-create)。History は revisions
-// 系 + (将来)diff viewer。Style / AI は新規 placeholder(後続 PR)。
+// Note(2026-05-23、pgc-117):実際の region は renderer.ts で attr 名を
+// grep して確定したもの:
+//   - Properties:frontmatter / frontmatter-warning(YAML preview)
+//   - References:references(umbrella)+ tags / entry-tags / entry-tag-add /
+//     entry-tag-filter / tag-add / relation-create / graph-bulk-relate
+//   - History:revision-history(picker)+ revision-info / revision-latest /
+//     revision-preview / derived-branches
+//   - Style / AI:placeholder(後続 PR)
+//
+// pgc-117 で History tab を `revision-history` に修正(scaffold 時は誤った
+// `'history'` / `'revisions'` を visibleRegions に置いていた)── これで
+// flag ON 時に History tab を選んで実際に revision picker が出る。
 export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
   {
     id: 'properties',
     icon: '📋',
     label: 'Properties',
-    visibleRegions: ['frontmatter', 'meta-folder', 'meta-categorical'],
+    visibleRegions: ['frontmatter', 'frontmatter-warning'],
   },
   {
     id: 'references',
     icon: '🔗',
     label: 'References',
-    visibleRegions: ['references', 'tags', 'entry-tags', 'relation-create'],
+    visibleRegions: [
+      'references', 'references-summary',
+      'tags', 'tag-add',
+      'entry-tags', 'entry-tag-add', 'entry-tag-filter',
+      'relation-create',
+      'relations',
+      'graph-bulk-relate',
+    ],
   },
   {
     id: 'history',
     icon: '📜',
     label: 'History',
-    visibleRegions: ['history', 'revisions'],
+    visibleRegions: [
+      'revision-history',
+      'revision-info', 'revision-latest', 'revision-preview',
+      'derived-branches',
+    ],
   },
   {
     id: 'style',
@@ -109,6 +129,11 @@ export function buildMetaPaneInspectorTabStrip(): HTMLElement {
  * (header / timestamps / mode-bar 等)は常時表示。`visibleRegions` が
  * 空配列の tab(Style / AI 等の placeholder tab)は **すべての region を
  * 隠し**、placeholder メッセージのみ表示。
+ *
+ * pgc-117 wave-γ #17:visibleRegions が non-empty でも、その region が
+ * 実際に pane 内に **1 件も無かった場合** は "No content yet" empty hint
+ * を出して user の戸惑いを防ぐ(例:revision 0 件 entry で History tab、
+ * frontmatter 無し entry で Properties tab 等)。
  */
 export function applyInspectorTabFilter(pane: HTMLElement): void {
   const tab = activeInspectorTab;
@@ -116,6 +141,7 @@ export function applyInspectorTabFilter(pane: HTMLElement): void {
   if (!meta) return;
   const visibleRegions = meta.visibleRegions;
   const tabStripRegion = 'meta-inspector-tabs';
+  let matchedCount = 0;
   for (const child of Array.from(pane.children)) {
     const region = child.getAttribute('data-pkc-region');
     if (!region) continue; // framework parts(header 等)は常時表示
@@ -133,11 +159,56 @@ export function applyInspectorTabFilter(pane: HTMLElement): void {
     }
     if (!visibleRegions.includes(region)) {
       (child as HTMLElement).style.display = 'none';
+    } else {
+      matchedCount++;
     }
   }
   // placeholder tab で全 section 隠れたら "Coming soon" message を追加。
   if (meta.visibleRegions.length === 0) {
     appendPlaceholderMessage(pane, meta);
+    return;
+  }
+  // pgc-117:non-placeholder tab で 1 件も matched region が無い場合は
+  // "No <Label> content yet" empty hint を表示。例:revision 0 件 entry
+  // で History tab、frontmatter 無し entry で Properties tab。
+  if (matchedCount === 0) {
+    appendNoContentHint(pane, meta);
+  }
+}
+
+function appendNoContentHint(pane: HTMLElement, meta: InspectorTabMeta): void {
+  // 連続描画で二重添加を回避
+  const old = pane.querySelector('[data-pkc-region="meta-inspector-empty-hint"]');
+  if (old) old.remove();
+  const hint = document.createElement('div');
+  hint.className = 'pkc-meta-inspector-empty-hint';
+  hint.setAttribute('data-pkc-region', 'meta-inspector-empty-hint');
+  const icon = document.createElement('div');
+  icon.className = 'pkc-meta-inspector-placeholder-icon';
+  icon.textContent = meta.icon;
+  hint.appendChild(icon);
+  const title = document.createElement('div');
+  title.className = 'pkc-meta-inspector-placeholder-title';
+  title.textContent = `No ${meta.label} yet`;
+  hint.appendChild(title);
+  const note = document.createElement('div');
+  note.className = 'pkc-meta-inspector-placeholder-note';
+  note.textContent = labelToEmptyMessage(meta.id);
+  hint.appendChild(note);
+  pane.appendChild(hint);
+}
+
+function labelToEmptyMessage(tab: InspectorTab): string {
+  switch (tab) {
+    case 'properties':
+      return 'Add frontmatter properties (--- … ---) at the start of the body.';
+    case 'references':
+      return 'No tags / relations / markdown links for this entry yet.';
+    case 'history':
+      return 'No revisions yet. Edit and save the entry to create the first revision.';
+    case 'style':
+    case 'ai':
+      return 'Coming soon(wave-γ で順次実装中)';
   }
 }
 

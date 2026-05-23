@@ -6522,7 +6522,8 @@ mark.pkc-search-mark {
   color: var(--c-accent);
   border-bottom-color: var(--c-accent);
 }
-.pkc-meta-inspector-placeholder {
+.pkc-meta-inspector-placeholder,
+.pkc-meta-inspector-empty-hint {
   margin: var(--space-4) auto;
   text-align: center;
   color: var(--c-fg-dim);
