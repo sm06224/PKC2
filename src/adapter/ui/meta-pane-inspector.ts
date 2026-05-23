@@ -72,7 +72,11 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
     id: 'style',
     icon: '🎨',
     label: 'Style',
-    visibleRegions: [],
+    // pgc-118 wave-γ #18:Style tab を placeholder から脱却 ── 読み取り
+    // 専用 metrics(archetype / char count / heading 数 / frontmatter style
+    // globals 等)を `inspector-style-tab.ts buildInspectorStyleSection` で
+    // render、`data-pkc-region="inspector-style-metrics"` で識別。
+    visibleRegions: ['inspector-style-metrics'],
   },
   {
     id: 'ai',

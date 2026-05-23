@@ -110,36 +110,38 @@ describe('pgc-109 meta pane Inspector tab strip scaffold', () => {
     expect(getMetaPaneInspectorActiveTab()).toBe('properties');
   });
 
-  it('flag ON:Style tab click → active 切替 + placeholder 表示', () => {
-    setFlag(true);
-    boot();
-    const style = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="style"]')!;
-    style.click();
-    expect(getMetaPaneInspectorActiveTab()).toBe('style');
-    const stillStyle = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="style"]');
-    expect(stillStyle?.getAttribute('data-pkc-active')).toBe('true');
-    const ph = inspectorPlaceholder();
-    expect(ph).not.toBeNull();
-    expect(ph?.querySelector('.pkc-meta-inspector-placeholder-icon')?.textContent).toBe('🎨');
-    expect(ph?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('Style');
-    expect(ph?.querySelector('.pkc-meta-inspector-placeholder-note')?.textContent).toContain('Coming soon');
-  });
-
-  it('flag ON:AI tab も placeholder(visibleRegions が空)', () => {
+  it('flag ON:AI tab click → active 切替 + placeholder 表示', () => {
+    // pgc-118:Style tab は metrics 実装されたので、placeholder 残りの
+    // AI tab で test。
     setFlag(true);
     boot();
     const ai = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="ai"]')!;
     ai.click();
+    expect(getMetaPaneInspectorActiveTab()).toBe('ai');
+    const stillAi = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="ai"]');
+    expect(stillAi?.getAttribute('data-pkc-active')).toBe('true');
     const ph = inspectorPlaceholder();
+    expect(ph).not.toBeNull();
     expect(ph?.querySelector('.pkc-meta-inspector-placeholder-icon')?.textContent).toBe('🧠');
     expect(ph?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('AI');
+    expect(ph?.querySelector('.pkc-meta-inspector-placeholder-note')?.textContent).toContain('Coming soon');
   });
 
-  it('flag ON:Properties に戻ると placeholder 消える', () => {
+  it('flag ON:Style tab(pgc-118 で実装済)は placeholder ではなく Style metrics section', () => {
+    // pgc-118 で Style tab に metrics 実装。
     setFlag(true);
     boot();
     const style = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="style"]')!;
     style.click();
+    expect(inspectorPlaceholder()).toBeNull();
+    expect(root.querySelector('[data-pkc-region="inspector-style-metrics"]')).not.toBeNull();
+  });
+
+  it('flag ON:Properties に戻ると placeholder 消える(AI tab 経由)', () => {
+    setFlag(true);
+    boot();
+    const ai = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="ai"]')!;
+    ai.click();
     expect(inspectorPlaceholder()).not.toBeNull();
     const props = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="properties"]')!;
     props.click();

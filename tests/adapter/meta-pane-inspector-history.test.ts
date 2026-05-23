@@ -163,12 +163,14 @@ describe('pgc-117 Inspector History tab(中身肉付け + empty hint)', () => {
     }
   });
 
-  it('flag ON + Style tab(placeholder)では empty hint ではなく placeholder', () => {
+  it('flag ON + AI tab(placeholder)では empty hint ではなく placeholder', () => {
+    // pgc-118:Style tab は metrics 実装されたので、placeholder 残りの
+    // AI tab で test。
     setFlag(true);
     const d = boot(makeContainer(true));
-    setMetaPaneInspectorActiveTab('style');
+    setMetaPaneInspectorActiveTab('ai');
     d.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: [] });
-    // Style は visibleRegions empty なので placeholder path
+    // AI は visibleRegions empty なので placeholder path
     const ph = root.querySelector('[data-pkc-region="meta-inspector-placeholder"]');
     expect(ph).not.toBeNull();
     expect(emptyHint()).toBeNull(); // empty-hint は出さない(placeholder 優先)

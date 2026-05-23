@@ -6529,6 +6529,48 @@ mark.pkc-search-mark {
   color: var(--c-fg-dim);
   padding: var(--space-3);
 }
+
+/* pgc-118 wave-γ #18(MASTER.md §6.3):Inspector Style tab content。
+   読み取り専用 metrics(archetype / 文字数 / heading 数 / frontmatter style
+   globals 等)を definition list で表示。per-entry theme override は wave-γ
+   後続 PR で実装。 */
+.pkc-inspector-style {
+  padding: var(--space-2) 0;
+}
+.pkc-inspector-style-heading {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--c-fg);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+}
+.pkc-inspector-style-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
+}
+.pkc-inspector-style-dt {
+  margin: 0;
+  color: var(--c-fg-dim);
+  font-weight: 500;
+}
+.pkc-inspector-style-dd {
+  margin: 0;
+  color: var(--c-fg);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
+.pkc-inspector-style-note {
+  margin-top: var(--space-3);
+  padding: var(--space-1-5) var(--space-2);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-xs);
+  font-style: italic;
+  opacity: 0.8;
+}
 .pkc-meta-inspector-placeholder-icon {
   font-size: 2.5rem;
   margin-bottom: var(--space-2);
