@@ -16,6 +16,12 @@
 
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+// pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 全 render path に frontmatter
+// strip + extractVars + extractHeadingNumberConfig を thread して
+// canonical S1 と一致させる。これまで raw frontmatter が `<hr>+text+<hr>`
+// として漏れ、{{vars.x}} は literal、見出し番号は付かない状態だった。
+import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
+import { extractHeadingNumberConfig } from '../../features/markdown/document-globals';
 import { extractTocFromEntry, renderStaticTocHtml, extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
@@ -100,12 +106,22 @@ function renderEntryPreview(
   // sync logic が target を見失う。center pane の split editor preview
   // も同じ option を使う(`detail-presenter.ts` の initial render +
   // action-binder.ts の `updateTextEditPreview`)。
+  //
+  // pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 split editor preview path も
+  // canonical S1 と同じ前処理を入れる ── frontmatter strip + vars 展開 +
+  // headingNumber config。raw frontmatter の漏れ / {{vars.x}} literal /
+  // 見出し番号未付与 を解消。
   const ctx = overrideCtx ?? previewResolverContexts.get(lid);
-  if (ctx && text && hasAssetReferences(text)) {
-    const resolved = resolveAssetReferences(text, ctx);
-    return renderMarkdown(resolved, { sourceLineAnchors: true });
+  const raw = text ?? '';
+  const vars = extractVars(raw);
+  const stripped = parseFrontmatter(raw).body;
+  const headingNumber = extractHeadingNumberConfig(raw);
+  const opts = { sourceLineAnchors: true, vars, headingNumber };
+  if (ctx && stripped && hasAssetReferences(stripped)) {
+    const resolved = resolveAssetReferences(stripped, ctx);
+    return renderMarkdown(resolved, opts);
   }
-  return renderMarkdown(text ?? '', { sourceLineAnchors: true });
+  return renderMarkdown(stripped, opts);
 }
 (window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
 
@@ -507,8 +523,15 @@ export function pushViewBodyUpdate(
   const viewer = viewerWindows.get(lid);
   if (viewer && !viewer.closed) targets.push(viewer);
   if (targets.length === 0) return false;
+  // pgc-91(audit pgc-77 Gap-6 + Gap-7):resolvedBody は asset 解決済だが、
+  // frontmatter は raw のまま残るので strip + extractVars + headingNumber
+  // を canonical S1 と同様に thread。
+  const raw = resolvedBody || '';
+  const vars = extractVars(raw);
+  const stripped = parseFrontmatter(raw).body;
+  const headingNumber = extractHeadingNumberConfig(raw);
   const html =
-    renderMarkdown(resolvedBody || '') ||
+    renderMarkdown(stripped, { vars, headingNumber }) ||
     '<em style="color:var(--c-muted)">(empty)</em>';
   for (const child of targets) {
     child.postMessage(
@@ -598,7 +621,13 @@ function buildTextlogViewBodyHtml(lid: string, body: string): string {
       const importantAttr = log.flags.includes('important')
         ? ' data-pkc-log-important="true"'
         : '';
-      const bodyHtml = renderMarkdown(log.bodySource || '') || '';
+      // pgc-91(audit pgc-77 Gap-6):per-log の bodySource にも frontmatter
+      // strip + extractVars を thread(canonical S1 textlog-presenter の
+      // per-log path と一致、`textlog-presenter.ts:477-484` を参照)。
+      const logRaw = log.bodySource || '';
+      const logVars = extractVars(logRaw);
+      const logStripped = parseFrontmatter(logRaw).body;
+      const bodyHtml = renderMarkdown(logStripped, { vars: logVars }) || '';
       parts.push(
         `<article class="pkc-textlog-log" id="log-${escapeForAttr(log.id)}" data-pkc-log-id="${escapeForAttr(log.id)}" data-pkc-lid="${escapeForAttr(lid)}"${importantAttr}>`,
         `<header class="pkc-textlog-log-header">`,
@@ -1174,7 +1203,19 @@ function renderViewBody(
       // ElementForLine` が target 0 件で no-op していた。text archetype
       // は popup でも split editor (entry.archetype === 'text' で確定)
       // なので、anchor を常時 emit して sync を機能させる。
-      return renderMarkdown(source || '', { sourceLineAnchors: true })
+      //
+      // pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 view body 初期 render path
+      // にも frontmatter strip + extractVars + headingNumber を thread。
+      // canonical S1 と同経路。
+      const raw = source || '';
+      const vars = extractVars(raw);
+      const stripped = parseFrontmatter(raw).body;
+      const headingNumber = extractHeadingNumberConfig(raw);
+      return renderMarkdown(stripped, {
+        sourceLineAnchors: true,
+        vars,
+        headingNumber,
+      })
         || '<em style="color:var(--c-muted)">(empty)</em>';
     }
   }
