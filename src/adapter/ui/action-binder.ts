@@ -129,8 +129,9 @@ import {
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
-import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled } from './shell-flags';
 import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
+import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -4626,6 +4627,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     ) {
       e.preventDefault();
       toggleCommandPalette(root);
+      return;
+    }
+
+    // pgc-81(MASTER.md §4.2):Quick Open。`Ctrl+P` で entry fuzzy launcher を
+    // 起動。browser print(Ctrl+P 既定)を **上書き**する ── PKC2 では entry
+    // navigation の方が圧倒的に高頻度。flag OFF なら no-op。Shift+Ctrl+P は
+    // Command Palette が先に拾うので衝突しない。
+    if (
+      shellQuickOpenEnabled()
+      && !isQuickOpenOpen()
+      && (e.ctrlKey || e.metaKey)
+      && !e.shiftKey
+      && !e.altKey
+      && (e.key === 'P' || e.key === 'p')
+    ) {
+      e.preventDefault();
+      toggleQuickOpen(root, dispatcher);
       return;
     }
 

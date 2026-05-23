@@ -83,3 +83,16 @@ export const shellCommandPaletteEnabled = defineFlag<boolean>(
   },
 );
 
+
+// Quick Open(vscode-grade-overhaul-2026-05 MASTER.md §4.2、pgc-81 POC)を
+// 有効化。ON で `Ctrl+P` で entry fuzzy launcher を起動(browser print を
+// 上書き)。`>` prefix で command mode。OFF で従来どおり(完全 no-op)。
+export const shellQuickOpenEnabled = defineFlag<boolean>(
+  'shell.quick_open_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Quick Open(Ctrl+P で entry fuzzy launcher、browser print 上書き)を有効化',
+  },
+);
