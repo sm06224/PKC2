@@ -17,7 +17,8 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled } from './shell-flags';
+import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
@@ -10549,6 +10550,16 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   container.setAttribute('data-pkc-region', 'about-view');
 
   const payload = resolveAboutPayload(aboutEntry?.body);
+
+  // pgc-113 wave-γ #14(MASTER.md §2 U-19、user direction「Aboutはかなり
+  // 味気ない / もっと PKC-Markdown をドッグフーディング」):flag ON 時に
+  // PKC-Markdown showcase section を About view の頭に prepend。dialect の
+  // 主要機能(callout / mark / em-dot / ruby / footnote / table / details)
+  // を視覚で示し、user に「ここでも PKC-Markdown が使える」と伝える。
+  // 既存 About view(version / license 等の hand-rendered メタ)は完全維持。
+  if (shellAboutPkcMarkdownShowcaseEnabled()) {
+    container.appendChild(buildAboutShowcaseElement());
+  }
 
   const header = createElement('header', 'pkc-about-header');
   const title = createElement('h1', 'pkc-about-title');

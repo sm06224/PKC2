@@ -9258,6 +9258,39 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   color: var(--c-fg);
   line-height: 1.6;
 }
+
+/* pgc-113 wave-γ #14(MASTER.md §2 U-19):About entry の PKC-Markdown
+   showcase section。flag ON 時に About view の頭に renderMarkdown 経由で
+   render される ── dialect の callout / mark / em-dot / ruby / footnote 等
+   を視覚で示す dogfooding 領域。既存 .pkc-md-rendered の style を継承
+   (callout / mark / em-dot 等の dialect rule はそのまま発火)、追加で
+   showcase 専用の margin / padding を持たせる。 */
+.pkc-about-showcase {
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg-dim, var(--c-bg));
+}
+.pkc-about-showcase h1 {
+  margin-top: 0;
+  font-size: 1.5rem;
+}
+.pkc-about-showcase h2 {
+  font-size: 1.15rem;
+  margin-top: var(--space-3);
+}
+.pkc-about-showcase table {
+  border-collapse: collapse;
+  margin: var(--space-2) 0;
+  width: 100%;
+}
+.pkc-about-showcase th,
+.pkc-about-showcase td {
+  border: 1px solid var(--c-border);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
 .pkc-about-header {
   border-bottom: 1px solid var(--c-border);
   padding-bottom: var(--space-5);

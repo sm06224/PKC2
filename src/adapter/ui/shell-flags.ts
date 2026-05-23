@@ -218,6 +218,25 @@ export const shellActivityBarEnabled = defineFlag<boolean>(
   },
 );
 
+// About entry に PKC-Markdown showcase section を追加(MASTER.md §2 U-19、
+// pgc-113 wave-γ #14)。「Aboutはかなり味気ない / 最近の変更があまり反映
+// されていない / もっと PKC-Markdown をドッグフーディングして積極的に
+// アピールしたほうがいい」(user direction)。ON で About view の頭に
+// `:::section{role=tip}` callout / `==highlight==` mark / `..em-dot..` 圏点 /
+// footnote / table / vars 等を含む showcase markdown を `renderMarkdown` で
+// 描画した section を prepend ── 既存 About view(version / license /
+// dependencies / releases / contributors 等のメタ情報 hand-rendered)は
+// 完全維持、その手前に showcase が追加されるだけ。OFF で従来挙動。
+export const shellAboutPkcMarkdownShowcaseEnabled = defineFlag<boolean>(
+  'shell.about_pkc_markdown_showcase_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'About entry の頭に PKC-Markdown showcase section(:::section / ==mark== / footnote / vars 等)を prepend して dialect 機能を可視化',
+  },
+);
+
 // meta pane References section の重複 "Backlinks" を視覚的に区別する
 // (MASTER.md §6.3、pgc-112 wave-γ #13)。現状 References umbrella の中に
 // 2 つの「Backlinks」見出しが並ぶ(first-class relations の Backlinks と
