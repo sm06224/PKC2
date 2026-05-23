@@ -88,8 +88,10 @@ describe('pgc-130 Inspector Style tab — attachment 専用 metrics', () => {
 
   it('flag ON + 基本 attachment(name + mime + size):全行表示', () => {
     setFlag(true);
+    // gitleaks false-positive 回避:test 用の asset key を明示的 prefix
+    // (`test-asset-`) で始める ── generic-api-key 検出 pattern を避ける。
     const d = boot(makeAttContainer({
-      name: 'photo.jpg', mime: 'image/jpeg', size: 2_500_000, asset_key: 'abc123def456ghi',
+      name: 'photo.jpg', mime: 'image/jpeg', size: 2_500_000, asset_key: 'test-asset-photo-key',
     }));
     activateStyle(d);
     const text = styleSection()?.textContent ?? '';
@@ -100,7 +102,7 @@ describe('pgc-130 Inspector Style tab — attachment 専用 metrics', () => {
     expect(text).toContain('File size');
     expect(text).toContain('2.38 MB'); // 2_500_000 / (1024*1024) ≈ 2.38
     expect(text).toContain('Asset key');
-    expect(text).toContain('abc123def456'); // truncated to 12 chars + …
+    expect(text).toContain('test-asset-'); // truncated to 12 chars + …
   });
 
   it('flag ON + small file → byte 表示', () => {

@@ -14,13 +14,15 @@
 // helper を call して flag ON 時に Style section を inject する。
 
 import type { Entry } from '../../core/model/record';
+import type { Container } from '../../core/model/container';
 import { extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
 import { extractDocumentGlobals } from '../../features/markdown/document-globals';
 import { parseTextlogBody } from '../../features/textlog/textlog-body';
 import { parseTodoBody, isTodoPastDue, formatTodoDate } from '../../features/todo/todo-body';
 import { parseAttachmentBody } from './attachment-presenter';
+import { getStructuralChildren } from '../../features/relation/tree';
 
-export function buildInspectorStyleSection(entry: Entry): HTMLElement {
+export function buildInspectorStyleSection(entry: Entry, container?: Container | null): HTMLElement {
   const section = document.createElement('section');
   section.className = 'pkc-inspector-style';
   section.setAttribute('data-pkc-region', 'inspector-style-metrics');
@@ -47,6 +49,35 @@ export function buildInspectorStyleSection(entry: Entry): HTMLElement {
   addRow(dl, 'Body length', `${bodyLen} chars`);
   addRow(dl, 'Body lines', `${lineCount}`);
   addRow(dl, 'Body words', `${wordCount}`);
+
+  // pgc-131 wave-δ #7(MASTER.md §7 folder):folder 専用 metrics ──
+  // 直接子の件数 / archetype 内訳 / 最終子更新時刻。folder の活動状態を
+  // 一目で確認、organize / curation / clean-up workflow の判断材料。
+  if (entry.archetype === 'folder' && container) {
+    try {
+      const children = getStructuralChildren(container.relations, container.entries, entry.lid);
+      addRow(dl, 'Direct children', `${children.length} total`);
+      if (children.length > 0) {
+        // archetype 内訳
+        const byArch: Record<string, number> = {};
+        for (const c of children) {
+          byArch[c.archetype] = (byArch[c.archetype] ?? 0) + 1;
+        }
+        const breakdown = Object.entries(byArch)
+          .sort((a, b) => b[1] - a[1])
+          .map(([arch, n]) => `${archetypeIcon(arch)} ${arch}: ${n}`)
+          .join(' · ');
+        addRow(dl, 'By archetype', breakdown);
+        // 最終子更新
+        const latestIso = children
+          .map((c) => c.updated_at)
+          .reduce((a, b) => (a > b ? a : b), '');
+        if (latestIso) addRow(dl, 'Latest child update', formatIso(latestIso));
+      }
+    } catch {
+      addRow(dl, 'Folder metadata', '(parse error)');
+    }
+  }
 
   // pgc-130 wave-δ #6(MASTER.md §7 attachment):attachment 専用 metrics
   // ── name / MIME / size / asset_key / sandbox / app launcher 登録状態。

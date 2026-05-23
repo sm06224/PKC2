@@ -8898,7 +8898,7 @@ function renderMetaPaneImpl(
   if (shellMetaPaneInspectorEnabled()) {
     // pgc-118 wave-γ #18:Style tab を機能化 ── inspector-style-metrics
     // section を meta pane 末尾に挿入(visibleRegions に登録済)。
-    meta.appendChild(buildInspectorStyleSection(entry));
+    meta.appendChild(buildInspectorStyleSection(entry, container));
     const strip = buildMetaPaneInspectorTabStrip();
     // tab strip は header / timestamps の直前(meta pane の最上段)に挿入
     meta.insertBefore(strip, meta.firstChild);
