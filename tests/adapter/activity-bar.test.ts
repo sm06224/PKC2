@@ -122,22 +122,22 @@ describe('pgc-102 Activity Bar scaffold', () => {
     expect(explorer?.getAttribute('data-pkc-active')).toBe('true');
   });
 
-  it('flag ON:Search tab click → active 切替 + sidebar が placeholder に', () => {
+  it('flag ON:Relations tab click → active 切替 + sidebar が placeholder に', () => {
+    // pgc-107:Search tab は実装済になったので、placeholder 残りの
+    // Relations tab で切替テスト。
     setFlag(true);
     boot();
-    const search = root.querySelector<HTMLElement>(
-      '[data-pkc-activity-tab="search"]',
+    const relations = root.querySelector<HTMLElement>(
+      '[data-pkc-activity-tab="relations"]',
     )!;
-    search.click();
-    // active tab state(module-local)が search に切替わる
-    expect(getActivityBarActiveTab()).toBe('search');
-    // 再描画で active visual + sidebar placeholder
-    const stillSearch = root.querySelector<HTMLElement>(
-      '[data-pkc-activity-tab="search"]',
+    relations.click();
+    expect(getActivityBarActiveTab()).toBe('relations');
+    const stillRelations = root.querySelector<HTMLElement>(
+      '[data-pkc-activity-tab="relations"]',
     );
-    expect(stillSearch?.getAttribute('data-pkc-active')).toBe('true');
+    expect(stillRelations?.getAttribute('data-pkc-active')).toBe('true');
     expect(placeholder()).not.toBeNull();
-    expect(placeholder()?.getAttribute('data-pkc-activity-tab')).toBe('search');
+    expect(placeholder()?.getAttribute('data-pkc-activity-tab')).toBe('relations');
     expect(sidebar()).toBeNull();
   });
 
@@ -162,18 +162,18 @@ describe('pgc-102 Activity Bar scaffold', () => {
   });
 
   it('flag ON:placeholder の中に icon / title / "Coming soon" note', () => {
-    // pgc-104/105:Recent / Pinned tab は実装済、Search / Relations が
-    // placeholder 残り。
+    // pgc-104〜107:Recent / Pinned / Search / Outline 実装済、
+    // Relations だけが placeholder 残り。
     setFlag(true);
     boot();
-    const search = root.querySelector<HTMLElement>(
-      '[data-pkc-activity-tab="search"]',
+    const relations = root.querySelector<HTMLElement>(
+      '[data-pkc-activity-tab="relations"]',
     )!;
-    search.click();
+    relations.click();
     const ph = placeholder();
     expect(ph).not.toBeNull();
-    expect(ph?.querySelector('.pkc-activity-tab-placeholder-icon')?.textContent).toBe('🔍');
-    expect(ph?.querySelector('.pkc-activity-tab-placeholder-title')?.textContent).toBe('Search');
+    expect(ph?.querySelector('.pkc-activity-tab-placeholder-icon')?.textContent).toBe('🔗');
+    expect(ph?.querySelector('.pkc-activity-tab-placeholder-title')?.textContent).toBe('Relations');
     expect(ph?.querySelector('.pkc-activity-tab-placeholder-note')?.textContent).toContain('Coming soon');
   });
 

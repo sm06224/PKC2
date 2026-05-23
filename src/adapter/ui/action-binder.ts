@@ -138,6 +138,7 @@ import { detectObjectContext, renderObjectContextMenu } from './context-menu-obj
 import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab } from './tab-strip';
 import { toggleSplitView } from './split-view';
 import { setActivityBarActiveTab } from './activity-bar';
+import { setActivitySearchQuery } from './activity-search-tab';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -5605,6 +5606,28 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (searchImeComposing) return;
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: value });
+      return;
+    }
+    // pgc-107 wave-γ #8(MASTER.md §6.2):Activity Bar Search tab の
+    // 検索窓 input。module-local state(activity-search-tab.ts)を更新後、
+    // SYS_SYNC dispatch で再描画。IME 合成中は skip(同経路で full
+    // re-render が走ると変換候補が壊れる、PR-QQQ と同 contract)。
+    if (target.getAttribute('data-pkc-action') === 'set-activity-search-query') {
+      if (searchImeComposing) return;
+      const value = (target as HTMLInputElement).value;
+      setActivitySearchQuery(value);
+      const st = dispatcher.getState();
+      dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+      // re-render で input が再生成されるため、focus + caret 位置を復元。
+      window.requestAnimationFrame(() => {
+        const fresh = root.querySelector<HTMLInputElement>(
+          '[data-pkc-action="set-activity-search-query"]',
+        );
+        if (fresh && document.activeElement !== fresh) {
+          fresh.focus();
+          fresh.setSelectionRange(value.length, value.length);
+        }
+      });
       return;
     }
 

@@ -1079,6 +1079,76 @@
   text-overflow: ellipsis;
 }
 
+/* pgc-107 wave-γ #8(MASTER.md §6.2):Search tab。container 内 entry を
+   title + body 部分一致で絞り込み、最大 50 件 list 表示。 */
+.pkc-activity-search-input-row {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--c-border);
+}
+.pkc-activity-search-input {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+}
+.pkc-activity-search-input:focus {
+  outline: 1px solid var(--c-accent);
+  border-color: var(--c-accent);
+}
+.pkc-activity-search-count {
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-xs);
+  border-bottom: 1px solid var(--c-border);
+}
+.pkc-activity-tab-search-body {
+  overflow-y: auto;
+}
+.pkc-search-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+}
+.pkc-search-item {
+  margin: 0;
+}
+.pkc-search-item[data-pkc-active="true"] > .pkc-search-link {
+  background: var(--c-active, rgba(127, 127, 127, 0.18));
+  color: var(--c-accent);
+}
+.pkc-search-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-search-link:hover,
+.pkc-search-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-search-icon {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+.pkc-search-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Activity Bar の placeholder(Explorer 以外を選んだ場合の sidebar 代替)。
    wave-γ #4 scaffold ── 後続 pgc-103〜107 で各 tab の中身に置き換える。 */
 .pkc-activity-tab-placeholder {
