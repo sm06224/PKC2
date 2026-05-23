@@ -6305,6 +6305,36 @@ mark.pkc-search-mark {
   background: rgba(51,255,102,0.12);
 }
 
+/* pgc-111 wave-γ #12(MASTER.md §6.5):view-mode tabs scoped(entry-level
+   vs workspace-level)。flag ON 時に Detail と Calendar の間に `|` separator、
+   選択無しで Detail tab は disabled 化(視覚 + 機能で entry-level 強調)。 */
+.pkc-view-mode-bar[data-pkc-scoped="true"] {
+  align-items: center;
+}
+.pkc-view-mode-sep {
+  display: inline-block;
+  width: 1px;
+  height: 1.2em;
+  margin: 0 var(--space-2);
+  color: var(--c-border);
+  user-select: none;
+  vertical-align: middle;
+  border-left: 1px solid var(--c-border);
+}
+.pkc-view-mode-btn[data-pkc-disabled-reason="no-selection"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--c-bg-dim, transparent);
+}
+.pkc-view-mode-btn[data-pkc-disabled-reason="no-selection"]:disabled:hover {
+  color: var(--c-muted);
+  border-color: var(--c-border);
+  background: var(--c-bg-dim, transparent);
+}
+.pkc-view-mode-btn[data-pkc-tab-scope="entry"] {
+  font-style: italic;
+}
+
 /* ── Frontmatter properties (領域 10-6 ζ'' Phase 2a) ── */
 
 .pkc-frontmatter {

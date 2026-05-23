@@ -218,6 +218,27 @@ export const shellActivityBarEnabled = defineFlag<boolean>(
   },
 );
 
+// view-mode tabs に scope mark + 視覚 separator(MASTER.md §6.5、pgc-111
+// wave-γ #12)。center pane 上部の 6 tab(Detail / Calendar / Kanban /
+// Filer / Graph / Launcher)に対して、ON で:
+//   - 各 tab に `data-pkc-tab-scope="entry"|"workspace"` attribute 追加
+//     (Detail = entry-level、他 5 = workspace-level)
+//   - Detail と Calendar の間に視覚 separator(`|`)挿入
+//   - 選択無しの状態で Detail tab を disabled 化(entry-level の意味を強調)
+// OFF で従来どおり 6 tab 並列表示(行動 / 視覚不変)。
+//
+// MASTER §6.5 の最終形(workspace-level は tab strip に統合)へは複数 PR
+// で段階移行、本 PR は **scope mark + 視覚分離** の最初の step。
+export const shellViewModeTabsScopedEnabled = defineFlag<boolean>(
+  'shell.view_mode_tabs_scoped_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'view-mode tabs(Detail / Calendar 等 6 tab)に scope mark + 視覚 separator を追加し、Detail を entry-level として分離する',
+  },
+);
+
 // format panel を default 非表示にする(MASTER.md §6.4、pgc-110 wave-γ
 // #11)。ON で `formatPanelEnabled` が true でも編集開始時の format ribbon
 // を **非表示** で start、editor 上部の「🎨 Format」 toggle button を click

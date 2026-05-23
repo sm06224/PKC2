@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled } from './shell-flags';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
@@ -4893,7 +4893,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
 
   // View mode toggle (always visible when container has user entries)
   if (userEntries.length > 0) {
-    center.appendChild(renderViewModeToggle(state.viewMode));
+    center.appendChild(renderViewModeToggle(state.viewMode, state.selectedLid != null));
   }
 
   // Calendar view
@@ -5025,24 +5025,54 @@ function renderCenterImpl(state: AppState): HTMLElement {
   return center;
 }
 
-function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher'): HTMLElement {
+function renderViewModeToggle(
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher',
+  hasSelection: boolean,
+): HTMLElement {
   const bar = createElement('div', 'pkc-view-mode-bar');
   bar.setAttribute('data-pkc-region', 'view-mode-bar');
 
-  const modes: { key: typeof viewMode; label: string }[] = [
-    { key: 'detail', label: 'Detail' },
-    { key: 'calendar', label: 'Calendar' },
-    { key: 'kanban', label: 'Kanban' },
-    { key: 'filer', label: 'Filer' },
-    { key: 'graph', label: 'Graph' },
-    { key: 'launcher', label: 'Launcher' },
+  // pgc-111 wave-γ #12(MASTER.md §6.5):flag ON 時に scope mark + 視覚
+  // separator + 選択無時の Detail tab disabled 化を追加。OFF で従来挙動。
+  const scoped = shellViewModeTabsScopedEnabled();
+  if (scoped) {
+    bar.setAttribute('data-pkc-scoped', 'true');
+  }
+
+  const modes: { key: typeof viewMode; label: string; scope: 'entry' | 'workspace' }[] = [
+    { key: 'detail',   label: 'Detail',   scope: 'entry' },
+    { key: 'calendar', label: 'Calendar', scope: 'workspace' },
+    { key: 'kanban',   label: 'Kanban',   scope: 'workspace' },
+    { key: 'filer',    label: 'Filer',    scope: 'workspace' },
+    { key: 'graph',    label: 'Graph',    scope: 'workspace' },
+    { key: 'launcher', label: 'Launcher', scope: 'workspace' },
   ];
 
-  for (const { key, label } of modes) {
+  let prevScope: 'entry' | 'workspace' | null = null;
+  for (const { key, label, scope } of modes) {
+    // 視覚 separator:entry → workspace の遷移点で `|` を挿入(scoped flag ON 時のみ)。
+    if (scoped && prevScope === 'entry' && scope === 'workspace') {
+      const sep = createElement('span', 'pkc-view-mode-sep');
+      sep.setAttribute('aria-hidden', 'true');
+      sep.textContent = '|';
+      bar.appendChild(sep);
+    }
+    prevScope = scope;
+
     const btn = createElement('button', 'pkc-view-mode-btn');
     btn.setAttribute('data-pkc-action', 'set-view-mode');
     btn.setAttribute('data-pkc-view-mode', key);
     btn.textContent = label;
+    if (scoped) {
+      btn.setAttribute('data-pkc-tab-scope', scope);
+    }
+    // pgc-111:scoped + entry-level tab + 選択無し → disabled。
+    // entry を選ばないと Detail view は意味ないため、視覚 + 機能で抑制。
+    if (scoped && scope === 'entry' && !hasSelection) {
+      (btn as HTMLButtonElement).disabled = true;
+      btn.setAttribute('data-pkc-disabled-reason', 'no-selection');
+      btn.setAttribute('title', 'Select an entry to view its detail');
+    }
     if (key === viewMode) {
       btn.setAttribute('data-pkc-active', 'true');
     } else {
