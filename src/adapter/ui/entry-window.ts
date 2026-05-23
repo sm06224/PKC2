@@ -25,6 +25,10 @@ import { renderMarkdown } from '../../features/markdown/markdown-render';
 // multi-window spec §11.3)。
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
+// pgc-97(audit pgc-77 Gap-14):S4 全 path で heading-fold が機能していな
+// かった(features 層 op 未連動)。pgc-96 で導入した injectFeaturesDomOps
+// pipeline に applyHeadingFold を追加し、center pane(S1)と同 contract に。
+import { applyHeadingFold } from '../../features/markdown/heading-fold';
 // pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 全 render path に frontmatter
 // strip + extractVars + extractHeadingNumberConfig を thread して
 // canonical S1 と一致させる。これまで raw frontmatter が `<hr>+text+<hr>`
@@ -123,6 +127,10 @@ function injectFeaturesDomOps(
       entries: container.entries,
       currentContainerId: containerId,
     });
+    // pgc-97(audit pgc-77 Gap-14):S1 / S2 と同様に native <details> で
+    // top-level 見出しを折りたためるように。pure DOM 操作なので entries 有無
+    // に依らず無条件で適用(detail-presenter.ts:139 と同 contract)。
+    applyHeadingFold(tmp);
   } catch (e) {
     if (typeof console !== 'undefined') {
       console.warn('[entry-window] features DOM op failed:', e);
