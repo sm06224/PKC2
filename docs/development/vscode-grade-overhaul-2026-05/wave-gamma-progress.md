@@ -39,8 +39,13 @@ opt-in は `&` で連結。
 | 14 | pgc-112 | §6.3 follow-up | `shell.meta_pane_references_clarify_enabled` | meta pane References の 2 系統 `Backlinks` を `— relation` / `— markdown` 接尾辞で区別 |
 | 15 | pgc-113 | §2 U-19 | `shell.about_pkc_markdown_showcase_enabled` | About 頭に PKC-Markdown showcase section を prepend(dogfooding) |
 | 15* | pgc-114 | §2 U-19 follow-up | (同上) | About showcase に payload vars 動的展開(version / commit / dep counts) |
+| 16 | pgc-115 | (docs-only) | — | wave-γ progress doc 起こし |
+| 17 | pgc-116 | §6.2 後続 | (`shell.activity_bar_enabled`) | Activity Bar left / right 配置切替(↔ toggle button、main 先頭 / 末尾を flip) |
+| 18 | pgc-117 | §6.3 follow-up | (`shell.meta_pane_inspector_enabled`) | Inspector History tab の visibleRegions silent bug fix(`['history','revisions']` → `['revision-history',...]`)+ non-placeholder tab で no matched empty hint |
+| 19 | pgc-118 | §6.3 follow-up | (同上) | Inspector Style tab に読み取り専用 metrics 実装(archetype / char count / heading 数 / frontmatter style globals / timestamps、placeholder 脱却) |
 
 `*` = pgc-113 と同 flag を使う follow-up PR
+括弧書き flag = 新 flag 追加なし、既存 flag の機能拡張 PR
 
 ## §3 全 ON URL 例
 
@@ -55,15 +60,16 @@ toggle するのが楽。
 
 ## §4 MASTER §6 残り(後続 PR 候補)
 
-### §6.2 Activity Bar(全 6 tab 完成 ✓)
+### §6.2 Activity Bar(全 6 tab 完成 ✓ + 位置切替 ✓)
 
-- 完了:Explorer(既存 sidebar)/ Search / Outline / Relations / Recent / Pinned
-- 後続候補:Activity Bar の **位置切替**(左 / 右)/ **キーボード shortcut**(Ctrl+Shift+E 等で各 tab focus)
+- 完了:Explorer(既存 sidebar)/ Search / Outline / Relations / Recent / Pinned + 位置切替(pgc-116、↔ button で left ↔ right flip)
+- 後続候補:**キーボード shortcut**(Ctrl+Shift+E 等で各 tab focus、keymap registry 連携必要)/ tab order の user customize / hidden tab(Search / Outline 非表示にして 4 tab に絞る option)
 
 ### §6.3 meta pane Inspector
 
-- scaffold 完了(pgc-109)+ References clarify(pgc-112)
-- 後続候補:Properties tab の frontmatter 編集 inline UI / History tab の revision diff viewer / Style tab(該当 entry の theme override)/ AI tab placeholder の中身
+- scaffold 完了(pgc-109)+ References clarify(pgc-112)+ History region fix + empty hint(pgc-117)+ Style metrics 実装(pgc-118)
+- **5 tab のうち 4 件機能化**(Properties / References / History / Style)、残り placeholder は **AI 1 件のみ**
+- 後続候補:Properties tab の frontmatter 編集 inline UI / History tab の revision diff viewer / Style tab の per-entry theme override / **AI tab** の中身(設計議論待ち、LLM API 連携 or local-only inspector?)
 
 ### §6.4 format panel context-aware
 
@@ -102,3 +108,4 @@ MASTER §7 の archetype 別 UX 改修は wave-δ scope。wave-γ が一段落
 | date | event |
 |---|---|
 | 2026-05-23 | wave-γ #1〜#15 着地(pgc-99〜114)、本 progress doc 起こし。test 9031、bundle 1928KB |
+| 2026-05-23 | wave-γ #16〜#18 追加着地(pgc-116〜118):Activity Bar 位置切替 / Inspector History region fix + empty hint / Inspector Style metrics 実装。test 9052、bundle 1932KB。Inspector 5 tab のうち 4 件機能化、placeholder 残りは AI 1 件のみ |
