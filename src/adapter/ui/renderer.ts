@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled } from './shell-flags';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
@@ -8993,8 +8993,19 @@ function renderLinkRefsSection(
   const section = createElement('div', 'pkc-link-index-section');
   section.setAttribute('data-pkc-region', regionId);
 
+  // pgc-112 wave-γ #13(MASTER.md §6.3):References の 2 系統 Backlinks
+  // を視覚区別。flag ON 時に "(markdown)" 接尾辞 + tooltip。OFF で従来。
+  const clarify = shellMetaPaneReferencesClarifyEnabled();
   const heading = createElement('div', 'pkc-link-index-heading');
-  heading.textContent = `${label} (${refs.length})`;
+  if (clarify) {
+    heading.textContent = `${label} (${refs.length}) — markdown`;
+    heading.setAttribute(
+      'title',
+      'Markdown 本文内の `[text](lid:foo)` / `[[lid:foo]]` 形式の link から計算される references。Container の first-class relations とは別 system です。',
+    );
+  } else {
+    heading.textContent = `${label} (${refs.length})`;
+  }
   section.appendChild(heading);
 
   if (refs.length === 0) {
@@ -9301,8 +9312,19 @@ function renderRelationGroup(
   const group = createElement('div', 'pkc-relation-group');
   group.setAttribute('data-pkc-relation-direction', direction);
 
+  // pgc-112 wave-γ #13(MASTER.md §6.3):References の 2 系統 Backlinks
+  // を視覚区別。flag ON 時に "(relation)" 接尾辞 + tooltip。OFF で従来。
+  const clarify = shellMetaPaneReferencesClarifyEnabled();
   const heading = createElement('div', 'pkc-relation-heading');
-  heading.textContent = `${label} (${relations.length})`;
+  if (clarify) {
+    heading.textContent = `${label} (${relations.length}) — relation`;
+    heading.setAttribute(
+      'title',
+      'First-class relations(structural / categorical / semantic / temporal kind)。Markdown link 由来の参照とは別 system です。',
+    );
+  } else {
+    heading.textContent = `${label} (${relations.length})`;
+  }
   group.appendChild(heading);
 
   if (relations.length === 0) {

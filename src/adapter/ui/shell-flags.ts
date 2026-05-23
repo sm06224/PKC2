@@ -218,6 +218,25 @@ export const shellActivityBarEnabled = defineFlag<boolean>(
   },
 );
 
+// meta pane References section の重複 "Backlinks" を視覚的に区別する
+// (MASTER.md §6.3、pgc-112 wave-γ #13)。現状 References umbrella の中に
+// 2 つの「Backlinks」見出しが並ぶ(first-class relations の Backlinks と
+// markdown link-index の Backlinks)── 視覚的に同一なので user 体感が
+// 「重複」と読まれる。ON で:
+//   - 第 1(relations)Backlinks → "Backlinks (relation)" + 説明 tooltip
+//   - 第 2(link-index)"Outgoing links" → "Outgoing links (markdown)" 系
+//   - 各 heading に title attribute で「何の system か」を hint
+// 関連 region attr / 機能は不変、heading 表示のみ調整 ── safe rename。
+export const shellMetaPaneReferencesClarifyEnabled = defineFlag<boolean>(
+  'shell.meta_pane_references_clarify_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'meta pane References section の 2 系統 Backlinks を視覚的に区別(relation vs markdown を heading 末尾に明示)',
+  },
+);
+
 // view-mode tabs に scope mark + 視覚 separator(MASTER.md §6.5、pgc-111
 // wave-γ #12)。center pane 上部の 6 tab(Detail / Calendar / Kanban /
 // Filer / Graph / Launcher)に対して、ON で:
