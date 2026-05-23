@@ -2024,6 +2024,145 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   display: none;
 }
 
+/* ── pgc-94(audit pgc-77 Gap-13 cat-2):S4 critical PKC dialect CSS
+   mirror Phase 2 ── blank-line marker / em-dot / variable-undefined /
+   hallucination-warning / tolerant alias / html-render fence。
+   Viewer popup(rendered-viewer.ts L432-540)mirror を S4 entry-window に
+   も持ってくる。base.css 該当 rule を hardcode 色で再現。 */
+/* L-2 inline 修飾(highlight / ruby / em-dot)*/
+.pkc-md-rendered mark {
+  background: #fff59d;
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 2px;
+}
+.pkc-md-rendered ruby rt {
+  font-size: 0.6em;
+  color: #6b7280;
+}
+.pkc-md-rendered em.pkc-em-dot {
+  font-style: normal;
+  -webkit-text-emphasis: dot;
+  text-emphasis: dot;
+  -webkit-text-emphasis-position: over right;
+  text-emphasis-position: over right;
+}
+/* L-9 段落先頭 1 字下げ */
+.pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
+/* L-5 行頭 align prefix */
+.pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
+.pkc-md-rendered p[data-pkc-align="end"]    { text-align: end;    }
+.pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
+.pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
+.pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+/* L-8 blank-line marker(_ / _N、1em x N の余白)*/
+.pkc-md-rendered .pkc-blank-line {
+  --pkc-blank-line-h: 1em;
+  height: calc(var(--pkc-blank-line-h) * 1);
+}
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="2"]  { height: calc(var(--pkc-blank-line-h) * 2);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="3"]  { height: calc(var(--pkc-blank-line-h) * 3);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="4"]  { height: calc(var(--pkc-blank-line-h) * 4);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="5"]  { height: calc(var(--pkc-blank-line-h) * 5);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="6"]  { height: calc(var(--pkc-blank-line-h) * 6);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="7"]  { height: calc(var(--pkc-blank-line-h) * 7);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="8"]  { height: calc(var(--pkc-blank-line-h) * 8);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="9"]  { height: calc(var(--pkc-blank-line-h) * 9);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="10"] { height: calc(var(--pkc-blank-line-h) * 10); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="11"] { height: calc(var(--pkc-blank-line-h) * 11); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="12"] { height: calc(var(--pkc-blank-line-h) * 12); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="13"] { height: calc(var(--pkc-blank-line-h) * 13); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="14"] { height: calc(var(--pkc-blank-line-h) * 14); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="15"] { height: calc(var(--pkc-blank-line-h) * 15); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="16"] { height: calc(var(--pkc-blank-line-h) * 16); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="17"] { height: calc(var(--pkc-blank-line-h) * 17); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="18"] { height: calc(var(--pkc-blank-line-h) * 18); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="19"] { height: calc(var(--pkc-blank-line-h) * 19); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="20"] { height: calc(var(--pkc-blank-line-h) * 20); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="21"] { height: calc(var(--pkc-blank-line-h) * 21); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="22"] { height: calc(var(--pkc-blank-line-h) * 22); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="23"] { height: calc(var(--pkc-blank-line-h) * 23); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="24"] { height: calc(var(--pkc-blank-line-h) * 24); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="25"] { height: calc(var(--pkc-blank-line-h) * 25); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="30"] { height: calc(var(--pkc-blank-line-h) * 30); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="40"] { height: calc(var(--pkc-blank-line-h) * 40); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="50"] { height: calc(var(--pkc-blank-line-h) * 50); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-capped]::before {
+  content: '⚠ _' attr(data-pkc-blank-capped) ' (上限 cap)';
+  display: block;
+  font-size: 0.75em;
+  color: #8b6f47;
+  background: rgba(255, 200, 0, 0.08);
+  padding: 0.15em 0.5em;
+  border-left: 2px solid rgba(180, 130, 0, 0.4);
+  margin-bottom: 0.3em;
+  font-family: monospace;
+}
+/* M-7 未定義 variable 警告 */
+.pkc-md-rendered .pkc-variable-undefined {
+  color: #b91c1c;
+  text-decoration: underline dotted;
+  text-decoration-color: #b91c1c;
+  cursor: help;
+}
+/* PR-2K hallucination 警告 block */
+.pkc-md-rendered .pkc-warning-hallucination-block {
+  background-color: #fef3c7;
+  color: #92400e;
+  border-left: 3px solid #d97706;
+  padding: 0.5em 0.75em;
+  margin: 0.5em 0;
+  border-radius: 2px;
+  cursor: help;
+}
+/* PR-2L+2O tolerant alias mirror */
+.pkc-md-rendered .pkc-lead {
+  font-size: 1.05em;
+  font-weight: 500;
+  color: #1f2937;
+}
+.pkc-md-rendered .pkc-attribution {
+  display: block;
+  text-align: right;
+  font-size: 0.85em;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 0.25em;
+}
+.pkc-md-rendered .pkc-tolerant-spacing {
+  height: calc(1em * var(--pkc-blank-count, 1));
+}
+.pkc-md-rendered .pkc-align-hint {
+  display: none;
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-lead {
+  border-bottom: 1px dotted #9ca3af;
+  cursor: help;
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-attribution {
+  cursor: help;
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
+  display: inline-block;
+  font-size: 0.75em;
+  color: #1d4ed8;
+  background-color: #dbeafe;
+  padding: 0 0.3em;
+  border-radius: 2px;
+  cursor: help;
+  user-select: none;
+}
+/* PR-2M html-render fence iframe */
+.pkc-md-rendered .pkc-html-render {
+  display: block;
+  width: 100%;
+  border: 0;
+  margin: 0.75em 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
 /* ── Conflict banner ── */
 .pkc-conflict-banner {
   display: none; background: var(--c-danger); color: #fff;
