@@ -20,6 +20,7 @@ import { extractDocumentGlobals } from '../../features/markdown/document-globals
 import { parseTextlogBody } from '../../features/textlog/textlog-body';
 import { parseTodoBody, isTodoPastDue, formatTodoDate } from '../../features/todo/todo-body';
 import { parseAttachmentBody } from './attachment-presenter';
+import { parseFormBody } from './form-presenter';
 import { getStructuralChildren } from '../../features/relation/tree';
 
 export function buildInspectorStyleSection(entry: Entry, container?: Container | null): HTMLElement {
@@ -49,6 +50,22 @@ export function buildInspectorStyleSection(entry: Entry, container?: Container |
   addRow(dl, 'Body length', `${bodyLen} chars`);
   addRow(dl, 'Body lines', `${lineCount}`);
   addRow(dl, 'Body words', `${wordCount}`);
+
+  // pgc-132 wave-δ #8(MASTER.md §7 form):form 専用 metrics ──
+  // 現 form schema は fixed 3 fields(name / note / checked)、dynamic
+  // schema ではない。filled fields 数 + 各 field の状態 / 長さを表示。
+  if (entry.archetype === 'form') {
+    try {
+      const form = parseFormBody(entry.body ?? '');
+      const filled = [form.name.trim() !== '', form.note.trim() !== '', form.checked].filter(Boolean).length;
+      addRow(dl, 'Form fields', `${filled} / 3 filled`);
+      addRow(dl, 'Name', form.name.trim() === '' ? '(empty)' : `${form.name.length} chars`);
+      addRow(dl, 'Note', form.note.trim() === '' ? '(empty)' : `${form.note.length} chars`);
+      addRow(dl, 'Checked', form.checked ? '✓ true' : '✗ false');
+    } catch {
+      addRow(dl, 'Form metadata', '(parse error)');
+    }
+  }
 
   // pgc-131 wave-δ #7(MASTER.md §7 folder):folder 専用 metrics ──
   // 直接子の件数 / archetype 内訳 / 最終子更新時刻。folder の活動状態を
