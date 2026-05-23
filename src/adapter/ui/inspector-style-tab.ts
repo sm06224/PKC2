@@ -16,6 +16,7 @@
 import type { Entry } from '../../core/model/record';
 import { extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
 import { extractDocumentGlobals } from '../../features/markdown/document-globals';
+import { parseTextlogBody } from '../../features/textlog/textlog-body';
 
 export function buildInspectorStyleSection(entry: Entry): HTMLElement {
   const section = document.createElement('section');
@@ -44,6 +45,36 @@ export function buildInspectorStyleSection(entry: Entry): HTMLElement {
   addRow(dl, 'Body length', `${bodyLen} chars`);
   addRow(dl, 'Body lines', `${lineCount}`);
   addRow(dl, 'Body words', `${wordCount}`);
+
+  // pgc-128 wave-δ #4(MASTER.md §7 textlog):textlog 専用 metrics ──
+  // 全 log 件数 / 今日の log 件数 / 直近 log 時刻 / important flag 件数 を
+  // 表示。markdown metrics(下)とは別 section にする(text と textlog の
+  // 違いを user に明示)。
+  if (entry.archetype === 'textlog') {
+    try {
+      const tl = parseTextlogBody(entry.body ?? '');
+      const total = tl.entries.length;
+      // 今日の log 件数(local timezone の今日)
+      const today = formatLocalYmd(new Date());
+      const todayCount = tl.entries.filter((e) => formatLocalYmd(new Date(e.createdAt)) === today).length;
+      // 直近 log の時刻(createdAt 降順 sort せず、配列の最後を使う ──
+      // 通常 append で末尾が最新だが、念のため max を取る)
+      const latestIso = tl.entries.length === 0
+        ? ''
+        : tl.entries
+            .map((e) => e.createdAt)
+            .reduce((a, b) => (a > b ? a : b), '');
+      const importantCount = tl.entries.filter((e) => e.flags.includes('important')).length;
+      addRow(dl, 'Log entries', `${total} total`);
+      addRow(dl, 'Today\'s logs', `${todayCount}`);
+      addRow(dl, 'Latest log', latestIso ? formatIso(latestIso) : '—');
+      if (importantCount > 0) {
+        addRow(dl, 'Important flagged', `${importantCount} / ${total}`);
+      }
+    } catch {
+      addRow(dl, 'Log entries', '(parse error)');
+    }
+  }
 
   // markdown-specific metrics(text / textlog 限定)
   if (entry.archetype === 'text' || entry.archetype === 'textlog') {
@@ -118,4 +149,16 @@ function archetypeIcon(arch: string): string {
 function formatIso(iso: string): string {
   if (!iso) return '—';
   return iso.slice(0, 19).replace('T', ' ');
+}
+
+/**
+ * pgc-128:local timezone での yyyy-mm-dd 整形。`new Date().toISOString()`
+ * は UTC 表記なので、user の「今日」と一致させるには local Date を直接読む。
+ */
+function formatLocalYmd(d: Date): string {
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
