@@ -15,7 +15,16 @@
  */
 
 import type { Entry } from '../../core/model/record';
+import type { Container } from '../../core/model/container';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+// pgc-96(audit pgc-77 Gap-15):S4 全 render path に features 層 DOM op
+// (expandTransclusions + hydrateCardPlaceholders)を parent 完成 HTML 経路
+// で挿入する。inline script からは features 層を呼べないため、parent 側で
+// markdown HTML を一旦 detached DOM 化 → DOM op → outerHTML serialize の
+// chain を回し、push する HTML 文字列に完成形を込める(canvas 前方互換、
+// multi-window spec §11.3)。
+import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
 // pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 全 render path に frontmatter
 // strip + extractVars + extractHeadingNumberConfig を thread して
 // canonical S1 と一致させる。これまで raw frontmatter が `<hr>+text+<hr>`
@@ -76,6 +85,80 @@ import {
 const previewResolverContexts = new Map<string, AssetResolutionContext>();
 
 /**
+ * pgc-96(audit pgc-77 Gap-15):S4 render path で features 層 DOM op を
+ * 完成 HTML に込めるため、現在の container reference を module-local に
+ * 保持する。wireEntryWindowFeaturesDom(dispatcher)が `dispatcher.onState`
+ * で最新値を流し込む。
+ */
+let currentContainerRef: Container | null = null;
+export function setEntryWindowCurrentContainer(c: Container | null): void {
+  currentContainerRef = c;
+}
+
+/**
+ * pgc-96 helper:rendered HTML 文字列に対して **features 層 DOM op を
+ * inject** して outerHTML を返す。container が無いとき(boot 前等)は
+ * pass-through。inline script から features 層を呼べない S4 child window の
+ * 制約を、parent 側で完成 HTML を build して push 経路で代用する流儀。
+ */
+function injectFeaturesDomOps(
+  html: string,
+  hostLid: string,
+  container: Container | null,
+): string {
+  if (!container || typeof document === 'undefined') return html;
+  if (!html) return html;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const containerId = container.meta?.container_id ?? '';
+  try {
+    expandTransclusions(tmp, {
+      entries: container.entries,
+      assets: container.assets,
+      mimeByKey: buildAssetMimeMapLocal(container),
+      nameByKey: buildAssetNameMapLocal(container),
+      hostLid,
+    });
+    hydrateCardPlaceholders(tmp, {
+      entries: container.entries,
+      currentContainerId: containerId,
+    });
+  } catch (e) {
+    if (typeof console !== 'undefined') {
+      console.warn('[entry-window] features DOM op failed:', e);
+    }
+    return html;
+  }
+  return tmp.innerHTML;
+}
+
+// renderer.ts の buildAssetMimeMap / buildAssetNameMap は同 module export
+// あり(rendered-viewer.ts も使用、L54)。entry-window から直 import すると
+// 循環参照になりかねないため、ここでは inline で同等関数を持つ。
+function buildAssetMimeMapLocal(container: Container): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const e of container.entries) {
+    if (e.archetype !== 'attachment') continue;
+    try {
+      const body = e.body ? (JSON.parse(e.body) as { asset_key?: string; mime?: string }) : null;
+      if (body && body.asset_key && body.mime) out[body.asset_key] = body.mime;
+    } catch { /* ignore */ }
+  }
+  return out;
+}
+function buildAssetNameMapLocal(container: Container): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const e of container.entries) {
+    if (e.archetype !== 'attachment') continue;
+    try {
+      const body = e.body ? (JSON.parse(e.body) as { asset_key?: string; name?: string }) : null;
+      if (body && body.asset_key && body.name) out[body.asset_key] = body.name;
+    } catch { /* ignore */ }
+  }
+  return out;
+}
+
+/**
  * Render a textarea body string as the entry-window preview, running
  * asset reference resolution against the captured per-lid context
  * first when the text contains any `asset:` references. Exposed on
@@ -116,12 +199,19 @@ function renderEntryPreview(
   const vars = extractVars(raw);
   const stripped = parseFrontmatter(raw).body;
   const headingNumber = extractHeadingNumberConfig(raw);
-  const opts = { sourceLineAnchors: true, vars, headingNumber };
+  // pgc-96(audit pgc-77 Gap-15):currentContainerId 連動 + features DOM
+  // op を完成 HTML に inject(parent 経路で実行、child 側 inline script は
+  // 受け取り済 HTML をそのまま展開)。
+  const containerId = currentContainerRef?.meta?.container_id ?? '';
+  const opts = { sourceLineAnchors: true, vars, headingNumber, currentContainerId: containerId };
+  let html: string;
   if (ctx && stripped && hasAssetReferences(stripped)) {
     const resolved = resolveAssetReferences(stripped, ctx);
-    return renderMarkdown(resolved, opts);
+    html = renderMarkdown(resolved, opts);
+  } else {
+    html = renderMarkdown(stripped, opts);
   }
-  return renderMarkdown(stripped, opts);
+  return injectFeaturesDomOps(html, lid, currentContainerRef);
 }
 (window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
 
@@ -526,13 +616,17 @@ export function pushViewBodyUpdate(
   // pgc-91(audit pgc-77 Gap-6 + Gap-7):resolvedBody は asset 解決済だが、
   // frontmatter は raw のまま残るので strip + extractVars + headingNumber
   // を canonical S1 と同様に thread。
+  // pgc-96(audit pgc-77 Gap-15):features 層 DOM op を parent 完成 HTML
+  // に inject(child は inline script から features 層を呼べないため)。
   const raw = resolvedBody || '';
   const vars = extractVars(raw);
   const stripped = parseFrontmatter(raw).body;
   const headingNumber = extractHeadingNumberConfig(raw);
-  const html =
-    renderMarkdown(stripped, { vars, headingNumber }) ||
+  const containerId = currentContainerRef?.meta?.container_id ?? '';
+  let html =
+    renderMarkdown(stripped, { vars, headingNumber, currentContainerId: containerId }) ||
     '<em style="color:var(--c-muted)">(empty)</em>';
+  html = injectFeaturesDomOps(html, lid, currentContainerRef);
   for (const child of targets) {
     child.postMessage(
       { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
@@ -624,10 +718,14 @@ function buildTextlogViewBodyHtml(lid: string, body: string): string {
       // pgc-91(audit pgc-77 Gap-6):per-log の bodySource にも frontmatter
       // strip + extractVars を thread(canonical S1 textlog-presenter の
       // per-log path と一致、`textlog-presenter.ts:477-484` を参照)。
+      // pgc-96(audit pgc-77 Gap-15):features 層 DOM op を per-log にも
+      // inject(transclusion / card は log 内本文にも出現しうる)。
       const logRaw = log.bodySource || '';
       const logVars = extractVars(logRaw);
       const logStripped = parseFrontmatter(logRaw).body;
-      const bodyHtml = renderMarkdown(logStripped, { vars: logVars }) || '';
+      const containerId = currentContainerRef?.meta?.container_id ?? '';
+      let bodyHtml = renderMarkdown(logStripped, { vars: logVars, currentContainerId: containerId }) || '';
+      bodyHtml = injectFeaturesDomOps(bodyHtml, lid, currentContainerRef);
       parts.push(
         `<article class="pkc-textlog-log" id="log-${escapeForAttr(log.id)}" data-pkc-log-id="${escapeForAttr(log.id)}" data-pkc-lid="${escapeForAttr(lid)}"${importantAttr}>`,
         `<header class="pkc-textlog-log-header">`,
@@ -1207,16 +1305,20 @@ function renderViewBody(
       // pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 view body 初期 render path
       // にも frontmatter strip + extractVars + headingNumber を thread。
       // canonical S1 と同経路。
+      // pgc-96(audit pgc-77 Gap-15):features 層 DOM op を inject。
       const raw = source || '';
       const vars = extractVars(raw);
       const stripped = parseFrontmatter(raw).body;
       const headingNumber = extractHeadingNumberConfig(raw);
-      return renderMarkdown(stripped, {
+      const containerId = currentContainerRef?.meta?.container_id ?? '';
+      let html = renderMarkdown(stripped, {
         sourceLineAnchors: true,
         vars,
         headingNumber,
-      })
-        || '<em style="color:var(--c-muted)">(empty)</em>';
+        currentContainerId: containerId,
+      });
+      html = injectFeaturesDomOps(html, entry.lid, currentContainerRef);
+      return html || '<em style="color:var(--c-muted)">(empty)</em>';
     }
   }
 }

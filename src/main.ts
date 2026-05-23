@@ -43,7 +43,7 @@ import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-b
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
 import { wireWindowLayoutRestore } from './adapter/ui/window-layout-restore-prompt';
-import { getOpenEntryWindowLids, setEntryWindowsChangedListener } from './adapter/ui/entry-window';
+import { getOpenEntryWindowLids, setEntryWindowsChangedListener, setEntryWindowCurrentContainer } from './adapter/ui/entry-window';
 import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
@@ -334,6 +334,13 @@ async function boot(): Promise<void> {
   // built preview resolver context pushed into it. The child's
   // view-pane HTML and Source textarea are never touched.
   wireEntryWindowLiveRefresh(dispatcher);
+
+  // pgc-96(audit pgc-77 Gap-15):entry-window の `currentContainerRef` を
+  // dispatcher の state.container 変化に追従させる。features 層 DOM op
+  // (expandTransclusions + hydrateCardPlaceholders)を S4 全 render path で
+  // parent 側完成 HTML に inject するため、最新 container reference を
+  // module-local に流し込む。
+  dispatcher.onState((s) => setEntryWindowCurrentContainer(s.container));
 
   // 2c. Entry-window view-body rerender wiring.
   //
