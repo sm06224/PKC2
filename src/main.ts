@@ -37,6 +37,7 @@ import {
 } from './adapter/ui/action-binder';
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
+import { registerBuiltinKeymaps } from './adapter/ui/keymap-binder';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
@@ -404,6 +405,12 @@ async function boot(): Promise<void> {
   // OFF)、`Ctrl+Shift+P` / `F1` で起動。bootstrap として PKC2 の基本 command
   // を `registerBuiltinCommands(dispatcher)` で登録。
   registerBuiltinCommands(dispatcher);
+
+  // 3-KM. Keymap registry(MASTER.md §4.6、pgc-82):Tier 0 flag
+  // `shell.keymap_registry_enabled` で gate(default OFF)、Alt+1〜6 で view
+  // 切替 / F12 で Flags Inspector / Ctrl+K Ctrl+S で shortcuts 一覧 等の
+  // fresh chord を登録。既存 shortcut は不変。
+  registerBuiltinKeymaps();
 
   // 3a. Global caret-row indicator (always on, sync-independent).
   // Paints a subtle marker at the focused textarea's caret row

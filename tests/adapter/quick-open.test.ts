@@ -42,7 +42,9 @@ function mkContainer(entries: Entry[]): Container {
   return {
     meta: {
       container_id: 'test-container',
+      title: 'test',
       created_at: '2026-05-23T00:00:00Z',
+      updated_at: '2026-05-23T00:00:00Z',
       schema_version: 1,
       generator: 'test',
     },

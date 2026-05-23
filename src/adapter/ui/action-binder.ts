@@ -132,6 +132,7 @@ import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEn
 import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled } from './shell-flags';
 import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
+import { handleKeymapKeydown } from './keymap-binder';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -4202,6 +4203,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (isSlashMenuOpen()) {
       if (handleSlashMenuKeydown(e)) return;
     }
+
+    // pgc-82(MASTER.md §4.6):Keymap registry。`Alt+←/→` の前に挿入する
+    // のは、本 binder が textarea / input 編集中はスキップ + flag OFF で
+    // no-op、なので **既存挙動を一切壊さない** ため。flag ON 時のみ
+    // `Alt+1`〜`6` / `F12` / `Ctrl+K Ctrl+S` 等の fresh shortcut が発火。
+    if (handleKeymapKeydown(e)) return;
 
     // 領域 1: Alt+←/→ で entry navigation history を移動。テキスト入力中
     // (textarea / input)は OS ネイティブの単語移動を尊重するため発火

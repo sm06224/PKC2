@@ -96,3 +96,17 @@ export const shellQuickOpenEnabled = defineFlag<boolean>(
       'Quick Open(Ctrl+P で entry fuzzy launcher、browser print 上書き)を有効化',
   },
 );
+
+// Keymap registry(vscode-grade-overhaul-2026-05 MASTER.md §4.6、pgc-82 POC)
+// を有効化。ON で本 PR が登録する fresh chord(Alt+1〜6 で view 切替、F12 で
+// Flags Inspector、Ctrl+K Ctrl+S で keyboard shortcuts 一覧)が発火する。
+// OFF で完全 no-op、既存 shortcut のみ。
+export const shellKeymapRegistryEnabled = defineFlag<boolean>(
+  'shell.keymap_registry_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Keymap registry を有効化(Alt+1〜6 / F12 / Ctrl+K Ctrl+S 等の fresh shortcut)',
+  },
+);

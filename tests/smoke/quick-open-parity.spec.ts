@@ -58,14 +58,9 @@ test.describe('Quick Open parity', () => {
     await input.fill('Beta');
     await page.keyboard.press('Enter');
     await expect(overlay).toBeHidden();
-    // breadcrumb or title-row should show Beta
+    // 簡易:DOM の Beta タイトルが含まれること(SELECT_ENTRY が反映、
+    // breadcrumb / title-display 等に Beta が出る経路を user-visible で確認)
     await page.waitForTimeout(300);
-    const breadcrumb = page.locator('.pkc-breadcrumb, [data-pkc-region="breadcrumb"]');
-    // either breadcrumb or title-display shows the entry; just confirm sidebar list
-    // 安定:`Beta` を含む entry が select 表現される(class 等は実装次第なので
-    // 直接の DOM assertion はしない、URL hash か state を確認)
-    const url = page.url();
-    // URL に lid が出るとは限らないので、簡易に DOM の Beta タイトルが含まれることだけ
     const someBeta = await page.locator('text=Beta').count();
     expect(someBeta).toBeGreaterThan(0);
   });
