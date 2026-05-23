@@ -137,6 +137,7 @@ import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
 import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab } from './tab-strip';
 import { toggleSplitView } from './split-view';
+import { setActivityBarActiveTab } from './activity-bar';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1170,6 +1171,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         toggleSplitView('right');
         const st = dispatcher.getState();
         dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        break;
+      }
+      case 'select-activity-tab': {
+        // pgc-102 wave-γ #4(MASTER.md §6.2):Activity Bar の tab を切替。
+        // module-local state を更新して SYS_SYNC_CHILD_WINDOWS で再描画
+        // 強制(state.selectedLid 等は変えないが activity bar / sidebar の
+        // 表示が切替わる)。tab id 不明な場合は no-op。
+        e.preventDefault();
+        e.stopPropagation();
+        const tab = target.getAttribute('data-pkc-activity-tab');
+        if (
+          tab === 'explorer' || tab === 'search' || tab === 'outline'
+          || tab === 'relations' || tab === 'recent' || tab === 'pinned'
+        ) {
+          setActivityBarActiveTab(tab);
+          const st = dispatcher.getState();
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        }
         break;
       }
       case 'toggle-new-picker': {

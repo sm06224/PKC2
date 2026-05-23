@@ -200,3 +200,20 @@ export const shellBackForwardInBreadcrumbEnabled = defineFlag<boolean>(
       'header back/forward `◀` `▶` を breadcrumb 内 `⇐` `⇒` icon に統合',
   },
 );
+
+// Activity Bar(MASTER.md §6.2、pgc-102 wave-γ #4)を有効化。ON で
+// sidebar の左に縦 strip の activity bar を **prepend** する ── VSCode の
+// Activity Bar 相当(6 tab:📁 Explorer / 🔍 Search / 📊 Outline /
+// 🔗 Relations / 📜 Recent / 📌 Pinned)。本 PR では visual scaffold
+// + tab selection のみ ── 各 tab の中身は後続 pgc-103〜107 で順次実装、
+// Explorer は既存 sidebar をそのまま出す(機能後退ゼロ)。OFF で従来
+// どおり activity bar 無し(layout 不変)。
+export const shellActivityBarEnabled = defineFlag<boolean>(
+  'shell.activity_bar_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'sidebar の左に Activity Bar(VSCode 流の縦 strip tab)を表示。Explorer / Search / Outline / Relations / Recent / Pinned の 6 tab、本 PR は scaffold のみ',
+  },
+);

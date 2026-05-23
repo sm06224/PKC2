@@ -17,7 +17,8 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled } from './shell-flags';
+import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
 import { buildTabStripElement } from './tab-strip';
 import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
@@ -797,8 +798,23 @@ function renderShell(state: AppState): HTMLElement {
   // body scan.
   const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
 
+  // pgc-102 wave-γ #4(MASTER.md §6.2):flag ON 時に Activity Bar(VSCode
+  // 流の縦 strip)を sidebar の左に prepend。本 PR は visual scaffold +
+  // tab selection のみ ── Explorer 以外を選んだ場合に sidebar の代わりに
+  // placeholder("Coming soon")を出す。後続 pgc-103〜107 で各 tab の
+  // 中身を実装(Search / Outline / Relations / Recent / Pinned)。
+  if (shellActivityBarEnabled()) {
+    main.appendChild(buildActivityBarElement());
+  }
+
   // Left pane: entry list / tree / search / filters
-  const sidebar = renderSidebar(state, linkIndex);
+  // pgc-102:Activity Bar flag ON + 非 explorer tab 時は placeholder。
+  let sidebar: HTMLElement;
+  if (shellActivityBarEnabled() && getActivityBarActiveTab() !== 'explorer') {
+    sidebar = buildActivityTabPlaceholder(getActivityBarActiveTab());
+  } else {
+    sidebar = renderSidebar(state, linkIndex);
+  }
   if (panePrefs.sidebar) sidebar.setAttribute('data-pkc-collapsed', 'true');
   main.appendChild(sidebar);
 
