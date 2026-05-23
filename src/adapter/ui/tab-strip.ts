@@ -45,6 +45,8 @@ interface TabInfo {
   readonly title: string;
   readonly kind?: 'entry' | 'view';
   readonly mode?: ViewMode;
+  /** pgc-88:pinned tab は close 不可、close 系操作で skip される。 */
+  readonly pinned?: boolean;
 }
 
 let openTabs: TabInfo[] = [];
@@ -164,13 +166,17 @@ export function recordTabOpen(lid: string, container: Container | null): void {
 /**
  * tab を close する。close 対象が active なら、隣接 tab に active を移す
  * (戻り値 = 新 active lid、なければ null)。
+ *
+ * pgc-88:pinned tab は close を拒否(戻り値は現 activeLid 維持)。
  */
 export function recordTabClose(lid: string): string | null {
   const idx = openTabs.findIndex((t) => t.lid === lid);
   if (idx < 0) return activeLid;
   const closed = openTabs[idx]!;
+  // pinned guard ── 明示 close 操作は拒否、user 体感的に "閉じない" を担保
+  if (closed.pinned) return activeLid;
   openTabs.splice(idx, 1);
-  // recently closed に push(限定数で trim)
+  // recently closed に push(限定数で trim)── pinned は push しない
   recentlyClosed.unshift(closed);
   if (recentlyClosed.length > MAX_RECENTLY_CLOSED) recentlyClosed.length = MAX_RECENTLY_CLOSED;
   // active 再配置
@@ -228,6 +234,8 @@ const STORAGE_KEY = 'pkc2.tabStrip';
 interface SavedTabStrip {
   readonly lids: readonly string[];
   readonly active: string | null;
+  /** pgc-88:pinned lid 一覧。backward compat のため optional。 */
+  readonly pinned?: readonly string[];
 }
 
 /**
@@ -240,6 +248,7 @@ export function persistTabState(): void {
     const payload: SavedTabStrip = {
       lids: openTabs.map((t) => t.lid),
       active: activeLid,
+      pinned: openTabs.filter((t) => t.pinned).map((t) => t.lid),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
@@ -277,9 +286,11 @@ export function restoreTabState(container: Container | null): string | null {
   }
   // 既知 entry / view tab のみ rehydrate、順序保持
   const entryMap = new Map(container.entries.map((e) => [e.lid, e] as const));
+  const pinnedSet = new Set<string>(Array.isArray(saved.pinned) ? saved.pinned : []);
   const rehydrated: TabInfo[] = [];
   for (const lid of saved.lids) {
     if (typeof lid !== 'string') continue;
+    const pinned = pinnedSet.has(lid);
     // view tab(__view:mode)は entry lookup を skip、meta から復元
     if (isViewTabLid(lid)) {
       const mode = viewTabModeFromLid(lid);
@@ -287,6 +298,7 @@ export function restoreTabState(container: Container | null): string | null {
         rehydrated.push({
           lid, archetype: 'view', kind: 'view', mode,
           title: VIEW_TAB_META[mode].title,
+          pinned,
         });
       }
       continue;
@@ -294,7 +306,10 @@ export function restoreTabState(container: Container | null): string | null {
     const e = entryMap.get(lid);
     if (!e) continue;
     if (e.archetype === 'opaque') continue;
-    rehydrated.push({ lid: e.lid, archetype: e.archetype, title: e.title || '(untitled)' });
+    rehydrated.push({
+      lid: e.lid, archetype: e.archetype, title: e.title || '(untitled)',
+      pinned,
+    });
   }
   openTabs = rehydrated;
   // active が rehydrated に含まれていればそれを採用、無ければ末尾 fallback
@@ -322,10 +337,34 @@ export function clearPersistedTabState(): void {
 /**
  * 「現 active tab を閉じる」アクション。`Ctrl+W` から呼ばれる。
  * 戻り値:新 active lid(or null)。caller が SELECT_ENTRY を dispatch。
+ *
+ * pgc-88:active が pinned ならば close を拒否(現 activeLid を維持)。
  */
 export function closeActiveTab(): string | null {
   if (!activeLid) return null;
+  const active = openTabs.find((t) => t.lid === activeLid);
+  if (active?.pinned) return activeLid;
   return recordTabClose(activeLid);
+}
+
+/**
+ * pgc-88:lid 指定で pin 状態を toggle。戻り値:新 pin 状態。lid が無ければ
+ * `null`(no-op)。
+ */
+export function togglePinTab(lid: string): boolean | null {
+  const idx = openTabs.findIndex((t) => t.lid === lid);
+  if (idx < 0) return null;
+  const old = openTabs[idx]!;
+  const next: TabInfo = { ...old, pinned: !old.pinned };
+  openTabs[idx] = next;
+  return next.pinned ?? false;
+}
+
+/**
+ * pgc-88:現在 pinned な tab の lid 一覧(test / persistence で参照)。
+ */
+export function getPinnedTabLids(): readonly string[] {
+  return openTabs.filter((t) => t.pinned).map((t) => t.lid);
 }
 
 /**
@@ -378,8 +417,12 @@ export function buildTabStripElement(state: AppState): HTMLElement {
   }
   for (const t of openTabs) {
     const isView = isViewTabInfo(t);
+    const isPinned = !!t.pinned;
     const tab = document.createElement('div');
-    tab.className = isView ? 'pkc-tab pkc-tab-view' : 'pkc-tab';
+    let cls = 'pkc-tab';
+    if (isView) cls += ' pkc-tab-view';
+    if (isPinned) cls += ' pkc-tab-pinned';
+    tab.className = cls;
     // view tab は select-entry ではなく専用 action(switch-view-tab)。
     // entry tab は従来どおり select-entry(action-binder が SELECT_ENTRY
     // dispatch)、view tab は SET_VIEW_MODE dispatch する別 case。
@@ -412,19 +455,33 @@ export function buildTabStripElement(state: AppState): HTMLElement {
     title.setAttribute('title', `${t.title} (${t.archetype})`);
     tab.appendChild(title);
 
-    const close = document.createElement('button');
-    close.className = 'pkc-tab-close';
-    close.setAttribute('type', 'button');
-    close.setAttribute('data-pkc-action', 'close-tab');
-    close.setAttribute('data-pkc-lid', t.lid);
-    close.setAttribute('aria-label', `Close ${t.title}`);
-    close.textContent = '×';
-    // dirty 状態で × の代わりに ● を表示
-    if (tab.classList.contains('pkc-tab-dirty')) {
-      close.classList.add('pkc-tab-close-dirty');
-      close.textContent = '●';
+    if (isPinned) {
+      // pgc-88:pinned tab は close ボタン非表示、代わりに 🔒 toggle ボタン。
+      // 「pin 解除」は togglePinTab を呼ぶ専用 action。
+      const lock = document.createElement('button');
+      lock.className = 'pkc-tab-pin';
+      lock.setAttribute('type', 'button');
+      lock.setAttribute('data-pkc-action', 'toggle-pin-tab');
+      lock.setAttribute('data-pkc-lid', t.lid);
+      lock.setAttribute('aria-label', `Unpin ${t.title}`);
+      lock.setAttribute('title', 'Pinned ── click to unpin');
+      lock.textContent = '🔒';
+      tab.appendChild(lock);
+    } else {
+      const close = document.createElement('button');
+      close.className = 'pkc-tab-close';
+      close.setAttribute('type', 'button');
+      close.setAttribute('data-pkc-action', 'close-tab');
+      close.setAttribute('data-pkc-lid', t.lid);
+      close.setAttribute('aria-label', `Close ${t.title}`);
+      close.textContent = '×';
+      // dirty 状態で × の代わりに ● を表示
+      if (tab.classList.contains('pkc-tab-dirty')) {
+        close.classList.add('pkc-tab-close-dirty');
+        close.textContent = '●';
+      }
+      tab.appendChild(close);
     }
-    tab.appendChild(close);
 
     strip.appendChild(tab);
   }

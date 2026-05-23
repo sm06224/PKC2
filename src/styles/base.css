@@ -10566,3 +10566,31 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 .pkc-tab-dirty .pkc-tab-title::before {
   content: '';
 }
+
+/* ─── Tab pin (pgc-88、MASTER.md §4.3)──────────────────────
+ * pinned tab は close ボタンの代わりに 🔒 を表示、click で unpin。
+ * 視覚的に pinned tab は accent border-left を持つ(右に並んだ entry tab
+ * との切り分け)。
+ */
+.pkc-tab-pinned {
+  border-left: 2px solid var(--c-accent);
+  padding-left: calc(0.55rem - 2px);
+}
+.pkc-tab-pin {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--c-accent);
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  margin-left: 0.2rem;
+}
+.pkc-tab-pin:hover {
+  background: var(--c-border);
+}

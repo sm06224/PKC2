@@ -16,7 +16,7 @@ import type { Dispatcher } from '../state/dispatcher';
 import type { ArchetypeId } from '../../core/model/record';
 import type { CommandMeta } from '../../features/command/types';
 import { registerCommand } from './command-palette';
-import { openViewTab, persistTabState } from './tab-strip';
+import { openViewTab, persistTabState, togglePinTab, getActiveTabLid } from './tab-strip';
 
 /**
  * 既存 `data-pkc-action` button を root から探して click を emit する
@@ -184,6 +184,26 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: v.mode });
     });
   }
+
+  // ─── Tab pin(pgc-88、MASTER.md §4.3)─────────
+  // active tab の pin / unpin toggle。pinned tab は close 不可、reload で
+  // 復元される(永続化)。
+  registerCommand(
+    {
+      id: 'tab.toggle-pin-active',
+      titleJa: 'アクティブな tab を pin / unpin',
+      titleEn: 'Toggle pin: active tab',
+      category: 'View',
+    },
+    () => {
+      const lid = getActiveTabLid();
+      if (!lid) return;
+      togglePinTab(lid);
+      persistTabState();
+      const st = dispatcher.getState();
+      dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+    },
+  );
 
   // ─── Theme ───────────────────────────────────
   // 注:system は payload 上は `auto`(`src/core/model/system-settings-payload.ts`)。

@@ -135,7 +135,7 @@ import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
 import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
-import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab } from './tab-strip';
+import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab } from './tab-strip';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1116,6 +1116,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         e.preventDefault();
         e.stopPropagation();
         closeColorPicker();
+        break;
+      }
+      case 'toggle-pin-tab': {
+        // pgc-88:tab の pin 状態を toggle。pinned tab は close 不可、
+        // tab strip 右端に永続化。
+        if (!lid) break;
+        togglePinTab(lid);
+        persistTabState();
+        // 強制 re-render:state.selectedLid 変化なしのため SYS_SYNC_CHILD_WINDOWS
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         break;
       }
       case 'switch-view-tab': {

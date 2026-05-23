@@ -13,7 +13,6 @@ import {
   getOpenTabs,
   getActiveTabLid,
   buildTabStripElement,
-  viewTabLid,
   isViewTabInfo,
   syncActiveViewTab,
   persistTabState,
