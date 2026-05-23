@@ -31,7 +31,7 @@ function makeContainer(): Container {
           type: 'pkc2-about',
           version: '2.3.0-test',
           description: 'Test About',
-          build: { timestamp: TS, commit: 'abc', builder: 'test' },
+          build: { timestamp: TS, commit: 'abc12345', builder: 'test' },
           license: { name: 'MIT', url: '' },
           author: { name: 'Test', url: '', role: '' },
           homepage: '',
@@ -39,7 +39,7 @@ function makeContainer(): Container {
           dependencies: [],
           devDependencies: [],
           contributors: [],
-          release: null,
+          // `release` omitted(optional、null は validator が reject する)
           releases: [],
         }),
         archetype: 'system-about',
@@ -154,5 +154,24 @@ describe('pgc-113 About PKC-Markdown showcase(dogfooding)', () => {
     boot();
     const h1 = showcase()?.querySelector('h1');
     expect(h1?.textContent).toContain('Powered by PKC-Markdown');
+  });
+
+  it('pgc-114:flag ON で showcase に payload version / commit が vars 展開される', () => {
+    setFlag(true);
+    boot();
+    // showcase の本文に `v2.3.0-test` がリテラルで現れる(SHOWCASE_MARKDOWN
+    // 内の `{{vars.version}}` が renderMarkdown vars opt で展開)。
+    expect(showcase()?.textContent).toContain('v2.3.0-test');
+    // build commit は 8 文字に切り詰められる(abc12345 のまま)。
+    expect(showcase()?.textContent).toContain('abc12345');
+  });
+
+  it('pgc-114:flag ON で {{vars.x}} token がリテラルで残らない(全部展開済)', () => {
+    setFlag(true);
+    boot();
+    const text = showcase()?.textContent ?? '';
+    expect(text).not.toContain('{{vars.version}}');
+    expect(text).not.toContain('{{vars.commit}}');
+    expect(text).not.toContain('{{vars.dependency_count}}');
   });
 });

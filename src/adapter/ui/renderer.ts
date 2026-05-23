@@ -10558,7 +10558,9 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   // を視覚で示し、user に「ここでも PKC-Markdown が使える」と伝える。
   // 既存 About view(version / license 等の hand-rendered メタ)は完全維持。
   if (shellAboutPkcMarkdownShowcaseEnabled()) {
-    container.appendChild(buildAboutShowcaseElement());
+    // pgc-114 wave-γ #15:payload(version / commit / dep counts)を
+    // pass して SHOWCASE_MARKDOWN 内 `{{vars.x}}` を動的展開。
+    container.appendChild(buildAboutShowcaseElement(payload));
   }
 
   const header = createElement('header', 'pkc-about-header');

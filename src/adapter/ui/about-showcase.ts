@@ -12,6 +12,7 @@
 // 完全維持、その手前に showcase section が prepend されるだけ。
 
 import { renderMarkdown } from '../../features/markdown/markdown-render';
+import type { AboutPayload } from '../../core/model/about-payload';
 
 /**
  * Showcase markdown content。PKC-Markdown の主要 dialect 機能を一通り
@@ -71,21 +72,53 @@ tip / important / warning / caution / danger)を書けます。
 ## Releases
 
 最近の release 情報は下の "Releases" section に build 時 \`docs/release/
-CHANGELOG_v*.md\` を parse した結果が出ます。本 PR で wave-γ #14 までの
-13 件の変更も自動的に表示されているはず。
+CHANGELOG_v*.md\` を parse した結果が出ます。
+
+:::section{role=note}
+**現 release**: \`v{{vars.version}}\` ({{vars.recent_release_count}} 件の最近
+release を About に内包 / build commit \`{{vars.commit}}\`)。
+**{{vars.dependency_count}} 件**の runtime dependency と
+**{{vars.dev_dependency_count}} 件**の dev dependency を含む。
+:::
+
+> このパラグラフは [[em:vars 展開]] のデモです。\`{{vars.x}}\` 構文で
+> About payload(version / commit / 件数等)を markdown 本文へ動的に
+> 埋め込めるため、user direction「最近の変更が反映されていない」
+> (2026-05-23、U-19)に応えて release 情報をここで自動表示します。
 
 [^1]: Footnote の中身も markdown を書けます。**bold** や [link](https://example.com) も OK。
 `;
 
-export function buildAboutShowcaseElement(): HTMLElement {
+/**
+ * Build the showcase element. Optional `payload` enables `{{vars.x}}` token
+ * expansion in SHOWCASE_MARKDOWN so the rendered body reflects the actual
+ * build (version / commit / dependency counts) ── pgc-114 wave-γ #15。
+ * Omitting `payload` keeps the v2 string with template tokens literal,
+ * which is acceptable for tests that only check structural HTML.
+ */
+export function buildAboutShowcaseElement(payload?: AboutPayload): HTMLElement {
   const wrap = document.createElement('section');
   wrap.className = 'pkc-about-showcase pkc-md-rendered';
   wrap.setAttribute('data-pkc-region', 'about-showcase');
+
+  // pgc-114:`{{vars.x}}` 展開のための vars。payload 不在時(test
+  // stub 等)は token をそのまま literal で残す。
+  const vars: Record<string, string> = payload
+    ? {
+        version: payload.version,
+        commit: payload.build.commit.slice(0, 8),
+        recent_release_count: String(payload.releases?.length ?? 0),
+        dependency_count: String(payload.dependencies.length),
+        dev_dependency_count: String(payload.devDependencies.length),
+      }
+    : {};
+
   // PKC-Markdown features を expose、`currentContainerId` は About だけの
   // 描画なので空文字で OK(transclusion / card 等 cross-entry 機能は使わない)。
   const html = renderMarkdown(SHOWCASE_MARKDOWN, {
     currentContainerId: '',
     sourceLineAnchors: false,
+    vars,
   });
   wrap.innerHTML = html;
   return wrap;
