@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled } from './shell-flags';
 import { buildTabStripElement } from './tab-strip';
 import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
@@ -1137,7 +1137,12 @@ function renderHeader(state: AppState): HTMLElement {
     header.appendChild(createGroup);
 
     // Export / Import inline buttons
-    header.appendChild(renderExportImportInline(state));
+    // pgc-100 wave-γ #2(MASTER.md §6.1 phase 2):flag ON 時は header から外し、
+    // Shell Menu の "Data" section へ集約(`renderShellMenu` 側で同 element
+    // を append する)。OFF で従来 header inline 表示。
+    if (!shellDataInShellMenuEnabled()) {
+      header.appendChild(renderExportImportInline(state));
+    }
   }
 
   // Readonly mode: show readonly badge and rehydrate button
@@ -1657,6 +1662,26 @@ function renderShellMenu(
   // This section is intentionally passive until the user clicks:
   // the orphan count is just a read-only scan of the current
   // container, the cleanup button disables itself when there is
+  // pgc-100 wave-γ #2(MASTER.md §6.1 phase 2):flag ON 時に Data… inline
+  // panel を header から外して Shell Menu の section として集約。同じ
+  // `renderExportImportInline(state)` を call するので機能差ゼロ、視覚的
+  // 位置だけが header → shell-menu に移る。OFF で本 section 非表示
+  // (従来 header inline)。`!readonly` 限定(header inline と同条件)。
+  if (
+    shellDataInShellMenuEnabled() &&
+    state.container &&
+    !state.readonly &&
+    state.phase === 'ready'
+  ) {
+    const dataSection = createElement('div', 'pkc-shell-menu-section');
+    dataSection.setAttribute('data-pkc-region', 'shell-menu-data');
+    const dataLabel = createElement('span', 'pkc-shell-menu-label');
+    dataLabel.textContent = 'Data';
+    dataSection.appendChild(dataLabel);
+    dataSection.appendChild(renderExportImportInline(state));
+    card.appendChild(dataSection);
+  }
+
   // nothing to do, and the whole surface is hidden in readonly /
   // container-absent modes where mutation is not allowed.
   //

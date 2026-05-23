@@ -167,3 +167,19 @@ export const shellNewButtonPickerEnabled = defineFlag<boolean>(
       'Header の 5 個 archetype create button を `+ New` 1 個 + popover picker に集約',
   },
 );
+
+// Data… inline button を Shell Menu に集約(MASTER.md §6.1 phase 2、
+// pgc-100 wave-γ #2)。ON で header の `<details>Data…</details>` 経由
+// export/import panel を header から外し、Shell Menu の Maintenance
+// section 直前に「Data」section として埋め込む。OFF で従来どおり header
+// inline。readonly mode の TEXTLOGs / TEXTs / Mixed 直接 export button は
+// 影響なし(`Data…` 自体が !readonly 時のみ出るため)。
+export const shellDataInShellMenuEnabled = defineFlag<boolean>(
+  'shell.data_in_shell_menu_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Data… inline export/import panel を Shell Menu の section に集約(header から外す)',
+  },
+);
