@@ -18,6 +18,12 @@ interface InspectorTabMeta {
   id: InspectorTab;
   icon: string;
   label: string;
+  /**
+   * pgc-124 wave-γ #23:keyboard chord 文字列(tooltip 用、`Ctrl+K P` 等)。
+   * pgc-123 で registerKeyBinding 済の chord と一致、ここに併記することで
+   * button hover で keybind が見える(VSCode 流の「button hover → tooltip」)。
+   */
+  keybind?: string;
   /** この tab で表示する `data-pkc-region` 一覧。空配列 = placeholder のみ。 */
   visibleRegions: ReadonlyArray<string>;
 }
@@ -43,12 +49,14 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
     id: 'properties',
     icon: '📋',
     label: 'Properties',
+    keybind: 'Ctrl+K P',
     visibleRegions: ['frontmatter', 'frontmatter-warning'],
   },
   {
     id: 'references',
     icon: '🔗',
     label: 'References',
+    keybind: 'Ctrl+K R',
     visibleRegions: [
       'references', 'references-summary',
       'tags', 'tag-add',
@@ -62,6 +70,7 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
     id: 'history',
     icon: '📜',
     label: 'History',
+    keybind: 'Ctrl+K H',
     visibleRegions: [
       'revision-history',
       'revision-info', 'revision-latest', 'revision-preview',
@@ -72,6 +81,7 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
     id: 'style',
     icon: '🎨',
     label: 'Style',
+    keybind: 'Ctrl+K Y',
     // pgc-118 wave-γ #18:Style tab を placeholder から脱却 ── 読み取り
     // 専用 metrics(archetype / char count / heading 数 / frontmatter style
     // globals 等)を `inspector-style-tab.ts buildInspectorStyleSection` で
@@ -82,6 +92,7 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
     id: 'ai',
     icon: '🧠',
     label: 'AI',
+    keybind: 'Ctrl+K I',
     visibleRegions: [],
   },
 ];
@@ -111,7 +122,8 @@ export function buildMetaPaneInspectorTabStrip(): HTMLElement {
     btn.className = 'pkc-meta-inspector-tab';
     btn.setAttribute('data-pkc-action', 'select-meta-pane-tab');
     btn.setAttribute('data-pkc-meta-pane-tab', t.id);
-    btn.setAttribute('title', t.label);
+    // pgc-124 wave-γ #23:tooltip に keybind を併記(VSCode 流)。
+    btn.setAttribute('title', t.keybind ? `${t.label} (${t.keybind})` : t.label);
     btn.setAttribute('aria-label', t.label);
     btn.setAttribute('role', 'tab');
     if (t.id === activeInspectorTab) {

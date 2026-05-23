@@ -16,12 +16,14 @@
 export type ActivityTab = 'explorer' | 'search' | 'outline' | 'relations' | 'recent' | 'pinned';
 
 const ALL_TABS: ReadonlyArray<{ id: ActivityTab; icon: string; label: string; tip: string }> = [
-  { id: 'explorer',  icon: '📁', label: 'Explorer',  tip: 'Explorer(Ctrl+Shift+E)' },
-  { id: 'search',    icon: '🔍', label: 'Search',    tip: 'Search(Ctrl+Shift+F)' },
-  { id: 'outline',   icon: '📊', label: 'Outline',   tip: 'Outline(Ctrl+Shift+O)' },
-  { id: 'relations', icon: '🔗', label: 'Relations', tip: 'Relations graph(Ctrl+Shift+G)' },
-  { id: 'recent',    icon: '📜', label: 'Recent',    tip: 'Recent entries(Ctrl+Shift+R)' },
-  { id: 'pinned',    icon: '📌', label: 'Pinned',    tip: 'Pinned entries(Ctrl+Shift+P)' },
+  // pgc-124 wave-γ #23:tooltip を pgc-121 で実装した実 keybind に合わせる
+  // (VSCode の Ctrl+Shift+E から PKC2 の Alt+Shift+1〜6 へ更新)。
+  { id: 'explorer',  icon: '📁', label: 'Explorer',  tip: 'Explorer (Alt+Shift+1)' },
+  { id: 'search',    icon: '🔍', label: 'Search',    tip: 'Search (Alt+Shift+2)' },
+  { id: 'outline',   icon: '📊', label: 'Outline',   tip: 'Outline (Alt+Shift+3)' },
+  { id: 'relations', icon: '🔗', label: 'Relations', tip: 'Relations graph (Alt+Shift+4)' },
+  { id: 'recent',    icon: '📜', label: 'Recent',    tip: 'Recent entries (Alt+Shift+5)' },
+  { id: 'pinned',    icon: '📌', label: 'Pinned',    tip: 'Pinned entries (Alt+Shift+6)' },
 ];
 
 let activeTab: ActivityTab = 'explorer';
