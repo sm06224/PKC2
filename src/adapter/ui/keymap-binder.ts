@@ -134,4 +134,8 @@ export function registerBuiltinKeymaps(): void {
   registerKeyBinding('Alt+6', 'view.launcher');
   registerKeyBinding('F12', 'app.flags');
   registerKeyBinding('Ctrl+K Ctrl+S', 'app.shortcuts');
+  // pgc-120 wave-γ #20(MASTER.md §6.4 step 2):Format panel toggle。
+  // `shell.format_panel_default_hidden_enabled` + `shell.keymap_registry_
+  // enabled` 両方 ON で `Alt+Shift+F` で format panel を表示 / 非表示 flip。
+  registerKeyBinding('Alt+Shift+F', 'format.toggle');
 }

@@ -156,14 +156,15 @@ describe('handleKeymapKeydown', () => {
 });
 
 describe('registerBuiltinKeymaps', () => {
-  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S', () => {
+  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F(pgc-120)', () => {
     resetKeymapRegistry();
     registerBuiltinKeymaps();
     const bs = getKeyBindings();
-    expect(bs.length).toBe(8); // 6 + 1 + 1
+    expect(bs.length).toBe(9); // 6 + 1 + 1 + 1(pgc-120 で format.toggle 追加)
     const ids = bs.map((b) => b.commandId).sort();
     expect(ids).toContain('view.detail');
     expect(ids).toContain('app.flags');
     expect(ids).toContain('app.shortcuts');
+    expect(ids).toContain('format.toggle');
   });
 });

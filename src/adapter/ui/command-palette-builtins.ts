@@ -18,6 +18,7 @@ import type { CommandMeta } from '../../features/command/types';
 import { registerCommand } from './command-palette';
 import { openViewTab, persistTabState, togglePinTab, getActiveTabLid } from './tab-strip';
 import { toggleSplitView } from './split-view';
+import { toggleFormatPanelVisible } from './format-panel-visibility';
 
 /**
  * 既存 `data-pkc-action` button を root から探して click を emit する
@@ -216,6 +217,25 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
     },
     () => {
       toggleSplitView('right');
+      const st = dispatcher.getState();
+      dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+    },
+  );
+
+  // ─── Format panel toggle(pgc-110 + pgc-120、MASTER.md §6.4 step 2)
+  // editor の format panel を toggle(`shell.format_panel_default_hidden_
+  // enabled` 必須、OFF だと panel が常時表示なので command 自体 no-op)。
+  // keymap registry が ON なら `Alt+Shift+F` で同 command を発火可能。
+  registerCommand(
+    {
+      id: 'format.toggle',
+      titleJa: 'Format panel の表示を toggle',
+      titleEn: 'Toggle Format panel visibility',
+      category: 'View',
+      keybind: 'Alt+Shift+F',
+    },
+    () => {
+      toggleFormatPanelVisible();
       const st = dispatcher.getState();
       dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
     },
