@@ -20,6 +20,7 @@ import {
 import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled } from './shell-flags';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
 import { buildOutlineTab } from './activity-outline-tab';
+import { buildRecentTab } from './activity-recent-tab';
 import { buildTabStripElement } from './tab-strip';
 import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
@@ -821,6 +822,9 @@ function renderShell(state: AppState): HTMLElement {
         break;
       case 'outline':
         sidebar = buildOutlineTab(state);
+        break;
+      case 'recent':
+        sidebar = buildRecentTab(state);
         break;
       default:
         sidebar = buildActivityTabPlaceholder(tab);

@@ -975,6 +975,55 @@
   text-align: center;
 }
 
+/* pgc-104 wave-γ #6(MASTER.md §6.2):Recent tab。selectRecentEntries で
+   最新 N 件(default 10、`recent.default_limit` flag)を list 表示。row
+   click で select-entry dispatch(既存汎用 handler を透過)。 */
+.pkc-activity-tab-recent-body {
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+}
+.pkc-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pkc-recent-item {
+  margin: 0;
+}
+.pkc-recent-item[data-pkc-active="true"] > .pkc-recent-link {
+  background: var(--c-active, rgba(127, 127, 127, 0.18));
+  color: var(--c-accent);
+}
+.pkc-recent-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-recent-link:hover,
+.pkc-recent-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-recent-icon {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+.pkc-recent-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Activity Bar の placeholder(Explorer 以外を選んだ場合の sidebar 代替)。
    wave-γ #4 scaffold ── 後続 pgc-103〜107 で各 tab の中身に置き換える。 */
 .pkc-activity-tab-placeholder {
