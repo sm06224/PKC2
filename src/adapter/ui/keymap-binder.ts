@@ -138,4 +138,15 @@ export function registerBuiltinKeymaps(): void {
   // `shell.format_panel_default_hidden_enabled` + `shell.keymap_registry_
   // enabled` 両方 ON で `Alt+Shift+F` で format panel を表示 / 非表示 flip。
   registerKeyBinding('Alt+Shift+F', 'format.toggle');
+  // pgc-121 wave-γ #21(MASTER.md §6.2 後続):Activity Bar tab keyboard
+  // shortcut。`shell.activity_bar_enabled` + `shell.keymap_registry_enabled`
+  // 両方 ON で `Alt+Shift+1`〜`6` で 6 tab(explorer / search / outline /
+  // relations / recent / pinned)を switch。`Alt+N`(view モード切替)と
+  // 衝突回避のため Shift 修飾子付き別系列。
+  registerKeyBinding('Alt+Shift+1', 'activity.explorer');
+  registerKeyBinding('Alt+Shift+2', 'activity.search');
+  registerKeyBinding('Alt+Shift+3', 'activity.outline');
+  registerKeyBinding('Alt+Shift+4', 'activity.relations');
+  registerKeyBinding('Alt+Shift+5', 'activity.recent');
+  registerKeyBinding('Alt+Shift+6', 'activity.pinned');
 }

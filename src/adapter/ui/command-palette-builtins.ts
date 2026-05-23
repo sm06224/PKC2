@@ -19,6 +19,7 @@ import { registerCommand } from './command-palette';
 import { openViewTab, persistTabState, togglePinTab, getActiveTabLid } from './tab-strip';
 import { toggleSplitView } from './split-view';
 import { toggleFormatPanelVisible } from './format-panel-visibility';
+import { setActivityBarActiveTab, type ActivityTab } from './activity-bar';
 
 /**
  * 既存 `data-pkc-action` button を root から探して click を emit する
@@ -240,6 +241,38 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
     },
   );
+
+  // ─── Activity Bar tab(pgc-102+〜108、pgc-121:keyboard shortcut 追加)
+  // MASTER.md §6.2:`shell.activity_bar_enabled` 必須(OFF だと bar が描画
+  // されず command 自体は state 更新だけして再描画は no-op)。VSCode の
+  // Ctrl+Shift+E(Explorer)/ F(Search) と衝突するため、PKC2 は
+  // `Alt+Shift+1`〜`6` で各 tab を選択する別系列の shortcut を持つ。
+  // pgc-101 で導入した keymap registry で `view.detail`〜`view.launcher` が
+  // `Alt+1`〜`Alt+6` に bind 済なので、`Alt+Shift+N` で衝突回避。
+  const activityTabs: { id: ActivityTab; icon: string; ja: string; en: string; key: string }[] = [
+    { id: 'explorer',  icon: '📁', ja: 'Activity: Explorer',  en: 'Activity: Explorer',  key: 'Alt+Shift+1' },
+    { id: 'search',    icon: '🔍', ja: 'Activity: Search',    en: 'Activity: Search',    key: 'Alt+Shift+2' },
+    { id: 'outline',   icon: '📊', ja: 'Activity: Outline',   en: 'Activity: Outline',   key: 'Alt+Shift+3' },
+    { id: 'relations', icon: '🔗', ja: 'Activity: Relations', en: 'Activity: Relations', key: 'Alt+Shift+4' },
+    { id: 'recent',    icon: '📜', ja: 'Activity: Recent',    en: 'Activity: Recent',    key: 'Alt+Shift+5' },
+    { id: 'pinned',    icon: '📌', ja: 'Activity: Pinned',    en: 'Activity: Pinned',    key: 'Alt+Shift+6' },
+  ];
+  for (const t of activityTabs) {
+    registerCommand(
+      {
+        id: `activity.${t.id}`,
+        titleJa: `${t.icon} ${t.ja}`,
+        titleEn: `${t.icon} ${t.en}`,
+        category: 'View',
+        keybind: t.key,
+      },
+      () => {
+        setActivityBarActiveTab(t.id);
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+      },
+    );
+  }
 
   // ─── Theme ───────────────────────────────────
   // 注:system は payload 上は `auto`(`src/core/model/system-settings-payload.ts`)。
