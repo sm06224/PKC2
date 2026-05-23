@@ -550,6 +550,32 @@
   cursor: default;
 }
 
+/* pgc-101 wave-γ #3(MASTER.md §6.1 phase 3):breadcrumb 内 `⇐` `⇒` icon。
+   shellBackForwardInBreadcrumbEnabled() ON 時、`renderHeaderPathTrail` が
+   nav 先頭に prepend する。標準 nav-btn より少し抑え目(breadcrumb の
+   text と並ぶため)、disabled も標準と同じ opacity 0.3。 */
+.pkc-header-path-nav-btn {
+  font-size: var(--fs-sm);
+  line-height: 1;
+  padding: 0 var(--space-1-5);
+  margin: 0 var(--space-0-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-fg-dim);
+  cursor: pointer;
+}
+.pkc-header-path-nav-btn:hover:not(:disabled) {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-fg);
+}
+.pkc-header-path-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.pkc-header-path-nav-back { margin-right: var(--space-0-5); }
+.pkc-header-path-nav-fwd { margin-right: var(--space-2); }
+
 /* Top-header 階層パス(Explorer 風 path trail、pgc-42)。.pkc-header は
    flex-wrap:wrap なので flex-basis:100% で最下段に独立 1 行となる。
    segment click は data-pkc-action="select-entry" で jump。 */

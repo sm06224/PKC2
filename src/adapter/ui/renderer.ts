@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled } from './shell-flags';
 import { buildTabStripElement } from './tab-strip';
 import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
@@ -1018,24 +1018,29 @@ function renderHeader(state: AppState): HTMLElement {
   // 領域 1: entry navigation history の戻る / 進む。常に描画し、stack の
   // 端では `disabled`(disabled button は click event を出さないため
   // action-binder の event delegation に乗らず自然に inert になる)。
-  const navGroup = createElement('div', 'pkc-header-nav');
-  const histBackBtn = createElement('button', 'pkc-header-nav-btn');
-  histBackBtn.setAttribute('data-pkc-action', 'go-back');
-  histBackBtn.setAttribute('title', '前のエントリへ戻る (Alt+←)');
-  histBackBtn.setAttribute('aria-label', '戻る');
-  histBackBtn.textContent = '◀';
-  if (state.navIndex <= 0) histBackBtn.setAttribute('disabled', '');
-  navGroup.appendChild(histBackBtn);
-  const histFwdBtn = createElement('button', 'pkc-header-nav-btn');
-  histFwdBtn.setAttribute('data-pkc-action', 'go-forward');
-  histFwdBtn.setAttribute('title', '次のエントリへ進む (Alt+→)');
-  histFwdBtn.setAttribute('aria-label', '進む');
-  histFwdBtn.textContent = '▶';
-  if (state.navIndex >= state.navHistory.length - 1) {
-    histFwdBtn.setAttribute('disabled', '');
+  // pgc-101 wave-γ #3(MASTER.md §6.1 phase 3):flag ON 時は標準 nav
+  // group を skip し、breadcrumb 内 `⇐` `⇒` icon に集約(`renderHeader-
+  // PathTrail` 側で実装)。OFF で従来挙動を完全維持。
+  if (!shellBackForwardInBreadcrumbEnabled()) {
+    const navGroup = createElement('div', 'pkc-header-nav');
+    const histBackBtn = createElement('button', 'pkc-header-nav-btn');
+    histBackBtn.setAttribute('data-pkc-action', 'go-back');
+    histBackBtn.setAttribute('title', '前のエントリへ戻る (Alt+←)');
+    histBackBtn.setAttribute('aria-label', '戻る');
+    histBackBtn.textContent = '◀';
+    if (state.navIndex <= 0) histBackBtn.setAttribute('disabled', '');
+    navGroup.appendChild(histBackBtn);
+    const histFwdBtn = createElement('button', 'pkc-header-nav-btn');
+    histFwdBtn.setAttribute('data-pkc-action', 'go-forward');
+    histFwdBtn.setAttribute('title', '次のエントリへ進む (Alt+→)');
+    histFwdBtn.setAttribute('aria-label', '進む');
+    histFwdBtn.textContent = '▶';
+    if (state.navIndex >= state.navHistory.length - 1) {
+      histFwdBtn.setAttribute('disabled', '');
+    }
+    navGroup.appendChild(histFwdBtn);
+    header.appendChild(navGroup);
   }
-  navGroup.appendChild(histFwdBtn);
-  header.appendChild(navGroup);
 
   const title = createElement('span', 'pkc-header-title');
   title.textContent = state.container?.meta?.title ?? 'PKC2';
@@ -1266,22 +1271,64 @@ function renderHeader(state: AppState): HTMLElement {
   return header;
 }
 
+// pgc-101 wave-γ #3 helper:breadcrumb 先頭に `⇐` `⇒` icon を prepend。
+// navIndex / navHistory.length で各 button の disabled 状態を決める
+// (標準 nav group と同条件、`go-back` / `go-forward` action を dispatch)。
+function appendBackForwardIcons(nav: HTMLElement, state: AppState): void {
+  const back = createElement('button', 'pkc-header-path-nav-btn pkc-header-path-nav-back');
+  back.setAttribute('data-pkc-action', 'go-back');
+  back.setAttribute('title', '前のエントリへ戻る (Alt+←)');
+  back.setAttribute('aria-label', '戻る');
+  back.textContent = '⇐';
+  if (state.navIndex <= 0) back.setAttribute('disabled', '');
+  nav.appendChild(back);
+  const fwd = createElement('button', 'pkc-header-path-nav-btn pkc-header-path-nav-fwd');
+  fwd.setAttribute('data-pkc-action', 'go-forward');
+  fwd.setAttribute('title', '次のエントリへ進む (Alt+→)');
+  fwd.setAttribute('aria-label', '進む');
+  fwd.textContent = '⇒';
+  if (state.navIndex >= state.navHistory.length - 1) {
+    fwd.setAttribute('disabled', '');
+  }
+  nav.appendChild(fwd);
+}
+
 // Top-header の階層パス(Explorer 風 path trail)。user direction
 // (2026-05-20「トップレベルの最上部のヘッダにファイラの階層パスを
 // エクスプローラみたいに表示・jump できるように」)。選択中 entry の
 // 祖先 folder を辿り、各 segment を click で SELECT_ENTRY(= jump)。
 // center pane の breadcrumb(renderView 内)と data 経路(`getBreadcrumb`)を
 // 共有する別 surface で、常時可視。選択が無ければ null(描画しない)。
+//
+// pgc-101 wave-γ #3(MASTER.md §6.1 phase 3):
+// `shellBackForwardInBreadcrumbEnabled()` ON 時、本 nav の **先頭** に
+// `⇐` `⇒` icon button を prepend する(`go-back` / `go-forward` action、
+// disabled handling は標準 nav group と同条件)。選択無しで pathTrail が
+// 通常 null になる case でも、本 flag ON 時は icon だけの minimal nav を
+// 返して navigation 動線を保つ。
 function renderHeaderPathTrail(state: AppState): HTMLElement | null {
   const container = state.container;
   const lid = state.selectedLid;
-  if (!container || !lid) return null;
-  const entry = container.entries.find((e) => e.lid === lid);
-  if (!entry) return null;
+  const integratedBackForward = shellBackForwardInBreadcrumbEnabled();
+
+  // 通常 path:選択あり + entry 存在 → 階層パス描画。
+  const entry = lid ? container?.entries.find((e) => e.lid === lid) : undefined;
+  if (!container || !lid || !entry) {
+    if (!integratedBackForward) return null;
+    // flag ON で選択無し:icon だけの minimal nav。
+    const minimal = createElement('nav', 'pkc-header-path');
+    minimal.setAttribute('data-pkc-region', 'header-path');
+    minimal.setAttribute('aria-label', '階層パス');
+    appendBackForwardIcons(minimal, state);
+    return minimal;
+  }
 
   const nav = createElement('nav', 'pkc-header-path');
   nav.setAttribute('data-pkc-region', 'header-path');
   nav.setAttribute('aria-label', '階層パス');
+
+  // pgc-101:flag ON 時、`⇐` `⇒` icon を nav 先頭に prepend。
+  if (integratedBackForward) appendBackForwardIcons(nav, state);
 
   const appendSep = (): void => {
     const sep = createElement('span', 'pkc-header-path-sep');

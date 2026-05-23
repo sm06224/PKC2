@@ -183,3 +183,20 @@ export const shellDataInShellMenuEnabled = defineFlag<boolean>(
       'Data… inline export/import panel を Shell Menu の section に集約(header から外す)',
   },
 );
+
+// header back/forward を breadcrumb 内 ⇐ ⇒ アイコンに統合(MASTER.md
+// §6.1 phase 3、pgc-101 wave-γ #3)。ON で 従来 header 上段の独立
+// `pkc-header-nav` group(`◀` `▶` button)を非表示にし、breadcrumb
+// (`pkc-header-path` nav)の先頭に `⇐` `⇒` icon を prepend する。
+// breadcrumb が選択無しで null になる場合でも、本 flag ON 時は
+// `⇐` `⇒` だけを含む minimal nav を fallback として出す(navigation
+// 動線が常に維持される)。OFF で従来どおり標準 nav group が上段。
+export const shellBackForwardInBreadcrumbEnabled = defineFlag<boolean>(
+  'shell.back_forward_in_breadcrumb_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'header back/forward `◀` `▶` を breadcrumb 内 `⇐` `⇒` icon に統合',
+  },
+);
