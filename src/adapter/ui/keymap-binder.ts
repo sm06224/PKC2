@@ -149,4 +149,13 @@ export function registerBuiltinKeymaps(): void {
   registerKeyBinding('Alt+Shift+4', 'activity.relations');
   registerKeyBinding('Alt+Shift+5', 'activity.recent');
   registerKeyBinding('Alt+Shift+6', 'activity.pinned');
+  // pgc-123 wave-γ #22(MASTER.md §6.3 後続):Inspector tab chord shortcut。
+  // `shell.meta_pane_inspector_enabled` + `shell.keymap_registry_enabled`
+  // 両方 ON で `Ctrl+K P/R/H/Y/I` で各 tab に switch。VSCode 流 `Ctrl+K
+  // Ctrl+S` keybinding system の 2-chord 流儀、browser shortcut と衝突なし。
+  registerKeyBinding('Ctrl+K P', 'inspector.properties');
+  registerKeyBinding('Ctrl+K R', 'inspector.references');
+  registerKeyBinding('Ctrl+K H', 'inspector.history');
+  registerKeyBinding('Ctrl+K Y', 'inspector.style');
+  registerKeyBinding('Ctrl+K I', 'inspector.ai');
 }

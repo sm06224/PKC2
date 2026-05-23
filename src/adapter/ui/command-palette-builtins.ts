@@ -20,6 +20,10 @@ import { openViewTab, persistTabState, togglePinTab, getActiveTabLid } from './t
 import { toggleSplitView } from './split-view';
 import { toggleFormatPanelVisible } from './format-panel-visibility';
 import { setActivityBarActiveTab, type ActivityTab } from './activity-bar';
+import {
+  setMetaPaneInspectorActiveTab,
+  type InspectorTab,
+} from './meta-pane-inspector';
 
 /**
  * 既存 `data-pkc-action` button を root から探して click を emit する
@@ -268,6 +272,37 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       },
       () => {
         setActivityBarActiveTab(t.id);
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+      },
+    );
+  }
+
+  // ─── Meta pane Inspector tab(pgc-109+〜118、pgc-123:keyboard shortcut)
+  // MASTER.md §6.3:`shell.meta_pane_inspector_enabled` 必須(OFF だと
+  // tab strip 自体が出ない、command 自体は state 更新だけして再描画は
+  // 通常通り)。VSCode の Ctrl+Shift+I(DevTools)と衝突するため、PKC2 は
+  // **chord** `Ctrl+K` + 文字 で発火する 2-step shortcut(VSCode 流の
+  // `Ctrl+K Ctrl+S` keybinding system 流儀)。Activity Bar の
+  // `Alt+Shift+N`(pgc-121)とも別系列で衝突なし。
+  const inspectorTabs: { id: InspectorTab; icon: string; ja: string; en: string; key: string }[] = [
+    { id: 'properties', icon: '📋', ja: 'Inspector: Properties', en: 'Inspector: Properties', key: 'Ctrl+K P' },
+    { id: 'references', icon: '🔗', ja: 'Inspector: References', en: 'Inspector: References', key: 'Ctrl+K R' },
+    { id: 'history',    icon: '📜', ja: 'Inspector: History',    en: 'Inspector: History',    key: 'Ctrl+K H' },
+    { id: 'style',      icon: '🎨', ja: 'Inspector: Style',      en: 'Inspector: Style',      key: 'Ctrl+K Y' },
+    { id: 'ai',         icon: '🧠', ja: 'Inspector: AI',         en: 'Inspector: AI',         key: 'Ctrl+K I' },
+  ];
+  for (const t of inspectorTabs) {
+    registerCommand(
+      {
+        id: `inspector.${t.id}`,
+        titleJa: `${t.icon} ${t.ja}`,
+        titleEn: `${t.icon} ${t.en}`,
+        category: 'View',
+        keybind: t.key,
+      },
+      () => {
+        setMetaPaneInspectorActiveTab(t.id);
         const st = dispatcher.getState();
         dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
       },
