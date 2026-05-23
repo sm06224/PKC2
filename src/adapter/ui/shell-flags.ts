@@ -150,3 +150,20 @@ export const shellSplitViewEnabled = defineFlag<boolean>(
       'Split View(center pane を 2 半に split、secondary は read-only viewer)を有効化',
   },
 );
+
+// Header の create button 集約(MASTER.md §6.1、pgc-99 wave-γ #1)。
+// ON で 5 個の archetype create button(📝 Text / 📋 Log / ☑ Todo / 📎 File
+// / 📁 Folder)を 1 個の `+ New` button + popover picker に集約する。click
+// で popover を toggle、popover 内に 5 件の row(同じ data-pkc-action
+// + data-pkc-archetype を持ち、既存 handler から透明)。Light mode の
+// attachment disable、context-folder の追従、keyboard shortcut(Ctrl+N
+// 等)は全て不変。OFF で従来どおり 5 個ボタンを inline 表示。
+export const shellNewButtonPickerEnabled = defineFlag<boolean>(
+  'shell.new_button_picker_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Header の 5 個 archetype create button を `+ New` 1 個 + popover picker に集約',
+  },
+);

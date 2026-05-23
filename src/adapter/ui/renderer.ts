@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled } from './shell-flags';
 import { buildTabStripElement } from './tab-strip';
 import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
@@ -1069,22 +1069,69 @@ function renderHeader(state: AppState): HTMLElement {
       { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder' },
     ];
 
-    for (const { arch, label, tip } of archetypeButtons) {
-      const btn = createElement('button', 'pkc-btn pkc-btn-create');
-      btn.setAttribute('data-pkc-action', 'create-entry');
-      btn.setAttribute('data-pkc-archetype', arch);
-      btn.setAttribute('title', tip);
-      if (contextFolder) {
-        btn.setAttribute('data-pkc-context-folder', contextFolder.lid);
+    if (shellNewButtonPickerEnabled()) {
+      // pgc-99 wave-γ #1(MASTER.md §6.1):5 個 archetype create button を
+      // 1 個の `+ New` button + popover picker に集約。click で popover を
+      // toggle(action-binder の `toggle-new-picker` handler)、popover 内に
+      // 5 件 row(同じ `data-pkc-action="create-entry"` を持つので既存 handler
+      // から透明)。region は `new-picker-wrapper` で囲み、CSS で button と
+      // popover の絶対位置 anchor を取る。Light mode disable / context-folder
+      // 追従はそのまま継承。
+      const wrap = createElement('div', 'pkc-new-picker-wrap');
+      wrap.setAttribute('data-pkc-region', 'new-picker-wrap');
+
+      const newBtn = createElement('button', 'pkc-btn pkc-btn-create pkc-btn-new');
+      newBtn.setAttribute('data-pkc-action', 'toggle-new-picker');
+      newBtn.setAttribute('title', 'Create a new entry (T)ext / (L)og / Todo / File / Folder');
+      newBtn.setAttribute('aria-haspopup', 'menu');
+      newBtn.setAttribute('aria-expanded', 'false');
+      newBtn.textContent = '+ New';
+      wrap.appendChild(newBtn);
+
+      const popover = createElement('div', 'pkc-new-picker-popover');
+      popover.setAttribute('data-pkc-region', 'new-picker-popover');
+      popover.setAttribute('role', 'menu');
+      popover.setAttribute('aria-label', 'Create entry by archetype');
+      // default 非表示(`toggle-new-picker` handler が `data-pkc-open` を
+      // 立てて display を変える)。
+      popover.setAttribute('data-pkc-open', 'false');
+      for (const { arch, label, tip } of archetypeButtons) {
+        const row = createElement('button', 'pkc-new-picker-row');
+        row.setAttribute('data-pkc-action', 'create-entry');
+        row.setAttribute('data-pkc-archetype', arch);
+        row.setAttribute('title', tip);
+        row.setAttribute('role', 'menuitem');
+        if (contextFolder) {
+          row.setAttribute('data-pkc-context-folder', contextFolder.lid);
+        }
+        if (arch === 'attachment' && state.lightSource) {
+          (row as HTMLButtonElement).disabled = true;
+          row.setAttribute('title', 'File attachments cannot be created in Light mode');
+          row.setAttribute('data-pkc-light-disabled', 'true');
+        }
+        row.textContent = label;
+        popover.appendChild(row);
       }
-      // Disable attachment creation in Light mode (no asset storage)
-      if (arch === 'attachment' && state.lightSource) {
-        (btn as HTMLButtonElement).disabled = true;
-        btn.setAttribute('title', 'File attachments cannot be created in Light mode');
-        btn.setAttribute('data-pkc-light-disabled', 'true');
+      wrap.appendChild(popover);
+      createGroup.appendChild(wrap);
+    } else {
+      for (const { arch, label, tip } of archetypeButtons) {
+        const btn = createElement('button', 'pkc-btn pkc-btn-create');
+        btn.setAttribute('data-pkc-action', 'create-entry');
+        btn.setAttribute('data-pkc-archetype', arch);
+        btn.setAttribute('title', tip);
+        if (contextFolder) {
+          btn.setAttribute('data-pkc-context-folder', contextFolder.lid);
+        }
+        // Disable attachment creation in Light mode (no asset storage)
+        if (arch === 'attachment' && state.lightSource) {
+          (btn as HTMLButtonElement).disabled = true;
+          btn.setAttribute('title', 'File attachments cannot be created in Light mode');
+          btn.setAttribute('data-pkc-light-disabled', 'true');
+        }
+        btn.textContent = label;
+        createGroup.appendChild(btn);
       }
-      btn.textContent = label;
-      createGroup.appendChild(btn);
     }
 
     header.appendChild(createGroup);

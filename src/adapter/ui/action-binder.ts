@@ -321,6 +321,51 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  // pgc-99 wave-γ #1(MASTER.md §6.1):`+ New` popover の open/close 管理。
+  // color picker と同流儀(DOM-side state、render 越境せず)。
+  let newPickerOpenPopover: HTMLElement | null = null;
+  let newPickerOpenTrigger: HTMLElement | null = null;
+  function closeNewPicker(): void {
+    if (newPickerOpenPopover) {
+      newPickerOpenPopover.setAttribute('data-pkc-open', 'false');
+      newPickerOpenPopover = null;
+    }
+    if (newPickerOpenTrigger) {
+      newPickerOpenTrigger.setAttribute('aria-expanded', 'false');
+      newPickerOpenTrigger = null;
+    }
+    document.removeEventListener('click', handleNewPickerOutsideClick, true);
+    document.removeEventListener('keydown', handleNewPickerKeydown, true);
+  }
+  function openNewPicker(wrap: HTMLElement, popover: HTMLElement, trigger: HTMLElement): void {
+    closeNewPicker();
+    popover.setAttribute('data-pkc-open', 'true');
+    trigger.setAttribute('aria-expanded', 'true');
+    newPickerOpenPopover = popover;
+    newPickerOpenTrigger = trigger;
+    document.addEventListener('click', handleNewPickerOutsideClick, true);
+    document.addEventListener('keydown', handleNewPickerKeydown, true);
+    // 1st menu item に focus(キーボード操作対応)
+    const first = popover.querySelector<HTMLButtonElement>('button.pkc-new-picker-row:not([disabled])');
+    if (first) first.focus();
+    // `wrap` は CSS anchor 用にこの helper でだけ参照する(parameter として
+    // 受けて型 narrowing しておく)。
+    void wrap;
+  }
+  function handleNewPickerOutsideClick(e: Event): void {
+    const t = e.target;
+    if (!(t instanceof Node)) return;
+    if (newPickerOpenPopover && newPickerOpenPopover.contains(t)) return;
+    if (newPickerOpenTrigger && newPickerOpenTrigger.contains(t)) return;
+    closeNewPicker();
+  }
+  function handleNewPickerKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeNewPicker();
+    }
+  }
+
   // ── iPhone push/pop shell drawer (2026-04-26) ──
   // The hamburger ☰ in the mobile header opens a sheet of create
   // / Data / Settings actions so the desktop header chrome does
@@ -1125,6 +1170,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         toggleSplitView('right');
         const st = dispatcher.getState();
         dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        break;
+      }
+      case 'toggle-new-picker': {
+        // pgc-99 wave-γ #1(MASTER.md §6.1):header の `+ New` button click
+        // で popover を toggle。popover element は renderer.ts が描画済で
+        // `data-pkc-open="false"` start。本 handler は trigger button の
+        // 兄弟 popover の attr を flip + aria-expanded を同期。outside click /
+        // Escape で close。次回 render 走行で popover が再描画され open 状態
+        // は reset される(進入 entry 作成等で state 遷移 → render 走行時)。
+        e.preventDefault();
+        e.stopPropagation();
+        const wrap = target.closest('[data-pkc-region="new-picker-wrap"]') as HTMLElement | null;
+        if (!wrap) break;
+        const popover = wrap.querySelector('[data-pkc-region="new-picker-popover"]') as HTMLElement | null;
+        if (!popover) break;
+        const open = popover.getAttribute('data-pkc-open') === 'true';
+        if (open) {
+          closeNewPicker();
+        } else {
+          openNewPicker(wrap, popover, target);
+        }
         break;
       }
       case 'toggle-pin-tab': {

@@ -623,6 +623,57 @@
   padding: var(--space-1) var(--space-2-5);
 }
 
+/* pgc-99 wave-γ #1(MASTER.md §6.1):header `+ New` button + popover picker。
+   shellNewButtonPickerEnabled() ON 時に renderer.ts が `pkc-new-picker-wrap`
+   と中の `pkc-new-picker-popover` を描画する。popover は default `data-pkc-
+   open="false"` で hidden、action-binder の `toggle-new-picker` handler が
+   attr を flip + outside click / Escape で close。 */
+.pkc-new-picker-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.pkc-btn-new {
+  font-weight: 600;
+}
+.pkc-new-picker-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  display: none;
+  flex-direction: column;
+  min-width: 180px;
+  padding: var(--space-1);
+  background: var(--c-surface, var(--c-bg));
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+.pkc-new-picker-popover[data-pkc-open="true"] {
+  display: flex;
+}
+.pkc-new-picker-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-new-picker-row:hover:not([disabled]),
+.pkc-new-picker-row:focus:not([disabled]) {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-new-picker-row[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Readonly badge ── */
 .pkc-readonly-badge {
   font-size: var(--fs-xs);
