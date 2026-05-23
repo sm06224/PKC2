@@ -43,6 +43,9 @@ opt-in は `&` で連結。
 | 17 | pgc-116 | §6.2 後続 | (`shell.activity_bar_enabled`) | Activity Bar left / right 配置切替(↔ toggle button、main 先頭 / 末尾を flip) |
 | 18 | pgc-117 | §6.3 follow-up | (`shell.meta_pane_inspector_enabled`) | Inspector History tab の visibleRegions silent bug fix(`['history','revisions']` → `['revision-history',...]`)+ non-placeholder tab で no matched empty hint |
 | 19 | pgc-118 | §6.3 follow-up | (同上) | Inspector Style tab に読み取り専用 metrics 実装(archetype / char count / heading 数 / frontmatter style globals / timestamps、placeholder 脱却) |
+| 20 | pgc-119 | (docs-only) | — | wave-γ progress doc update(pgc-115〜118 反映、§6.2/§6.3 status refresh) |
+| 21 | pgc-120 | §6.4 step 2 | (`shell.format_panel_default_hidden_enabled` + `shell.keymap_registry_enabled`) | Format panel toggle に keyboard shortcut(`Alt+Shift+F`)+ command palette `format.toggle` 追加 |
+| 22 | pgc-121 | §6.2 後続 | (`shell.activity_bar_enabled` + `shell.keymap_registry_enabled`) | Activity Bar 6 tab に keyboard shortcut(`Alt+Shift+1`〜`6`)+ command palette `activity.*` 6 件追加 ── Activity Bar が full keyboard navigatable に |
 
 `*` = pgc-113 と同 flag を使う follow-up PR
 括弧書き flag = 新 flag 追加なし、既存 flag の機能拡張 PR
@@ -60,10 +63,10 @@ toggle するのが楽。
 
 ## §4 MASTER §6 残り(後続 PR 候補)
 
-### §6.2 Activity Bar(全 6 tab 完成 ✓ + 位置切替 ✓)
+### §6.2 Activity Bar(全 6 tab + 位置切替 + keyboard shortcut すべて完了 ✓)
 
-- 完了:Explorer(既存 sidebar)/ Search / Outline / Relations / Recent / Pinned + 位置切替(pgc-116、↔ button で left ↔ right flip)
-- 後続候補:**キーボード shortcut**(Ctrl+Shift+E 等で各 tab focus、keymap registry 連携必要)/ tab order の user customize / hidden tab(Search / Outline 非表示にして 4 tab に絞る option)
+- 完了:Explorer(既存 sidebar)/ Search / Outline / Relations / Recent / Pinned + 位置切替(pgc-116、↔ button)+ **keyboard shortcut(pgc-121、`Alt+Shift+1`〜`6`)**
+- 後続候補:tab order の user customize / hidden tab(Search / Outline 非表示にして 4 tab に絞る option)/ tab badge(unread count / pending action 等)
 
 ### §6.3 meta pane Inspector
 
@@ -71,10 +74,10 @@ toggle するのが楽。
 - **5 tab のうち 4 件機能化**(Properties / References / History / Style)、残り placeholder は **AI 1 件のみ**
 - 後続候補:Properties tab の frontmatter 編集 inline UI / History tab の revision diff viewer / Style tab の per-entry theme override / **AI tab** の中身(設計議論待ち、LLM API 連携 or local-only inspector?)
 
-### §6.4 format panel context-aware
+### §6.4 format panel context-aware(3 step のうち 2 件完了 ✓)
 
-- default 非表示 + toggle(pgc-110)着地
-- 後続候補:**Ctrl+R shortcut**(keymap registry 経由)/ **selection-floating inline toolbar**(Notion / Medium 流)/ format panel pin 機能(power user 用、常時表示固定)
+- 完了:default 非表示 + toggle button(pgc-110)+ **keyboard shortcut(pgc-120、`Alt+Shift+F`)**
+- 後続候補:**selection-floating inline toolbar**(Notion / Medium 流、scope 大)/ format panel pin 機能(power user 用、常時表示固定)
 
 ### §6.5 view-mode tabs
 
@@ -109,3 +112,4 @@ MASTER §7 の archetype 別 UX 改修は wave-δ scope。wave-γ が一段落
 |---|---|
 | 2026-05-23 | wave-γ #1〜#15 着地(pgc-99〜114)、本 progress doc 起こし。test 9031、bundle 1928KB |
 | 2026-05-23 | wave-γ #16〜#18 追加着地(pgc-116〜118):Activity Bar 位置切替 / Inspector History region fix + empty hint / Inspector Style metrics 実装。test 9052、bundle 1932KB。Inspector 5 tab のうち 4 件機能化、placeholder 残りは AI 1 件のみ |
+| 2026-05-23 | wave-γ #19〜#21 追加着地(pgc-119〜121):progress doc update / Format panel keyboard shortcut(`Alt+Shift+F`)/ Activity Bar 6 tab keyboard shortcut(`Alt+Shift+1〜6`)。test 9065、bundle 1933KB。**Activity Bar §6.2 全 step 完了**(6 tab + 位置切替 + keyboard shortcut)。Format panel §6.4 step 2 完了(残 inline toolbar)。keymap registry binding 8 → 15 件に拡張 |
