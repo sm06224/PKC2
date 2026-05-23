@@ -329,6 +329,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function closeNewPicker(): void {
     if (newPickerOpenPopover) {
       newPickerOpenPopover.setAttribute('data-pkc-open', 'false');
+      // pgc-106 hotfix:fixed positioning に切替えた inline style を
+      // clear(次回 open まで position 計算は走らせない)。
+      newPickerOpenPopover.style.position = '';
+      newPickerOpenPopover.style.top = '';
+      newPickerOpenPopover.style.left = '';
+      newPickerOpenPopover.style.right = '';
       newPickerOpenPopover = null;
     }
     if (newPickerOpenTrigger) {
@@ -346,6 +352,29 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     newPickerOpenTrigger = trigger;
     document.addEventListener('click', handleNewPickerOutsideClick, true);
     document.addEventListener('keydown', handleNewPickerKeydown, true);
+    // pgc-106 hotfix(user bug report 2026-05-23):`+ New` popover が画面外
+    // に描画される問題への修正。元実装は `position: absolute; right: 0;
+    // top: calc(100% + 4px)` で `.pkc-new-picker-wrap` を anchor にしていた
+    // が、header layout の flex-wrap + 親 element の位置依存で viewport
+    // 範囲外に出るケースが発生していた。color picker(L498-526)と同流儀
+    // で **fixed positioning + viewport-safe horizontal anchor** に切替:
+    //   - top:trigger button の bottom 直下 + 4px
+    //   - 横:trigger の right で右寄せ、左端 8px 未満になるなら trigger
+    //          の left に左寄せ、それでも 8px 未満なら 8px に固定
+    const rect = trigger.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = `${rect.bottom + 4}px`;
+    popover.style.right = 'auto';
+    // popover の width を測るために一旦表示してから anchor 計算する。
+    // display:flex は data-pkc-open="true" で既に効いているので offsetWidth
+    // が valid な値を返す。
+    const popoverWidth = popover.offsetWidth;
+    const rightAnchored = rect.right - popoverWidth;
+    if (rightAnchored >= 8) {
+      popover.style.left = `${rightAnchored}px`;
+    } else {
+      popover.style.left = `${Math.max(rect.left, 8)}px`;
+    }
     // 1st menu item に focus(キーボード操作対応)
     const first = popover.querySelector<HTMLButtonElement>('button.pkc-new-picker-row:not([disabled])');
     if (first) first.focus();

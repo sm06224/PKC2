@@ -662,9 +662,14 @@
   font-weight: 600;
 }
 .pkc-new-picker-popover {
+  /* pgc-106 hotfix(user bug report 2026-05-23):viewport 外に描画される
+     問題の修正。元 `position: absolute; top: calc(100% + 4px); right: 0`
+     は header の flex-wrap layout で wrap の位置に依存し画面外に出ること
+     があった。action-binder の `openNewPicker` が click 時に
+     `position: fixed; top/left` を計算して inline style で上書きする
+     (color picker と同流儀)。本 CSS は default の display:none + 視覚
+     style のみ持ち、positioning は JS 側で決定する。 */
   position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
   z-index: 60;
   display: none;
   flex-direction: column;

@@ -145,6 +145,31 @@ describe('pgc-99 header `+ New` button picker', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('flag ON(pgc-106 hotfix):popover 開時 position が fixed に書き換わる', () => {
+    setFlag(true);
+    boot(emptyContainer());
+    const trigger = newPickerBtn()!;
+    trigger.click();
+    const pop = popover()!;
+    // pgc-106:画面外描画を避けるため fixed positioning + viewport-safe
+    // horizontal anchor に切替え。close 後は inline style clear。
+    expect(pop.style.position).toBe('fixed');
+    expect(pop.style.top).toMatch(/^\d/);
+    expect(pop.style.left).toMatch(/^\d/);
+  });
+
+  it('flag ON(pgc-106 hotfix):popover close で position inline style クリア', () => {
+    setFlag(true);
+    boot(emptyContainer());
+    const trigger = newPickerBtn()!;
+    trigger.click();
+    expect(popover()?.style.position).toBe('fixed');
+    trigger.click(); // toggle close
+    expect(popover()?.style.position).toBe('');
+    expect(popover()?.style.top).toBe('');
+    expect(popover()?.style.left).toBe('');
+  });
+
   it('flag ON:row click で entry 作成(create-entry 透過 dispatch)', () => {
     setFlag(true);
     const d = boot(emptyContainer());
