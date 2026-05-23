@@ -38,7 +38,7 @@ import {
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
 import { registerBuiltinKeymaps } from './adapter/ui/keymap-binder';
-import { wireTabStrip } from './adapter/ui/tab-strip';
+import { wireTabStrip, restoreTabState } from './adapter/ui/tab-strip';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
@@ -413,10 +413,30 @@ async function boot(): Promise<void> {
   // fresh chord を登録。既存 shortcut は不変。
   registerBuiltinKeymaps();
 
+  // 3-TS-R. pgc-86 restore(MASTER.md §4.3):本処理は **wireTabStrip より
+  // 先に** 登録して、SYS_INIT_COMPLETE で container が ready になった
+  // 最初の 1 回に restoreTabState を走らせる ── wireTabStrip の onState が
+  // 「openTabs が空」 を LS に書き出して saved 状態を上書きする前に restore
+  // が読む順序を確保する(listener 登録順 = 発火順、stateListeners.forEach)。
+  {
+    let restoredOnce = false;
+    const offRestore = dispatcher.onState((s) => {
+      if (restoredOnce) return;
+      if (!s.container) return;
+      restoredOnce = true;
+      const restoredActive = restoreTabState(s.container);
+      offRestore();
+      if (restoredActive) {
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: restoredActive });
+      }
+    });
+  }
+
   // 3-TS. Tab strip(MASTER.md §4.3、pgc-85):Tier 0 flag `shell.tabs_enabled`
   // で gate(default OFF)。本 wiring は always-on で `ENTRY_SELECTED` を
   // listen して open 履歴を保持(flag OFF 時は描画されないだけで state は
   // 育つ)── ON にした瞬間既存履歴が tab strip に出る。
+  // **本 wiring は restore より後に登録する**(上記 3-TS-R 参照)。
   wireTabStrip(dispatcher);
 
   // 3a. Global caret-row indicator (always on, sync-independent).

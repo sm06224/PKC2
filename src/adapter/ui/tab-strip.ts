@@ -140,6 +140,110 @@ export function resetTabState(): void {
   recentlyClosed = [];
 }
 
+// ─── persistence(pgc-86):localStorage に open tabs を保存 / 復元 ───
+
+const STORAGE_KEY = 'pkc2.tabStrip';
+
+interface SavedTabStrip {
+  readonly lids: readonly string[];
+  readonly active: string | null;
+}
+
+/**
+ * 現状 openTabs を localStorage に書き出す。failure(quota / disabled)は
+ * silent ignore(persistence は best-effort、必須でない)。
+ */
+export function persistTabState(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const payload: SavedTabStrip = {
+      lids: openTabs.map((t) => t.lid),
+      active: activeLid,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // quota / disabled storage ── silent
+  }
+}
+
+/**
+ * localStorage の saved tab state を読んで openTabs に反映する。
+ * - container に存在する lid のみ rehydrate(消えた entry は skip)
+ * - 戻り値:rehydrate された active lid(SELECT_ENTRY すべき値)or null
+ *
+ * caller(main.ts boot)は active lid が null でないときに **1 度だけ**
+ * `dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: active })` を呼ぶこと
+ * (rehydrate UX = boot 時 last-active entry が selected な状態に復元)。
+ */
+export function restoreTabState(container: Container | null): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  if (!container) return null;
+  let saved: SavedTabStrip | null = null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      !parsed || typeof parsed !== 'object'
+      || !Array.isArray(parsed.lids)
+      || (parsed.active !== null && typeof parsed.active !== 'string')
+    ) {
+      return null;
+    }
+    saved = parsed as SavedTabStrip;
+  } catch {
+    return null;
+  }
+  // 既知 entry のみ rehydrate、順序保持
+  const entryMap = new Map(container.entries.map((e) => [e.lid, e] as const));
+  const rehydrated: TabInfo[] = [];
+  for (const lid of saved.lids) {
+    if (typeof lid !== 'string') continue;
+    const e = entryMap.get(lid);
+    if (!e) continue;
+    if (e.archetype === 'opaque') continue;
+    rehydrated.push({ lid: e.lid, archetype: e.archetype, title: e.title || '(untitled)' });
+  }
+  openTabs = rehydrated;
+  // active が rehydrated に含まれていればそれを採用、無ければ末尾 fallback
+  if (saved.active && entryMap.has(saved.active) && rehydrated.find((t) => t.lid === saved.active)) {
+    activeLid = saved.active;
+  } else {
+    activeLid = rehydrated[rehydrated.length - 1]?.lid ?? null;
+  }
+  return activeLid;
+}
+
+export function clearPersistedTabState(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+// ─── keyboard handlers(pgc-86):Ctrl+W close / Ctrl+Shift+T reopen ───
+
+/**
+ * 「現 active tab を閉じる」アクション。`Ctrl+W` から呼ばれる。
+ * 戻り値:新 active lid(or null)。caller が SELECT_ENTRY を dispatch。
+ */
+export function closeActiveTab(): string | null {
+  if (!activeLid) return null;
+  return recordTabClose(activeLid);
+}
+
+/**
+ * 「最近閉じた tab を復元」アクション。`Ctrl+Shift+T` から呼ばれる。
+ * 戻り値:復元 lid(or null、recently-closed が空)。caller が SELECT_ENTRY
+ * を dispatch すると wire 経路で recordTabOpen が走り tab が復活する。
+ */
+export function reopenLastClosedTab(): string | null {
+  const last = popRecentlyClosed();
+  return last?.lid ?? null;
+}
+
 export function popRecentlyClosed(): TabInfo | null {
   return recentlyClosed.shift() ?? null;
 }
@@ -221,6 +325,7 @@ export function wireTabStrip(dispatcher: Dispatcher): () => void {
   const off1 = dispatcher.onEvent((ev) => {
     if (ev.type === 'ENTRY_SELECTED') {
       recordTabOpen(ev.lid, dispatcher.getState().container);
+      persistTabState();
     }
   });
   // state.selectedLid 変化を直接 listen ── CREATE_ENTRY 等で
@@ -229,9 +334,11 @@ export function wireTabStrip(dispatcher: Dispatcher): () => void {
   const off2 = dispatcher.onState((s, prev) => {
     if (s.container && s.container !== prev.container) {
       refreshTabTitles(s.container);
+      persistTabState();
     }
     if (s.selectedLid && s.selectedLid !== prev.selectedLid && s.container) {
       recordTabOpen(s.selectedLid, s.container);
+      persistTabState();
     }
   });
   return () => {

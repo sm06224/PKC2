@@ -135,7 +135,7 @@ import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
 import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
-import { recordTabClose } from './tab-strip';
+import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen } from './tab-strip';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1125,10 +1125,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // (action-binder の middle-click route が dispatch する)。
         if (!lid) break;
         const newActive = recordTabClose(lid);
+        persistTabState();
         if (newActive) {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
+        } else {
+          // 最後の tab が閉じられた ── state.selectedLid が既に null の場合
+          // DESELECT_ENTRY は no-render(scope='none')になるため、`SYS_SYNC_
+          // CHILD_WINDOWS` を現値で dispatch して **state object 参照を
+          // 更新** することで強制 re-render を引き起こす(scope='full')。
+          // childWindowLids array が常に新規生成されるので、tab strip が
+          // 確実に rebuild される。
+          const st = dispatcher.getState();
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids });
         }
-        // re-render は dispatcher 経由 onState で行われる
         break;
       }
       case 'select-entry': {
@@ -4668,6 +4677,53 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       e.preventDefault();
       toggleQuickOpen(root, dispatcher);
       return;
+    }
+
+    // pgc-86(MASTER.md §4.3):Tab keyboard。`Ctrl+W` で active tab close、
+    // `Ctrl+Shift+T` で last-closed reopen。textarea / input 編集中は browser
+    // 既定を尊重(意図しない window-close を避ける)。flag OFF で no-op。
+    if (
+      shellTabsEnabled()
+      && (e.ctrlKey || e.metaKey)
+      && !e.altKey
+      && !(e.target instanceof HTMLTextAreaElement)
+      && !(e.target instanceof HTMLInputElement)
+    ) {
+      // Ctrl+W ── active tab close
+      if (!e.shiftKey && (e.key === 'W' || e.key === 'w')) {
+        e.preventDefault();
+        const newActive = closeActiveTab();
+        persistTabState();
+        if (newActive) {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
+        } else {
+          const st = dispatcher.getState();
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids });
+        }
+        return;
+      }
+      // Ctrl+Shift+T ── reopen last closed
+      if (e.shiftKey && (e.key === 'T' || e.key === 't')) {
+        e.preventDefault();
+        const reopen = reopenLastClosedTab();
+        if (reopen) {
+          // tab を **先に** 直接 recordTabOpen で復元(renderer よりも先に
+          // openTabs が更新されている状態にする)、その後で SELECT_ENTRY を
+          // dispatch して renderer を発火。reopen 対象が現 selectedLid と
+          // 同じ場合に reducer の state 変化が小さくても、render は最新の
+          // module-local openTabs を読むので tab は visible になる。
+          const container = dispatcher.getState().container;
+          if (container) {
+            // tab-strip module の関数 recordTabOpen は import 済
+            // (reopenLastClosedTab の処理上限と独立)
+            // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+            recordTabOpenForReopen(reopen, container);
+            persistTabState();
+          }
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: reopen });
+        }
+        return;
+      }
     }
 
     // Slice 6: pane re-toggle shortcuts. `Ctrl/⌘+\` toggles the
