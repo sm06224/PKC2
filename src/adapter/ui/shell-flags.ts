@@ -218,6 +218,25 @@ export const shellActivityBarEnabled = defineFlag<boolean>(
   },
 );
 
+// format panel を default 非表示にする(MASTER.md §6.4、pgc-110 wave-γ
+// #11)。ON で `formatPanelEnabled` が true でも編集開始時の format ribbon
+// を **非表示** で start、editor 上部の「🎨 Format」 toggle button を click
+// したときだけ表示する。OFF で従来挙動(format ribbon が常時表示)。
+//
+// MASTER §6.4 の「default 非表示 + Ctrl+R toggle + 選択 inline popover」の
+// 3 step のうち本 PR は (1) default 非表示 + 明示 button toggle のみ。
+// (2) Ctrl+R 等の keyboard shortcut は keymap registry 経由で後続 PR、
+// (3) selection-floating inline toolbar も別 PR で。
+export const shellFormatPanelDefaultHiddenEnabled = defineFlag<boolean>(
+  'shell.format_panel_default_hidden_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'editor の format panel を default 非表示にし、「🎨 Format」 toggle button で表示切替に変更(user U-15「何でも button 化は悪い兆候」対応)',
+  },
+);
+
 // meta pane Inspector tab strip(MASTER.md §6.3、pgc-109 wave-γ #10)。
 // ON で meta pane(右ペイン)の頭に 5 tab(Properties / References /
 // History / Style / AI)の tab strip を **prepend**、tab 別に section

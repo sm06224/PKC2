@@ -140,6 +140,7 @@ import { toggleSplitView } from './split-view';
 import { setActivityBarActiveTab } from './activity-bar';
 import { setActivitySearchQuery } from './activity-search-tab';
 import { setMetaPaneInspectorActiveTab } from './meta-pane-inspector';
+import { toggleFormatPanelVisible } from './format-panel-visibility';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1223,6 +1224,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (target0 instanceof HTMLElement) {
           target0.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+        break;
+      }
+      case 'toggle-format-panel': {
+        // pgc-110 wave-γ #11(MASTER.md §6.4):editor の Format panel
+        // を表示 / 非表示で flip。module-local state を反転 → SYS_SYNC で
+        // 再描画(format panel が出現 / 消失)。
+        e.preventDefault();
+        e.stopPropagation();
+        toggleFormatPanelVisible();
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         break;
       }
       case 'select-meta-pane-tab': {

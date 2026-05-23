@@ -17,7 +17,8 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled } from './shell-flags';
+import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
 import { buildOutlineTab } from './activity-outline-tab';
@@ -9571,11 +9572,26 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
   // 編集モード固定 format ribbon(Group C ワープロ化、Phase γ-C)。Tier 0
   // flag gated、text / textlog の markdown 編集時のみ。touch 端末では CSS で
   // 非表示(snippet-toolbar の floating popup を使う)。
+  //
+  // pgc-110 wave-γ #11(MASTER.md §6.4):flag `shell.format_panel_default_
+  // hidden_enabled` ON 時は default 非表示で start、toggle button「🎨
+  // Format」 click で表示。flag OFF or `shellFormatPanelDefaultHiddenEnabled
+  // ()` false なら従来挙動(常時表示)。
   if (
     formatPanelEnabled() &&
     (entry.archetype === 'text' || entry.archetype === 'textlog')
   ) {
-    editor.appendChild(renderFormatPanel(entry.archetype));
+    if (shellFormatPanelDefaultHiddenEnabled()) {
+      const wrap = createElement('div', 'pkc-format-panel-wrap');
+      wrap.setAttribute('data-pkc-region', 'format-panel-wrap');
+      wrap.appendChild(buildFormatPanelToggleButton());
+      if (isFormatPanelVisible()) {
+        wrap.appendChild(renderFormatPanel(entry.archetype));
+      }
+      editor.appendChild(wrap);
+    } else {
+      editor.appendChild(renderFormatPanel(entry.archetype));
+    }
   }
 
   // Archetype-dispatched editor body

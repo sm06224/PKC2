@@ -6413,6 +6413,36 @@ mark.pkc-search-mark {
   color: var(--c-bg);
 }
 
+/* pgc-110 wave-γ #11(MASTER.md §6.4):Format panel toggle button。
+   shellFormatPanelDefaultHiddenEnabled() ON 時に renderer が format panel
+   の前に prepend する。click で format panel の表示 / 非表示を flip。 */
+.pkc-format-panel-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-format-panel-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pkc-format-panel-toggle:hover {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-fg);
+  border-color: var(--c-fg-dim);
+}
+.pkc-format-panel-toggle[data-pkc-active="true"] {
+  background: var(--c-accent-dim, rgba(51, 255, 102, 0.12));
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
 /* pgc-109 wave-γ #10(MASTER.md §6.3):meta pane Inspector tab strip。
    flag ON 時に renderMetaPaneImpl が meta pane の頭に prepend する 5 tab
    strip(Properties / References / History / Style / AI)。active tab は
