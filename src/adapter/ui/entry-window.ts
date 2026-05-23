@@ -1919,6 +1919,111 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 .pkc-btn-primary:hover { opacity: 0.9; box-shadow: 0 0 10px rgba(51,255,102,0.3); }
 .pkc-btn-primary:active { transform: scale(0.96); }
 
+/* ── pgc-93(audit pgc-77 Gap-13 cat-1):S4 critical PKC dialect CSS
+   mirror Phase 1 ── :::section / :::details / :::figure / :::quote。
+   base.css 該当 rule を popup standalone HTML 用に hardcode 色で再現。
+   color は base.css と同じ fallback 値 + var(--c-accent) 等を一部使用。
+   2026-05-23 wave-β #4 で S4 critical の chunk-1 を解消。 */
+/* :::section{role=tip/warning/...} callout(reform-2026-05 PR-2F)*/
+.pkc-md-rendered .pkc-section-callout {
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+  border-left: 4px solid #6b7280;
+  background: rgba(0, 0, 0, 0.02);
+}
+.pkc-md-rendered .pkc-section-callout > :first-child { margin-top: 0; }
+.pkc-md-rendered .pkc-section-callout > :last-child { margin-bottom: 0; }
+.pkc-md-rendered .pkc-section-summary  { border-left-color: #6b7280; background: rgba(107, 114, 128, 0.08); }
+.pkc-md-rendered .pkc-section-info     { border-left-color: #2563eb; background: rgba(37, 99, 235, 0.08); }
+.pkc-md-rendered .pkc-section-note     { border-left-color: #2563eb; background: rgba(37, 99, 235, 0.06); }
+.pkc-md-rendered .pkc-section-tip      { border-left-color: #16a34a; background: rgba(22, 163, 74, 0.08); }
+.pkc-md-rendered .pkc-section-important{ border-left-color: #9333ea; background: rgba(147, 51, 234, 0.08); }
+.pkc-md-rendered .pkc-section-warning  { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.08); }
+.pkc-md-rendered .pkc-section-caution  { border-left-color: #d97706; background: rgba(217, 119, 6, 0.08); }
+.pkc-md-rendered .pkc-section-danger   { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+/* L-1 section break — role 別装飾(reform PR-2H)*/
+.pkc-md-rendered .pkc-section-break {
+  border: none;
+  margin: 1.5em 0;
+  height: 1px;
+  background: #d1d5db;
+}
+.pkc-md-rendered .pkc-section-break[data-pkc-role="cover"],
+.pkc-md-rendered .pkc-section-break[data-pkc-role="section"] {
+  height: 0;
+  border-top: 1px solid #d1d5db;
+  border-bottom: 1px solid #d1d5db;
+  padding-top: 0.4em;
+  margin: 2em 0;
+}
+.pkc-md-rendered .pkc-section-break[data-pkc-role="body"] {
+  background: transparent;
+  border-top: 1px dashed #9ca3af;
+  height: 0;
+}
+/* :::details 折りたたみ block(領域 6)*/
+.pkc-md-rendered .pkc-details {
+  margin: 0.5em 0;
+  padding: 0.4em 0.7em;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.02);
+}
+.pkc-md-rendered .pkc-details > summary.pkc-details-summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: #1f2937;
+  padding: 0.2em 0;
+  user-select: none;
+}
+.pkc-md-rendered .pkc-details > summary.pkc-details-summary:hover {
+  color: #2563eb;
+}
+.pkc-md-rendered .pkc-details[open] > summary.pkc-details-summary {
+  margin-bottom: 0.4em;
+}
+/* :::figure / :::table / :::equation caption + 採番(L-7、reform PR-D前)*/
+.pkc-md-rendered .pkc-fig {
+  margin: 1em 0;
+  padding: 0;
+  border: none;
+}
+.pkc-md-rendered .pkc-fig-caption {
+  margin-top: 0.4em;
+  font-size: 0.9em;
+  color: #6b7280;
+  text-align: center;
+}
+.pkc-md-rendered .pkc-fig-ref {
+  text-decoration: none;
+  color: #2563eb;
+}
+.pkc-md-rendered .pkc-fig-ref:hover {
+  text-decoration: underline;
+}
+/* :::quote{author=...} 引用 block(reform PR-D)*/
+.pkc-md-rendered blockquote.pkc-quote-citation {
+  background: rgba(0, 0, 0, 0.03);
+  border-left: 4px solid #4a90e2;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+}
+.pkc-md-rendered blockquote.pkc-quote-citation::after {
+  content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
+  display: block;
+  text-align: end;
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+.pkc-md-rendered blockquote.pkc-quote-citation:not([data-pkc-quote-author])::after {
+  content: "";
+  display: none;
+}
+
 /* ── Conflict banner ── */
 .pkc-conflict-banner {
   display: none; background: var(--c-danger); color: #fff;
