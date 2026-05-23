@@ -618,6 +618,68 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered .pkc-fig-ref:hover {
       text-decoration: underline;
     }
+    /* pgc-92(audit pgc-77 Gap-10 + Gap-12):S2 Viewer popup の chrome
+       4 件 mirror。base.css の対応 rule を popup standalone HTML 用に
+       hardcode 色で再現(popup は runtime theme var を持たないため)。
+       footnote / task-badge / TOC current / transclusion 関連 4 件。 */
+    /* footnote(PR-V2 / wave-Z markdown-it-footnote)*/
+    .pkc-md-rendered .pkc-footnote-ref {
+      font-size: 0.75em;
+      vertical-align: super;
+      line-height: 0;
+    }
+    .pkc-md-rendered .pkc-footnote-ref a {
+      color: #2563eb;
+      text-decoration: none;
+      padding: 0 0.15em;
+    }
+    .pkc-md-rendered .pkc-footnote-ref a::before { content: "["; }
+    .pkc-md-rendered .pkc-footnote-ref a::after { content: "]"; }
+    .pkc-md-rendered .pkc-footnote-ref a:hover { text-decoration: underline; }
+    /* task badge(完了率 N/M、center pane chrome の mirror)*/
+    .pkc-md-rendered .pkc-task-badge {
+      font-size: 0.78em;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+    .pkc-md-rendered [data-pkc-task-complete="true"] .pkc-task-badge,
+    .pkc-md-rendered .pkc-task-badge[data-pkc-task-complete="true"] {
+      color: #1a6b35;
+    }
+    /* TOC current marker(IntersectionObserver で data-pkc-toc-current
+       attached、popup でも一応 spec として持つ)*/
+    .pkc-toc-link[data-pkc-toc-current="true"] {
+      background: #ece6d5;
+      color: #1a6b35;
+      font-weight: 600;
+      box-shadow: inset 2px 0 0 #1a6b35;
+    }
+    /* transclusion broken(target 不在 fallback marker)*/
+    .pkc-md-rendered .pkc-transclusion-broken {
+      color: #b91c1c;
+      background: rgba(220, 38, 38, 0.06);
+      padding: 0 0.3em;
+      border-radius: 3px;
+      font-style: italic;
+    }
+    /* transclusion-document(textlog 等の document 経由 embed)*/
+    .pkc-md-rendered .pkc-transclusion-document {
+      border: 1px solid #d8d2c2;
+      border-radius: 4px;
+      background: #fbf9f1;
+      padding: 0.35rem 0.6rem;
+      margin: 0.5rem 0;
+    }
+    /* transclusion-fallback-link(fallback link 装飾)*/
+    .pkc-md-rendered .pkc-transclusion-fallback-link {
+      color: #4a90e2;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.9em;
+    }
+    /* transclusion-log(個別 log 行内 timestamp)*/
+    .pkc-md-rendered .pkc-transclusion-log .pkc-textlog-timestamp {
+      color: #6b7280;
+    }
     /* L-1 section break — role 別装飾 */
     .pkc-md-rendered .pkc-section-break {
       border: none;
