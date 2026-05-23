@@ -38,6 +38,7 @@ import {
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
 import { registerBuiltinKeymaps } from './adapter/ui/keymap-binder';
+import { wireTabStrip } from './adapter/ui/tab-strip';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
@@ -411,6 +412,12 @@ async function boot(): Promise<void> {
   // 切替 / F12 で Flags Inspector / Ctrl+K Ctrl+S で shortcuts 一覧 等の
   // fresh chord を登録。既存 shortcut は不変。
   registerBuiltinKeymaps();
+
+  // 3-TS. Tab strip(MASTER.md §4.3、pgc-85):Tier 0 flag `shell.tabs_enabled`
+  // で gate(default OFF)。本 wiring は always-on で `ENTRY_SELECTED` を
+  // listen して open 履歴を保持(flag OFF 時は描画されないだけで state は
+  // 育つ)── ON にした瞬間既存履歴が tab strip に出る。
+  wireTabStrip(dispatcher);
 
   // 3a. Global caret-row indicator (always on, sync-independent).
   // Paints a subtle marker at the focused textarea's caret row

@@ -124,3 +124,16 @@ export const shellContextMenuUniversalEnabled = defineFlag<boolean>(
       'Context Menu の universal 化(region 背景の右クリックで region-aware menu)',
   },
 );
+
+// Tab system(MASTER.md §4.3、pgc-85 POC)を有効化。ON で center pane に
+// tab strip(複数 entry 同時 open)が描画される。OFF で従来どおり 1 entry
+// 表示のみ。
+export const shellTabsEnabled = defineFlag<boolean>(
+  'shell.tabs_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Tab system(center pane に open entry の tab strip を描画)',
+  },
+);

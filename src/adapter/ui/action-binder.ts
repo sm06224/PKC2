@@ -135,6 +135,7 @@ import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
 import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
+import { recordTabClose } from './tab-strip';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1115,6 +1116,19 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         e.preventDefault();
         e.stopPropagation();
         closeColorPicker();
+        break;
+      }
+      case 'close-tab': {
+        // pgc-85(MASTER.md §4.3):tab strip の × button click。
+        // module-local tab state から該当 lid を削除、neighbor を active 化。
+        // event.button === 1(middle click)経由でも同 handler に届く想定
+        // (action-binder の middle-click route が dispatch する)。
+        if (!lid) break;
+        const newActive = recordTabClose(lid);
+        if (newActive) {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
+        }
+        // re-render は dispatcher 経由 onState で行われる
         break;
       }
       case 'select-entry': {

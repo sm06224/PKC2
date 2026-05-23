@@ -17,7 +17,8 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled } from './shell-flags';
+import { buildTabStripElement } from './tab-strip';
 import { renderImagePreviewModal } from './image-preview';
 import {
   bindGraphCanvas,
@@ -4705,6 +4706,12 @@ function renderCenterImpl(state: AppState): HTMLElement {
   center.setAttribute('data-pkc-region', 'center');
 
   const userEntries = getUserEntries(state.container?.entries ?? []);
+
+  // pgc-85(MASTER.md §4.3):Tab strip(複数 entry 同時 open の skeleton)。
+  // flag ON のとき view-mode bar の **上** に描画。flag OFF で完全非表示。
+  if (shellTabsEnabled() && userEntries.length > 0) {
+    center.appendChild(buildTabStripElement(state));
+  }
 
   // View mode toggle (always visible when container has user entries)
   if (userEntries.length > 0) {

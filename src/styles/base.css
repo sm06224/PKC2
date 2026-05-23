@@ -10478,3 +10478,91 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   border-radius: var(--radius-sm);
   margin: 0 0.1em;
 }
+
+/* ─── Tab strip(pgc-85、MASTER.md §4.3)─────────────────────────
+ * Tier 0 flag `shell.tabs_enabled` ON のとき center pane 上部に描画。
+ * VSCode 流の chrome:archetype icon + title + close (×) + dirty (●)。
+ */
+.pkc-tab-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: stretch;
+  background: var(--c-bg);
+  border-bottom: 1px solid var(--c-border);
+  padding: 0;
+  margin: 0;
+  min-height: 30px;
+  scrollbar-width: thin;
+}
+.pkc-tab-strip-empty {
+  min-height: 30px;
+}
+.pkc-tab-strip-placeholder {
+  padding: 0.4rem 0.85rem;
+  color: var(--c-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+.pkc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--c-fg);
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 240px;
+  min-width: 100px;
+  transition: background 80ms ease;
+}
+.pkc-tab:hover {
+  background: var(--c-hover);
+}
+.pkc-tab-active {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-weight: 500;
+  border-top: 2px solid var(--c-accent);
+  padding-top: calc(0.3rem - 2px);
+}
+.pkc-tab-icon {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.pkc-tab-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pkc-tab-close {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--c-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  margin-left: 0.2rem;
+}
+.pkc-tab-close:hover {
+  background: var(--c-border);
+  color: var(--c-fg);
+}
+.pkc-tab-close-dirty {
+  color: var(--c-accent);
+  font-size: 0.7rem;
+}
+.pkc-tab-dirty .pkc-tab-title::before {
+  content: '';
+}
