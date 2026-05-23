@@ -69,3 +69,17 @@ export const shellConflictDiffViewEnabled = defineFlag<boolean>(
       'dual-edit 競合 overlay に 2-pane 行 diff を表示(現 body と draft の差分)',
   },
 );
+
+// Command Palette を有効化(vscode-grade-overhaul-2026-05 MASTER.md §4.1)。
+// ON で `Ctrl+Shift+P` / `F1` で開く universal command launcher(fuzzy
+// search で全 command 起動)。OFF で従来どおり(完全 no-op、wave-α POC)。
+export const shellCommandPaletteEnabled = defineFlag<boolean>(
+  'shell.command_palette_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Command Palette を有効化(Ctrl+Shift+P / F1 で fuzzy command launcher)',
+  },
+);
+

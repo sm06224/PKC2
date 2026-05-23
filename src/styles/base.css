@@ -10245,3 +10245,110 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 }
 .pkc-citation-narrative { border-bottom: none; }
 
+
+/* ─── Command Palette overlay ────────────────────────────────────
+ * vscode-grade-overhaul-2026-05 MASTER.md §4.1 wave-α POC(pgc-80)。
+ * VSCode 流 universal command launcher、Ctrl+Shift+P / F1 で起動。
+ * 設計:Family A overlay(centered fixed + accent panel)を再利用、
+ *      ただし top 1/4 寄せ + max-width 600 で「palette らしい」配置。
+ */
+.pkc-command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  pointer-events: auto;
+}
+.pkc-command-palette-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+.pkc-command-palette-card {
+  position: relative;
+  z-index: 1;
+  width: min(600px, 90vw);
+  max-height: 70vh;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 20px rgba(51, 255, 102, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pkc-command-palette-input {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.6rem 0.85rem;
+  border: none;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  outline: none;
+}
+.pkc-command-palette-input:focus {
+  box-shadow: inset 0 -2px 0 var(--c-accent);
+}
+.pkc-command-palette-list {
+  flex: 1 1 auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  overflow-y: auto;
+}
+.pkc-command-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--c-fg);
+}
+.pkc-command-palette-item:hover {
+  background: var(--c-hover);
+}
+.pkc-command-palette-item-active {
+  background: color-mix(in srgb, var(--c-accent) 15%, transparent);
+  outline: 1px solid var(--c-accent-dim);
+  outline-offset: -2px;
+}
+.pkc-command-palette-item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkc-command-palette-item-cat {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: var(--c-muted);
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+}
+.pkc-command-palette-item-kbd {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--c-muted);
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+}
+.pkc-command-palette-empty {
+  padding: 0.85rem;
+  color: var(--c-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  font-style: italic;
+}

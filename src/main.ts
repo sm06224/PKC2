@@ -36,6 +36,7 @@ import {
   flashEntry,
 } from './adapter/ui/action-binder';
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
+import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
@@ -397,6 +398,12 @@ async function boot(): Promise<void> {
 
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
+
+  // 3-CP. Command Palette POC(vscode-grade-overhaul-2026-05 MASTER.md §4.1、
+  // pgc-80):Tier 0 flag `shell.command_palette_enabled` で gate(default
+  // OFF)、`Ctrl+Shift+P` / `F1` で起動。bootstrap として PKC2 の基本 command
+  // を `registerBuiltinCommands(dispatcher)` で登録。
+  registerBuiltinCommands(dispatcher);
 
   // 3a. Global caret-row indicator (always on, sync-independent).
   // Paints a subtle marker at the focused textarea's caret row

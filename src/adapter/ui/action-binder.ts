@@ -129,7 +129,8 @@ import {
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
-import { shellEditModeEnabled, shellConflictDiffViewEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled } from './shell-flags';
+import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -4607,6 +4608,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       dispatcher.dispatch({
         type: state.shortcutHelpOpen ? 'CLOSE_SHORTCUT_HELP' : 'OPEN_SHORTCUT_HELP',
       });
+      return;
+    }
+
+    // pgc-80(vscode-grade-overhaul-2026-05 MASTER.md §4.1):Command Palette
+    // を `Ctrl+Shift+P` または `F1` で toggle 起動。flag OFF なら
+    // `toggleCommandPalette` 内で no-op、CI / 既存挙動への影響ゼロ。
+    // 既に palette が開いていれば、palette 自身の Escape handler が閉じる
+    // (本 handler は trigger 専用、palette 内部の navigation には立ち入らない)。
+    if (
+      shellCommandPaletteEnabled()
+      && !isCommandPaletteOpen()
+      && (
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'P' || e.key === 'p'))
+        || (e.key === 'F1' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey)
+      )
+    ) {
+      e.preventDefault();
+      toggleCommandPalette(root);
       return;
     }
 
