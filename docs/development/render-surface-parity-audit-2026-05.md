@@ -627,7 +627,7 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 - **size**:小(Gap-6 と同 PR で 1 機能分の追加に統合可)。
 - **priority**:🟡 Mid。
 
-### Gap-8 `extractDocumentGlobals` 未連動(S4 全 path)
+### Gap-8 `extractDocumentGlobals` 未連動(S4 全 path)── ✅ **RESOLVED**(2026-05-23、pgc-98)
 
 - **発生**:S4 全 path で `extractDocumentGlobals` を呼んでいない。
 - **現状**:`writing: vertical` 等を frontmatter 指定しても別窓では反映
@@ -638,6 +638,22 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
   追加(Gap-13 と連動)。
 - **size**:中。
 - **priority**:🟡 Mid。
+- **解消(pgc-98)**:`injectFeaturesDomOps` に optional `raw?: string`
+  parameter を追加、`extractDocumentGlobals(raw)` + `globalsToDataAttrs`
+  で output HTML を `<div data-pkc-writing="…" dir="…" data-pkc-doc-
+  align="…" data-pkc-layout="…">…</div>` で wrap する経路。S1 canonical
+  は `.pkc-md-rendered` 自身に attr を載せるが、S4 は `#body-view` の
+  `innerHTML` を介すため wrapper 1 段を中に挿入する(postMessage protocol
+  変更ゼロ)。4 path 全部に raw thread(`renderEntryPreview` /
+  `pushViewBodyUpdate` / `renderViewBody` text default、per-log textlog
+  は独立 frontmatter 持たないため skip)。inline CSS は
+  `.pkc-md-rendered > div[data-pkc-writing="vertical"]` ほか writing-mode
+  / text-align / layout(`a4-1col`〜`legal-2col` 全 9 variant)を ~50
+  行 mirror(base.css L2041-2097 + rendered-viewer.ts L493-527 と同等、
+  `@media print` も同期)。container null path も raw 経由で wrap が走る
+  挙動(canonical S1 が entries 不在でも globals を root attr に載せる
+  挙動と一致)。`tests/adapter/entry-window-doc-globals.test.ts` 9 件
+  pass。
 
 ### Gap-9 textlog asset reference resolution 未対応(S2 / S4 textlog)
 
@@ -758,7 +774,7 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 | Gap-5 | S3 | features 層 DOM op | 🟡 | 小〜大 | OQ-S3-2 |
 | Gap-6 | S4 全 path | preprocess | 🔥 | 中 | 独立 |
 | Gap-7 | S4 全 path | renderMarkdown opts | 🟡 | 小 | Gap-6 と同 PR 可 |
-| Gap-8 | S4 全 path | preprocess + CSS | 🟡 | 中 | Gap-13 と連動 |
+| ~~Gap-8~~ | ~~S4 全 path~~ | ~~preprocess + CSS~~ | ~~🟡~~ | ~~中~~ | ✅ **RESOLVED pgc-98**(2026-05-23、wave-β 完了) |
 | Gap-9 | S4 textlog | asset resolution | 🟡 | 中 | OQ-S4-2 |
 | Gap-10 | S2 | CSS mirror | 🟡 | 小 | 独立 |
 | Gap-11 | S2 / S4 | interactive CSS | 🟡 | 中 | OQ-S4-1 |
@@ -895,3 +911,4 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 |---|---|
 | 2026-05-22 | 本 audit 起こし。5 surface 定義 + `renderMarkdown` opts / preprocess / features 層 DOM op / CSS mirror の 4 軸で比較 → Gap-1〜Gap-15 と後続 PR 計画 pgc-78〜pgc-86 を提示。OQ-S2-1 / OQ-S3-1 / OQ-S3-2 / OQ-S4-1 / OQ-S4-2 を user 判断待ちとして記録 |
 | 2026-05-23 | **後続 PR 計画を更新**(user 報告対応):PR #455(2026-05-17)の `@playwright/test` 1.56.1 → 1.60.0 bump で本環境(Claude Code on the Web)の pre-installed v1194 chromium と version 不一致 + `cdn.playwright.dev` 等 Playwright CDN が network allowlist で 403 のため、smoke が起動できなかった。**pgc-78 で env-aware executablePath 上書き** を追加し、本環境で v1194 を直接使う経路を回復(CI 無影響、Tier-A 29 spec 実機 green 確認)。これに伴い後続 Gap 解消 PR を pgc-78 → pgc-79〜86 にシフト、各 PR で **visual parity test 添付** を default にできるようになった ── multi-window spec §9 A5-7 も同じ理由で「保留」→「着手可能」に格上げ |
+| 2026-05-23 | **wave-β 完了(全 15 Gap 解消)**。pgc-78〜98 の 11 PR で Gap-1〜Gap-15(non-gap の Gap-3、OQ 保留の Gap-4 / 5 / 9 / 11 / 12 除く 11 件)を一掃。**最終着地 pgc-98 = Gap-8(S4 entry-window で `extractDocumentGlobals` 連動 + `<div data-pkc-writing="…" dir="…" data-pkc-doc-align="…" data-pkc-layout="…">…</div>` wrapper 経路 + inline CSS mirror)**。S1 canonical は `.pkc-md-rendered` 自身に attr を載せるが、S4 は `#body-view` `innerHTML` を介すため wrapper 1 段挿入(postMessage protocol 変更ゼロ)。全 440 file / 8928 unit test pass、typecheck + build green。wave-β 着地完了 → wave-γ(shell redesign 25 PR)に移行可能 |

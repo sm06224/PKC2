@@ -34,7 +34,11 @@ import { applyHeadingFold } from '../../features/markdown/heading-fold';
 // canonical S1 と一致させる。これまで raw frontmatter が `<hr>+text+<hr>`
 // として漏れ、{{vars.x}} は literal、見出し番号は付かない状態だった。
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
-import { extractHeadingNumberConfig } from '../../features/markdown/document-globals';
+import {
+  extractHeadingNumberConfig,
+  extractDocumentGlobals,
+  globalsToDataAttrs,
+} from '../../features/markdown/document-globals';
 import { extractTocFromEntry, renderStaticTocHtml, extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
@@ -104,40 +108,70 @@ export function setEntryWindowCurrentContainer(c: Container | null): void {
  * inject** して outerHTML を返す。container が無いとき(boot 前等)は
  * pass-through。inline script から features 層を呼べない S4 child window の
  * 制約を、parent 側で完成 HTML を build して push 経路で代用する流儀。
+ *
+ * pgc-98(audit pgc-77 Gap-8):任意 `raw` 引数で source body 全文を
+ * 受け取れる。raw に frontmatter `writing` / `direction` / `align` /
+ * `layout` が含まれているとき、output HTML を `<div data-pkc-writing="…"
+ * dir="…" data-pkc-doc-align="…" data-pkc-layout="…">…</div>` で wrap する
+ * (canonical S1 detail-presenter は `.pkc-md-rendered` 自身に attribute を
+ * 載せるが、S4 では `#body-view` の innerHTML を経由するため、attribute を
+ * 載せられる新規 wrapper を 1 段追加する。CSS は entry-window inline CSS で
+ * `.pkc-md-rendered > div[data-pkc-writing]` 系で消費する)。
  */
 function injectFeaturesDomOps(
   html: string,
   hostLid: string,
   container: Container | null,
+  raw?: string,
 ): string {
-  if (!container || typeof document === 'undefined') return html;
+  if (typeof document === 'undefined') return html;
   if (!html) return html;
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  const containerId = container.meta?.container_id ?? '';
-  try {
-    expandTransclusions(tmp, {
-      entries: container.entries,
-      assets: container.assets,
-      mimeByKey: buildAssetMimeMapLocal(container),
-      nameByKey: buildAssetNameMapLocal(container),
-      hostLid,
-    });
-    hydrateCardPlaceholders(tmp, {
-      entries: container.entries,
-      currentContainerId: containerId,
-    });
-    // pgc-97(audit pgc-77 Gap-14):S1 / S2 と同様に native <details> で
-    // top-level 見出しを折りたためるように。pure DOM 操作なので entries 有無
-    // に依らず無条件で適用(detail-presenter.ts:139 と同 contract)。
-    applyHeadingFold(tmp);
-  } catch (e) {
-    if (typeof console !== 'undefined') {
-      console.warn('[entry-window] features DOM op failed:', e);
+  let inner = html;
+  if (container) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const containerId = container.meta?.container_id ?? '';
+    try {
+      expandTransclusions(tmp, {
+        entries: container.entries,
+        assets: container.assets,
+        mimeByKey: buildAssetMimeMapLocal(container),
+        nameByKey: buildAssetNameMapLocal(container),
+        hostLid,
+      });
+      hydrateCardPlaceholders(tmp, {
+        entries: container.entries,
+        currentContainerId: containerId,
+      });
+      // pgc-97(audit pgc-77 Gap-14):S1 / S2 と同様に native <details> で
+      // top-level 見出しを折りたためるように。pure DOM 操作なので entries 有無
+      // に依らず無条件で適用(detail-presenter.ts:139 と同 contract)。
+      applyHeadingFold(tmp);
+    } catch (e) {
+      if (typeof console !== 'undefined') {
+        console.warn('[entry-window] features DOM op failed:', e);
+      }
+      return html;
     }
-    return html;
+    inner = tmp.innerHTML;
   }
-  return tmp.innerHTML;
+  // pgc-98:document globals(writing / direction / align / layout)を
+  // wrapper div へ反映。raw が無い path(per-log textlog 等、文書 frontmatter
+  // を持たない)は wrap せず素通し。
+  if (raw) {
+    const globals = extractDocumentGlobals(raw);
+    const attrEntries = Object.entries(globalsToDataAttrs(globals));
+    if (attrEntries.length > 0 || globals.direction) {
+      const wrapper = document.createElement('div');
+      for (const [k, v] of attrEntries) wrapper.setAttribute(k, v);
+      if (globals.direction === 'rtl' || globals.direction === 'ltr') {
+        wrapper.setAttribute('dir', globals.direction);
+      }
+      wrapper.innerHTML = inner;
+      inner = wrapper.outerHTML;
+    }
+  }
+  return inner;
 }
 
 // renderer.ts の buildAssetMimeMap / buildAssetNameMap は同 module export
@@ -219,7 +253,9 @@ function renderEntryPreview(
   } else {
     html = renderMarkdown(stripped, opts);
   }
-  return injectFeaturesDomOps(html, lid, currentContainerRef);
+  // pgc-98(audit pgc-77 Gap-8):raw を thread して document globals
+  // (writing / direction / align / layout)を wrapper に反映。
+  return injectFeaturesDomOps(html, lid, currentContainerRef, raw);
 }
 (window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
 
@@ -634,7 +670,8 @@ export function pushViewBodyUpdate(
   let html =
     renderMarkdown(stripped, { vars, headingNumber, currentContainerId: containerId }) ||
     '<em style="color:var(--c-muted)">(empty)</em>';
-  html = injectFeaturesDomOps(html, lid, currentContainerRef);
+  // pgc-98(audit pgc-77 Gap-8):raw を thread して document globals 反映。
+  html = injectFeaturesDomOps(html, lid, currentContainerRef, raw);
   for (const child of targets) {
     child.postMessage(
       { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
@@ -1325,7 +1362,8 @@ function renderViewBody(
         headingNumber,
         currentContainerId: containerId,
       });
-      html = injectFeaturesDomOps(html, entry.lid, currentContainerRef);
+      // pgc-98(audit pgc-77 Gap-8):raw を thread して document globals 反映。
+      html = injectFeaturesDomOps(html, entry.lid, currentContainerRef, raw);
       return html || '<em style="color:var(--c-muted)">(empty)</em>';
     }
   }
@@ -2352,6 +2390,60 @@ html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
 .pkc-md-rendered .pkc-heading-fold-summary > :first-child {
   display: inline;
   margin: 0;
+}
+/* pgc-98(audit pgc-77 Gap-8):document globals(writing / direction /
+   align / layout)S4 inline CSS mirror。canonical S1 base.css は
+   .pkc-md-rendered 自身に attr を載せるが、S4 は #body-view 配下に
+   wrapper div[data-pkc-writing="…" dir="…"] を 1 段挿入する経路
+   (injectFeaturesDomOps が wrap)。.pkc-md-rendered > div[data-pkc-*]
+   selector で消費し、base.css と同等の rendering 効果。 */
+.pkc-md-rendered > div[data-pkc-writing="vertical"] { writing-mode: vertical-rl; }
+.pkc-md-rendered > div[data-pkc-writing="vertical"][dir="ltr"] { writing-mode: vertical-lr; }
+.pkc-md-rendered > div[data-pkc-doc-align="left"]   { text-align: left; }
+.pkc-md-rendered > div[data-pkc-doc-align="right"]  { text-align: right; }
+.pkc-md-rendered > div[data-pkc-doc-align="center"] { text-align: center; }
+/* layout(用紙サイズ + 段組):screen 表示で用紙幅 center + column-count */
+.pkc-md-rendered > div[data-pkc-layout] {
+  max-width: var(--pkc-page-w, 21cm);
+  margin: 1rem auto;
+  padding: 1.5cm 1.8cm;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+.pkc-md-rendered > div[data-pkc-layout^="a4-"]     { --pkc-page-w: 21cm; }
+.pkc-md-rendered > div[data-pkc-layout^="b5-"]     { --pkc-page-w: 17.6cm; }
+.pkc-md-rendered > div[data-pkc-layout^="letter-"] { --pkc-page-w: 21.59cm; }
+.pkc-md-rendered > div[data-pkc-layout^="legal-"]  { --pkc-page-w: 21.59cm; }
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] {
+  column-count: 2; column-gap: 0.8cm; column-rule: 1px solid #e5e7eb;
+}
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] {
+  column-count: 3; column-gap: 0.6cm; column-rule: 1px solid #e5e7eb;
+}
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] h1,
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] h2,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] h1,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] h2 { column-span: all; }
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] figure,
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] table,
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] pre,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] figure,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] table,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] pre { break-inside: avoid; }
+@media print {
+  .pkc-md-rendered > div[data-pkc-layout^="a4-"]     { width: 21cm; }
+  .pkc-md-rendered > div[data-pkc-layout^="b5-"]     { width: 17.6cm; }
+  .pkc-md-rendered > div[data-pkc-layout^="letter-"] { width: 21.59cm; }
+  .pkc-md-rendered > div[data-pkc-layout^="legal-"]  { width: 21.59cm; }
+  .pkc-md-rendered > div[data-pkc-layout] {
+    margin: 0; box-shadow: none; border-radius: 0; padding: 0;
+  }
+  .pkc-md-rendered > div[data-pkc-layout$="-2col"],
+  .pkc-md-rendered > div[data-pkc-layout$="-3col"] {
+    column-rule: none;
+  }
 }
 /* footnote chrome(wave-Z markdown-it-footnote)*/
 .pkc-md-rendered .pkc-footnote-ref {
