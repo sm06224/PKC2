@@ -335,12 +335,13 @@ user direction「window role を先に → layout 永続化、競合 UI は独�
 | A5-4 | layout 復元プロンプト(popup 制約対応)| 小〜中 | **完了**(pgc-71)|
 | A5-5 | 競合 diff view(features 層 diff 純関数 + overlay 2-pane)| 中 | **完了**(pgc-72 main overlay、pgc-75 §5.3 子 window)|
 | A5-6 | 「別ウィンドウで開く」context menu 動線 | 小 | **完了**(pgc-74、user 報告対応)|
-| A5-7 | visual parity test + 各 flag default 判断 | 小 | **保留** ── 本環境で Playwright chromium が DL 不可。γ-A5 の全 flag は default OFF 維持、parity 検証(実ブラウザ / CI)後に default ON を判断する |
+| A5-7 | visual parity test + 各 flag default 判断 | 小 | **着手可能**(pgc-78 で本環境の Playwright 利用環境を復旧。pre-installed v1194 chromium を env-aware に上書きする `PKC_PRE_INSTALLED_CHROMIUM` を smoke / bench config に追加、CI 無影響。Tier-A 29 spec 実機 green 確認済)── γ-A5 flag default ON 判断はまだ user 委ね、parity test 着地後に再評価 |
 
 各 slice = 1 PR、Tier 0 flag で gate。A5-1〜A5-6 + §5.3 は unit test
-約 90 件で orchestration を被覆。A5-7 の視覚 parity は browser 環境
-回復後 or CI で実施し、それまで `shell.window_roles` /
-`shell.window_layout_persist` / `shell.conflict_diff_view` は OFF 出荷。
+約 90 件で orchestration を被覆。A5-7 の視覚 parity test は **pgc-78** で
+Playwright が回せるようになったため本環境でも着手可能 ── ただし `shell.
+window_roles` / `shell.window_layout_persist` / `shell.conflict_diff_view`
+の default ON 判断は user 実機 + parity test pass 後とする。
 
 **bugfix(pgc-73)**:γ-A3 の `BEGIN_EDIT` childWindowLids ガードが子窓
 自身の save 経路まで弾いていた不具合を、`BEGIN_EDIT.windowSave` 免除で
@@ -452,3 +453,4 @@ v3.0 canvas line に carry over する。canvas 固有で書き直すのは各 r
 | 2026-05-22 | user 質問「canvas 化に対応可能か」を受け §11「canvas 化(Phase δ)との前方互換性」を追加。本 spec は window orchestration 層、canvas 化は rendering surface 層で直交 ── 前方互換と結論。併せて §5.3 / OQ-MW-3 を「diff はデータ経路・子 window 自前描画」に確定(HTML push 案は canvas 非互換のため不採用)|
 | 2026-05-22 | user 確認「editor + viewer 分離、保存時にレンダリング反映 = 真のマルチウィンドウか」を受け §3.4「editor → viewer / monitor の保存時反映」を追加。editor 保存 → main 単一権威 → 同 lid の viewer へ push → 再レンダリングの鎖を明示。cross-window 反映は保存時のみ(同一 window 内 split preview は live)で OQ-MW-5 を解決 |
 | 2026-05-22 | **γ-A5 実装 wave 着地(pgc-68〜75、10 PR)**:A5-1 viewer / A5-2 monitor / A5-3 layout 保存 / A5-4 layout 復元 / A5-5 競合 diff(main + 子 window §5.3)/ A5-6 別窓動線、+ bugfix pgc-73。§9 状態欄を更新。A5-7 視覚 parity は本環境の Playwright DL 不可で保留、γ-A5 flag は OFF 出荷維持 |
+| 2026-05-23 | **本環境 Playwright 復旧(pgc-78)**:diagnosis ── `package-lock.json` の `@playwright/test` が 2026-05-17 PR #455 で 1.56.1 → 1.60.0 に bump、コンテナ image pre-installed v1194 chromium と version 不一致(1.60.0 は v1223 を要求)、`cdn.playwright.dev` / `playwright.azureedge.net` / `playwright.download.prss.microsoft.com` 全 host が network allowlist に無く 403 で自動 DL 不能 → default smoke が起動失敗。fix ── `tests/{smoke,bench}/playwright.config.ts` の `use` block に `PKC_PRE_INSTALLED_CHROMIUM` env-aware な `launchOptions.executablePath` 上書きを追加、本環境では env を set して v1194 を直接使う。CI は env 未 set で従来挙動。v1194 ↔ Playwright 1.60.0 の CDP protocol 互換は実機検証 ── Tier-A 29 spec が 52s で全 green。これで §9 A5-7 が「保留」→「着手可能」に格上げ、各 Gap 解消 PR(pgc-79〜)で visual parity test 添付が default に |

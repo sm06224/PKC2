@@ -775,26 +775,31 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 
 | PR(候補)| Gap | scope | size | base 候補 |
 |---|---|---|---|---|
-| **pgc-78** | Gap-1 + Gap-2 | S2 + S3 live + S4 全 path に `currentContainerId` thread + S2 に `hydrateCardPlaceholders` | 中 | pgc-77 |
-| **pgc-79** | Gap-6 + Gap-7 | S4 全 path に frontmatter strip + extractVars + headingNumber 連動 | 中 | pgc-78 |
-| **pgc-80** | Gap-10 + Gap-12 | S2 inline CSS の chrome 4 件 + task / TOC current mirror | 小 | pgc-79 |
-| **pgc-81** | Gap-13(category 1)| S4 inline CSS に :::section / :::details / :::figure / :::quote mirror | 中 | pgc-80 |
-| **pgc-82** | Gap-13(category 2)| S4 inline CSS に blank-line / tolerant alias / em-dot / html-render / variable / hallucination mirror | 中 | pgc-81 |
-| **pgc-83** | Gap-15 | S4 全 path で expandTransclusions + hydrateCardPlaceholders を parent 側完成 HTML 経路に統合 | 大 | pgc-82 |
-| **pgc-84** | Gap-14 | S4 全 path で applyHeadingFold を parent 側完成 HTML 経路に統合 | 中 | pgc-83 |
-| **pgc-85** | Gap-8 | S4 全 path に extractDocumentGlobals 連動 + inline CSS mirror | 中 | pgc-84 |
+| **pgc-78** | — | **本環境 Playwright 復旧**(`tests/{smoke,bench}/playwright.config.ts` に `PKC_PRE_INSTALLED_CHROMIUM` env-aware override 追加)。CI 無影響、Tier-A 29 spec green。後続 PR で visual parity test 添付を default に格上げ可能 | 小 | pgc-77 |
+| **pgc-79** | Gap-1 + Gap-2 | S2 + S3 live + S4 全 path に `currentContainerId` thread + S2 に `hydrateCardPlaceholders` | 中 | pgc-78 |
+| **pgc-80** | Gap-6 + Gap-7 | S4 全 path に frontmatter strip + extractVars + headingNumber 連動 | 中 | pgc-79 |
+| **pgc-81** | Gap-10 + Gap-12 | S2 inline CSS の chrome 4 件 + task / TOC current mirror | 小 | pgc-80 |
+| **pgc-82** | Gap-13(category 1)| S4 inline CSS に :::section / :::details / :::figure / :::quote mirror | 中 | pgc-81 |
+| **pgc-83** | Gap-13(category 2)| S4 inline CSS に blank-line / tolerant alias / em-dot / html-render / variable / hallucination mirror | 中 | pgc-82 |
+| **pgc-84** | Gap-15 | S4 全 path で expandTransclusions + hydrateCardPlaceholders を parent 側完成 HTML 経路に統合 | 大 | pgc-83 |
+| **pgc-85** | Gap-14 | S4 全 path で applyHeadingFold を parent 側完成 HTML 経路に統合 | 中 | pgc-84 |
+| **pgc-86** | Gap-8 | S4 全 path に extractDocumentGlobals 連動 + inline CSS mirror | 中 | pgc-85 |
 | **(保留)** | Gap-4 + Gap-5 | S3 の globals / 3 op の挙動を OQ-S3-1 / OQ-S3-2 で確定 → 必要なら追加 PR | 小〜大 | OQ 解決後 |
 | **(保留)** | Gap-9 | S4 textlog asset resolution を OQ-S4-2 で確定 → 必要なら追加 PR | 中 | OQ 解決後 |
 | **(保留)** | Gap-11 | S4 table interactive を OQ-S4-1 で確定 → 必要なら追加 PR | 中 | OQ 解決後 |
 
-**全体規模**:8 PR × 中サイズ平均 = wave-10-2 程度の大きさ。Gap-13 / Gap-15
-は CSS / DOM op 両方を pair で扱うので最大ピーク。
+**全体規模**:9 PR(pgc-78 tooling + Gap 8 件)× 中サイズ平均 = wave-10-2
+程度の大きさ。Gap-13 / Gap-15 は CSS / DOM op 両方を pair で扱うので
+最大ピーク。
 
 **進め方**:
 1. 本 pgc-77 を user に提示 → audit + Gap 一覧 + 後続計画の合意を得る。
-2. **OQ 群**(OQ-S2-1 / OQ-S3-1 / OQ-S3-2 / OQ-S4-1 / OQ-S4-2)を
+2. **pgc-78(Playwright 復旧)を先に着地**(2026-05-23、user 報告対応)。
+   これで本環境でも parity test が回せるようになり、後続 Gap 解消 PR で
+   **visual parity test 1 件以上を default 添付** にできる。
+3. **OQ 群**(OQ-S2-1 / OQ-S3-1 / OQ-S3-2 / OQ-S4-1 / OQ-S4-2)を
    user に問う。回答が得られた Gap から PR を切り出す。
-3. pgc-78〜pgc-85 を順次 stack。各 PR は前 PR 頂点を base にして派生。
+4. pgc-79〜pgc-86 を順次 stack。各 PR は前 PR 頂点を base にして派生。
 4. 各 PR で **unit test(必須)+ visual parity test(視覚機能なら 1 件
    以上、CLAUDE.md §10 規律)** を添付。
 5. 各 PR で **CHANGELOG_v2.3.0.md に 1 行追記**(CLAUDE.md 規律)+
@@ -889,3 +894,4 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 | date | event |
 |---|---|
 | 2026-05-22 | 本 audit 起こし。5 surface 定義 + `renderMarkdown` opts / preprocess / features 層 DOM op / CSS mirror の 4 軸で比較 → Gap-1〜Gap-15 と後続 PR 計画 pgc-78〜pgc-86 を提示。OQ-S2-1 / OQ-S3-1 / OQ-S3-2 / OQ-S4-1 / OQ-S4-2 を user 判断待ちとして記録 |
+| 2026-05-23 | **後続 PR 計画を更新**(user 報告対応):PR #455(2026-05-17)の `@playwright/test` 1.56.1 → 1.60.0 bump で本環境(Claude Code on the Web)の pre-installed v1194 chromium と version 不一致 + `cdn.playwright.dev` 等 Playwright CDN が network allowlist で 403 のため、smoke が起動できなかった。**pgc-78 で env-aware executablePath 上書き** を追加し、本環境で v1194 を直接使う経路を回復(CI 無影響、Tier-A 29 spec 実機 green 確認)。これに伴い後続 Gap 解消 PR を pgc-78 → pgc-79〜86 にシフト、各 PR で **visual parity test 添付** を default にできるようになった ── multi-window spec §9 A5-7 も同じ理由で「保留」→「着手可能」に格上げ |

@@ -99,6 +99,23 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
+    // pgc-78(2026-05-23、user 報告対応):本環境(Claude Code on the
+    // Web)では `cdn.playwright.dev` が network allowlist に無く、
+    // Playwright 自動 DL が 403 で失敗する。コンテナ image build 時
+    // (2026-03-31)に pre-installed された v1194 と Playwright 1.60.0 が
+    // 要求する v1223 が不一致のため、default 経路で smoke が立ち上がら
+    // ない。`PKC_PRE_INSTALLED_CHROMIUM` env が set されていれば、
+    // それを `launchOptions.executablePath` として使う。CI(env 未 set)
+    // は従来どおり stock chromium を DL して使うので無影響。version
+    // mismatch でも CDP protocol 互換は残っており、basic interaction
+    // (click / type / screenshot / elementFromPoint / page.mouse.click)
+    // は実機で動作確認済(本 PR で `app-launch.spec.ts` を v1194 で
+    // green 実行)。
+    ...(process.env.PKC_PRE_INSTALLED_CHROMIUM && {
+      launchOptions: {
+        executablePath: process.env.PKC_PRE_INSTALLED_CHROMIUM,
+      },
+    }),
   },
 
   webServer: {

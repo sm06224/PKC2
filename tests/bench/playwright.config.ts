@@ -32,6 +32,15 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     trace: 'off',
     video: 'off',
+    // pgc-78(2026-05-23):smoke config と同じく `PKC_PRE_INSTALLED_CHROMIUM`
+    // env が set されていれば executablePath を上書き。本環境(Claude Code on
+    // the Web)の pre-installed v1194 chromium を使うため。詳細は
+    // `tests/smoke/playwright.config.ts` の同 block を参照。CI 影響なし。
+    ...(process.env.PKC_PRE_INSTALLED_CHROMIUM && {
+      launchOptions: {
+        executablePath: process.env.PKC_PRE_INSTALLED_CHROMIUM,
+      },
+    }),
   },
   webServer: {
     command: 'node ../../scripts/smoke-serve.cjs',
