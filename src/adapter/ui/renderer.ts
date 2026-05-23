@@ -21,6 +21,7 @@ import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNew
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
 import { buildOutlineTab } from './activity-outline-tab';
 import { buildRecentTab } from './activity-recent-tab';
+import { buildPinnedTab } from './activity-pinned-tab';
 import { buildTabStripElement } from './tab-strip';
 import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
@@ -825,6 +826,9 @@ function renderShell(state: AppState): HTMLElement {
         break;
       case 'recent':
         sidebar = buildRecentTab(state);
+        break;
+      case 'pinned':
+        sidebar = buildPinnedTab(state);
         break;
       default:
         sidebar = buildActivityTabPlaceholder(tab);

@@ -1024,6 +1024,56 @@
   text-overflow: ellipsis;
 }
 
+/* pgc-105 wave-γ #7(MASTER.md §6.2):Pinned tab。pinned tab(pgc-88 で
+   導入された tab-strip の pinned 機構)を data source に list 表示。
+   visual は Recent と同流儀(icon + text、active highlight、hover/focus
+   強調)。 */
+.pkc-activity-tab-pinned-body {
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+}
+.pkc-pinned-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pkc-pinned-item {
+  margin: 0;
+}
+.pkc-pinned-item[data-pkc-active="true"] > .pkc-pinned-link {
+  background: var(--c-active, rgba(127, 127, 127, 0.18));
+  color: var(--c-accent);
+}
+.pkc-pinned-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-pinned-link:hover,
+.pkc-pinned-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-pinned-icon {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+.pkc-pinned-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Activity Bar の placeholder(Explorer 以外を選んだ場合の sidebar 代替)。
    wave-γ #4 scaffold ── 後続 pgc-103〜107 で各 tab の中身に置き換える。 */
 .pkc-activity-tab-placeholder {

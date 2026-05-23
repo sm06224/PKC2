@@ -162,18 +162,18 @@ describe('pgc-102 Activity Bar scaffold', () => {
   });
 
   it('flag ON:placeholder の中に icon / title / "Coming soon" note', () => {
-    // pgc-104:Recent tab は実装済になったので、placeholder 残り tab で
-    // テストする(Pinned)。
+    // pgc-104/105:Recent / Pinned tab は実装済、Search / Relations が
+    // placeholder 残り。
     setFlag(true);
     boot();
-    const pinned = root.querySelector<HTMLElement>(
-      '[data-pkc-activity-tab="pinned"]',
+    const search = root.querySelector<HTMLElement>(
+      '[data-pkc-activity-tab="search"]',
     )!;
-    pinned.click();
+    search.click();
     const ph = placeholder();
     expect(ph).not.toBeNull();
-    expect(ph?.querySelector('.pkc-activity-tab-placeholder-icon')?.textContent).toBe('📌');
-    expect(ph?.querySelector('.pkc-activity-tab-placeholder-title')?.textContent).toBe('Pinned');
+    expect(ph?.querySelector('.pkc-activity-tab-placeholder-icon')?.textContent).toBe('🔍');
+    expect(ph?.querySelector('.pkc-activity-tab-placeholder-title')?.textContent).toBe('Search');
     expect(ph?.querySelector('.pkc-activity-tab-placeholder-note')?.textContent).toContain('Coming soon');
   });
 
