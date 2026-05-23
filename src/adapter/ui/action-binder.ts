@@ -129,7 +129,7 @@ import {
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
-import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled, shellContextMenuUniversalEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled, shellContextMenuUniversalEnabled, shellEditorFooterWordcountEnabled } from './shell-flags';
 import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
@@ -8075,6 +8075,34 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
   root.addEventListener('keyup', handleTextEditPreviewUpdate);
   root.addEventListener('input', handleTextEditPreviewInput);
+
+  // pgc-126 wave-δ #2(MASTER.md §7 text):editor footer wordcount の
+  // live update。pgc-125 で static render を着地、本 PR で textarea 入力に
+  // 追従して footer の metrics を realtime 更新。flag OFF / footer 不在で
+  // no-op、state mutation なし(DOM 直書きで描画を avoid)。
+  function handleEditorFooterWordcountInput(e: Event): void {
+    if (!shellEditorFooterWordcountEnabled()) return;
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    const editor = target.closest('.pkc-editor');
+    if (!editor) return;
+    const footer = editor.querySelector<HTMLElement>(
+      '[data-pkc-region="editor-footer-wordcount"]',
+    );
+    if (!footer) return;
+    const metrics = footer.querySelector<HTMLElement>('.pkc-editor-footer-metrics');
+    if (!metrics) return;
+    const body = target.value;
+    const charCount = body.length;
+    const lineCount = body === '' ? 0 : body.split('\n').length;
+    const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length;
+    metrics.setAttribute('data-pkc-char-count', String(charCount));
+    metrics.setAttribute('data-pkc-word-count', String(wordCount));
+    metrics.setAttribute('data-pkc-line-count', String(lineCount));
+    metrics.textContent = `${charCount} chars · ${wordCount} words · ${lineCount} lines`;
+  }
+  root.addEventListener('input', handleEditorFooterWordcountInput);
 
   // ── 領域 10-1: Source ↔ Preview sync wiring ──
   // Caret-tracking handlers (selectionchange / keyup / focus) keep the
