@@ -134,6 +134,7 @@ import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
 import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
+import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -6299,6 +6300,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (rawTarget instanceof HTMLTextAreaElement ||
         (rawTarget instanceof HTMLInputElement && rawTarget.type !== 'button' && rawTarget.type !== 'submit')) {
       return;
+    }
+
+    // Case 0 — pgc-84(MASTER.md §4.7): Object-aware context menu。
+    // 右クリック対象が link / image / heading / selected text のいずれか
+    // なら、object 専用の小さな menu を出す。flag OFF なら下流の case に
+    // 落ちて従来挙動。Tier 0 flag は pgc-83 と共有(universal menu の全
+    // 機能を 1 flag で統合 gate)。
+    if (shellContextMenuUniversalEnabled()) {
+      const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+      const obj = detectObjectContext(rawTarget, sel);
+      if (obj) {
+        e.preventDefault();
+        dismissContextMenu();
+        const menu = renderObjectContextMenu(obj, e.clientX, e.clientY);
+        root.appendChild(menu);
+        clampMenuToViewport(menu);
+        return;
+      }
     }
 
     const canEdit = !state.readonly;
