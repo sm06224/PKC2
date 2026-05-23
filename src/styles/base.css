@@ -6571,6 +6571,28 @@ mark.pkc-search-mark {
   font-style: italic;
   opacity: 0.8;
 }
+
+/* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
+   flag ON 時に editor 末尾に compact metrics row(char / word / line)を
+   表示。editor 内で完結する目線移動最小の動線(Notion / Bear / Typora 流)。 */
+.pkc-editor-footer-wordcount {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2-5);
+  border-top: 1px solid var(--c-border);
+  background: var(--c-bg-dim, var(--c-bg));
+  color: var(--c-fg-dim);
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+.pkc-editor-footer-icon {
+  opacity: 0.75;
+}
+.pkc-editor-footer-metrics {
+  user-select: text;
+}
 .pkc-meta-inspector-placeholder-icon {
   font-size: 2.5rem;
   margin-bottom: var(--space-2);

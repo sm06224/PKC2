@@ -218,6 +218,26 @@ export const shellActivityBarEnabled = defineFlag<boolean>(
   },
 );
 
+// editor footer に word count / char count を表示(MASTER.md §7 text、
+// pgc-125 wave-δ #1)。ON で text / textlog 編集時に editor 末尾に
+// `📊 char / word / line` の compact metrics row を append。Inspector
+// Style tab(pgc-118)が読み取り専用 archetype-level metrics を表示するの
+// に対し、本 footer は **編集中の即座な目線確認**(editor 内で完結)に
+// 特化 ── 編集中の目線移動を最小化、Notion / Bear / Typora 流の wordcount
+// footer 動線。
+//
+// 注:本 PR は静的 render のみ(textarea 入力に追従しない)。live update は
+// 後続 PR で textarea input event を hook して実装。
+export const shellEditorFooterWordcountEnabled = defineFlag<boolean>(
+  'shell.editor_footer_wordcount_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'text / textlog editor の末尾に compact word count / char count metrics row を表示(編集中の目線確認動線)',
+  },
+);
+
 // About entry に PKC-Markdown showcase section を追加(MASTER.md §2 U-19、
 // pgc-113 wave-γ #14)。「Aboutはかなり味気ない / 最近の変更があまり反映
 // されていない / もっと PKC-Markdown をドッグフーディングして積極的に

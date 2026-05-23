@@ -17,7 +17,8 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled } from './shell-flags';
+import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
@@ -9661,6 +9662,16 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
   const presenter = getPresenter(entry.archetype);
   const editorBody = presenter.renderEditorBody(entry);
   editor.appendChild(editorBody);
+
+  // pgc-125 wave-δ #1(MASTER.md §7 text):flag ON + text/textlog 編集時
+  // に editor 末尾へ compact wordcount footer を append。Inspector Style
+  // tab(pgc-118)とは別 surface ── editor 内で目線移動最小の metrics。
+  if (
+    shellEditorFooterWordcountEnabled() &&
+    (entry.archetype === 'text' || entry.archetype === 'textlog')
+  ) {
+    editor.appendChild(buildEditorFooterWordcount(entry));
+  }
 
   // Resolve asset references in the TEXT split editor's initial preview
   // so that `![alt](asset:key)` and `[label](asset:key)` render inline
