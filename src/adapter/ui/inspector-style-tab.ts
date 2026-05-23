@@ -17,6 +17,7 @@ import type { Entry } from '../../core/model/record';
 import { extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
 import { extractDocumentGlobals } from '../../features/markdown/document-globals';
 import { parseTextlogBody } from '../../features/textlog/textlog-body';
+import { parseTodoBody, isTodoPastDue, formatTodoDate } from '../../features/todo/todo-body';
 
 export function buildInspectorStyleSection(entry: Entry): HTMLElement {
   const section = document.createElement('section');
@@ -45,6 +46,30 @@ export function buildInspectorStyleSection(entry: Entry): HTMLElement {
   addRow(dl, 'Body length', `${bodyLen} chars`);
   addRow(dl, 'Body lines', `${lineCount}`);
   addRow(dl, 'Body words', `${wordCount}`);
+
+  // pgc-129 wave-δ #5(MASTER.md §7 todo):todo 専用 metrics ──
+  // status / description 長さ / due date / overdue 判定 / archived。単独
+  // entry の状況を一目で確認、kanban / calendar の row click から飛んで
+  // 詳細を見るための breath-check の動線。
+  if (entry.archetype === 'todo') {
+    try {
+      const todo = parseTodoBody(entry.body ?? '');
+      addRow(dl, 'Status', todo.status === 'done' ? '✓ done' : '○ open');
+      addRow(dl, 'Description length', `${todo.description.length} chars`);
+      if (todo.date) {
+        const past = isTodoPastDue(todo);
+        const dateStr = formatTodoDate(todo.date);
+        addRow(dl, 'Due date', past ? `⚠ ${dateStr}(overdue)` : dateStr);
+      } else {
+        addRow(dl, 'Due date', '—');
+      }
+      if (todo.archived) {
+        addRow(dl, 'Archived', '📦 yes');
+      }
+    } catch {
+      addRow(dl, 'Todo metadata', '(parse error)');
+    }
+  }
 
   // pgc-128 wave-δ #4(MASTER.md §7 textlog):textlog 専用 metrics ──
   // 全 log 件数 / 今日の log 件数 / 直近 log 時刻 / important flag 件数 を
