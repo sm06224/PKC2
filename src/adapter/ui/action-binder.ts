@@ -129,10 +129,11 @@ import {
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
-import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled, shellContextMenuUniversalEnabled } from './shell-flags';
 import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
+import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -6360,30 +6361,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Case 3 — sidebar tree (unchanged behaviour).
     const entryItem = rawTarget.closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
-    if (!entryItem) return;
-    const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
-    if (!sidebar) return;
+    if (entryItem) {
+      const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
+      if (sidebar) {
+        e.preventDefault();
+        dismissContextMenu();
 
-    e.preventDefault();
-    dismissContextMenu();
+        const lid = entryItem.getAttribute('data-pkc-lid');
+        if (!lid) return;
+        const entry = state.container.entries.find((en) => en.lid === lid);
+        const hasParent =
+          getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
+        // Collect folders for "Move to Folder" sub-menu
+        const folders = state.container.entries
+          .filter((en) => en.archetype === 'folder' && en.lid !== lid)
+          .map((en) => ({ lid: en.lid, title: en.title }));
+        const menu = renderContextMenu(lid, e.clientX, e.clientY, {
+          archetype: entry?.archetype,
+          canEdit,
+          hasParent,
+          folders,
+        });
+        root.appendChild(menu);
+        clampMenuToViewport(menu);
+        return;
+      }
+    }
 
-    const lid = entryItem.getAttribute('data-pkc-lid');
-    if (!lid) return;
-    const entry = state.container.entries.find((en) => en.lid === lid);
-    const hasParent =
-      getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
-    // Collect folders for "Move to Folder" sub-menu
-    const folders = state.container.entries
-      .filter((en) => en.archetype === 'folder' && en.lid !== lid)
-      .map((en) => ({ lid: en.lid, title: en.title }));
-    const menu = renderContextMenu(lid, e.clientX, e.clientY, {
-      archetype: entry?.archetype,
-      canEdit,
-      hasParent,
-      folders,
-    });
-    root.appendChild(menu);
-    clampMenuToViewport(menu);
+    // Case 4 — pgc-83(MASTER.md §4.7): Universal region-aware fallback。
+    // Specific entry-bound menu に該当しない background 右クリックを拾い、
+    // region 別の menu(center / sidebar / meta / header / unknown)を
+    // 出す。flag OFF なら何もしない(browser native context menu 表示)。
+    if (shellContextMenuUniversalEnabled()) {
+      const region = detectContextMenuRegion(rawTarget);
+      // 'unknown' は誰の右クリック領域にも該当しないため、生身の native
+      // context menu が user 体感的に望ましい場面が多い(URL 上のテキスト
+      // 等)。本 POC では explicit に region match した場合のみ menu 出す。
+      if (region !== 'unknown') {
+        e.preventDefault();
+        dismissContextMenu();
+        const menu = renderRegionContextMenu(region, e.clientX, e.clientY);
+        root.appendChild(menu);
+        clampMenuToViewport(menu);
+      }
+    }
   }
 
   /**

@@ -994,6 +994,9 @@ function renderMobileHeader(state: AppState): HTMLElement {
 
 function renderHeader(state: AppState): HTMLElement {
   const header = createElement('header', 'pkc-header');
+  // pgc-83(MASTER.md §4.7):universal context menu の region 検出に使う。
+  // 既存 selector に影響しない additive な data attribute。
+  header.setAttribute('data-pkc-region', 'header');
 
   // 2026-04-26 mobile master-detail: a back arrow button that
   // deselects the current entry, used by the touch-coarse phone

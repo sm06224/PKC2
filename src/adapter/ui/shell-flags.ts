@@ -110,3 +110,17 @@ export const shellKeymapRegistryEnabled = defineFlag<boolean>(
       'Keymap registry を有効化(Alt+1〜6 / F12 / Ctrl+K Ctrl+S 等の fresh shortcut)',
   },
 );
+
+// Context Menu universal 化(MASTER.md §4.7、pgc-83 POC)を有効化。
+// ON で center / sidebar / meta / header の **background**(specific element に
+// 着いていない場所)を右クリックすると region-aware menu が出る。OFF で
+// 従来挙動(specific element でだけ menu、background は browser native)。
+export const shellContextMenuUniversalEnabled = defineFlag<boolean>(
+  'shell.context_menu_universal_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Context Menu の universal 化(region 背景の右クリックで region-aware menu)',
+  },
+);
