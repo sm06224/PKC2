@@ -18,6 +18,7 @@ import { extractHeadingsFromMarkdown } from '../../features/markdown/markdown-to
 import { extractDocumentGlobals } from '../../features/markdown/document-globals';
 import { parseTextlogBody } from '../../features/textlog/textlog-body';
 import { parseTodoBody, isTodoPastDue, formatTodoDate } from '../../features/todo/todo-body';
+import { parseAttachmentBody } from './attachment-presenter';
 
 export function buildInspectorStyleSection(entry: Entry): HTMLElement {
   const section = document.createElement('section');
@@ -46,6 +47,38 @@ export function buildInspectorStyleSection(entry: Entry): HTMLElement {
   addRow(dl, 'Body length', `${bodyLen} chars`);
   addRow(dl, 'Body lines', `${lineCount}`);
   addRow(dl, 'Body words', `${wordCount}`);
+
+  // pgc-130 wave-δ #6(MASTER.md §7 attachment):attachment 専用 metrics
+  // ── name / MIME / size / asset_key / sandbox / app launcher 登録状態。
+  // 添付ファイルの実体情報を一目で確認、HTML attachment の sandbox 設定や
+  // App Launcher への登録状況も view できる。
+  if (entry.archetype === 'attachment') {
+    try {
+      const att = parseAttachmentBody(entry.body ?? '');
+      addRow(dl, 'Filename', att.name || '(unnamed)');
+      addRow(dl, 'MIME type', att.mime);
+      if (typeof att.size === 'number') {
+        addRow(dl, 'File size', formatBytes(att.size));
+      }
+      if (att.asset_key) {
+        // asset_key は長いので 12 文字 + ellipsis で表示
+        const truncated = att.asset_key.length > 12
+          ? `${att.asset_key.slice(0, 12)}…`
+          : att.asset_key;
+        addRow(dl, 'Asset key', truncated);
+      } else if (att.data) {
+        addRow(dl, 'Storage', 'legacy (inline base64)');
+      }
+      if (att.sandbox_allow && att.sandbox_allow.length > 0) {
+        addRow(dl, 'Sandbox allow', att.sandbox_allow.join(' / '));
+      }
+      if (att.registered_as_app) {
+        addRow(dl, 'App Launcher', '🚀 registered');
+      }
+    } catch {
+      addRow(dl, 'Attachment metadata', '(parse error)');
+    }
+  }
 
   // pgc-129 wave-δ #5(MASTER.md §7 todo):todo 専用 metrics ──
   // status / description 長さ / due date / overdue 判定 / archived。単独
@@ -174,6 +207,17 @@ function archetypeIcon(arch: string): string {
 function formatIso(iso: string): string {
   if (!iso) return '—';
   return iso.slice(0, 19).replace('T', ' ');
+}
+
+/**
+ * pgc-130:byte 数を human-readable に整形(KB / MB / GB)。1024 base。
+ */
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 /**
