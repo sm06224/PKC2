@@ -1149,8 +1149,68 @@
   text-overflow: ellipsis;
 }
 
+/* pgc-108 wave-γ #9(MASTER.md §6.2):Relations tab(Activity Bar 6 件目、
+   最後の tab)。現在 entry の outbound / inbound relation を section に
+   分けて list 表示、row click で peer entry を SELECT_ENTRY。 */
+.pkc-activity-tab-relations-body {
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+}
+.pkc-relations-section {
+  margin-bottom: var(--space-2);
+}
+.pkc-relations-section-label {
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.pkc-relations-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pkc-relations-item {
+  margin: 0;
+}
+.pkc-relations-item[data-pkc-active="true"] > .pkc-relations-link {
+  background: var(--c-active, rgba(127, 127, 127, 0.18));
+  color: var(--c-accent);
+}
+.pkc-relations-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-relations-link:hover,
+.pkc-relations-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-relations-kind {
+  flex-shrink: 0;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+.pkc-relations-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Activity Bar の placeholder(Explorer 以外を選んだ場合の sidebar 代替)。
-   wave-γ #4 scaffold ── 後続 pgc-103〜107 で各 tab の中身に置き換える。 */
+   wave-γ #4 scaffold ── pgc-103〜108 で 6 tab 全て中身に置き換え完了。 */
 .pkc-activity-tab-placeholder {
   align-items: center;
   justify-content: center;

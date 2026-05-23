@@ -23,6 +23,7 @@ import { buildOutlineTab } from './activity-outline-tab';
 import { buildRecentTab } from './activity-recent-tab';
 import { buildPinnedTab } from './activity-pinned-tab';
 import { buildSearchTab } from './activity-search-tab';
+import { buildRelationsTab } from './activity-relations-tab';
 import { buildTabStripElement } from './tab-strip';
 import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
@@ -833,6 +834,9 @@ function renderShell(state: AppState): HTMLElement {
         break;
       case 'search':
         sidebar = buildSearchTab(state);
+        break;
+      case 'relations':
+        sidebar = buildRelationsTab(state);
         break;
       default:
         sidebar = buildActivityTabPlaceholder(tab);
