@@ -130,6 +130,7 @@ import {
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
 import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled, shellContextMenuUniversalEnabled, shellEditorFooterWordcountEnabled } from './shell-flags';
+import { estimateReadTimeMinutes, formatReadTime } from './editor-footer-wordcount';
 import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
@@ -8097,10 +8098,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const charCount = body.length;
     const lineCount = body === '' ? 0 : body.split('\n').length;
     const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length;
+    // pgc-127 wave-δ #3:read time も live 更新。
+    const readMinutes = estimateReadTimeMinutes(body);
     metrics.setAttribute('data-pkc-char-count', String(charCount));
     metrics.setAttribute('data-pkc-word-count', String(wordCount));
     metrics.setAttribute('data-pkc-line-count', String(lineCount));
-    metrics.textContent = `${charCount} chars · ${wordCount} words · ${lineCount} lines`;
+    metrics.setAttribute('data-pkc-read-minutes', readMinutes.toFixed(2));
+    metrics.textContent = `${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
   }
   root.addEventListener('input', handleEditorFooterWordcountInput);
 
