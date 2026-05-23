@@ -2163,6 +2163,112 @@ html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
   background: #ffffff;
 }
 
+/* ── pgc-95(audit pgc-77 Gap-13 cat-3):S4 critical PKC dialect CSS
+   mirror Phase 3 ── transclusion 9 件 + heading-fold + embed-blocked /
+   todo-embed chrome remaining。Viewer popup(rendered-viewer.ts L541-
+   591)mirror を S4 entry-window に porting。 */
+/* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み)*/
+.pkc-transclusion {
+  border-left: 3px solid #4a90e2;
+  background: rgba(74, 144, 226, 0.04);
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+  margin: 0.5rem 0;
+}
+.pkc-transclusion-header {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px dashed #d1d5db;
+}
+.pkc-transclusion-source { color: #6b7280; text-decoration: none; }
+.pkc-transclusion-source::before { content: '↪ '; color: #6b7280; }
+.pkc-transclusion-source:hover { color: #4a90e2; text-decoration: underline; }
+.pkc-transclusion-body > :first-child { margin-top: 0; }
+.pkc-transclusion-body > :last-child { margin-bottom: 0; }
+.pkc-transclusion-fallback { color: #6b7280; font-style: italic; }
+/* transclusion-broken(target 不在 fallback marker)*/
+.pkc-md-rendered .pkc-transclusion-broken {
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.06);
+  padding: 0 0.3em;
+  border-radius: 3px;
+  font-style: italic;
+}
+/* transclusion-document(textlog 等の document 経由 embed)*/
+.pkc-md-rendered .pkc-transclusion-document {
+  border: 1px solid #d8d2c2;
+  border-radius: 4px;
+  background: #fbf9f1;
+  padding: 0.35rem 0.6rem;
+  margin: 0.5rem 0;
+}
+/* transclusion-fallback-link(fallback link 装飾)*/
+.pkc-md-rendered .pkc-transclusion-fallback-link {
+  color: #4a90e2;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+/* transclusion-log(個別 log 行内 timestamp)*/
+.pkc-md-rendered .pkc-transclusion-log .pkc-textlog-timestamp {
+  color: #6b7280;
+}
+/* embed-blocked(blocked / cycle marker)*/
+.pkc-embed-blocked {
+  display: inline-block;
+  color: #6b7280;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px dashed rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  padding: 0 0.35em;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+  font-style: normal;
+}
+/* todo-embed-meta(todo を embed した時の meta 行)*/
+.pkc-todo-embed-meta {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+  font-size: 0.9em;
+  color: #6b7280;
+}
+.pkc-todo-embed-status { font-family: var(--font-mono); }
+.pkc-todo-embed-status[data-pkc-todo-status="done"] { color: #4a90e2; }
+/* heading-fold(領域 6 折りたたみ見出し)*/
+.pkc-md-rendered .pkc-heading-fold { margin: 0.5rem 0 0; }
+.pkc-md-rendered .pkc-heading-fold-summary { cursor: pointer; }
+.pkc-md-rendered .pkc-heading-fold-summary > :first-child {
+  display: inline;
+  margin: 0;
+}
+/* footnote chrome(wave-Z markdown-it-footnote)*/
+.pkc-md-rendered .pkc-footnote-ref {
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+}
+.pkc-md-rendered .pkc-footnote-ref a {
+  color: var(--c-accent);
+  text-decoration: none;
+  padding: 0 0.15em;
+}
+.pkc-md-rendered .pkc-footnote-ref a::before { content: "["; }
+.pkc-md-rendered .pkc-footnote-ref a::after { content: "]"; }
+.pkc-md-rendered .pkc-footnote-ref a:hover { text-decoration: underline; }
+.pkc-md-rendered .pkc-citation {
+  font-style: italic;
+  color: var(--c-muted);
+  cursor: help;
+  padding: 0 0.1em;
+  border-bottom: 1px dotted var(--c-accent-dim);
+}
+.pkc-md-rendered .pkc-citation:hover {
+  color: var(--c-fg);
+  border-bottom-color: var(--c-accent);
+}
+
 /* ── Conflict banner ── */
 .pkc-conflict-banner {
   display: none; background: var(--c-danger); color: #fff;
