@@ -50,6 +50,7 @@ import { parseAttachmentBody } from './attachment-presenter';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
 import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { buildAssetMimeMap, buildAssetNameMap } from './renderer';
 
@@ -1011,8 +1012,14 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
   const vars = extractVars(rawBody);
   const stripped = parseFrontmatter(rawBody).body;
   const resolved = resolveAssetSource(stripped, container);
+  // pgc-90(audit pgc-77 Gap-1):currentContainerId を thread して同一
+  // container 内 `pkc://` permalink を internal 扱いにする(従来は
+  // external chip 化していた、user 体感で center pane と乖離)+
+  // hydrateCardPlaceholders の入口にも必要。
+  const currentContainerId = container?.meta?.container_id ?? '';
   const html = renderMarkdown(resolved, {
     vars,
+    currentContainerId,
     headingNumber: extractHeadingNumberConfig(rawBody),
   });
   // 2026-05-08 user 報告:`![label](entry:LID)` の transclusion が center
@@ -1031,6 +1038,13 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
     mimeByKey: buildAssetMimeMap(container),
     nameByKey: buildAssetNameMap(container),
     hostLid: entry.lid,
+  });
+  // pgc-90(audit pgc-77 Gap-2):card-link placeholder を hydrate。center
+  // pane(detail-presenter:122-135)と同 contract を Viewer popup に。
+  // 旧来は呼ばれていなかったため card が plain link / placeholder で出ていた。
+  hydrateCardPlaceholders(tmp, {
+    entries: container.entries,
+    currentContainerId,
   });
   // 領域 6:detail-presenter と同様、見出しを native <details> で畳める
   // よう再構成(CLAUDE.md §9 の 3 surface 一致)。

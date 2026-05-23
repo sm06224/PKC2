@@ -93,6 +93,7 @@ describe('closeActiveTab respects pinned', () => {
     const c = mkContainer([mkEntry('a', 'A')]);
     recordTabOpen('a', c);
     togglePinTab('a');
+    expect(getActiveTabLid()).toBe('a');
     const result = closeActiveTab();
     expect(result).toBe('a');
     expect(getOpenTabs().length).toBe(1);

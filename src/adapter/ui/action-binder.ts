@@ -7827,10 +7827,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // raw text として preview に出ていた)。
       const livePreviewVars = extractVars(src);
       const livePreviewSource = parseLivePreviewFrontmatter(resolved).body;
+      // pgc-90(audit pgc-77 Gap-1):S3 live preview にも currentContainerId
+      // を thread。同一 container 内 `pkc://` permalink を internal 扱い、
+      // hydrateCardPlaceholders の入口にも必要(下流の features 層 DOM op
+      // と整合)。
+      const liveContainerId = dispatcher.getState().container?.meta?.container_id ?? '';
       preview.innerHTML = renderMarkdown(livePreviewSource, {
         sourceLineAnchors: true,
         vars: livePreviewVars,
         headingNumber: extractHeadingNumberConfig(src),
+        currentContainerId: liveContainerId,
       });
     } else {
       preview.innerHTML = '';
