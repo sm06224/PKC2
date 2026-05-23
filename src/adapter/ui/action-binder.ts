@@ -135,7 +135,7 @@ import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
 import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
-import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen } from './tab-strip';
+import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab } from './tab-strip';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
@@ -1118,6 +1118,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         closeColorPicker();
         break;
       }
+      case 'switch-view-tab': {
+        // pgc-87(MASTER.md §4.3):view tab(workspace-level の calendar /
+        // kanban / filer / graph / launcher)click → SET_VIEW_MODE を
+        // dispatch。tab-strip side の active 化は wireTabStrip の onState
+        // が listen して syncActiveViewTab で行う。
+        const mode = target.getAttribute('data-pkc-view-mode');
+        if (!mode) break;
+        if (mode === 'detail' || mode === 'calendar' || mode === 'kanban'
+            || mode === 'filer' || mode === 'graph' || mode === 'launcher') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        }
+        break;
+      }
+      case 'open-view-tab': {
+        // pgc-87:command palette / context menu / 明示 button から呼ばれる
+        // 「view tab を tab strip に open する」 action。data-pkc-view-mode
+        // が必須。
+        const mode = target.getAttribute('data-pkc-view-mode');
+        if (!mode) break;
+        if (mode === 'calendar' || mode === 'kanban' || mode === 'filer'
+            || mode === 'graph' || mode === 'launcher') {
+          openViewTab(mode);
+          persistTabState();
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        }
+        break;
+      }
       case 'close-tab': {
         // pgc-85(MASTER.md §4.3):tab strip の × button click。
         // module-local tab state から該当 lid を削除、neighbor を active 化。
@@ -1127,7 +1154,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const newActive = recordTabClose(lid);
         persistTabState();
         if (newActive) {
-          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
+          // pgc-87:newActive が view tab(`__view:` prefix)の場合は
+          // SET_VIEW_MODE を dispatch、entry tab なら SELECT_ENTRY。
+          if (newActive.startsWith('__view:')) {
+            const mode = newActive.slice('__view:'.length);
+            if (mode === 'calendar' || mode === 'kanban' || mode === 'filer'
+                || mode === 'graph' || mode === 'launcher') {
+              dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+            }
+          } else {
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
+          }
         } else {
           // 最後の tab が閉じられた ── state.selectedLid が既に null の場合
           // DESELECT_ENTRY は no-render(scope='none')になるため、`SYS_SYNC_
@@ -1136,7 +1173,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           // childWindowLids array が常に新規生成されるので、tab strip が
           // 確実に rebuild される。
           const st = dispatcher.getState();
-          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids });
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         }
         break;
       }
@@ -4698,7 +4735,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
         } else {
           const st = dispatcher.getState();
-          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids });
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         }
         return;
       }

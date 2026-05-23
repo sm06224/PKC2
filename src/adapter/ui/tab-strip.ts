@@ -29,10 +29,22 @@ import type { AppState } from '../state/app-state';
 import type { Dispatcher } from '../state/dispatcher';
 import { shellTabsEnabled } from './shell-flags';
 
+/**
+ * Tab info ── entry tab(specific entry を open)と view tab(workspace-level
+ * の view-mode、pgc-87 で導入)を **同じ array** で扱う discriminated union。
+ *
+ * - kind === 'entry':lid は entry の lid、archetype は entry の archetype
+ * - kind === 'view':lid は `__view:${mode}` sentinel、archetype は `'view'`、
+ *   mode は workspace view-mode(calendar / kanban / filer / graph / launcher)
+ */
+type ViewMode = 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+
 interface TabInfo {
   readonly lid: string;
   readonly archetype: string;
   readonly title: string;
+  readonly kind?: 'entry' | 'view';
+  readonly mode?: ViewMode;
 }
 
 let openTabs: TabInfo[] = [];
@@ -51,7 +63,74 @@ const ARCHETYPE_ICON: Record<string, string> = {
   form: '📝',
   generic: '📄',
   opaque: '⚫',
+  view: '📊',
 };
+
+const VIEW_TAB_LID_PREFIX = '__view:';
+export function viewTabLid(mode: ViewMode): string {
+  return `${VIEW_TAB_LID_PREFIX}${mode}`;
+}
+function isViewTabLid(lid: string): boolean {
+  return lid.startsWith(VIEW_TAB_LID_PREFIX);
+}
+function viewTabModeFromLid(lid: string): ViewMode | null {
+  if (!isViewTabLid(lid)) return null;
+  return lid.slice(VIEW_TAB_LID_PREFIX.length) as ViewMode;
+}
+
+const VIEW_TAB_META: Record<ViewMode, { title: string; icon: string }> = {
+  calendar: { title: 'カレンダー / Calendar', icon: '📅' },
+  kanban:   { title: 'カンバン / Kanban',     icon: '🗂' },
+  filer:    { title: 'ファイラー / Filer',     icon: '🗃' },
+  graph:    { title: 'グラフ / Graph',         icon: '🕸' },
+  launcher: { title: 'ランチャー / Launcher',  icon: '🚀' },
+};
+
+/**
+ * View tab(workspace-level の view-mode tab)を open。既存なら active 化。
+ * 戻り値:tab lid(`__view:${mode}`)。
+ */
+export function openViewTab(mode: ViewMode): string {
+  const lid = viewTabLid(mode);
+  const meta = VIEW_TAB_META[mode];
+  const found = openTabs.find((t) => t.lid === lid);
+  if (found) {
+    activeLid = lid;
+    return lid;
+  }
+  if (openTabs.length >= MAX_TABS) {
+    const idx = openTabs.findIndex((t) => t.lid !== activeLid);
+    if (idx >= 0) openTabs.splice(idx, 1);
+  }
+  openTabs.push({
+    lid,
+    archetype: 'view',
+    title: meta.title,
+    kind: 'view',
+    mode,
+  });
+  activeLid = lid;
+  return lid;
+}
+
+/**
+ * tab が view tab か(adapter / smoke 内部で識別する helper)。
+ */
+export function isViewTabInfo(t: TabInfo): boolean {
+  return t.kind === 'view' || isViewTabLid(t.lid);
+}
+
+/**
+ * 与えた view-mode を tab strip で active 状態にする(既存 view tab があれば
+ * active のみ更新)。state.viewMode 変化を listen する wireTabStrip で
+ * 呼ばれる。
+ */
+export function syncActiveViewTab(mode: ViewMode): void {
+  const lid = viewTabLid(mode);
+  if (openTabs.find((t) => t.lid === lid)) {
+    activeLid = lid;
+  }
+}
 
 /**
  * `ENTRY_SELECTED` で呼ばれる ── tab list に lid を追加 / 更新 + active 化。
@@ -59,6 +138,8 @@ const ARCHETYPE_ICON: Record<string, string> = {
  */
 export function recordTabOpen(lid: string, container: Container | null): void {
   if (!container) return;
+  // view tab(__view:*)は entry lookup の対象外、別経路で開かれる
+  if (isViewTabLid(lid)) return;
   const entry = container.entries.find((e) => e.lid === lid);
   if (!entry) return;
   // 既存なら active 更新だけ
@@ -194,11 +275,22 @@ export function restoreTabState(container: Container | null): string | null {
   } catch {
     return null;
   }
-  // 既知 entry のみ rehydrate、順序保持
+  // 既知 entry / view tab のみ rehydrate、順序保持
   const entryMap = new Map(container.entries.map((e) => [e.lid, e] as const));
   const rehydrated: TabInfo[] = [];
   for (const lid of saved.lids) {
     if (typeof lid !== 'string') continue;
+    // view tab(__view:mode)は entry lookup を skip、meta から復元
+    if (isViewTabLid(lid)) {
+      const mode = viewTabModeFromLid(lid);
+      if (mode && VIEW_TAB_META[mode]) {
+        rehydrated.push({
+          lid, archetype: 'view', kind: 'view', mode,
+          title: VIEW_TAB_META[mode].title,
+        });
+      }
+      continue;
+    }
     const e = entryMap.get(lid);
     if (!e) continue;
     if (e.archetype === 'opaque') continue;
@@ -206,7 +298,9 @@ export function restoreTabState(container: Container | null): string | null {
   }
   openTabs = rehydrated;
   // active が rehydrated に含まれていればそれを採用、無ければ末尾 fallback
-  if (saved.active && entryMap.has(saved.active) && rehydrated.find((t) => t.lid === saved.active)) {
+  const inRehydrated = (lid: string): boolean => rehydrated.some((t) => t.lid === lid);
+  if (saved.active && inRehydrated(saved.active)) {
+    // view tab か entry-lookup を skip して直接 active 設定
     activeLid = saved.active;
   } else {
     activeLid = rehydrated[rehydrated.length - 1]?.lid ?? null;
@@ -266,28 +360,50 @@ export function buildTabStripElement(state: AppState): HTMLElement {
     return strip;
   }
 
-  // Active tab は **canonical な state.selectedLid** で判定する。
-  // module-local `activeLid` は close 時の neighbor 計算用 fallback としては
-  // 持つが、render では state を信じる(reducer → state listener の順序で
-  // module-local 更新が遅れるケースを回避)。
-  const renderActive = state.selectedLid ?? activeLid;
+  // Active tab は **canonical な state を信じる**(reducer → state listener
+  // の順序で module-local 更新が遅れるケースを回避):
+  // - state.viewMode が detail 以外 → 対応する view tab(`__view:${mode}`)が
+  //   active(あれば)。view-mode が active な間は entry tab は inactive。
+  // - state.viewMode === 'detail' → state.selectedLid が active(entry tab)。
+  // - 両 fallback として module-local activeLid を使う。
+  let renderActive: string | null = null;
+  if (state.viewMode && state.viewMode !== 'detail') {
+    const candidate = viewTabLid(state.viewMode as ViewMode);
+    if (openTabs.some((t) => t.lid === candidate)) {
+      renderActive = candidate;
+    }
+  }
+  if (!renderActive) {
+    renderActive = state.selectedLid ?? activeLid;
+  }
   for (const t of openTabs) {
+    const isView = isViewTabInfo(t);
     const tab = document.createElement('div');
-    tab.className = 'pkc-tab';
-    tab.setAttribute('data-pkc-action', 'select-entry');
+    tab.className = isView ? 'pkc-tab pkc-tab-view' : 'pkc-tab';
+    // view tab は select-entry ではなく専用 action(switch-view-tab)。
+    // entry tab は従来どおり select-entry(action-binder が SELECT_ENTRY
+    // dispatch)、view tab は SET_VIEW_MODE dispatch する別 case。
+    tab.setAttribute('data-pkc-action', isView ? 'switch-view-tab' : 'select-entry');
     tab.setAttribute('data-pkc-lid', t.lid);
+    if (isView && t.mode) {
+      tab.setAttribute('data-pkc-view-mode', t.mode);
+    }
     tab.setAttribute('role', 'tab');
     if (t.lid === renderActive) {
       tab.classList.add('pkc-tab-active');
       tab.setAttribute('aria-selected', 'true');
-      // dirty marker
-      if (state.phase === 'editing' && state.editingLid === t.lid) {
+      // dirty marker(view tab は dirty にならない)
+      if (!isView && state.phase === 'editing' && state.editingLid === t.lid) {
         tab.classList.add('pkc-tab-dirty');
       }
     }
     const icon = document.createElement('span');
     icon.className = 'pkc-tab-icon';
-    icon.textContent = ARCHETYPE_ICON[t.archetype] ?? '📄';
+    if (isView && t.mode) {
+      icon.textContent = VIEW_TAB_META[t.mode].icon;
+    } else {
+      icon.textContent = ARCHETYPE_ICON[t.archetype] ?? '📄';
+    }
     tab.appendChild(icon);
 
     const title = document.createElement('span');
@@ -331,6 +447,8 @@ export function wireTabStrip(dispatcher: Dispatcher): () => void {
   // state.selectedLid 変化を直接 listen ── CREATE_ENTRY 等で
   // ENTRY_SELECTED が emit されないが selectedLid だけ変わる経路を救う。
   // 同時に container 変更を listen して title 更新を反映する。
+  // pgc-87:state.viewMode 変化も listen して、対応する view tab があれば
+  // active 化する(state.viewMode → active view tab の片方向 sync)。
   const off2 = dispatcher.onState((s, prev) => {
     if (s.container && s.container !== prev.container) {
       refreshTabTitles(s.container);
@@ -338,6 +456,12 @@ export function wireTabStrip(dispatcher: Dispatcher): () => void {
     }
     if (s.selectedLid && s.selectedLid !== prev.selectedLid && s.container) {
       recordTabOpen(s.selectedLid, s.container);
+      persistTabState();
+    }
+    if (s.viewMode !== prev.viewMode && s.viewMode !== 'detail') {
+      // detail mode 以外は対応する view tab を active 化(open は別経路 ──
+      // command palette / context menu / 明示 action)。
+      syncActiveViewTab(s.viewMode as ViewMode);
       persistTabState();
     }
   });

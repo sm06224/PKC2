@@ -16,6 +16,7 @@ import type { Dispatcher } from '../state/dispatcher';
 import type { ArchetypeId } from '../../core/model/record';
 import type { CommandMeta } from '../../features/command/types';
 import { registerCommand } from './command-palette';
+import { openViewTab, persistTabState } from './tab-strip';
 
 /**
  * 既存 `data-pkc-action` button を root から探して click を emit する
@@ -159,6 +160,30 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
     },
     () => dispatcher.dispatch({ type: 'OPEN_FLAGS_INSPECTOR' }),
   );
+
+  // ─── View tabs(pgc-87、MASTER.md §4.3)─────────
+  // tab strip(`shell.tabs_enabled` 必須)に workspace-level view tab を
+  // open する。`SET_VIEW_MODE` も同時に dispatch して mode 切替。
+  const viewTabModes: { mode: 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher'; ja: string; en: string }[] = [
+    { mode: 'calendar', ja: 'カレンダーを tab で開く', en: 'Open Calendar as tab' },
+    { mode: 'kanban',   ja: 'カンバンを tab で開く',   en: 'Open Kanban as tab' },
+    { mode: 'filer',    ja: 'ファイラーを tab で開く', en: 'Open Filer as tab' },
+    { mode: 'graph',    ja: 'グラフを tab で開く',     en: 'Open Graph as tab' },
+    { mode: 'launcher', ja: 'ランチャーを tab で開く', en: 'Open Launcher as tab' },
+  ];
+  for (const v of viewTabModes) {
+    const meta: CommandMeta = {
+      id: `view-tab.open.${v.mode}`,
+      titleJa: v.ja,
+      titleEn: v.en,
+      category: 'View',
+    };
+    registerCommand(meta, () => {
+      openViewTab(v.mode);
+      persistTabState();
+      dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: v.mode });
+    });
+  }
 
   // ─── Theme ───────────────────────────────────
   // 注:system は payload 上は `auto`(`src/core/model/system-settings-payload.ts`)。

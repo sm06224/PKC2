@@ -4707,9 +4707,11 @@ function renderCenterImpl(state: AppState): HTMLElement {
 
   const userEntries = getUserEntries(state.container?.entries ?? []);
 
-  // pgc-85(MASTER.md §4.3):Tab strip(複数 entry 同時 open の skeleton)。
-  // flag ON のとき view-mode bar の **上** に描画。flag OFF で完全非表示。
-  if (shellTabsEnabled() && userEntries.length > 0) {
+  // pgc-85 / pgc-87(MASTER.md §4.3):Tab strip(複数 entry 同時 open +
+  // workspace-level view tab)。flag ON で常時描画(open tabs が無くても
+  // placeholder を出す)── view tab だけ open のケース(entry 無し)を
+  // 拾うため、`userEntries.length > 0` の condition を撤廃。
+  if (shellTabsEnabled()) {
     center.appendChild(buildTabStripElement(state));
   }
 
