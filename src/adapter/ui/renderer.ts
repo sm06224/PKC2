@@ -19,6 +19,7 @@ import {
 } from './meta-pane-flags';
 import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled } from './shell-flags';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab } from './activity-bar';
+import { buildOutlineTab } from './activity-outline-tab';
 import { buildTabStripElement } from './tab-strip';
 import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
@@ -808,10 +809,23 @@ function renderShell(state: AppState): HTMLElement {
   }
 
   // Left pane: entry list / tree / search / filters
-  // pgc-102:Activity Bar flag ON + 非 explorer tab 時は placeholder。
+  // pgc-102 wave-γ #4:Activity Bar flag ON + 非 explorer tab 時は
+  // tab 別 builder へ振り分け。pgc-103 で outline tab を実装、未実装の
+  // tab は placeholder("Coming soon")で fallback。
   let sidebar: HTMLElement;
-  if (shellActivityBarEnabled() && getActivityBarActiveTab() !== 'explorer') {
-    sidebar = buildActivityTabPlaceholder(getActivityBarActiveTab());
+  if (shellActivityBarEnabled()) {
+    const tab = getActivityBarActiveTab();
+    switch (tab) {
+      case 'explorer':
+        sidebar = renderSidebar(state, linkIndex);
+        break;
+      case 'outline':
+        sidebar = buildOutlineTab(state);
+        break;
+      default:
+        sidebar = buildActivityTabPlaceholder(tab);
+        break;
+    }
   } else {
     sidebar = renderSidebar(state, linkIndex);
   }

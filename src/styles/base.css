@@ -918,6 +918,63 @@
   color: var(--c-fg);
 }
 
+/* pgc-103 wave-γ #5(MASTER.md §4.5):Outline tab。Activity Bar から
+   `outline` tab を選んだ時に sidebar 位置に出る。現在 entry の見出し
+   (h1〜h3)を抽出して list 化、click で center pane の heading anchor へ
+   scroll。 */
+.pkc-activity-tab-header {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--c-border);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.pkc-activity-tab-title {
+  color: var(--c-fg);
+}
+.pkc-activity-tab-outline-body {
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+}
+.pkc-outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pkc-outline-item {
+  margin: 0;
+  padding: 0;
+}
+.pkc-outline-item[data-pkc-outline-level="2"] { padding-left: var(--space-2); }
+.pkc-outline-item[data-pkc-outline-level="3"] { padding-left: var(--space-4); }
+.pkc-outline-item[data-pkc-outline-level="4"] { padding-left: var(--space-6, 1.5rem); }
+.pkc-outline-item[data-pkc-outline-level="5"] { padding-left: var(--space-8, 2rem); }
+.pkc-outline-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pkc-outline-link:hover,
+.pkc-outline-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-accent);
+  outline: none;
+}
+.pkc-outline-empty-hint {
+  padding: var(--space-3);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
 /* Activity Bar の placeholder(Explorer 以外を選んだ場合の sidebar 代替)。
    wave-γ #4 scaffold ── 後続 pgc-103〜107 で各 tab の中身に置き換える。 */
 .pkc-activity-tab-placeholder {

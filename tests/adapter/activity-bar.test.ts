@@ -141,14 +141,16 @@ describe('pgc-102 Activity Bar scaffold', () => {
     expect(sidebar()).toBeNull();
   });
 
-  it('flag ON:Outline → 別の placeholder、Explorer に戻ると sidebar 復活', () => {
+  it('flag ON:Relations → 別の placeholder、Explorer に戻ると sidebar 復活', () => {
+    // pgc-103:Outline tab は実装済になったので、placeholder 残り tab で
+    // 切替テストする(Relations / Recent / Pinned 等)。
     setFlag(true);
     boot();
-    const outline = root.querySelector<HTMLElement>(
-      '[data-pkc-activity-tab="outline"]',
+    const relations = root.querySelector<HTMLElement>(
+      '[data-pkc-activity-tab="relations"]',
     )!;
-    outline.click();
-    expect(placeholder()?.getAttribute('data-pkc-activity-tab')).toBe('outline');
+    relations.click();
+    expect(placeholder()?.getAttribute('data-pkc-activity-tab')).toBe('relations');
 
     const explorer = root.querySelector<HTMLElement>(
       '[data-pkc-activity-tab="explorer"]',

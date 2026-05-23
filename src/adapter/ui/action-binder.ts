@@ -1173,6 +1173,27 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         break;
       }
+      case 'scroll-to-heading': {
+        // pgc-103 wave-γ #5(MASTER.md §4.5):Activity Bar の Outline tab
+        // 内の見出しを click 時、center pane の該当 heading anchor に
+        // scroll する。`data-pkc-heading-slug` attr で slug を引き、
+        // `#<slug>` の element を center pane root から探す。
+        e.preventDefault();
+        e.stopPropagation();
+        const slug = target.getAttribute('data-pkc-heading-slug');
+        if (!slug) break;
+        // markdown-render は heading に `id="<slug>"` を立てる(`renderMarkdown`
+        // の anchor 拡張)。center pane root を起点に query、見つからない
+        // なら document 全体から fallback。
+        const center = root.querySelector('[data-pkc-region="center"]')
+          ?? root.querySelector('.pkc-center');
+        const target0 = center?.querySelector(`#${CSS.escape(slug)}`)
+          ?? document.getElementById(slug);
+        if (target0 instanceof HTMLElement) {
+          target0.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        break;
+      }
       case 'select-activity-tab': {
         // pgc-102 wave-γ #4(MASTER.md §6.2):Activity Bar の tab を切替。
         // module-local state を更新して SYS_SYNC_CHILD_WINDOWS で再描画
