@@ -238,6 +238,24 @@ export const shellEditorFooterWordcountEnabled = defineFlag<boolean>(
   },
 );
 
+// entry-window に slim sticky header(container / archetype / title 常駐
+// 表示)を追加(user bug report 2026-05-24「マルチウィンドウ時にヘッダ
+// フッタが見えないのもそうだし」、pgc-141 wave-δ #15)。child window は
+// 現状 view-pane の `<h2>` title しか持たないため、scroll で title が
+// 隠れたり container 由来が分からなくなる。ON で **body 先頭に sticky
+// header**(`<header class="pkc-window-header">`)を追加 ── archetype icon
+// + entry title + container name + close 動線、scroll で隠れない。
+// footer(action bar)は既に sticky なので、本 flag は header 側のみ補完。
+export const shellEntryWindowChromeEnabled = defineFlag<boolean>(
+  'shell.entry_window_chrome_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'entry-window 先頭に slim sticky header(archetype + title + container)を追加。scroll で隠れない',
+  },
+);
+
 // entry-window(マルチウィンドウ)で text archetype の Split editor を
 // **default OFF** にする(user bug report 2026-05-24「マルチウィンドウ時の
 // Split View は不要とは言えないがデフォではない」、pgc-140 wave-δ #14)。

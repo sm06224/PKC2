@@ -56,7 +56,7 @@ import {
 import { parseFormBody, formPresenter } from './form-presenter';
 import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
-import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled, shellEntryWindowSplitDefaultOffEnabled } from './shell-flags';
+import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled, shellEntryWindowSplitDefaultOffEnabled, shellEntryWindowChromeEnabled } from './shell-flags';
 import type { DiffRow } from '../../features/diff/line-diff';
 import {
   readWindowLayout,
@@ -1587,6 +1587,20 @@ function buildWindowHtml(
   startEditing = false,
 ): string {
   const escapedTitle = escapeForAttr(entry.title || '');
+  // pgc-141 wave-δ #15:archetype → icon の inline 表(child window は
+  // module graph を持たないため hardcoded、`adapter/ui/renderer.ts` の
+  // archetypeIcon と同じ map を mirror)。
+  const entryArchetypeIcon = (arch: string): string => {
+    switch (arch) {
+      case 'text':       return '📝';
+      case 'textlog':    return '📋';
+      case 'todo':       return '☑';
+      case 'attachment': return '📎';
+      case 'folder':     return '📁';
+      case 'form':       return '📋';
+      default:           return '○';
+    }
+  };
   const renderedBody = renderViewBody(entry, lightSource, assetContext);
   // Static TOC HTML for TEXT / TEXTLOG — the extractor returns `[]`
   // for other archetypes so this is just `''` there. Every anchor
@@ -2031,6 +2045,44 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 }
 .pkc-tab:hover:not([data-pkc-active="true"]) {
   background: var(--c-hover);
+}
+
+/* pgc-141 wave-δ #15:slim sticky header(user bug report 2026-05-24)。
+   body[data-pkc-chrome="true"] 内に sticky で居座る、scroll で隠れない。
+   archetype icon + title + container lid を 1 行で表示、視覚ノイズ抑制。
+   z-index で conflict-banner / pending-notice より上に。 */
+body[data-pkc-chrome="true"] .pkc-window-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--c-accent-dim);
+  background: var(--c-surface);
+  font-size: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  flex-shrink: 0;
+  user-select: none;
+}
+body[data-pkc-chrome="true"] .pkc-window-header-archetype {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+body[data-pkc-chrome="true"] .pkc-window-header-title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--c-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body[data-pkc-chrome="true"] .pkc-window-header-container {
+  font-size: 0.7rem;
+  color: var(--c-fg-dim, #888);
+  font-family: var(--font-mono);
+  opacity: 0.7;
+  flex-shrink: 0;
 }
 
 /* ── Action bar (mirrors center pane) ── */
@@ -2745,7 +2797,15 @@ html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
 .pkc-form-check-label { font-size: 0.85rem; cursor: pointer; }
 </style>
 </head>
-<body>
+<body${shellEntryWindowChromeEnabled() ? ' data-pkc-chrome="true"' : ''}>
+  ${shellEntryWindowChromeEnabled() ? `<!-- pgc-141 wave-δ #15:slim sticky header(scroll で隠れない)。
+       archetype icon + entry title + container 由来を常駐表示、user の
+       場所感を保つ。 -->
+  <header class="pkc-window-header" data-pkc-region="window-header">
+    <span class="pkc-window-header-archetype">${entryArchetypeIcon(entry.archetype)}</span>
+    <span class="pkc-window-header-title" id="window-header-title">${escapedTitle}</span>
+    <span class="pkc-window-header-container" title="Container">${escapeForHtml(entry.lid)}</span>
+  </header>` : ''}
   <!-- Conflict banner (hidden by default) -->
   <div class="pkc-conflict-banner" id="conflict-banner"></div>
   <div class="pkc-conflict-diff" id="conflict-diff"></div>
