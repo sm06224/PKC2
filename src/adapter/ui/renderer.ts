@@ -1094,22 +1094,27 @@ function renderHeader(state: AppState): HTMLElement {
   // group を skip し、breadcrumb 内 `⇐` `⇒` icon に集約(`renderHeader-
   // PathTrail` 側で実装)。OFF で従来挙動を完全維持。
   if (!shellBackForwardInBreadcrumbEnabled()) {
+    // pgc-160 user bug fix:標準 header nav も disabled 時 tooltip 改善。
     const navGroup = createElement('div', 'pkc-header-nav');
     const histBackBtn = createElement('button', 'pkc-header-nav-btn');
     histBackBtn.setAttribute('data-pkc-action', 'go-back');
-    histBackBtn.setAttribute('title', '前のエントリへ戻る (Alt+←)');
-    histBackBtn.setAttribute('aria-label', '戻る');
+    const stdBackDisabled = state.navIndex <= 0;
+    histBackBtn.setAttribute('title', stdBackDisabled
+      ? '戻る履歴がありません(エントリを移動すると履歴が記録されます)'
+      : '前のエントリへ戻る (Alt+←)');
+    histBackBtn.setAttribute('aria-label', stdBackDisabled ? '戻る(履歴なし)' : '戻る');
     histBackBtn.textContent = '◀';
-    if (state.navIndex <= 0) histBackBtn.setAttribute('disabled', '');
+    if (stdBackDisabled) histBackBtn.setAttribute('disabled', '');
     navGroup.appendChild(histBackBtn);
     const histFwdBtn = createElement('button', 'pkc-header-nav-btn');
     histFwdBtn.setAttribute('data-pkc-action', 'go-forward');
-    histFwdBtn.setAttribute('title', '次のエントリへ進む (Alt+→)');
-    histFwdBtn.setAttribute('aria-label', '進む');
+    const stdFwdDisabled = state.navIndex >= state.navHistory.length - 1;
+    histFwdBtn.setAttribute('title', stdFwdDisabled
+      ? '進む履歴がありません(一度戻ると進む先が生まれます)'
+      : '次のエントリへ進む (Alt+→)');
+    histFwdBtn.setAttribute('aria-label', stdFwdDisabled ? '進む(履歴なし)' : '進む');
     histFwdBtn.textContent = '▶';
-    if (state.navIndex >= state.navHistory.length - 1) {
-      histFwdBtn.setAttribute('disabled', '');
-    }
+    if (stdFwdDisabled) histFwdBtn.setAttribute('disabled', '');
     navGroup.appendChild(histFwdBtn);
     header.appendChild(navGroup);
   }
@@ -1363,21 +1368,28 @@ function renderHeader(state: AppState): HTMLElement {
 // navIndex / navHistory.length で各 button の disabled 状態を決める
 // (標準 nav group と同条件、`go-back` / `go-forward` action を dispatch)。
 function appendBackForwardIcons(nav: HTMLElement, state: AppState): void {
+  // pgc-160 user bug fix(2026-05-24):disabled 時の tooltip で「履歴
+  // なし」 を明示 ── user 体感「押せない」 を「履歴が無いから押せない」
+  // に翻訳。aria-label も更新で screen reader にも伝わる。
   const back = createElement('button', 'pkc-header-path-nav-btn pkc-header-path-nav-back');
   back.setAttribute('data-pkc-action', 'go-back');
-  back.setAttribute('title', '前のエントリへ戻る (Alt+←)');
-  back.setAttribute('aria-label', '戻る');
+  const backDisabled = state.navIndex <= 0;
+  back.setAttribute('title', backDisabled
+    ? '戻る履歴がありません(エントリを移動すると履歴が記録されます)'
+    : '前のエントリへ戻る (Alt+←)');
+  back.setAttribute('aria-label', backDisabled ? '戻る(履歴なし)' : '戻る');
   back.textContent = '⇐';
-  if (state.navIndex <= 0) back.setAttribute('disabled', '');
+  if (backDisabled) back.setAttribute('disabled', '');
   nav.appendChild(back);
   const fwd = createElement('button', 'pkc-header-path-nav-btn pkc-header-path-nav-fwd');
   fwd.setAttribute('data-pkc-action', 'go-forward');
-  fwd.setAttribute('title', '次のエントリへ進む (Alt+→)');
-  fwd.setAttribute('aria-label', '進む');
+  const fwdDisabled = state.navIndex >= state.navHistory.length - 1;
+  fwd.setAttribute('title', fwdDisabled
+    ? '進む履歴がありません(一度戻ると進む先が生まれます)'
+    : '次のエントリへ進む (Alt+→)');
+  fwd.setAttribute('aria-label', fwdDisabled ? '進む(履歴なし)' : '進む');
   fwd.textContent = '⇒';
-  if (state.navIndex >= state.navHistory.length - 1) {
-    fwd.setAttribute('disabled', '');
-  }
+  if (fwdDisabled) fwd.setAttribute('disabled', '');
   nav.appendChild(fwd);
 }
 

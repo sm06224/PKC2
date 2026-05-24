@@ -555,23 +555,42 @@
    nav 先頭に prepend する。標準 nav-btn より少し抑え目(breadcrumb の
    text と並ぶため)、disabled も標準と同じ opacity 0.3。 */
 .pkc-header-path-nav-btn {
-  font-size: var(--fs-sm);
+  /* pgc-160 user bug fix(2026-05-24):「左上のパンクズ進むボタンが
+     押せない」 ── 実態は click target が文字幅程度しかなく(font-size
+     sm + padding small)、border transparent で button 認識自体困難。
+     min-width / min-height で **touch target を 24px 以上** に拡大、
+     default border を subtle visual に変更して button と認識可能化。
+     disabled 時は opacity を 0.3 → 0.45 に上げ + tooltip で「履歴
+     なし」 が伝わる。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-base);
   line-height: 1;
-  padding: 0 var(--space-1-5);
+  padding: var(--space-0-5) var(--space-1-5);
   margin: 0 var(--space-0-5);
-  border: 1px solid transparent;
+  min-width: 28px;
+  min-height: 24px;
+  border: 1px solid var(--c-border, rgba(127, 127, 127, 0.25));
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--c-fg-dim);
   cursor: pointer;
+  transition: background 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
 }
 .pkc-header-path-nav-btn:hover:not(:disabled) {
-  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  background: var(--c-hover, rgba(127, 127, 127, 0.12));
   color: var(--c-fg);
+  border-color: var(--c-fg-dim);
+}
+.pkc-header-path-nav-btn:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
 }
 .pkc-header-path-nav-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-style: dashed;
 }
 .pkc-header-path-nav-back { margin-right: var(--space-0-5); }
 .pkc-header-path-nav-fwd { margin-right: var(--space-2); }
