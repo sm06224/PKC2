@@ -238,6 +238,23 @@ export const shellEditorFooterWordcountEnabled = defineFlag<boolean>(
   },
 );
 
+// entry-window(マルチウィンドウ)で text archetype の Split editor を
+// **default OFF** にする(user bug report 2026-05-24「マルチウィンドウ時の
+// Split View は不要とは言えないがデフォではない」、pgc-140 wave-δ #14)。
+// ON で entry-window が text entry を開いた時、source / preview の
+// **Split 表示ではなく従来 Source / Preview tab bar 切替** で起動。
+// Split を見たい時は tab bar が出ているので user 側で操作可能。
+// OFF で従来の split editor default(text archetype は常に split)。
+export const shellEntryWindowSplitDefaultOffEnabled = defineFlag<boolean>(
+  'shell.entry_window_split_default_off_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'entry-window(マルチウィンドウ)で text の Split editor を default OFF に(tab bar で source/preview 切替)',
+  },
+);
+
 // header / view-mode bar / tab strip / breadcrumb の上部 4 段を compact 化
 // (user bug report 2026-05-24「上部メニューや操作系が実質 4 段程度
 // 占有しているのも少し重い」、pgc-139 wave-δ #13)。ON で:

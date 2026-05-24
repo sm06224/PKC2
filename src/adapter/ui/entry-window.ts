@@ -56,7 +56,7 @@ import {
 import { parseFormBody, formPresenter } from './form-presenter';
 import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
-import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled } from './shell-flags';
+import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled, shellEntryWindowSplitDefaultOffEnabled } from './shell-flags';
 import type { DiffRow } from '../../features/diff/line-diff';
 import {
   readWindowLayout,
@@ -1610,7 +1610,13 @@ function buildWindowHtml(
   // A-2 (USER_REQUEST_LEDGER S-13): live split editor for TEXT only.
   // Reuses the center pane `.pkc-text-split-editor` grid. tab bar is
   // hidden when this is on; preview updates as the user types.
-  const useSplitEditor = entry.archetype === 'text';
+  //
+  // pgc-140 wave-δ #14(user bug report 2026-05-24「マルチウィンドウ時の
+  // Split View は不要とは言えないがデフォではない」):flag ON 時は text
+  // でも split を default OFF にし、従来 Source / Preview tab bar を出す
+  // (user 側で split したい場合は別途 toggle で復活、本 PR は default
+  // 切替のみ実装)。
+  const useSplitEditor = entry.archetype === 'text' && !shellEntryWindowSplitDefaultOffEnabled();
   let editorBodyHtml = '';
   if (useStructuredEditor) {
     const presenterMap: Record<string, { renderEditorBody: (e: Entry) => HTMLElement }> = {
