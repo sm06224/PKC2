@@ -144,10 +144,13 @@ export function recordTabOpen(lid: string, container: Container | null): void {
   if (isViewTabLid(lid)) return;
   const entry = container.entries.find((e) => e.lid === lid);
   if (!entry) return;
-  // 既存なら active 更新だけ
+  // 既存なら active 更新だけ ── pgc-137 wave-δ #11:重複 Open 意識づけ。
+  // 既存 tab の re-focus は `justFocusedLid` を立て、buildTabStripElement
+  // が `data-pkc-just-focused="true"` を付けて CSS で短い「pulse」flash。
   const found = openTabs.find((t) => t.lid === lid);
   if (found) {
     activeLid = lid;
+    markJustFocused(lid);
     return;
   }
   // 新規 ── 上限 reached なら最も古い non-active を削る
@@ -161,7 +164,46 @@ export function recordTabOpen(lid: string, container: Container | null): void {
     title: entry.title || '(untitled)',
   });
   activeLid = lid;
+  // pgc-137 wave-δ #11:新規 tab open ── `data-pkc-just-opened="true"`
+  // を付けて CSS で別の(やや長い)slide-in animation を再生、user に
+  // 「新 tab が増えた」と「既存 tab に re-focus した」の違いを視覚提示。
+  markJustOpened(lid);
 }
+
+// pgc-137 wave-δ #11:tab open / focus 視覚 feedback の module-local state。
+let justOpenedLid: string | null = null;
+let justFocusedLid: string | null = null;
+let openedClearTimer: number | null = null;
+let focusedClearTimer: number | null = null;
+
+function markJustOpened(lid: string): void {
+  justOpenedLid = lid;
+  if (openedClearTimer != null) clearTimeout(openedClearTimer);
+  openedClearTimer = window.setTimeout(() => {
+    justOpenedLid = null;
+    openedClearTimer = null;
+  }, 400);
+}
+
+function markJustFocused(lid: string): void {
+  justFocusedLid = lid;
+  if (focusedClearTimer != null) clearTimeout(focusedClearTimer);
+  focusedClearTimer = window.setTimeout(() => {
+    justFocusedLid = null;
+    focusedClearTimer = null;
+  }, 250);
+}
+
+/** pgc-137 wave-δ #11 test helper:強制リセット。 */
+export function resetTabOpenFeedback(): void {
+  justOpenedLid = null;
+  justFocusedLid = null;
+  if (openedClearTimer != null) { clearTimeout(openedClearTimer); openedClearTimer = null; }
+  if (focusedClearTimer != null) { clearTimeout(focusedClearTimer); focusedClearTimer = null; }
+}
+
+export function getJustOpenedLid(): string | null { return justOpenedLid; }
+export function getJustFocusedLid(): string | null { return justFocusedLid; }
 
 /**
  * tab を close する。close 対象が active なら、隣接 tab に active を移す
@@ -440,6 +482,12 @@ export function buildTabStripElement(state: AppState): HTMLElement {
         tab.classList.add('pkc-tab-dirty');
       }
     }
+    // pgc-137 wave-δ #11:重複 Open 意識づけ / 新規 open feedback。
+    // recordTabOpen が module-local の just-* lid を立てた直後の render で
+    // 該当 tab に attr が乗り、CSS animation が再生される。timer が clear
+    // する前に再び recordTabOpen されると attr が継続(連打にも追従)。
+    if (t.lid === justOpenedLid) tab.setAttribute('data-pkc-just-opened', 'true');
+    if (t.lid === justFocusedLid) tab.setAttribute('data-pkc-just-focused', 'true');
     const icon = document.createElement('span');
     icon.className = 'pkc-tab-icon';
     if (isView && t.mode) {

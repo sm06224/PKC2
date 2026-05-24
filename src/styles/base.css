@@ -11280,6 +11280,33 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   content: '';
 }
 
+/* pgc-137 wave-δ #11(user bug report 2026-05-24「センターペインでタブが
+   開く時と開かない時の視覚効果が無いように感じる、重複Openを意識づけ
+   したい」):
+   - `data-pkc-just-opened`:新規 tab が tab strip に追加された時 ──
+     400ms の slide-in animation(width 0 → full)+ accent border flash。
+     user に「新しい tab が増えた」と認識させる。
+   - `data-pkc-just-focused`:既存 tab に re-focus された時 ── 250ms の
+     subtle pulse animation(scale 1.05 一瞬 → 1.0)+ background flash。
+     user に「同じ tab が活性化された(新規ではない)」と認識させる。
+   2 つの animation が異なるため、重複 Open を視覚で意識できる。 */
+@keyframes pkc-tab-just-opened {
+  0%   { max-width: 0; opacity: 0; background: var(--c-accent-dim, rgba(51, 255, 102, 0.18)); }
+  60%  { max-width: 16rem; opacity: 1; }
+  100% { background: transparent; }
+}
+@keyframes pkc-tab-just-focused {
+  0%   { transform: scale(1); background: transparent; }
+  40%  { transform: scale(1.05); background: var(--c-accent-dim, rgba(51, 255, 102, 0.22)); }
+  100% { transform: scale(1); background: transparent; }
+}
+.pkc-tab[data-pkc-just-opened="true"] {
+  animation: pkc-tab-just-opened 0.4s ease-out;
+}
+.pkc-tab[data-pkc-just-focused="true"] {
+  animation: pkc-tab-just-focused 0.25s ease-in-out;
+}
+
 /* ─── Tab pin (pgc-88、MASTER.md §4.3)──────────────────────
  * pinned tab は close ボタンの代わりに 🔒 を表示、click で unpin。
  * 視覚的に pinned tab は accent border-left を持つ(右に並んだ entry tab
