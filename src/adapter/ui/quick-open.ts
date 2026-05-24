@@ -609,7 +609,9 @@ export function openQuickOpen(
         li.appendChild(title);
         const cat = document.createElement('span');
         cat.className = 'pkc-quick-open-item-meta';
-        cat.textContent = r.meta.category;
+        // pgc-195 wave-α' #18:keybind があれば category の代わりに表示
+        // (実行 keybind を最優先で見せる、command palette と同方針)。
+        cat.textContent = r.meta.keybind ?? r.meta.category;
         li.appendChild(cat);
         list.appendChild(li);
       }
