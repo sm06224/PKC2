@@ -461,4 +461,68 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       dispatcher.dispatch({ type: 'SET_THEME_MODE', mode: t.mode });
     });
   }
+
+  // pgc-188 wave-α' #11(v3 統合 master G8 visual layer / theme):theme
+  // cycle command。`theme.light` / `theme.dark` / `theme.system` に加え、
+  // 1 command で 3 値を rotate(light → dark → auto → light)。Notion 流の
+  // 「Toggle theme」 動線、shortcut として keybind 可能。
+  registerCommand(
+    {
+      id: 'theme.cycle',
+      titleJa: 'テーマを順に切替(light → dark → system)',
+      titleEn: 'Theme: Cycle(light → dark → system)',
+      category: 'Theme',
+    },
+    () => {
+      const st = dispatcher.getState();
+      const cur = st.settings?.theme?.mode ?? 'auto';
+      // rotate light → dark → auto → light
+      const next: 'light' | 'dark' | 'auto' =
+        cur === 'light' ? 'dark' : cur === 'dark' ? 'auto' : 'light';
+      dispatcher.dispatch({ type: 'SET_THEME_MODE', mode: next });
+    },
+  );
+
+  // ─── Filter ──────────────────────────────────
+  // pgc-188 wave-α' #11:Clear all filters。tag / archetype / search /
+  // color tag 等の active filter を一括 reset(CLEAR_FILTERS action 経路)。
+  registerCommand(
+    {
+      id: 'view.clear-filters',
+      titleJa: 'すべてのフィルタを解除',
+      titleEn: 'View: Clear all filters',
+      category: 'View',
+    },
+    () => {
+      dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
+    },
+  );
+
+  // ─── Entry duplicate ─────────────────────────
+  // pgc-188 wave-α' #11(handoff §3.4 wave-δ phase 2 entry UX):選択中
+  // entry を複製。CREATE_ENTRY action に archetype + title + body を
+  // 渡す経路を再利用 ── 新 entry が自動的に select される(reducer 経路)。
+  // title は「Copy of <orig>」 ── orig 空なら「Copy of (untitled)」。
+  registerCommand(
+    {
+      id: 'entry.duplicate',
+      titleJa: '選択中のエントリを複製',
+      titleEn: 'Entry: Duplicate selected',
+      category: 'Entry',
+    },
+    () => {
+      const st = dispatcher.getState();
+      const lid = st.selectedLid;
+      if (!lid) return;
+      const entry = st.container?.entries.find((e) => e.lid === lid);
+      if (!entry) return;
+      const origTitle = entry.title?.trim() || '(untitled)';
+      dispatcher.dispatch({
+        type: 'CREATE_ENTRY',
+        archetype: entry.archetype,
+        title: `Copy of ${origTitle}`,
+        body: entry.body ?? '',
+      });
+    },
+  );
 }
