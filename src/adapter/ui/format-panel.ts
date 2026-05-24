@@ -489,12 +489,17 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
     id: 'font',
     label: 'Font',
     ops: [
-      { label: 'B', title: '太字(strong)— **text**', apply: (s) => wrapInline(s, '**') },
-      { label: 'I', title: '斜体(emphasis)— *text*', apply: (s) => wrapInline(s, '*') },
-      { label: 'S', title: '打ち消し(strike)— ~~text~~', apply: (s) => wrapInline(s, '~~') },
+      // pgc-191 wave-α' #14:tooltip 末尾に `(Ctrl+B)` 等の keybind hint
+      // を追加 ── pgc-186/187 で着地した `editor.format_shortcuts_enabled`
+      // ON 時に有効。OFF 時は browser 既定挙動だが、見つけてもらうための
+      // 情報的 hint(format-panel ribbon を見た user がショートカット存在に
+      // 気付く動線)。
+      { label: 'B', title: '太字(strong)— **text**(Ctrl+B)', apply: (s) => wrapInline(s, '**') },
+      { label: 'I', title: '斜体(emphasis)— *text*(Ctrl+I)', apply: (s) => wrapInline(s, '*') },
+      { label: 'S', title: '打ち消し(strike)— ~~text~~(Ctrl+Shift+S)', apply: (s) => wrapInline(s, '~~') },
       // 下線は PKC MD に専用 marker が無く simple-inline `:text:underline:` で表現
       // する(renderer L-6、markdown-render.ts の attr `underline`)。
-      { label: 'U', title: '下線(underline)— :text:underline:', apply: (s) => applySimpleInlineAttr(s, 'underline') },
+      { label: 'U', title: '下線(underline)— :text:underline:(Ctrl+U)', apply: (s) => applySimpleInlineAttr(s, 'underline') },
       { label: '`', title: 'inline code — `text`', apply: (s) => wrapInline(s, '`') },
       { label: '==', title: 'マーカー(mark)— ==text==', apply: (s) => wrapInline(s, '==') },
       // 強調点(圏点)の canonical delimiter は `^^`(renderer L-2 pkc_em_dot_caret)。
