@@ -5130,7 +5130,7 @@ function renderViewModeToggle(
     }
     prevScope = scope;
 
-    const btn = createElement('button', 'pkc-view-mode-btn');
+    const btn = createElement('button', 'pkc-button-base pkc-button-size-tab pkc-view-mode-btn');
     btn.setAttribute('data-pkc-action', 'set-view-mode');
     btn.setAttribute('data-pkc-view-mode', key);
     btn.textContent = label;

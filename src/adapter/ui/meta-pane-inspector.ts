@@ -126,7 +126,7 @@ export function buildMetaPaneInspectorTabStrip(): HTMLElement {
   strip.setAttribute('aria-label', 'Inspector tabs');
   for (const t of META_PANE_INSPECTOR_TABS) {
     const btn = document.createElement('button');
-    btn.className = 'pkc-meta-inspector-tab';
+    btn.className = 'pkc-button-base pkc-button-size-tab pkc-meta-inspector-tab';
     btn.setAttribute('data-pkc-action', 'select-meta-pane-tab');
     btn.setAttribute('data-pkc-meta-pane-tab', t.id);
     // pgc-124 wave-γ #23:tooltip に keybind を併記(VSCode 流)。
