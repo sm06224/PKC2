@@ -571,6 +571,13 @@
    emoji glyph 表示で text tab とは別 sizing 必要(text tab は min-width
    4rem で horizontal、本 category は width=height で square)。 */
 .pkc-button-size-square-tab { min-width: 40px; min-height: 40px; width: 40px; height: 40px; font-size: 1.2rem; padding: 0; }
+/* pgc-178 wave-α' G8(audit step 4):format toolbar(~40 button)用 7th
+   category。format-panel-btn は font-weight 600 + fs-sm + compact padding
+   が他 5 category と整合せず、専用 size を確保。既存 .pkc-format-panel-btn
+   rule(visual override = background / color / border / font-weight)は
+   後方互換のため保持、本 category は size 基準値の documentation +
+   fallback として機能。 */
+.pkc-button-size-toolbar { min-height: 26px; font-size: var(--fs-sm); padding: var(--space-1) var(--space-1-5); min-width: 2rem; }
 
 .pkc-header-nav-btn {
   font-size: var(--fs-sm);

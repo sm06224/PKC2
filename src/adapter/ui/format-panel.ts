@@ -603,7 +603,9 @@ function applySelectionTransform(
 function renderOpButton(panel: HTMLElement, op: FormatOp): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'pkc-format-panel-btn';
+  // pgc-178 wave-α' G8(audit step 4):button base helper + size-toolbar
+  // category 採用。既存 .pkc-format-panel-btn を共存(visual override)。
+  btn.className = 'pkc-button-base pkc-button-size-toolbar pkc-format-panel-btn';
   btn.setAttribute('data-pkc-format-label', op.label);
   btn.setAttribute('title', op.title);
   btn.setAttribute('aria-label', op.title);
@@ -625,7 +627,9 @@ function renderPicker(panel: HTMLElement, picker: FormatPicker): HTMLElement {
   det.setAttribute('data-pkc-picker', picker.id);
 
   const summary = document.createElement('summary');
-  summary.className = 'pkc-format-panel-btn pkc-format-panel-picker-trigger';
+  // pgc-178 wave-α' G8(audit step 4):picker trigger は <summary> だが
+  // 視覚的に button、base helper + size-toolbar を継承。
+  summary.className = 'pkc-button-base pkc-button-size-toolbar pkc-format-panel-btn pkc-format-panel-picker-trigger';
   summary.textContent = picker.triggerLabel;
   summary.setAttribute('title', picker.triggerTitle);
   summary.setAttribute('aria-label', picker.triggerTitle);
@@ -638,7 +642,8 @@ function renderPicker(panel: HTMLElement, picker: FormatPicker): HTMLElement {
   for (const opt of picker.options) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'pkc-format-panel-btn';
+    // pgc-178 wave-α' G8(audit step 4):picker option button にも適用。
+    btn.className = 'pkc-button-base pkc-button-size-toolbar pkc-format-panel-btn';
     btn.setAttribute('data-pkc-picker-value', opt.value);
     btn.setAttribute('title', opt.title);
     btn.setAttribute('aria-label', opt.title);
@@ -676,7 +681,8 @@ function renderPicker(panel: HTMLElement, picker: FormatPicker): HTMLElement {
 function renderLauncher(panel: HTMLElement, launcher: FormatLauncher): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'pkc-format-panel-btn';
+  // pgc-178 wave-α' G8(audit step 4):launcher button にも適用。
+  btn.className = 'pkc-button-base pkc-button-size-toolbar pkc-format-panel-btn';
   btn.setAttribute('data-pkc-launcher', launcher.id);
   btn.setAttribute('title', launcher.title);
   btn.setAttribute('aria-label', launcher.title);

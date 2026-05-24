@@ -54,9 +54,9 @@ base + variant は **大半 OK**。
 
 ---
 
-## §3 統一案:5 size category + base helper
+## §3 統一案:7 size category + base helper
 
-ボタンを **意味別 5 category** に分け、各 category の base CSS で size 統一:
+ボタンを **意味別 7 category** に分け、各 category の base CSS で size 統一(5 から start、pgc-176 で 6th square-tab 追加、pgc-178 で 7th toolbar 追加):
 
 | category | 用途 | 推奨 min-height | font-size | padding | 代表 class |
 |---|---|---|---|---|---|
@@ -65,6 +65,8 @@ base + variant は **大半 OK**。
 | **tab**(tab strip 内 tab)| view-mode / Inspector / Activity tab | 32px | `--fs-base` | `--space-1 --space-2` + min-width | `.pkc-view-mode-btn`(pgc-161)|
 | **toggle**(switch UI)| importance / theme / flag toggle | 24px(label height)| `--fs-xs` | `--space-1 --space-2` + checkbox 14px | `.pkc-textlog-importance-toggle`(pgc-163)|
 | **dismiss**(secondary action)| Inspector dismiss / placeholder hint button | 22px | `--fs-xs` | `--space-0-5 --space-1-5` | `.pkc-inspector-ai-dismiss` |
+| **square-tab**(square icon button)| Activity Bar tab(40×40 emoji icon)| 40px | 1.2rem | 0 + width=height=40px | `.pkc-activity-bar-btn`(pgc-176)|
+| **toolbar**(format ribbon button)| format-panel 内 op / picker / launcher button(~40 件、font-weight 600 inline B/I/U 系)| 26px | `--fs-sm` | `--space-1 --space-1-5` + min-width 2rem | `.pkc-format-panel-btn`(pgc-178)|
 
 ### §3.1 base helper class 導入案
 
@@ -98,6 +100,8 @@ base + variant は **大半 OK**。
 .pkc-button-size-dismiss { min-height: 22px; font-size: var(--fs-xs); padding: var(--space-0-5) var(--space-1-5); }
 /* pgc-176 step 3-bis 追加 */
 .pkc-button-size-square-tab { min-width: 40px; min-height: 40px; width: 40px; height: 40px; font-size: 1.2rem; padding: 0; }
+/* pgc-178 step 4 追加 */
+.pkc-button-size-toolbar { min-height: 26px; font-size: var(--fs-sm); padding: var(--space-1) var(--space-1-5); min-width: 2rem; }
 ```
 
 各 button class は `pkc-button-base pkc-button-size-<category>` を追加して
@@ -112,7 +116,7 @@ size を継承、独自 visual(色 / icon)だけ override する form に整理�
 | 1 | `pkc-button-base` + 5 size category CSS を base.css に追加 | scope 小、既存 CSS 不変 | **pgc-171 着地** ✅ |
 | 2 | header nav(`.pkc-header-nav-btn` / `.pkc-header-path-nav-btn`)を `pkc-button-base pkc-button-size-icon` に migration | scope 小 | **pgc-171 着地**(step 1+2 結合) ✅ |
 | 3 | view-mode / Inspector / Activity tab を `pkc-button-size-tab` に migration | scope 中 | **pgc-172 着地**(view-mode + Inspector のみ。Activity Bar は square icon button で別 category 必要、後続) ✅ partial |
-| 4 | format toolbar 全 button を `pkc-button-size-toggle` or 専用 size に migration | scope 大 | TODO(後続 PR、format toolbar が `pkc-format-toolbar-btn` で ~40 件、変更影響大)|
+| 4 | format toolbar 全 button を `pkc-button-size-toggle` or 専用 size に migration | scope 大 | **pgc-178 着地**(専用 7th category `pkc-button-size-toolbar` 新規追加、format-panel.ts 4 calling site adopt) ✅ |
 | 5 | Inspector dismiss / placeholder hint button を `pkc-button-size-dismiss` に | scope 小 | **pgc-173 着地**(Inspector Hints 8 dismiss button) ✅ |
 | 6 | 既存 `.pkc-btn` 系の inline override を削除、`pkc-button-size-action` 継承に統一 | scope 中 | TODO ── `.pkc-btn` 実 padding は `space-3`(audit `space-2-5` と微妙差)、`.pkc-button-size-action` を `.pkc-btn` 実態に合わせて 修正 → adopt が前提 |
 
@@ -166,3 +170,4 @@ trade-off を user 確認後に決定。本 step 6 は **user 確認待ち**。
 | 2026-05-24 | **step 5 着地**(pgc-173):Inspector Hints 8 dismiss button adopt |
 | 2026-05-24 | 本 doc 4-rounds-1 update(pgc-174):step 1/2/3 partial/5 着地反映 + step 3-bis(square icon)分離 + step 6 user 確認事項(audit vs `.pkc-btn` 実態差)明文化 |
 | 2026-05-24 | **step 3-bis 着地**(pgc-176):`pkc-button-size-square-tab`(40px × 40px、emoji icon 1.2rem)新 category 追加、Activity Bar 6 tab + side-toggle button adopt |
+| 2026-05-24 | **step 4 着地**(pgc-178):`pkc-button-size-toolbar`(min-height 26px、fs-sm、padding `space-1 space-1-5`、min-width 2rem)を 7th category として新規追加。`format-panel.ts` の 4 calling site(op button / picker trigger summary / picker option button / launcher button)を `pkc-button-base pkc-button-size-toolbar pkc-format-panel-btn` に migration。既存 `.pkc-format-panel-btn` rule の visual override(font-weight 600 / background / color / border)は完全保持。残 audit step:step 6(`.pkc-btn` 統一、user 確認待ち) |
