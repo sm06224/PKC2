@@ -423,6 +423,23 @@ export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
   },
 );
 
+// Wordcount footer noise exclusion(wave-δ #20、pgc-151 handoff §3.5)。
+// ON で editor footer wordcount が fenced code block / inline code /
+// image markup / footnote ref / HTML tag を除外して prose のみで
+// char / word / read-time を計算。line count は line 構造を保つため
+// 不変(空行 placeholder 化で line 数同じ)。OFF で従来どおり body
+// 全体カウント(完全後方互換)。
+// URL flag: `?pkc-flag=text.wordcount_exclude_noise_enabled=1`。
+export const textWordcountExcludeNoiseEnabled = defineFlag<boolean>(
+  'text.wordcount_exclude_noise_enabled',
+  false,
+  {
+    category: 'text',
+    description:
+      'editor footer wordcount から code block / inline code / image / footnote / HTML を除外して prose のみ計算',
+  },
+);
+
 // Todo subtask inline checkbox(wave-δ #19、pgc-150 handoff §3.3)。
 // ON で todo description 内の `- [ ]` / `- [x]` markdown task literal を
 // **click 可能な inline checkbox** として render(markdown-it task-list

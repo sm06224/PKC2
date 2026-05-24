@@ -13,6 +13,8 @@
 // は後続 PR で textarea input event を hook して実装。
 
 import type { Entry } from '../../core/model/record';
+import { stripNoiseForWordcount } from '../../features/wordcount/wordcount-strip';
+import { textWordcountExcludeNoiseEnabled } from './shell-flags';
 
 /**
  * 標準的な読書速度(英語 ~200 wpm、日本語 ~600 char/min)。pgc-127 wave-δ
@@ -52,11 +54,17 @@ export function buildEditorFooterWordcount(entry: Entry): HTMLElement {
   icon.textContent = '📊';
   footer.appendChild(icon);
 
-  const body = entry.body ?? '';
-  const charCount = body.length;
-  const lineCount = body === '' ? 0 : body.split('\n').length;
-  const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length;
-  const readMinutes = estimateReadTimeMinutes(body);
+  const rawBody = entry.body ?? '';
+  // pgc-151 wave-δ #20:flag ON で fenced code / inline code / image /
+  // footnote / HTML を strip した prose のみを count 対象に。line count
+  // は stripNoiseForWordcount が空行 placeholder を残すので body 分割
+  // 数は不変、char / word / read-time だけ prose 純度に振れる。
+  const excludeNoise = textWordcountExcludeNoiseEnabled();
+  const proseBody = excludeNoise ? stripNoiseForWordcount(rawBody) : rawBody;
+  const charCount = proseBody.length;
+  const lineCount = rawBody === '' ? 0 : rawBody.split('\n').length;
+  const wordCount = proseBody.trim() === '' ? 0 : proseBody.trim().split(/\s+/).length;
+  const readMinutes = estimateReadTimeMinutes(proseBody);
 
   const metrics = document.createElement('span');
   metrics.className = 'pkc-editor-footer-metrics';
@@ -64,7 +72,9 @@ export function buildEditorFooterWordcount(entry: Entry): HTMLElement {
   metrics.setAttribute('data-pkc-word-count', String(wordCount));
   metrics.setAttribute('data-pkc-line-count', String(lineCount));
   metrics.setAttribute('data-pkc-read-minutes', readMinutes.toFixed(2));
-  metrics.textContent = `${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
+  if (excludeNoise) metrics.setAttribute('data-pkc-noise-excluded', 'true');
+  const noiseMark = excludeNoise ? '✂ prose only · ' : '';
+  metrics.textContent = `${noiseMark}${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
   footer.appendChild(metrics);
 
   return footer;
