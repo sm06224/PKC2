@@ -713,7 +713,11 @@ pgc-90 で S2(`rendered-viewer.ts:1081`)/ S3 live(`action-binder.ts:8184-8193`)/
 - **size**:小(数行 mirror)。
 - **priority**:🟢 Low(chrome のみ)。
 
-### Gap-13 S4 inline CSS の 53 件 mirror 不足(critical PKC dialect)
+### Gap-13 S4 inline CSS の 53 件 mirror 不足(critical PKC dialect)── ✅ **RESOLVED**(pgc-204、audit 数値再評価:実態 ~10 件)
+
+pgc-203 audit reconcile + pgc-204 で closure。audit 当時「53 件」 と推定したが、その後 PR-2L / PR-2K / PR-2N で大半が既に mirror 済(pgc-203 grep で base.css 50 unique critical selector vs entry-window 44 → 差分 6 件のみ + pgc-203 で追加した新 mermaid 4 rule = 計 10 件)。**pgc-204 で全 10 件 mirror**:`.pkc-blank-line[data-pkc-blank-count="26|27|28|29|35|45"]` 6 variant + `.pkc-mermaid-{placeholder,source,rendered,error}` 4 rule + `.pkc-mermaid-rendered svg` child selector。base.css と entry-window inline style の grep diff parity test(`tests/adapter/entry-window-css-parity-gap13.test.ts` 6 件)で contract 固定。今後の新 PKC dialect 追加時は **base.css + entry-window 両方** に CSS を追加する規約を tests で enforce。
+
+
 
 - **発生**:§3.3 の S4 不足 53 件のうち、**:::section / :::details /
   :::figure / :::quote / blank-line marker / tolerant alias / em-dot /

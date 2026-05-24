@@ -1893,6 +1893,49 @@ body {
   font-weight: 600;
 }
 
+/* ── Built-in mermaid placeholder + rendered + error(pgc-203 wave-α'
+   polish #24、S4 mirror in pgc-204 wave-α' polish #25 Gap-13 closure):
+   base.css の .pkc-mermaid-* 4 rule を S4 inline style にも mirror、
+   3 surface(S1 / S2 / S4)CSS parity 完備。editor.mermaid_render_enabled
+   ON 時、entry-window で開いた entry にも mermaid fence の SVG render が
+   styled で表示される。 */
+.pkc-mermaid-placeholder {
+  display: block;
+  margin: var(--space-3) 0;
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+  background: var(--c-bg);
+}
+.pkc-mermaid-source {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--c-surface);
+  color: var(--c-fg-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-x: auto;
+}
+.pkc-mermaid-rendered {
+  display: block;
+  margin: var(--space-3) 0;
+  padding: var(--space-2);
+  text-align: center;
+  background: var(--c-bg);
+}
+.pkc-mermaid-rendered svg {
+  max-width: 100%;
+  height: auto;
+}
+.pkc-mermaid-error {
+  margin: 0 0 var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(229, 62, 62, 0.12);
+  color: var(--c-fg);
+  border-left: 3px solid #e53e3e;
+  font-size: var(--fs-sm);
+}
+
 /* ── Task list polish: hanging indent + completed styling.
    Mirrors base.css .pkc-md-rendered task rules so the popped entry
    window renders task lists identically to the main pane. */
@@ -2300,8 +2343,16 @@ body[data-pkc-chrome="true"] .pkc-window-header-container {
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="23"] { height: calc(var(--pkc-blank-line-h) * 23); }
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="24"] { height: calc(var(--pkc-blank-line-h) * 24); }
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="25"] { height: calc(var(--pkc-blank-line-h) * 25); }
+/* pgc-204 wave-α' polish #25(Gap-13 closure):base.css に存在する 26-29 /
+   35 / 45 を S4 inline mirror。base.css と完全 parity に。 */
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="26"] { height: calc(var(--pkc-blank-line-h) * 26); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="27"] { height: calc(var(--pkc-blank-line-h) * 27); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="28"] { height: calc(var(--pkc-blank-line-h) * 28); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="29"] { height: calc(var(--pkc-blank-line-h) * 29); }
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="30"] { height: calc(var(--pkc-blank-line-h) * 30); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="35"] { height: calc(var(--pkc-blank-line-h) * 35); }
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="40"] { height: calc(var(--pkc-blank-line-h) * 40); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="45"] { height: calc(var(--pkc-blank-line-h) * 45); }
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="50"] { height: calc(var(--pkc-blank-line-h) * 50); }
 .pkc-md-rendered .pkc-blank-line[data-pkc-blank-capped]::before {
   content: '⚠ _' attr(data-pkc-blank-capped) ' (上限 cap)';
