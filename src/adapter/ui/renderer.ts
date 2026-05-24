@@ -8992,7 +8992,7 @@ function renderMetaPaneImpl(
       // (frontmatter suggestion + abandoned 警告の両 inspector が同 panel に出る)。
       meta.appendChild(buildInspectorAiSection(entry, container));
     }
-    const strip = buildMetaPaneInspectorTabStrip();
+    const strip = buildMetaPaneInspectorTabStrip(entry, container);
     // tab strip は header / timestamps の直前(meta pane の最上段)に挿入
     meta.insertBefore(strip, meta.firstChild);
     applyInspectorTabFilter(meta);

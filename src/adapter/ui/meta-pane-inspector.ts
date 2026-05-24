@@ -12,6 +12,8 @@
 //
 // renderer.ts の `renderMetaPaneImpl` から flag ON 時のみ call される。
 
+import { shellInspectorTabBadgesEnabled } from './shell-flags';
+
 export type InspectorTab = 'properties' | 'references' | 'history' | 'style' | 'ai';
 
 interface InspectorTabMeta {
@@ -118,12 +120,59 @@ export function resetMetaPaneInspectorState(): void {
   activeInspectorTab = 'properties';
 }
 
-export function buildMetaPaneInspectorTabStrip(): HTMLElement {
+// pgc-201 wave-α' polish #23(v3 統合 master G6 Inspector + G8 visual):
+// Inspector tab strip(Properties / References / History / Style / Hints)
+// の References / History tab に count badge を重ねる。pgc-180 / 199 / 200
+// の Activity Bar badge 流儀を Inspector 側にも展開、user が「この entry に
+// relation N 件 / revision N 件ある」 を 1 目で把握できる。
+//
+// `shell.inspector_tab_badges_enabled` Tier 0 flag(default OFF)で gate。
+// Properties / Style / Hints は count badge を出さない(Properties は
+// frontmatter の有無で意味希薄、Style は metric 集合、Hints は detector の
+// 集約結果が動的で count 算出が大規模)。
+export interface InspectorTabBadges {
+  readonly properties: number;
+  readonly references: number;
+  readonly history: number;
+  readonly style: number;
+  readonly ai: number;
+}
+
+export function computeInspectorTabBadges(
+  entry?: import('../../core/model/record').Entry | null,
+  container?: import('../../core/model/container').Container | null,
+): InspectorTabBadges {
+  const empty: InspectorTabBadges = {
+    properties: 0, references: 0, history: 0, style: 0, ai: 0,
+  };
+  if (!entry || !container) return empty;
+  // References:選択 entry の outbound + inbound relation 数(Activity Bar
+  // と同 helper を使うが import cycle 回避のため inline 計算)。
+  let relations = 0;
+  for (const r of container.relations) {
+    if (r.from === entry.lid || r.to === entry.lid) relations++;
+  }
+  // History:選択 entry の revision 数(getEntryRevisions と同等)。
+  let history = 0;
+  for (const r of container.revisions) {
+    if (r.entry_lid === entry.lid) history++;
+  }
+  return { ...empty, references: relations, history };
+}
+
+export function buildMetaPaneInspectorTabStrip(
+  entry?: import('../../core/model/record').Entry | null,
+  container?: import('../../core/model/container').Container | null,
+): HTMLElement {
   const strip = document.createElement('div');
   strip.className = 'pkc-meta-inspector-tabs';
   strip.setAttribute('data-pkc-region', 'meta-inspector-tabs');
   strip.setAttribute('role', 'tablist');
   strip.setAttribute('aria-label', 'Inspector tabs');
+  // pgc-201:flag ON + entry/container 指定で badge 計算、それ以外は全 0。
+  const badges = (
+    shellInspectorTabBadgesEnabled() ? computeInspectorTabBadges(entry, container) : { properties: 0, references: 0, history: 0, style: 0, ai: 0 }
+  );
   for (const t of META_PANE_INSPECTOR_TABS) {
     const btn = document.createElement('button');
     btn.className = 'pkc-button-base pkc-button-size-tab pkc-meta-inspector-tab';
@@ -140,6 +189,19 @@ export function buildMetaPaneInspectorTabStrip(): HTMLElement {
       btn.setAttribute('aria-selected', 'false');
     }
     btn.textContent = t.icon;
+    // pgc-201:References / History の count > 0 で badge を append。
+    // Activity Bar の `.pkc-activity-bar-badge` と別 class(visual 位置が
+    // 異なる tab 形状に合わせるため `.pkc-meta-inspector-tab-badge`)。
+    const count = badges[t.id];
+    if (count > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'pkc-meta-inspector-tab-badge';
+      badge.setAttribute('data-pkc-badge-tab', t.id);
+      badge.setAttribute('aria-hidden', 'true');
+      badge.textContent = count > 99 ? '99+' : String(count);
+      btn.appendChild(badge);
+      btn.setAttribute('data-pkc-badge-count', String(count));
+    }
     strip.appendChild(btn);
   }
   return strip;

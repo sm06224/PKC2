@@ -580,3 +580,19 @@ export const editorFormatShortcutsEnabled = defineFlag<boolean>(
       'editor 中 textarea で `Ctrl+B`(strong)/ `Ctrl+I`(emphasis)keyboard shortcut で format-panel と同じ wrap 変換を発火',
   },
 );
+
+// Inspector tab strip(Properties / References / History / Style / Hints)
+// の References / History tab に count badge(visual indicator、現 entry の
+// relation / revision 数)を表示(v3 統合 master G6 + G8、handoff §3.5
+// 後続候補、pgc-201 wave-α' polish #23)。Activity Bar badges(pgc-180)の
+// Inspector 版。`shell.meta_pane_inspector_enabled` 共依存(Inspector tab
+// strip 自体が無いと badge も描画されない)。
+export const shellInspectorTabBadgesEnabled = defineFlag<boolean>(
+  'shell.inspector_tab_badges_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Inspector tab strip の References / History tab に count badge(relation 数 / revision 数)を表示',
+  },
+);

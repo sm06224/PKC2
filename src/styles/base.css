@@ -6780,6 +6780,31 @@ mark.pkc-search-mark {
   color: var(--c-accent);
   border-bottom-color: var(--c-accent);
 }
+/* pgc-201 wave-α' polish #23:Inspector tab strip badge。Activity Bar
+   badge(pgc-180)と同方針だが tab 形状(横 width 4rem の長方形)に
+   合わせ右下角に小さく配置。`pointer-events: none` で touch target を
+   阻害しない。 */
+.pkc-meta-inspector-tab {
+  position: relative; /* badge を absolute 配置するための基準 */
+}
+.pkc-meta-inspector-tab-badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--c-accent, #3b82f6);
+  color: var(--c-bg, #fff);
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  box-sizing: border-box;
+  pointer-events: none;
+  letter-spacing: -0.02em;
+}
 .pkc-meta-inspector-placeholder,
 .pkc-meta-inspector-empty-hint {
   margin: var(--space-4) auto;
