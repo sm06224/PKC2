@@ -8,7 +8,7 @@
 
 ---
 
-## §1 現状 flag inventory(34 件、shell/text/meta-pane/sidebar/editor/filer + その他)
+## §1 現状 flag inventory(35 件、shell/text/editor + その他)
 
 ### §1.1 shell.* flag(26 件)
 
@@ -53,6 +53,14 @@
 | 30 | `text.todo_subtask_enabled` | pgc-150 | OFF | todo description 内 inline subtask click toggle | 維持(GFM 互換性、user 体感次第)|
 | 31 | `text.wordcount_exclude_noise_enabled` | pgc-151 | OFF | wordcount footer から code / image / footnote / HTML 除外 | 維持(user 好み)|
 | 32 | `text.wordcount_mobile_compact_enabled` | pgc-156 | OFF | wordcount を `1.2k · 250w` compact 表記に | 維持(画面サイズ依存、user 好み)|
+
+### §1.3 editor.* flag(1 件、pgc-196 追加)
+
+| # | flag key | 着地 PR | default | 用途 | 定着判断 |
+|---|---|---|---|---|---|
+| 35 | `editor.format_shortcuts_enabled` | pgc-186/187/193 | OFF | textarea 中の `Ctrl+B` / `Ctrl+I` / `Ctrl+U` / `Ctrl+Shift+S` / `` Ctrl+` ``(B/I/U/S/`code` wrap)| 維持(browser Ctrl+B 上書き、user 同意 opt-in 必須)|
+
+*Note: `editor.format_panel_enabled` は default **ON** で出荷済(pgc-2JJ v2)── format ribbon の主機構そのもの、別 audit category。本表は wave-α' で新規追加した opt-in editor flag のみ。*
 
 ---
 
