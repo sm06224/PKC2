@@ -59,7 +59,11 @@ export function buildInspectorStyleSection(entry: Entry, container?: Container |
     try {
       const form = parseFormBody(entry.body ?? '');
       const filled = [form.name.trim() !== '', form.note.trim() !== '', form.checked].filter(Boolean).length;
-      addRow(dl, 'Form fields', `${filled} / 3 filled`);
+      // pgc-159 wave-δ #25:filled fields 数を todo subtask 同流儀で
+      // progress bar visualize(pgc-152 renderProgressBar 再利用)。form の
+      // 全 fields 3 件のうち何件 filled かが 1 目でわかる、checklist 風 UX。
+      const pct = Math.round((filled / 3) * 100);
+      addRowHtml(dl, 'Form fields', `${filled} / 3 filled(${pct}%)`, renderProgressBar(filled, 3));
       addRow(dl, 'Name', form.name.trim() === '' ? '(empty)' : `${form.name.length} chars`);
       addRow(dl, 'Note', form.note.trim() === '' ? '(empty)' : `${form.note.length} chars`);
       addRow(dl, 'Checked', form.checked ? '✓ true' : '✗ false');
