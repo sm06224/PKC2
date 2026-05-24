@@ -158,6 +158,18 @@ const textPresenter: DetailPresenter = {
     bodyArea.value = entry.body;
     bodyArea.setAttribute('data-pkc-field', 'body');
     bodyArea.className = 'pkc-editor-body';
+    // pgc-142 wave-δ #16(user bug report 2026-05-24「スクショ貼付できる
+    // ようになっているかも気になる」):空 body の text editor に paste 動線
+    // 含む hint を placeholder で表示 ── スクショ貼付は既存 PASTE_ATTACHMENT
+    // 経路で動作するが、user が気づきにくい(無 hint で空 textarea)。
+    // body が空のときだけ placeholder を出して操作性を向上、書き始めると
+    // 自然に消える。entry が non-empty body を持つときは未表示。
+    if (!entry.body) {
+      bodyArea.setAttribute(
+        'placeholder',
+        '# 見出し / 本文を書く  ──  Ctrl+V で image / screenshot 貼付可能(自動で attachment 化)、/ で slash menu',
+      );
+    }
     // Slice C: height follows body line count (min 15, +3 buffer for comfortable editing).
     // See docs/development/ui-readability-and-editor-sizing-hardening.md §3-C.
     const lineCount = entry.body ? entry.body.split('\n').length : 0;
