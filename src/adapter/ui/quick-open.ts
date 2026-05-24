@@ -73,6 +73,48 @@ export function rankHeadings(query: string, headings: readonly TocHeading[]): Ra
   return out;
 }
 
+interface TagCount {
+  readonly tag: string;
+  readonly count: number;
+}
+
+interface RankedTag {
+  readonly tag: string;
+  readonly count: number;
+  readonly score: number;
+}
+
+// pgc-184 wave-α' #7(v3 統合 master G2 nav 統一、Quick Open `#` mode):
+// container 全 entry から tag を集計し、count desc + fuzzy match で並べる。
+// 同じ tag が複数 entry にあれば 1 件にまとめて count を加算。
+export function collectTagCounts(entries: readonly Entry[]): TagCount[] {
+  const counts = new Map<string, number>();
+  for (const e of entries) {
+    for (const t of e.tags ?? []) {
+      if (!t) continue;
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts, ([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+}
+
+export function rankTags(query: string, tagCounts: readonly TagCount[]): RankedTag[] {
+  if (!query) {
+    // empty query は count desc(collectTagCounts の出力をそのまま)
+    return tagCounts.map((tc) => ({ ...tc, score: 1 }));
+  }
+  const out: RankedTag[] = [];
+  for (const tc of tagCounts) {
+    const r = fuzzyMatchSingle(query, tc.tag);
+    if (r.score <= 0) continue;
+    // score + count の log を足す ── 同 fuzzy score なら popular tag 優先
+    out.push({ ...tc, score: r.score + Math.log(tc.count + 1) * 0.1 });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out;
+}
+
 interface RankedEntry {
   readonly entry: Entry;
   readonly score: number;
@@ -218,12 +260,13 @@ export function openQuickOpen(
   mountedRoot = overlay;
 
   let activeIndex = 0;
-  let mode: 'entry' | 'command' | 'heading' = 'entry';
+  let mode: 'entry' | 'command' | 'heading' | 'tag' = 'entry';
   let entryItems: RankedEntry[] = [];
   let commandItems: ReturnType<typeof rankCommands> = [];
   let headingItems: RankedHeading[] = [];
+  let tagItems: RankedTag[] = [];
 
-  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading'; effective: string; hint: string } {
+  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading' | 'tag'; effective: string; hint: string } {
     if (q.startsWith('>')) {
       return { mode: 'command', effective: q.slice(1).trim(), hint: '🛠 Command mode' };
     }
@@ -231,7 +274,7 @@ export function openQuickOpen(
       return { mode: 'heading', effective: q.slice(1).trim(), hint: '📑 Heading mode(現 entry の見出し)' };
     }
     if (q.startsWith('#')) {
-      return { mode: 'entry', effective: q, hint: '🏷 Tag mode は POC 範囲外、entry 検索にフォールバック' };
+      return { mode: 'tag', effective: q.slice(1).trim(), hint: '🏷 Tag mode(container 全 tag を frequency 順)' };
     }
     return { mode: 'entry', effective: q, hint: '' };
   }
@@ -248,6 +291,49 @@ export function openQuickOpen(
     }
     list.textContent = '';
     activeIndex = 0;
+
+    if (m === 'tag') {
+      // pgc-184:container 全 entry から tag を集計し、count desc + fuzzy
+      // で並べる。0 件は empty state。
+      const state = dispatcher.getState();
+      const entries = state.container?.entries ?? [];
+      const tagCounts = collectTagCounts(entries);
+      tagItems = rankTags(effective, tagCounts);
+      if (tagItems.length === 0) {
+        empty.style.display = '';
+        list.style.display = 'none';
+        return;
+      }
+      empty.style.display = 'none';
+      list.style.display = '';
+      const visible = tagItems.slice(0, 50);
+      for (let i = 0; i < visible.length; i++) {
+        const r = visible[i]!;
+        const li = document.createElement('li');
+        li.className = 'pkc-quick-open-item';
+        li.setAttribute('data-pkc-quick-tag', r.tag);
+        li.setAttribute('data-pkc-quick-mode', 'tag');
+        li.setAttribute('role', 'option');
+        if (i === 0) {
+          li.classList.add('pkc-quick-open-item-active');
+          li.setAttribute('aria-selected', 'true');
+        }
+        const icon = document.createElement('span');
+        icon.className = 'pkc-quick-open-item-icon';
+        icon.textContent = '🏷';
+        li.appendChild(icon);
+        const title = document.createElement('span');
+        title.className = 'pkc-quick-open-item-title';
+        title.textContent = r.tag;
+        li.appendChild(title);
+        const meta = document.createElement('span');
+        meta.className = 'pkc-quick-open-item-meta';
+        meta.textContent = `${r.count} entry`;
+        li.appendChild(meta);
+        list.appendChild(li);
+      }
+      return;
+    }
 
     if (m === 'heading') {
       // pgc-183:現 entry の見出しを fuzzy match。selectedLid が無い / text/
@@ -381,6 +467,8 @@ export function openQuickOpen(
       ? Math.min(commandItems.length, 50)
       : mode === 'heading'
       ? Math.min(headingItems.length, 50)
+      : mode === 'tag'
+      ? Math.min(tagItems.length, 50)
       : Math.min(entryItems.length, 50);
     if (len === 0) return;
     activeIndex = (next + len) % len;
@@ -414,6 +502,16 @@ export function openQuickOpen(
       // scroll-to-heading の action handler と同経路 ── center pane の
       // `#<slug>` element へ scrollIntoView。
       scrollToHeadingBySlug(slug);
+      return;
+    }
+    if (mode === 'tag') {
+      const r = tagItems[Math.min(activeIndex, tagItems.length - 1)];
+      if (!r) return;
+      const tag = r.tag;
+      cleanup();
+      // tag filter を toggle で追加 ── sidebar に「この tag のみ」 filter
+      // が掛かる(既存 TOGGLE_TAG_FILTER reducer 経路)。
+      dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag });
       return;
     }
     const r = entryItems[Math.min(activeIndex, entryItems.length - 1)];
@@ -469,6 +567,8 @@ export function openQuickOpen(
         ? Math.min(commandItems.length, 50)
         : mode === 'heading'
         ? Math.min(headingItems.length, 50)
+        : mode === 'tag'
+        ? Math.min(tagItems.length, 50)
         : Math.min(entryItems.length, 50);
       setActive(len - 1);
       return;
@@ -499,6 +599,10 @@ export function openQuickOpen(
       const slug = li.getAttribute('data-pkc-heading-slug');
       cleanup();
       if (slug) scrollToHeadingBySlug(slug);
+    } else if (m === 'tag') {
+      const tag = li.getAttribute('data-pkc-quick-tag');
+      cleanup();
+      if (tag) dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag });
     } else {
       const lid = li.getAttribute('data-pkc-quick-lid');
       cleanup();
