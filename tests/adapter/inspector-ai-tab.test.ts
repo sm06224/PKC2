@@ -393,3 +393,65 @@ describe('buildInspectorAiSection — outline lint(pgc-154)', () => {
     expect(buildInspectorAiSection(after).querySelector('.pkc-inspector-ai-outline')).toBeNull();
   });
 });
+
+describe('buildInspectorAiSection — archetype mismatch(pgc-158)', () => {
+  beforeEach(() => {
+    resetInspectorAiState();
+  });
+
+  it('case 36: 普通の text entry → archetype section 出ない', () => {
+    const e = makeEntry({ lid: 'e', body: 'prose 1\nprose 2\nprose 3\nprose 4' });
+    expect(buildInspectorAiSection(e).querySelector('.pkc-inspector-ai-archetype')).toBeNull();
+  });
+
+  it('case 37: task list だらけ → archetype section + todo 推奨', () => {
+    const e = makeEntry({
+      lid: 'e',
+      body: '- [ ] a\n- [ ] b\n- [x] c\n- [ ] d',
+    });
+    const el = buildInspectorAiSection(e);
+    const arc = el.querySelector('.pkc-inspector-ai-archetype');
+    expect(arc).not.toBeNull();
+    expect(arc?.getAttribute('data-pkc-current-archetype')).toBe('text');
+    expect(arc?.getAttribute('data-pkc-suggested-archetype')).toBe('todo');
+    expect(arc?.querySelector('.pkc-inspector-ai-archetype-title')?.textContent).toContain('text → todo');
+  });
+
+  it('case 38: timestamp 行多 → archetype section + textlog 推奨', () => {
+    const e = makeEntry({
+      lid: 'e',
+      body: '[10:00] morning\n[11:00] code\n[12:00] lunch\n[13:00] meeting',
+    });
+    const arc = buildInspectorAiSection(e).querySelector('.pkc-inspector-ai-archetype');
+    expect(arc?.getAttribute('data-pkc-suggested-archetype')).toBe('textlog');
+  });
+
+  it('case 39: dismiss → 次回 render で消える', () => {
+    const e = makeEntry({
+      lid: 'e',
+      body: '- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d',
+    });
+    const el1 = buildInspectorAiSection(e);
+    const id = el1.querySelector('.pkc-inspector-ai-archetype [data-pkc-action="dismiss-ai-suggestion"]')?.getAttribute('data-pkc-suggestion-id');
+    expect(id).toBe('archetype-mismatch:e');
+    dismissSuggestion(e.lid, id!);
+    const el2 = buildInspectorAiSection(e);
+    expect(el2.querySelector('.pkc-inspector-ai-archetype')).toBeNull();
+  });
+
+  it('case 40: confidence attr が出る', () => {
+    const e = makeEntry({
+      lid: 'e',
+      body: '- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d',
+    });
+    const arc = buildInspectorAiSection(e).querySelector('.pkc-inspector-ai-archetype');
+    expect(arc?.getAttribute('data-pkc-confidence')).toBe('high');
+  });
+
+  it('case 41: 順序性 ── body 変更で section 消える', () => {
+    const before = makeEntry({ lid: 'e', body: '- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d' });
+    const after = makeEntry({ lid: 'e', body: 'prose 1\nprose 2\nprose 3\nprose 4' });
+    expect(buildInspectorAiSection(before).querySelector('.pkc-inspector-ai-archetype')).not.toBeNull();
+    expect(buildInspectorAiSection(after).querySelector('.pkc-inspector-ai-archetype')).toBeNull();
+  });
+});

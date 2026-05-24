@@ -126,8 +126,11 @@ HTML product」は外部 dep を拒否するため、最初は local-only が自
 - **pgc-154 着地** ✅:A 群 6 = `outline lint`(H1 無し / H1 複数 /
   heading skip、💡 info box + 3 種 issue kind + section dismiss、
   text/folder/generic のみ対象)
-- A 群 残り 3 件(5/7/8 = circular reference / tag imbalance / archetype
-  mismatch)
+- **pgc-158 着地** ✅:A 群 8 = `archetype mismatch detector`(text
+  archetype だが body が task list 60%+/timestamp 50%+/image 80%+ で
+  todo / textlog / attachment 推奨、🧩 puzzle piece icon + section
+  dismiss、text archetype のみ対象)
+- A 群 残り 2 件(5/7 = circular reference / tag imbalance)
 - 各 suggestion に「apply」「dismiss」 button
 - per-container suggestion history(localStorage)
 

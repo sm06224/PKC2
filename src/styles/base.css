@@ -6958,6 +6958,35 @@ mark.pkc-search-mark {
   line-height: 1.4;
   padding: 2px var(--space-1);
 }
+/* pgc-158 wave-γ #29:archetype mismatch detector(roadmap §2.2 A 群 8、
+   Phase 2 3 件目)。text archetype だが body が他 archetype 向きの場合に
+   🧩 puzzle piece icon で suggest、neutral info box(border + bg-dim)。 */
+.pkc-inspector-ai-archetype {
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-dim, var(--c-bg));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-archetype-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-archetype-title {
+  color: var(--c-fg);
+  font-family: var(--font-mono);
+}
+.pkc-inspector-ai-archetype-detail {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+}
 /* pgc-155 wave-δ #22:textlog log search bar(flag ON 時のみ表示)。
    append area の直下、log document の上に固定。input は flex grow。 */
 .pkc-textlog-search {

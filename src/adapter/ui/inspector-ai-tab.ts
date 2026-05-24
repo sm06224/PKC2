@@ -35,6 +35,10 @@ import {
   detectOutlineIssues,
   type OutlineLintReport,
 } from '../../features/ai/outline-lint';
+import {
+  detectArchetypeMismatch,
+  type ArchetypeMismatchSuggestion,
+} from '../../features/ai/archetype-mismatch';
 
 // dismiss 状態は module-local。reload で消える(localStorage 化は後続 PR、
 // privacy 観点で session 限定の方が安全)。`<lid>:<suggestion-id>` を key
@@ -122,10 +126,21 @@ export function buildInspectorAiSection(
     section.appendChild(renderOutlineLintSection(entry.lid, outlineReport));
   }
 
+  // pgc-158:archetype mismatch detector(roadmap §2.2 A 群 8、Phase 2
+  // 3 件目)。text archetype だが body 内容が他 archetype に向いている
+  // 場合に「<X> archetype の方が向いていそう」 と提案。section 単位 dismiss。
+  const archetypeDismissed = isSuggestionDismissed(entry.lid, `archetype-mismatch:${entry.lid}`);
+  const archetypeMismatch: ArchetypeMismatchSuggestion | null = !archetypeDismissed
+    ? detectArchetypeMismatch(entry)
+    : null;
+  if (archetypeMismatch) {
+    section.appendChild(renderArchetypeMismatchSection(entry.lid, archetypeMismatch));
+  }
+
   const raw = suggestFrontmatter(entry);
   const suggestions = raw.filter((s) => !isSuggestionDismissed(entry.lid, s.id));
 
-  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0 && !outlineReport) {
+  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0 && !outlineReport && !archetypeMismatch) {
     const empty = document.createElement('div');
     empty.className = 'pkc-inspector-ai-empty';
     empty.textContent = raw.length === 0
@@ -145,6 +160,43 @@ export function buildInspectorAiSection(
   }
 
   return section;
+}
+
+function renderArchetypeMismatchSection(lid: string, s: ArchetypeMismatchSuggestion): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'pkc-inspector-ai-archetype';
+  div.setAttribute('data-pkc-warning-kind', 'archetype-mismatch');
+  div.setAttribute('data-pkc-current-archetype', s.currentArchetype);
+  div.setAttribute('data-pkc-suggested-archetype', s.suggestedArchetype);
+  div.setAttribute('data-pkc-confidence', s.confidence);
+
+  const header = document.createElement('div');
+  header.className = 'pkc-inspector-ai-archetype-header';
+  const icon = document.createElement('span');
+  icon.className = 'pkc-inspector-ai-archetype-icon';
+  icon.textContent = '🧩';
+  header.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'pkc-inspector-ai-archetype-title';
+  title.textContent = `Archetype hint:${s.currentArchetype} → ${s.suggestedArchetype}`;
+  header.appendChild(title);
+  div.appendChild(header);
+
+  const detail = document.createElement('div');
+  detail.className = 'pkc-inspector-ai-archetype-detail';
+  detail.textContent = s.reason;
+  div.appendChild(detail);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
+  dismiss.setAttribute('data-pkc-suggestion-id', s.id);
+  dismiss.setAttribute('data-pkc-suggestion-lid', lid);
+  dismiss.textContent = 'Dismiss';
+  dismiss.title = 'この section を当面非表示にします(reload で復帰)';
+  div.appendChild(dismiss);
+
+  return div;
 }
 
 function renderOutlineLintSection(lid: string, report: OutlineLintReport): HTMLElement {
