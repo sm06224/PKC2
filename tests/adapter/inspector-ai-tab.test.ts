@@ -270,3 +270,64 @@ describe('buildInspectorAiSection — broken link summary(pgc-149)', () => {
     expect(brokenIdx).toBeLessThan(listIdx);
   });
 });
+
+describe('buildInspectorAiSection — duplicate detector(pgc-153)', () => {
+  beforeEach(() => {
+    resetInspectorAiState();
+  });
+
+  it('case 24: 同 container に類似 entry 無し → duplicates section 出ない', () => {
+    const e = makeEntry({ lid: 'a', title: 'unique title', body: '' });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    expect(el.querySelector('.pkc-inspector-ai-duplicates')).toBeNull();
+  });
+
+  it('case 25: 完全一致 entry 存在 → section + item 1 件 + 100% similarity', () => {
+    const a = makeEntry({ lid: 'a', title: 'same title here', body: '' });
+    const b = makeEntry({ lid: 'b', title: 'same title here', body: '' });
+    const el = buildInspectorAiSection(a, makeContainer([a, b]));
+    const dup = el.querySelector('.pkc-inspector-ai-duplicates');
+    expect(dup).not.toBeNull();
+    expect(dup?.getAttribute('data-pkc-duplicate-count')).toBe('1');
+    const items = dup?.querySelectorAll('.pkc-inspector-ai-duplicates-item');
+    expect(items?.length).toBe(1);
+    const sim = items?.[0]?.querySelector('.pkc-inspector-ai-duplicates-item-similarity');
+    expect(sim?.textContent).toBe('100%');
+  });
+
+  it('case 26: 各 item に data-pkc-duplicate-lid attr', () => {
+    const a = makeEntry({ lid: 'a', title: 'X Y Z', body: '' });
+    const b = makeEntry({ lid: 'b', title: 'X Y Z', body: '' });
+    const el = buildInspectorAiSection(a, makeContainer([a, b]));
+    const item = el.querySelector('.pkc-inspector-ai-duplicates-item');
+    expect(item?.getAttribute('data-pkc-duplicate-lid')).toBe('b');
+  });
+
+  it('case 27: section 単位 dismiss → 次回 render で消える', () => {
+    const a = makeEntry({ lid: 'a', title: 'X Y Z', body: '' });
+    const b = makeEntry({ lid: 'b', title: 'X Y Z', body: '' });
+    const c = makeContainer([a, b]);
+    const el1 = buildInspectorAiSection(a, c);
+    expect(el1.querySelector('.pkc-inspector-ai-duplicates')).not.toBeNull();
+    const dismissBtn = el1.querySelector('.pkc-inspector-ai-duplicates [data-pkc-action="dismiss-ai-suggestion"]');
+    const id = dismissBtn?.getAttribute('data-pkc-suggestion-id');
+    expect(id).toBe('duplicates:a');
+    dismissSuggestion('a', id!);
+    const el2 = buildInspectorAiSection(a, c);
+    expect(el2.querySelector('.pkc-inspector-ai-duplicates')).toBeNull();
+  });
+
+  it('case 28: container undefined で計算しない(下位互換)', () => {
+    const a = makeEntry({ lid: 'a', title: 'X Y Z', body: '' });
+    const el = buildInspectorAiSection(a);
+    expect(el.querySelector('.pkc-inspector-ai-duplicates')).toBeNull();
+  });
+
+  it('case 29: 順序性 ── 類似 entry 追加で section 出る → 削除で消える', () => {
+    const a = makeEntry({ lid: 'a', title: 'paired title', body: '' });
+    const b = makeEntry({ lid: 'b', title: 'paired title', body: '' });
+    expect(buildInspectorAiSection(a, makeContainer([a])).querySelector('.pkc-inspector-ai-duplicates')).toBeNull();
+    expect(buildInspectorAiSection(a, makeContainer([a, b])).querySelector('.pkc-inspector-ai-duplicates')).not.toBeNull();
+    expect(buildInspectorAiSection(a, makeContainer([a])).querySelector('.pkc-inspector-ai-duplicates')).toBeNull();
+  });
+});

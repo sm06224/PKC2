@@ -27,6 +27,10 @@ import {
   detectBrokenLinkSummary,
   type BrokenLinkSummary,
 } from '../../features/ai/broken-link-summary';
+import {
+  detectDuplicates,
+  type DuplicateMatch,
+} from '../../features/ai/duplicate-detector';
 
 // dismiss 状態は module-local。reload で消える(localStorage 化は後続 PR、
 // privacy 観点で session 限定の方が安全)。`<lid>:<suggestion-id>` を key
@@ -87,10 +91,24 @@ export function buildInspectorAiSection(
     section.appendChild(renderBrokenLinkSummary(entry.lid, broken));
   }
 
+  // pgc-153:duplicate entry detector(roadmap §2.2 A 群 2、Phase 2 1 件目)。
+  // 現 entry と類似度高い(bigram Jaccard >= 0.5)他 entry 上位 3 件を
+  // 提示。LLM 接続なし、計算は pure features 層。section 単位で dismiss
+  // 可能(`duplicates:<lid>`)、個別 dismiss は scope 外。
+  const dupSectionDismissed = container
+    ? isSuggestionDismissed(entry.lid, `duplicates:${entry.lid}`)
+    : true;
+  const duplicates: DuplicateMatch[] = container && !dupSectionDismissed
+    ? detectDuplicates(entry, container)
+    : [];
+  if (duplicates.length > 0) {
+    section.appendChild(renderDuplicatesSection(entry.lid, duplicates));
+  }
+
   const raw = suggestFrontmatter(entry);
   const suggestions = raw.filter((s) => !isSuggestionDismissed(entry.lid, s.id));
 
-  if (suggestions.length === 0 && !warning && !broken) {
+  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'pkc-inspector-ai-empty';
     empty.textContent = raw.length === 0
@@ -110,6 +128,62 @@ export function buildInspectorAiSection(
   }
 
   return section;
+}
+
+function renderDuplicatesSection(lid: string, matches: DuplicateMatch[]): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'pkc-inspector-ai-duplicates';
+  div.setAttribute('data-pkc-warning-kind', 'duplicates');
+  div.setAttribute('data-pkc-duplicate-count', String(matches.length));
+
+  const header = document.createElement('div');
+  header.className = 'pkc-inspector-ai-duplicates-header';
+  const icon = document.createElement('span');
+  icon.className = 'pkc-inspector-ai-duplicates-icon';
+  icon.textContent = '🔁';
+  header.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'pkc-inspector-ai-duplicates-title';
+  title.textContent = `類似 entry(${matches.length})`;
+  header.appendChild(title);
+  div.appendChild(header);
+
+  const note = document.createElement('div');
+  note.className = 'pkc-inspector-ai-duplicates-note';
+  note.textContent = 'title + body の bigram Jaccard 類似度で同 container 内を検索。統合 / 削除候補。';
+  div.appendChild(note);
+
+  const list = document.createElement('ul');
+  list.className = 'pkc-inspector-ai-duplicates-list';
+  for (const m of matches) {
+    const li = document.createElement('li');
+    li.className = 'pkc-inspector-ai-duplicates-item';
+    li.setAttribute('data-pkc-duplicate-lid', m.lid);
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'pkc-inspector-ai-duplicates-item-title';
+    titleEl.textContent = m.title;
+    li.appendChild(titleEl);
+
+    const simEl = document.createElement('span');
+    simEl.className = 'pkc-inspector-ai-duplicates-item-similarity';
+    simEl.textContent = `${Math.round(m.similarity * 100)}%`;
+    li.appendChild(simEl);
+
+    list.appendChild(li);
+  }
+  div.appendChild(list);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
+  dismiss.setAttribute('data-pkc-suggestion-id', `duplicates:${lid}`);
+  dismiss.setAttribute('data-pkc-suggestion-lid', lid);
+  dismiss.textContent = 'Dismiss';
+  dismiss.title = 'この section を当面非表示にします(reload で復帰)';
+  div.appendChild(dismiss);
+
+  return div;
 }
 
 function renderBrokenLinkSummary(lid: string, b: BrokenLinkSummary): HTMLElement {

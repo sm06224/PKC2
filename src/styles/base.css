@@ -6862,6 +6862,65 @@ mark.pkc-search-mark {
   padding: 1px var(--space-1);
   border-radius: 3px;
 }
+/* pgc-153 wave-γ #27:duplicate entry detector(roadmap §2.2 A 群 2、
+   Phase 2 1 件目)。bigram Jaccard 類似度 >= 0.5 の他 entry 上位 3 件を
+   Inspector AI tab に提示、info 色(accent 系の薄)。各 item は title +
+   similarity% を 1 行表示、dismiss は section 単位。 */
+.pkc-inspector-ai-duplicates {
+  border: 1px solid var(--c-accent, #4a90e2);
+  background: var(--c-accent-bg, rgba(74, 144, 226, 0.06));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-duplicates-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-duplicates-title {
+  color: var(--c-accent, #4a90e2);
+}
+.pkc-inspector-ai-duplicates-note {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  line-height: 1.4;
+}
+.pkc-inspector-ai-duplicates-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pkc-inspector-ai-duplicates-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-1);
+  background: var(--c-bg);
+  border-radius: 3px;
+  font-size: var(--fs-xs);
+}
+.pkc-inspector-ai-duplicates-item-title {
+  color: var(--c-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.pkc-inspector-ai-duplicates-item-similarity {
+  color: var(--c-accent, #4a90e2);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
 
 /* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
    flag ON 時に editor 末尾に compact metrics row(char / word / line)を

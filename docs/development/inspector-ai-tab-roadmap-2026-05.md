@@ -121,7 +121,10 @@ HTML product」は外部 dep を拒否するため、最初は local-only が自
 
 ### Phase 2(scope 中):A 群残り + UI 充実
 
-- A 群 4〜8 件着地
+- **pgc-153 着地** ✅:A 群 2 = `duplicate entry detection`(bigram Jaccard
+  類似度 >= 0.5 の上位 3 件、🔁 info box + similarity% + section dismiss)
+- A 群 残り 4 件(5/6/7/8 = circular reference / outline lint / tag
+  imbalance / archetype mismatch)
 - 各 suggestion に「apply」「dismiss」 button
 - per-container suggestion history(localStorage)
 
