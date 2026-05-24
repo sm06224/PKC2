@@ -226,7 +226,7 @@ describe('pgc-180 Activity Bar tab badges', () => {
     expect(badges.relations).toBe(0);
   });
 
-  it('case 15: Explorer / Search badge は常に 0(設計対象外)、Recent は pgc-199 で navHistory ベース', () => {
+  it('case 15: Explorer badge は常に 0(設計対象外)、Search は pgc-200 で saved_searches、Recent は pgc-199 で navHistory', () => {
     setFlag(true);
     const container = makeContainer([
       { lid: 'e1', title: 'X', body: '# A\n## B\n', archetype: 'text', created_at: TS, updated_at: TS },
@@ -234,6 +234,7 @@ describe('pgc-180 Activity Bar tab badges', () => {
     const state = makeState(container, 'e1');
     const badges = computeBadges(state);
     expect(badges.explorer).toBe(0);
+    // saved_searches 無いなら search も 0
     expect(badges.search).toBe(0);
     // recent は navHistory 空(test では SELECT_ENTRY していない)なら 0
     expect(badges.recent).toBe(0);
@@ -290,5 +291,37 @@ describe('pgc-180 Activity Bar tab badges', () => {
     (state as { navHistory: string[] }).navHistory = ['e1', 'e2'];
     const badges = computeBadges(state);
     expect(badges.recent).toBe(1); // e2 opaque は除外
+  });
+
+  // pgc-200 wave-α' polish #22:Search tab badge — saved_searches count
+
+  it('case 20: pgc-200 saved_searches 3 件で search badge = 3', () => {
+    setFlag(true);
+    const container = makeContainer([
+      { lid: 'e1', title: 'X', body: 'x', archetype: 'text', created_at: TS, updated_at: TS },
+    ]);
+    container.meta.saved_searches = [
+      { id: 's1', name: 'Recent text', created_at: TS, archetypes: [], tags: [], searchQuery: '', sortKey: 'updated_at', sortDirection: 'desc', showArchived: false },
+      { id: 's2', name: 'Todo open', created_at: TS, archetypes: ['todo'], tags: [], searchQuery: '', sortKey: 'updated_at', sortDirection: 'desc', showArchived: false },
+      { id: 's3', name: 'Tagged rust', created_at: TS, archetypes: [], tags: ['rust'], searchQuery: '', sortKey: 'updated_at', sortDirection: 'desc', showArchived: false },
+    ] as never;
+    const state = makeState(container, 'e1');
+    const badges = computeBadges(state);
+    expect(badges.search).toBe(3);
+  });
+
+  it('case 21: pgc-200 saved_searches 未定義 / 空配列で search badge = 0', () => {
+    setFlag(true);
+    const container = makeContainer([
+      { lid: 'e1', title: 'X', body: 'x', archetype: 'text', created_at: TS, updated_at: TS },
+    ]);
+    // saved_searches 未設定 → undefined
+    const state = makeState(container, 'e1');
+    const badges = computeBadges(state);
+    expect(badges.search).toBe(0);
+    // 空配列 → 0
+    container.meta.saved_searches = [];
+    const badges2 = computeBadges(state);
+    expect(badges2.search).toBe(0);
   });
 });

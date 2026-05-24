@@ -115,6 +115,15 @@ export function computeBadges(state?: AppState): Record<ActivityTab, number> {
     }
     empty.recent = count;
   }
+  // pgc-200 wave-α' polish #22:Search badge ── container.meta.saved_searches
+  // の件数。Saved Searches v1(pgc-39 era、`docs/development/saved-searches-v1.md`)
+  // で導入された機能。Activity Bar の Search tab(pgc-107)は本来「全文
+  // search」 主用途だが、saved searches の存在を可視化する meta として count
+  // badge を出す = 「最近保存した検索を再利用」 動線への気付き。
+  if (container) {
+    const saved = container.meta.saved_searches ?? [];
+    empty.search = saved.length;
+  }
   return empty;
 }
 
