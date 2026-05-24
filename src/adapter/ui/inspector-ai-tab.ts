@@ -43,6 +43,10 @@ import {
   detectCircularReference,
   type CircularReference,
 } from '../../features/ai/circular-reference';
+import {
+  detectTagImbalance,
+  type TagImbalanceSuggestion,
+} from '../../features/ai/tag-imbalance';
 
 // dismiss 状態は module-local。reload で消える(localStorage 化は後続 PR、
 // privacy 観点で session 限定の方が安全)。`<lid>:<suggestion-id>` を key
@@ -152,10 +156,21 @@ export function buildInspectorAiSection(
     section.appendChild(renderCircularReferenceSection(entry.lid, circular));
   }
 
+  // pgc-165:tag imbalance suggester(roadmap §2.2 A 群 7、Phase 2 完了)。
+  // container 全体の tag 文化(50%+ entry が tag 持ち)に対し current
+  // entry が tag 0 件なら popular tag を提示。section dismiss 可能。
+  const tagDismissed = isSuggestionDismissed(entry.lid, `tag-imbalance:${entry.lid}`);
+  const tagImbalance: TagImbalanceSuggestion | null = container && !tagDismissed
+    ? detectTagImbalance(entry, container)
+    : null;
+  if (tagImbalance) {
+    section.appendChild(renderTagImbalanceSection(entry.lid, tagImbalance));
+  }
+
   const raw = suggestFrontmatter(entry);
   const suggestions = raw.filter((s) => !isSuggestionDismissed(entry.lid, s.id));
 
-  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0 && !outlineReport && !archetypeMismatch && !circular) {
+  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0 && !outlineReport && !archetypeMismatch && !circular && !tagImbalance) {
     const empty = document.createElement('div');
     empty.className = 'pkc-inspector-ai-empty';
     empty.textContent = raw.length === 0
@@ -175,6 +190,50 @@ export function buildInspectorAiSection(
   }
 
   return section;
+}
+
+function renderTagImbalanceSection(lid: string, s: TagImbalanceSuggestion): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'pkc-inspector-ai-tag-imbalance';
+  div.setAttribute('data-pkc-warning-kind', 'tag-imbalance');
+
+  const header = document.createElement('div');
+  header.className = 'pkc-inspector-ai-tag-imbalance-header';
+  const icon = document.createElement('span');
+  icon.className = 'pkc-inspector-ai-tag-imbalance-icon';
+  icon.textContent = '🏷️';
+  header.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'pkc-inspector-ai-tag-imbalance-title';
+  title.textContent = 'Tag hint';
+  header.appendChild(title);
+  div.appendChild(header);
+
+  const detail = document.createElement('div');
+  detail.className = 'pkc-inspector-ai-tag-imbalance-detail';
+  detail.textContent = s.reason;
+  div.appendChild(detail);
+
+  const popular = document.createElement('ul');
+  popular.className = 'pkc-inspector-ai-tag-imbalance-list';
+  for (const t of s.popularTags) {
+    const li = document.createElement('li');
+    li.className = 'pkc-inspector-ai-tag-imbalance-item';
+    li.textContent = `#${t}`;
+    popular.appendChild(li);
+  }
+  div.appendChild(popular);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
+  dismiss.setAttribute('data-pkc-suggestion-id', s.id);
+  dismiss.setAttribute('data-pkc-suggestion-lid', lid);
+  dismiss.textContent = 'Dismiss';
+  dismiss.title = 'この section を当面非表示にします(reload で復帰)';
+  div.appendChild(dismiss);
+
+  return div;
 }
 
 function renderCircularReferenceSection(lid: string, c: CircularReference): HTMLElement {

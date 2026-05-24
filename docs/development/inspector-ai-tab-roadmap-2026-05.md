@@ -134,7 +134,13 @@ HTML product」は外部 dep を拒否するため、最初は local-only が自
   markdown link を combined graph として BFS、current entry を含む循環
   を 1 件検出 → 🔄 cycle icon、self-loop と N-step cycle で文言分岐、
   provenance kind / MAX_DEPTH=32 / system entry 除外、section dismiss)
-- A 群 残り 1 件(7 = tag imbalance)
+- **pgc-165 着地** ✅:A 群 7 = `tag imbalance suggester`(container 全体
+  で 50% 以上 tag 文化 + 自 entry tag 0 件で popular top 3 提示、🏷️
+  chip + section dismiss、text/folder/generic のみ対象、container < 4
+  entry skip)
+- **Phase 2 完了**(A 群 8 件全件着地、A1 frontmatter + A2 duplicate +
+  A3 broken + A4 abandoned + A5 circular + A6 outline + A7 tag + A8
+  archetype mismatch、合計 8 機能)
 - 各 suggestion に「apply」「dismiss」 button
 - per-container suggestion history(localStorage)
 

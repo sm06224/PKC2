@@ -7047,6 +7047,48 @@ mark.pkc-search-mark {
   font-family: var(--font-mono);
   word-break: break-all;
 }
+/* pgc-165 wave-γ #31:tag imbalance suggester(roadmap §2.2 A 群 7、
+   Phase 2 完了)。tag 文化のある container で tag 0 件 entry に
+   popular tag をヒント、🏷️ icon + neutral info box。 */
+.pkc-inspector-ai-tag-imbalance {
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-dim, var(--c-bg));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-tag-imbalance-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-tag-imbalance-detail {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+}
+.pkc-inspector-ai-tag-imbalance-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-tag-imbalance-item {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--c-accent, #4a90e2);
+  background: var(--c-bg);
+  padding: 1px var(--space-1);
+  border-radius: 3px;
+  border: 1px solid var(--c-border);
+}
 /* pgc-155 wave-δ #22:textlog log search bar(flag ON 時のみ表示)。
    append area の直下、log document の上に固定。input は flex grow。 */
 .pkc-textlog-search {
