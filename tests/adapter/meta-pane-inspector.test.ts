@@ -125,8 +125,9 @@ describe('pgc-109 meta pane Inspector tab strip scaffold', () => {
     expect(stillAi?.getAttribute('data-pkc-active')).toBe('true');
     const hint = root.querySelector('[data-pkc-region="meta-inspector-empty-hint"]');
     expect(hint).not.toBeNull();
-    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-icon')?.textContent).toBe('🧠');
-    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No AI yet');
+    // pgc-166 で AI tab を Hints tab に rename(icon 🧠 → 💡、label AI → Hints)
+    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-icon')?.textContent).toBe('💡');
+    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No Hints yet');
     expect(hint?.querySelector('.pkc-meta-inspector-placeholder-note')?.textContent).toContain('inspector_ai_local_enabled');
   });
 
@@ -150,7 +151,7 @@ describe('pgc-109 meta pane Inspector tab strip scaffold', () => {
     const ai = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="ai"]')!;
     ai.click();
     const aiHint = root.querySelector('[data-pkc-region="meta-inspector-empty-hint"]');
-    expect(aiHint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No AI yet');
+    expect(aiHint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No Hints yet');
     const props = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="properties"]')!;
     props.click();
     const propsHint = root.querySelector('[data-pkc-region="meta-inspector-empty-hint"]');

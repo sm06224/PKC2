@@ -75,13 +75,16 @@ export function buildInspectorAiSection(
 
   const heading = document.createElement('div');
   heading.className = 'pkc-inspector-ai-heading';
-  heading.textContent = '🧠 AI 提案(local-only)';
+  // pgc-166 user feedback「この程度を AI と呼ぶのはちゃんちゃらおかしい」 を受け
+  // 「AI 提案」 → 「Hints」(local lint)に rename(実態は heuristic ベース、
+  // LLM 接続なし、Lint / Hints が integrity ある呼称)。
+  heading.textContent = '💡 Hints(local-only lint)';
   section.appendChild(heading);
 
   const note = document.createElement('div');
   note.className = 'pkc-inspector-ai-note';
   note.textContent
-    = '本文から推測した frontmatter 候補 + 使われていない entry 警告です。LLM 接続なし、計算は端末内のみ。';
+    = 'heuristic ベースの local lint(frontmatter / abandoned / broken link / duplicates / outline / archetype / circular / tag)。LLM 接続なし、計算は端末内のみ。';
   section.appendChild(note);
 
   // pgc-148:abandoned entry warning(roadmap §2.2 A 群 4)。container
@@ -175,7 +178,7 @@ export function buildInspectorAiSection(
     empty.className = 'pkc-inspector-ai-empty';
     empty.textContent = raw.length === 0
       ? '提案できる項目はありません(本文に H1 / #tag を加えるか、frontmatter を埋めると候補が出ます)'
-      : 'すべての提案を dismiss しました(Inspector AI を閉じて再表示で復帰)';
+      : 'すべての提案を dismiss しました(Inspector Hints を閉じて再表示で復帰)';
     section.appendChild(empty);
     return section;
   }

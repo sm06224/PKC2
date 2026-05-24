@@ -176,7 +176,8 @@ describe('pgc-117 Inspector History tab(中身肉付け + empty hint)', () => {
     expect(root.querySelector('[data-pkc-region="meta-inspector-placeholder"]')).toBeNull();
     const hint = emptyHint();
     expect(hint).not.toBeNull();
-    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No AI yet');
+    // pgc-166 で AI tab → Hints tab に rename
+    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No Hints yet');
     expect(hint?.querySelector('.pkc-meta-inspector-placeholder-note')?.textContent).toContain('inspector_ai_local_enabled');
   });
 

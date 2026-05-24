@@ -89,16 +89,17 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
     visibleRegions: ['inspector-style-metrics'],
   },
   {
+    // pgc-166 user bug fix(2026-05-24「この程度を AI と呼ぶのは
+    // ちゃんちゃらおかしい」):tab id は `ai`(action-binder の既存
+    // 経路 + flag key `shell.inspector_ai_local_enabled` 互換性のため
+    // 維持)、**label を「AI」 → 「Hints」 に rename**。Phase 1〜2 の
+    // 8 機能は heuristic ベースの「local lint / hints」 であり LLM
+    // 接続なし、AI を名乗るのは inflated。Hints(💡 wisdom)が実態と
+    // 整合、keybind tooltip も「Inspector Hints」 に。
     id: 'ai',
-    icon: '🧠',
-    label: 'AI',
+    icon: '💡',
+    label: 'Hints',
     keybind: 'Ctrl+K I',
-    // pgc-147 wave-γ #24(MASTER.md §6.3、inspector-ai-tab-roadmap §3 Phase 1):
-    // AI tab を placeholder から脱却 ── flag `shell.inspector_ai_local_enabled`
-    // ON で `inspector-ai-tab.ts buildInspectorAiSection` が
-    // `data-pkc-region="inspector-ai-suggestions"` を inject。OFF だと
-    // section が無く matchedCount=0 → applyInspectorTabFilter の
-    // appendNoContentHint で flag opt-in 文言を表示。
     visibleRegions: ['inspector-ai-suggestions'],
   },
 ];
@@ -231,9 +232,10 @@ function labelToEmptyMessage(tab: InspectorTab): string {
     case 'style':
       return 'Coming soon(wave-γ で順次実装中)';
     case 'ai':
-      // pgc-147 wave-γ #24:AI tab を flag opt-in で local-only suggester に
-      // 解放。flag OFF の user に「Coming soon」ではなく opt-in 経路を案内。
-      return 'Flag Inspector で `shell.inspector_ai_local_enabled` を ON にすると本文 H1 / #tag から frontmatter 候補が出ます(LLM 接続なし、計算は端末内)';
+      // pgc-147 wave-γ #24:Hints tab(旧 AI tab、pgc-166 で rename)を
+      // flag opt-in で local lint に解放。flag OFF の user に opt-in 経路
+      // を案内。「local lint = heuristic / LLM 接続なし」 を明示。
+      return 'Flag Inspector で `shell.inspector_ai_local_enabled` を ON にすると本文 + container 状態から 8 種の local lint(frontmatter / abandoned / broken / duplicates / outline / archetype / circular / tag)が出ます(LLM 接続なし、計算は端末内)';
   }
 }
 
