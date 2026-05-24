@@ -136,6 +136,7 @@ import { estimateReadTimeMinutes, formatReadTime } from './editor-footer-wordcou
 import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
+import { handleEditorFormatShortcut } from './editor-format-shortcuts';
 import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
 import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab } from './tab-strip';
@@ -4616,6 +4617,12 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // no-op、なので **既存挙動を一切壊さない** ため。flag ON 時のみ
     // `Alt+1`〜`6` / `F12` / `Ctrl+K Ctrl+S` 等の fresh shortcut が発火。
     if (handleKeymapKeydown(e)) return;
+
+    // pgc-186 wave-α' #9:editor format shortcuts。textarea 編集中の
+    // `Ctrl+B` / `Ctrl+I` を override して format-panel.wrapInline と
+    // 同じ wrap 変換を発火。`editor.format_shortcuts_enabled` OFF で
+    // 完全 no-op、textarea 外の target は skip。
+    if (handleEditorFormatShortcut(e)) return;
 
     // 領域 1: Alt+←/→ で entry navigation history を移動。テキスト入力中
     // (textarea / input)は OS ネイティブの単語移動を尊重するため発火

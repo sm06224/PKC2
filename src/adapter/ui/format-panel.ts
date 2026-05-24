@@ -36,14 +36,15 @@ export const formatPanelEnabled = defineFlag<boolean>(
   },
 );
 
-interface Selection {
+export interface Selection {
   value: string;
   start: number;
   end: number;
 }
 
 // 選択範囲の前後を marker で wrap(inline 系)。旧 panel の変換ロジックを再利用。
-function wrapInline(sel: Selection, marker: string): Selection {
+// pgc-186 wave-α' #9:editor-format-shortcuts.ts から再利用するため export。
+export function wrapInline(sel: Selection, marker: string): Selection {
   const before = sel.value.slice(0, sel.start);
   const selected = sel.value.slice(sel.start, sel.end);
   const after = sel.value.slice(sel.end);

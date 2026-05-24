@@ -563,3 +563,20 @@ export const shellRevisionDiffViewerEnabled = defineFlag<boolean>(
       'Inspector History tab の各 revision row に「Show diff vs current」 inline diff viewer(line-level diff)を追加',
   },
 );
+
+// Editor format keyboard shortcuts(v3 統合 master `v3-unification-master-
+// 2026-05-24.md` wave-α' G1 編集 surface 統一の延長、handoff §3.4 wave-δ
+// phase 2 text 編集 UX、pgc-186 wave-α' #9)。ON で textarea(TEXT body /
+// TEXTLOG log)編集中の `Ctrl+B` / `Ctrl+I` で format-panel と同じ wrap
+// 変換を発火 ── B/I 標準 editor shortcut(Word / Notion / Obsidian 互換)。
+// browser default の `Ctrl+B`(bookmark side panel)を上書きするため、
+// 編集中 textarea でのみ override + flag opt-in で user 同意済。
+export const editorFormatShortcutsEnabled = defineFlag<boolean>(
+  'editor.format_shortcuts_enabled',
+  false,
+  {
+    category: 'editor',
+    description:
+      'editor 中 textarea で `Ctrl+B`(strong)/ `Ctrl+I`(emphasis)keyboard shortcut で format-panel と同じ wrap 変換を発火',
+  },
+);
