@@ -260,13 +260,14 @@ export function openQuickOpen(
   mountedRoot = overlay;
 
   let activeIndex = 0;
-  let mode: 'entry' | 'command' | 'heading' | 'tag' = 'entry';
+  let mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent' = 'entry';
   let entryItems: RankedEntry[] = [];
   let commandItems: ReturnType<typeof rankCommands> = [];
   let headingItems: RankedHeading[] = [];
   let tagItems: RankedTag[] = [];
+  let recentItems: RankedEntry[] = [];
 
-  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading' | 'tag'; effective: string; hint: string } {
+  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent'; effective: string; hint: string } {
     if (q.startsWith('>')) {
       return { mode: 'command', effective: q.slice(1).trim(), hint: '🛠 Command mode' };
     }
@@ -275,6 +276,9 @@ export function openQuickOpen(
     }
     if (q.startsWith('#')) {
       return { mode: 'tag', effective: q.slice(1).trim(), hint: '🏷 Tag mode(container 全 tag を frequency 順)' };
+    }
+    if (q.startsWith('@')) {
+      return { mode: 'recent', effective: q.slice(1).trim(), hint: '📜 Recent mode(navHistory 末尾を新しい順)' };
     }
     return { mode: 'entry', effective: q, hint: '' };
   }
@@ -291,6 +295,75 @@ export function openQuickOpen(
     }
     list.textContent = '';
     activeIndex = 0;
+
+    if (m === 'recent') {
+      // pgc-185:state.navHistory(SELECT_ENTRY 履歴の末尾 N 件)を新しい順に
+      // 並べる。query があれば fuzzy match で更に絞り込む。空 history は
+      // empty state。navHistory の末尾 = 最近 select した entry。
+      const state = dispatcher.getState();
+      const history = state.navHistory ?? [];
+      const entries = state.container?.entries ?? [];
+      const entryByLid = new Map(entries.map((e) => [e.lid, e]));
+      // 新しい順 = navHistory reverse、重複は新しい方を残す
+      const seen = new Set<string>();
+      const candidates: Entry[] = [];
+      for (let i = history.length - 1; i >= 0; i--) {
+        const lid = history[i]!;
+        if (seen.has(lid)) continue;
+        seen.add(lid);
+        const e = entryByLid.get(lid);
+        if (e && e.archetype !== 'opaque') candidates.push(e);
+      }
+      // empty effective query は全件、それ以外は fuzzy filter
+      if (!effective) {
+        recentItems = candidates.map((e, idx) => ({ entry: e, score: candidates.length - idx }));
+      } else {
+        recentItems = [];
+        for (let idx = 0; idx < candidates.length; idx++) {
+          const e = candidates[idx]!;
+          const tr = fuzzyMatchSingle(effective, e.title || '(untitled)');
+          if (tr.score <= 0) continue;
+          // recency 補正:新しい候補ほど tie-break で上位
+          recentItems.push({ entry: e, score: tr.score + (candidates.length - idx) * 0.05 });
+        }
+        recentItems.sort((a, b) => b.score - a.score);
+      }
+      if (recentItems.length === 0) {
+        empty.style.display = '';
+        list.style.display = 'none';
+        return;
+      }
+      empty.style.display = 'none';
+      list.style.display = '';
+      const visible = recentItems.slice(0, 50);
+      for (let i = 0; i < visible.length; i++) {
+        const r = visible[i]!;
+        const li = document.createElement('li');
+        li.className = 'pkc-quick-open-item';
+        li.setAttribute('data-pkc-quick-lid', r.entry.lid);
+        li.setAttribute('data-pkc-quick-mode', 'recent');
+        li.setAttribute('data-pkc-archetype', r.entry.archetype);
+        li.setAttribute('role', 'option');
+        if (i === 0) {
+          li.classList.add('pkc-quick-open-item-active');
+          li.setAttribute('aria-selected', 'true');
+        }
+        const icon = document.createElement('span');
+        icon.className = 'pkc-quick-open-item-icon';
+        icon.textContent = ARCHETYPE_ICON[r.entry.archetype] ?? '📄';
+        li.appendChild(icon);
+        const title = document.createElement('span');
+        title.className = 'pkc-quick-open-item-title';
+        title.textContent = r.entry.title || '(untitled)';
+        li.appendChild(title);
+        const meta = document.createElement('span');
+        meta.className = 'pkc-quick-open-item-meta';
+        meta.textContent = `#${i + 1}`; // 履歴 index 表示(1 = 一番最近)
+        li.appendChild(meta);
+        list.appendChild(li);
+      }
+      return;
+    }
 
     if (m === 'tag') {
       // pgc-184:container 全 entry から tag を集計し、count desc + fuzzy
@@ -469,6 +542,8 @@ export function openQuickOpen(
       ? Math.min(headingItems.length, 50)
       : mode === 'tag'
       ? Math.min(tagItems.length, 50)
+      : mode === 'recent'
+      ? Math.min(recentItems.length, 50)
       : Math.min(entryItems.length, 50);
     if (len === 0) return;
     activeIndex = (next + len) % len;
@@ -512,6 +587,20 @@ export function openQuickOpen(
       // tag filter を toggle で追加 ── sidebar に「この tag のみ」 filter
       // が掛かる(既存 TOGGLE_TAG_FILTER reducer 経路)。
       dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag });
+      return;
+    }
+    if (mode === 'recent') {
+      const r = recentItems[Math.min(activeIndex, recentItems.length - 1)];
+      if (!r) return;
+      const lid = r.entry.lid;
+      cleanup();
+      if (opts.modifier === 'ctrl') {
+        const btn = document.querySelector<HTMLElement>('[data-pkc-action="ctx-open-window"]');
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        if (btn) btn.click();
+      } else {
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+      }
       return;
     }
     const r = entryItems[Math.min(activeIndex, entryItems.length - 1)];
@@ -569,6 +658,8 @@ export function openQuickOpen(
         ? Math.min(headingItems.length, 50)
         : mode === 'tag'
         ? Math.min(tagItems.length, 50)
+        : mode === 'recent'
+        ? Math.min(recentItems.length, 50)
         : Math.min(entryItems.length, 50);
       setActive(len - 1);
       return;
