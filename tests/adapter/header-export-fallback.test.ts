@@ -91,18 +91,26 @@ describe('pgc-135 header export fallback button(hotfix)', () => {
     expect(btn?.textContent).toContain('📤 Export');
   });
 
-  it('flag ON + fallback button の data-pkc-action は "toggle-shell-menu"(Shell Menu 開く)', () => {
+  it('flag ON + fallback button の data-pkc-action は "begin-export"(pgc-162 で toggle-shell-menu から直 export に修正)', () => {
+    // pgc-162 hotfix(user bug report 2026-05-24「Export ボタンを押すと
+    // シェルメニューが開く」):pgc-135 fallback の action が
+    // toggle-shell-menu だったため、user 期待(直 Export)と乖離。
+    // begin-export(mode='full', mutability='editable')に切替。
     setFlag(true);
     boot();
-    expect(exportFallback()?.getAttribute('data-pkc-action')).toBe('toggle-shell-menu');
+    const btn = exportFallback();
+    expect(btn?.getAttribute('data-pkc-action')).toBe('begin-export');
+    expect(btn?.getAttribute('data-pkc-export-mode')).toBe('full');
+    expect(btn?.getAttribute('data-pkc-export-mutability')).toBe('editable');
   });
 
-  it('flag ON + fallback button に説明的な title(Shell Menu の Data section 案内)', () => {
+  it('flag ON + fallback button の title は「Full mode で Export、別 mode は Shell Menu」 を明示', () => {
     setFlag(true);
     boot();
     const title = exportFallback()?.getAttribute('title') ?? '';
+    expect(title).toContain('Export');
+    expect(title).toContain('Full');
     expect(title).toContain('Shell Menu');
-    expect(title).toContain('Data');
   });
 
   it('flag ON + aria-label は keyboard / SR user 向けの説明', () => {
@@ -110,5 +118,6 @@ describe('pgc-135 header export fallback button(hotfix)', () => {
     boot();
     const aria = exportFallback()?.getAttribute('aria-label') ?? '';
     expect(aria).toContain('Export');
+    expect(aria).toContain('Full');
   });
 });
