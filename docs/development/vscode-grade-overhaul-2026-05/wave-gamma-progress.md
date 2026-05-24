@@ -57,6 +57,29 @@ opt-in は `&` で連結。
 | 31 | pgc-130 | wave-δ #6 §7 attachment | (同上) | Inspector Style tab に attachment 専用 metrics(name / MIME / size / sandbox / App Launcher) |
 | 32 | pgc-131 | wave-δ #7 §7 folder | (同上) | Inspector Style tab に folder 専用 metrics(直接子 / archetype 内訳 / 最終子更新)+ gitleaks false-positive 修正 |
 | 33 | pgc-132 | wave-δ #8 §7 form | (同上) | Inspector Style tab に form 専用 metrics ── **archetype-specific 6/6 完成** |
+| 34-44 | pgc-134〜145 | wave-δ #9〜#18 + hotfix | (各種) | 詳細は handoff §2.2 + CHANGELOG_v2.3.0.md。todo overdue indicator(pgc-134)、Export 動線消失 hotfix(pgc-135)、user issue 10 件カバー(pgc-136〜144)、AI tab roadmap doc(pgc-145) |
+| 45 | pgc-146 | (docs-only) | — | session handoff doc 2026-05-24(47 PR 引き継ぎ self-contained doc)|
+| 46 | pgc-147 | §6.3 AI tab Phase 1 | `shell.inspector_ai_local_enabled` | AI tab placeholder → **frontmatter suggestion**(本文 H1 → title / `#tag` → frontmatter tags、apply/dismiss button)|
+| 47 | pgc-148 | (同上 Phase 1) | (同 flag) | **abandoned entry warning**(updated_at 30 日+ + relation 0 + link 0 → ⚠️ box)|
+| 48 | pgc-149 | (同上 Phase 1 完了) | (同 flag) | **broken link summary**(`entry:` 参照 target 不在 → 🔗 box + target chip)|
+| 49 | pgc-150 | wave-δ #19 §7 todo | `text.todo_subtask_enabled` | todo description 内 inline `- [ ]` を click で toggle 可能化 |
+| 50 | pgc-151 | wave-δ #20 §7 wordcount | `text.wordcount_exclude_noise_enabled` | editor footer wordcount から code / image / footnote / HTML を除外 |
+| 51 | pgc-152 | (Inspector Style 拡張) | (`shell.meta_pane_inspector_enabled`) | Inspector Style に todo subtask completion graph(progress bar、pgc-150 補完)|
+| 52 | pgc-153 | §6.3 AI tab Phase 2 | (`shell.inspector_ai_local_enabled`) | **duplicate entry detector**(bigram Jaccard 類似度 >= 0.5 で上位 3 件、🔁 box + similarity%)|
+| 53 | pgc-154 | (同上 Phase 2) | (同 flag) | **outline lint**(H1 無し / H1 複数 / heading skip、💡 box + 3 issue kind)|
+| 54 | pgc-155 | wave-δ #22 §7 textlog | `text.textlog_log_search_enabled` | textlog 内 keyword search bar + hit count(space 区切り token AND)|
+| 55 | pgc-156 | wave-δ #23 §7 wordcount | `text.wordcount_mobile_compact_enabled` | wordcount footer を mobile compact 表記(`1.2k · 250w · 42l · ~3m`)|
+| 56 | pgc-157 | wave-δ #24 §7 textlog | `text.textlog_importance_filter_enabled` | textlog importance-only filter toggle(search と AND 条件)|
+| 57 | pgc-158 | (Phase 2) | (`shell.inspector_ai_local_enabled`) | **archetype mismatch detector**(text body が task / timestamp / image 過多なら別 archetype 推奨、🧩 box)|
+| 58 | pgc-159 | (Inspector Style 拡張) | (`shell.meta_pane_inspector_enabled`) | Inspector Style に form filled-fields progress bar(pgc-152 component 再利用)|
+| 59 | pgc-160 | hotfix(user bug #7) | (関連 flag) | breadcrumb / header nav back-forward button click target + disabled tooltip 改善 |
+| 60 | pgc-161 | hotfix(user bug #1) | — | view-mode tabs(6 件)を compact-header ON 時に潰れないよう min-width 4rem 確保 |
+| 61 | pgc-162 | hotfix(user bug #2) | — | header `📤 Export` fallback button の action を `toggle-shell-menu` → `begin-export` 直 export に修正 |
+| 62 | pgc-163 | hotfix(user bug #5) | (`text.textlog_importance_filter_enabled`) | textlog importance toggle を `<button>` → `<label><input type="checkbox" role="switch">` に semantic 修正 |
+| 63 | pgc-164 | (Phase 2) | (`shell.inspector_ai_local_enabled`) | **circular reference detector**(relation + link graph で current entry を含む循環を 1 件提示、🔄 box)|
+| 64 | pgc-165 | (Phase 2 完了) | (同 flag) | **tag imbalance suggester**(container 50%+ tag 文化 + 自 0 件で popular top 3 提示、🏷️ chip)── **A 群 8 件全件着地で Phase 2 完了** |
+| 65 | pgc-166 | hotfix(user bug #3) | (同 flag) | Inspector AI tab(🧠) → **Hints tab(💡)** に rename(heuristic ベース実態と整合、Phase 3 LLM 接続なし)|
+| 66 | pgc-167 | (docs-only) | — | **Tier 0 flag inventory audit doc**(32 flag inventory + always-on 化推奨 11 件 / 維持 15 件、handoff §3.5 step 1)|
 
 `*` = pgc-113 と同 flag を使う follow-up PR
 括弧書き flag = 新 flag 追加なし、既存 flag の機能拡張 PR
@@ -139,3 +162,8 @@ MASTER §7 の archetype 別 UX 改修は wave-δ scope。wave-γ が一段落
 | 2026-05-23 | wave-γ #16〜#18 追加着地(pgc-116〜118):Activity Bar 位置切替 / Inspector History region fix + empty hint / Inspector Style metrics 実装。test 9052、bundle 1932KB。Inspector 5 tab のうち 4 件機能化、placeholder 残りは AI 1 件のみ |
 | 2026-05-23 | wave-γ #19〜#21 追加着地(pgc-119〜121):progress doc update / Format panel keyboard shortcut(`Alt+Shift+F`)/ Activity Bar 6 tab keyboard shortcut(`Alt+Shift+1〜6`)。test 9065、bundle 1933KB。**Activity Bar §6.2 全 step 完了**(6 tab + 位置切替 + keyboard shortcut)。Format panel §6.4 step 2 完了(残 inline toolbar)。keymap registry binding 8 → 15 件に拡張 |
 | 2026-05-23 | wave-γ #22〜#23 + wave-δ #1〜#8 着地(pgc-122〜132):progress doc 2nd update + Inspector chord shortcut(Ctrl+K P/R/H/Y/I)+ tooltip keybind 併記 + **wave-δ 開始**(editor footer wordcount + live + read time、Inspector Style に textlog / todo / attachment / folder / form 専用 metrics)。test 9146、bundle 1938KB。**Inspector archetype-specific 6/6 完成**(text / textlog / todo / attachment / folder / form)。keymap registry binding 15 → 20 件 |
+| 2026-05-24 | wave-δ #9〜#18 + hotfix(pgc-134〜145):todo overdue indicator / Export 動線 hotfix / **user issue 10 件 一括カバー** / AI tab roadmap doc。test 9207、bundle 1943KB。**pgc-99〜145 累計 47 PR、handoff doc 起こし(pgc-146)で次セッション引き継ぎ** |
+| 2026-05-24 | **AI tab Phase 1 完了**(pgc-147〜149):frontmatter suggestion / abandoned warning / broken link summary。**flag `shell.inspector_ai_local_enabled`** で 3 機能を gate。Inspector 5 tab 全 5/5 機能化。bundle 1949KB |
+| 2026-05-24 | **wave-δ 続編 + Phase 2 進行**(pgc-150〜158):todo subtask checkbox(pgc-150)+ wordcount noise exclusion(pgc-151)+ Inspector todo subtask progress(pgc-152)+ AI Phase 2 duplicate detector(pgc-153)+ outline lint(pgc-154)+ textlog log search(pgc-155)+ wordcount mobile compact(pgc-156)+ textlog importance filter(pgc-157)+ AI archetype mismatch(pgc-158)+ form filled-fields progress(pgc-159)。test 9472、bundle 1968KB |
+| 2026-05-24 | **user bug 一括 hotfix + AI tab Phase 2 完了 + naming 整合**(pgc-160〜166):breadcrumb forward button(pgc-160)+ view-mode tabs size(pgc-161)+ Export button bug(pgc-162)+ importance toggle switch(pgc-163)+ AI circular reference(pgc-164)+ **AI tag imbalance(pgc-165)で A 群 8 件全件着地、Phase 2 完了** + **Inspector AI tab → Hints tab に rename**(pgc-166、user feedback「AI 看板倒れ」 解消)。test 9509、bundle 1968KB。**8 機能の local lint(frontmatter / abandoned / broken / duplicates / outline / archetype / circular / tag)が 1 flag で揃う** |
+| 2026-05-24 | **flag inventory audit doc 起こし**(pgc-167):pgc-99〜166 で蓄積した 32 Tier 0 flag を inventory + always-on 化推奨 11 件 / 維持 15 件 / 廃止 0 件 を提示、handoff §3.5「flag cleanup」 step 1。docs-only。次は user 確認 → batch default ON 切替 PR |
