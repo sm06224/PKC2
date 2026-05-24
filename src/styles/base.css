@@ -6958,6 +6958,41 @@ mark.pkc-search-mark {
   line-height: 1.4;
   padding: 2px var(--space-1);
 }
+/* pgc-155 wave-δ #22:textlog log search bar(flag ON 時のみ表示)。
+   append area の直下、log document の上に固定。input は flex grow。 */
+.pkc-textlog-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-1);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--c-bg-dim, var(--c-bg));
+}
+.pkc-textlog-search-icon {
+  font-size: 1em;
+  opacity: 0.8;
+}
+.pkc-textlog-search-input {
+  flex: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+}
+.pkc-textlog-search-input:focus {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+.pkc-textlog-search-count {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
 
 /* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
    flag ON 時に editor 末尾に compact metrics row(char / word / line)を

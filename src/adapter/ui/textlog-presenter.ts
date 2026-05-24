@@ -31,11 +31,37 @@ import {
   attachTocViewportTracker,
   type TocViewportHandle,
 } from './textlog-toc-viewport';
+import { searchTextlogEntries } from '../../features/textlog/textlog-search';
+import { textTextlogLogSearchEnabled } from './shell-flags';
 
 export { parseTextlogBody, serializeTextlogBody, appendLogEntry };
 
 let activeHydrator: HydratorHandle | null = null;
 let activeTocViewport: TocViewportHandle | null = null;
+
+/**
+ * pgc-155 wave-δ #22:textlog log search query を per-lid で持つ
+ * module-local state。renderer は描画時に getSearchQuery で読む、
+ * action-binder は setSearchQuery で update + SYS_SYNC dispatch。
+ * reload で消える(localStorage 化は後続 PR で検討)。
+ */
+const searchQueryByLid = new Map<string, string>();
+
+export function getTextlogSearchQuery(lid: string): string {
+  return searchQueryByLid.get(lid) ?? '';
+}
+
+export function setTextlogSearchQuery(lid: string, query: string): void {
+  if (query === '') {
+    searchQueryByLid.delete(lid);
+  } else {
+    searchQueryByLid.set(lid, query);
+  }
+}
+
+export function resetTextlogSearchState(): void {
+  searchQueryByLid.clear();
+}
 
 function cleanupActiveHydrator(): void {
   if (activeHydrator) {
@@ -132,7 +158,24 @@ export const textlogPresenter: DetailPresenter = {
 
     container.appendChild(appendArea);
 
-    const doc = buildTextlogDoc(entry, { order: 'desc' });
+    // pgc-155 wave-δ #22:flag ON 時に search input を append area の
+    // 直下に表示。query が non-empty なら下の doc.sections を filter、
+    // hit count を input 右側に「`M / N`」 で表示する。flag OFF だと
+    // 何も出さない(完全後方互換)。
+    let searchQuery = '';
+    let searchHits = 0;
+    let searchTotal = 0;
+    if (textTextlogLogSearchEnabled()) {
+      searchQuery = getTextlogSearchQuery(entry.lid);
+      const parsed = parseTextlogBody(entry.body);
+      const searchResult = searchTextlogEntries(parsed.entries, searchQuery);
+      searchHits = searchResult.totalHits;
+      searchTotal = searchResult.totalEntries;
+      container.appendChild(renderTextlogSearchBar(entry.lid, searchQuery, searchHits, searchTotal));
+    }
+
+    const docFull = buildTextlogDoc(entry, { order: 'desc' });
+    const doc = filterTextlogDocByQuery(docFull, searchQuery);
 
     if (doc.sections.length === 0) {
       const empty = document.createElement('div');
@@ -140,11 +183,15 @@ export const textlogPresenter: DetailPresenter = {
       empty.setAttribute('data-pkc-region', 'textlog-empty');
       const emptyTitle = document.createElement('div');
       emptyTitle.className = 'pkc-textlog-empty-title';
-      emptyTitle.textContent = 'No log entries yet.';
+      // pgc-155:search active で hit 0 件なら "No matches" を出す。
+      const isSearchActive = searchQuery.trim() !== '' && searchTotal > 0;
+      emptyTitle.textContent = isSearchActive ? `No matches for "${searchQuery}"` : 'No log entries yet.';
       empty.appendChild(emptyTitle);
       const emptyHint = document.createElement('div');
       emptyHint.className = 'pkc-textlog-empty-hint';
-      emptyHint.textContent = 'Write your first log entry above ↑';
+      emptyHint.textContent = isSearchActive
+        ? 'Clear the search to see all log entries.'
+        : 'Write your first log entry above ↑';
       empty.appendChild(emptyHint);
       container.appendChild(empty);
       return container;
@@ -568,4 +615,76 @@ function renderSelectionToolbar(lid: string, selecting: boolean): HTMLElement {
   bar.appendChild(convertBtn);
 
   return bar;
+}
+
+/**
+ * pgc-155 wave-δ #22:textlog search bar(flag ON 時の log keyword
+ * filter)。input change で `set-textlog-search` action を発火、
+ * action-binder が module-local state を更新 + SYS_SYNC で再描画。
+ */
+function renderTextlogSearchBar(
+  lid: string,
+  query: string,
+  hits: number,
+  total: number,
+): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'pkc-textlog-search';
+  bar.setAttribute('data-pkc-region', 'textlog-search');
+
+  const icon = document.createElement('span');
+  icon.className = 'pkc-textlog-search-icon';
+  icon.textContent = '🔍';
+  bar.appendChild(icon);
+
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.className = 'pkc-textlog-search-input';
+  input.setAttribute('data-pkc-action', 'set-textlog-search');
+  input.setAttribute('data-pkc-lid', lid);
+  input.setAttribute('data-pkc-field', 'textlog-search-query');
+  input.placeholder = 'Filter log entries by keyword(space-separated AND)';
+  input.value = query;
+  bar.appendChild(input);
+
+  const count = document.createElement('span');
+  count.className = 'pkc-textlog-search-count';
+  count.setAttribute('data-pkc-hits', String(hits));
+  count.setAttribute('data-pkc-total', String(total));
+  if (query.trim() === '') {
+    count.textContent = `${total} entries`;
+  } else {
+    count.textContent = `${hits} / ${total}`;
+  }
+  bar.appendChild(count);
+
+  return bar;
+}
+
+/**
+ * pgc-155 wave-δ #22:doc.sections を search query で filter。
+ * 空 query は元 doc をそのまま返す。各 day section の logs を hit
+ * のみに絞り、空 day section は drop。順序保持(buildTextlogDoc が
+ * 既に order:'desc' で出している)。
+ */
+function filterTextlogDocByQuery<T extends { sections: Array<{ dateKey: string; logs: LogArticle[] }> }>(
+  doc: T,
+  query: string,
+): T {
+  if (query.trim() === '') return doc;
+  const tokens = query.trim().toLowerCase().split(/\s+/);
+  const filteredSections = [];
+  for (const section of doc.sections) {
+    const filteredLogs = section.logs.filter((log) => {
+      const hay = log.bodySource.toLowerCase();
+      for (const tok of tokens) {
+        if (!hay.includes(tok)) return false;
+      }
+      return true;
+    });
+    if (filteredLogs.length > 0) {
+      filteredSections.push({ ...section, logs: filteredLogs });
+    }
+  }
+  return { ...doc, sections: filteredSections };
 }

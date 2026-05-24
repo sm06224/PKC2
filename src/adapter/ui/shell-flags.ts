@@ -423,6 +423,22 @@ export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
   },
 );
 
+// Textlog log search(wave-δ #22、pgc-155 handoff §3.3)。
+// ON で textlog presenter に keyword search input を表示、log entries を
+// space 区切り token AND 部分一致(case-insensitive)で絞り込み。
+// 多 log の textlog で「あの会議メモどこ」「あの bug 報告どこ」 を 1
+// keystroke で見つける動線。OFF で従来通り(完全後方互換)。
+// URL flag: `?pkc-flag=text.textlog_log_search_enabled=1`。
+export const textTextlogLogSearchEnabled = defineFlag<boolean>(
+  'text.textlog_log_search_enabled',
+  false,
+  {
+    category: 'text',
+    description:
+      'textlog presenter に keyword search input を表示し log entries を絞り込む',
+  },
+);
+
 // Wordcount footer noise exclusion(wave-δ #20、pgc-151 handoff §3.5)。
 // ON で editor footer wordcount が fenced code block / inline code /
 // image markup / footnote ref / HTML tag を除外して prose のみで

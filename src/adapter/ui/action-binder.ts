@@ -14,6 +14,7 @@ import { getPresenter } from './detail-presenter';
 import { runDebugReportDump } from './debug-report-button';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { toggleSubtaskAt } from '../../features/todo/todo-subtask';
+import { setTextlogSearchQuery } from './textlog-presenter';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
 import {
   toggleLogFlag,
@@ -130,7 +131,7 @@ import {
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
-import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled, shellContextMenuUniversalEnabled, shellEditorFooterWordcountEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled, shellContextMenuUniversalEnabled, shellEditorFooterWordcountEnabled, textTextlogLogSearchEnabled } from './shell-flags';
 import { estimateReadTimeMinutes, formatReadTime } from './editor-footer-wordcount';
 import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
@@ -8241,6 +8242,39 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     metrics.textContent = `${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
   }
   root.addEventListener('input', handleEditorFooterWordcountInput);
+
+  // pgc-155 wave-δ #22:textlog search input。flag ON 時の per-lid
+  // search query を module-local state に register、SYS_SYNC で再描画。
+  // 再描画後に同 input を find して focus + caret 末尾復元(input 中の
+  // 体感事故回避)。
+  function handleTextlogSearchInput(e: Event): void {
+    if (!textTextlogLogSearchEnabled()) return;
+    const target = e.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.getAttribute('data-pkc-action') !== 'set-textlog-search') return;
+    const lid = target.getAttribute('data-pkc-lid');
+    if (!lid) return;
+    const query = target.value;
+    const caret = target.selectionStart ?? query.length;
+    setTextlogSearchQuery(lid, query);
+    const st = dispatcher.getState();
+    dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+    // 再描画後に新 input element を find → focus + caret 復元。
+    queueMicrotask(() => {
+      const next = root.querySelector<HTMLInputElement>(
+        `input[data-pkc-action="set-textlog-search"][data-pkc-lid="${lid}"]`,
+      );
+      if (next) {
+        next.focus();
+        try {
+          next.setSelectionRange(caret, caret);
+        } catch {
+          // setSelectionRange may throw for some input types; ignore.
+        }
+      }
+    });
+  }
+  root.addEventListener('input', handleTextlogSearchInput);
 
   // ── 領域 10-1: Source ↔ Preview sync wiring ──
   // Caret-tracking handlers (selectionchange / keyup / focus) keep the
