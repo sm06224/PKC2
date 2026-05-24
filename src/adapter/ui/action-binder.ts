@@ -13,6 +13,7 @@ import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
 import { runDebugReportDump } from './debug-report-button';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
+import { toggleSubtaskAt } from '../../features/todo/todo-subtask';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
 import {
   toggleLogFlag,
@@ -2451,6 +2452,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         });
         preserveCenterPaneScroll(() => {
           dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        });
+        break;
+      }
+      case 'toggle-todo-subtask': {
+        // pgc-150 wave-δ #19(handoff §3.3):todo description 内の inline
+        // checkbox click。markdown-it task-list plugin が出力する
+        // `data-pkc-task-index` 属性が subtask の 0-origin index に対応する
+        // ため、toggleSubtaskAt(description, index)で description を
+        // 更新 → QUICK_UPDATE_ENTRY で全体 re-render。default checkbox
+        // toggle は preventDefault で抑制(dispatch 後の re-render が
+        // 真の checked 状態を反映)。
+        e.preventDefault();
+        e.stopPropagation();
+        if (!lid) break;
+        const idxRaw = target.getAttribute('data-pkc-task-index');
+        const idx = idxRaw === null ? NaN : Number.parseInt(idxRaw, 10);
+        if (!Number.isInteger(idx)) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const entry = st.container?.entries.find((x) => x.lid === lid);
+        if (!entry || entry.archetype !== 'todo') break;
+        const todo = parseTodoBody(entry.body);
+        const newDesc = toggleSubtaskAt(todo.description, idx);
+        if (newDesc === todo.description) break;
+        const newBody = serializeTodoBody({ ...todo, description: newDesc });
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: newBody });
         });
         break;
       }

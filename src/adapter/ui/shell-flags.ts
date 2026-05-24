@@ -423,6 +423,25 @@ export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
   },
 );
 
+// Todo subtask inline checkbox(wave-δ #19、pgc-150 handoff §3.3)。
+// ON で todo description 内の `- [ ]` / `- [x]` markdown task literal を
+// **click 可能な inline checkbox** として render(markdown-it task-list
+// plugin が既に出力する `<input type="checkbox">` に
+// `data-pkc-action="toggle-todo-subtask"` を inject)。click で
+// `extractSubtasks` / `toggleSubtaskAt`(features/todo/todo-subtask.ts)
+// を経由して description を更新 → QUICK_UPDATE_ENTRY dispatch。
+// URL flag: `?pkc-flag=text.todo_subtask_enabled=1`。OFF で従来通り
+// disabled checkbox(read-only)。
+export const textTodoSubtaskEnabled = defineFlag<boolean>(
+  'text.todo_subtask_enabled',
+  false,
+  {
+    category: 'text',
+    description:
+      'todo description 内の `- [ ]` / `- [x]` inline checkbox を click で toggle 可能化',
+  },
+);
+
 // Inspector AI tab Phase 1 — local-only frontmatter suggester
 // (vscode-grade-overhaul-2026-05 MASTER.md §6.3 AI tab、pgc-147 wave-γ #24)。
 // pgc-145 で起こした `inspector-ai-tab-roadmap-2026-05.md` §3 Phase 1 の
