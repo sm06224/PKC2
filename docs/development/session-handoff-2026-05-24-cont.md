@@ -1,7 +1,8 @@
 # Session handoff 2026-05-24(継続セッション、pgc-147〜169 stack 23 PR)
 
 **作成日**: 2026-05-24(2 回目、本セッション)
-**作成セッション**: claude-opus-4-7[1m]、約 6 時間連続作業 + container restart 1 回
+**作成セッション**: claude-opus-4-7[1m]、約 8 時間連続作業 + container restart 1 回 + MCP disconnect 1 回 → reconnect 後 PR 10 件一括作成
+**本 session 最終 PR 件数**: 29 件(pgc-147〜175)、+前 session 47 件 = **累計 76 PR**
 **前回 handoff**: `session-handoff-2026-05-24.md`(pgc-99〜145 stack 47 PR 引き継ぎ)
 **次セッション読み**: `Read` 必須(プロンプト内で `--read-docs` 指示)
 **寿命**: pgc-170 着手時に次セッションが §3 棚卸しを再 grep して更新する
@@ -35,19 +36,33 @@
 - **autonomous 継続**:指示なしで stack 積む、bug fix も hotfix PR で順次
 - **MCP 不安定時は local 保存 + 次タイミング再試行**(`/tmp/pr-drafts/*.json`)
 
-## §2 累計成果(pgc-147〜169、23 PR)
+## §2 累計成果(pgc-147〜175、29 PR)
 
 | metric | value |
 |---|---|
-| PR 件数 | 23(pgc-147〜169)|
-| test 件数 | 9207 → **9509**(+302) |
+| PR 件数 | **29**(pgc-147〜175)|
+| test 件数 | 9207 → **9520**(+313) |
 | bundle js | 1943 KB → 1968 KB(+25 KB / +1.3%) |
 | bundle css | 187 KB → 195 KB(+8 KB / +4.3%) |
 | dist html | ~1075 KB → ~1090 KB |
 | keymap registry binding | 21 件(本 session 増加なし、AI tab 関連は registry 経由しない) |
-| Tier 0 flag(本 session で追加) | **5 件**(`shell.inspector_ai_local_enabled` / `text.todo_subtask_enabled` / `text.wordcount_exclude_noise_enabled` / `text.textlog_log_search_enabled` / `text.textlog_importance_filter_enabled` / `text.wordcount_mobile_compact_enabled`)── 全 default OFF |
-| 0 regression 維持 | 23/23 PR 全件 |
-| local gitleaks no leaks | 23/23 PR 全件(各 ~170 commits / 394 MB scan)|
+| Tier 0 flag(本 session で追加) | **6 件**(`shell.inspector_ai_local_enabled` / `text.todo_subtask_enabled` / `text.wordcount_exclude_noise_enabled` / `text.textlog_log_search_enabled` / `text.textlog_importance_filter_enabled` / `text.wordcount_mobile_compact_enabled`)── 全 default OFF |
+| 0 regression 維持 | 29/29 PR 全件 |
+| local gitleaks no leaks | 29/29 PR 全件(各 ~170-181 commits / 394 MB scan)|
+
+### §2.4 button audit 6 step migration(pgc-171〜174)
+
+handoff 末尾追加の wave-δ #26〜28(button consistency)で **`pkc-button-base` + 5 size category** 設計 + 3 step 着地:
+
+| step | 内容 | 着地 |
+|---|---|---|
+| 1 | `pkc-button-base` + 5 size category CSS 導入 | pgc-171 ✅ |
+| 2 | header nav 4 件 adopt | pgc-171 ✅ |
+| 3 partial | view-mode tab(6)+ Inspector tab(5)adopt | pgc-172 ✅ |
+| 3-bis | Activity Bar square icon(別 category 必要)| TODO |
+| 4 | format toolbar 全 button(~40)| TODO |
+| 5 | Inspector Hints dismiss 8 件 adopt | pgc-173 ✅ |
+| 6 | `.pkc-btn` 系統一 | user 確認待ち(audit と `.pkc-btn` 実態の padding 微妙差) |
 
 ### §2.1 Inspector AI tab(現 Hints tab)Phase 1 + Phase 2 完了(9 PR、pgc-147〜149 + 153/154/158/164/165 + rename pgc-166)
 
@@ -246,7 +261,7 @@ https://claude.ai/code/session_017KG66tCdhQsbpARsXeRWiB
 下記を新セッションに貼り付けると、Claude が即座に本 stack を引き継ぎ次 PR に着手します。
 
 ```
-PKC2 v2.3.0 stack PR(pgc-99〜169、71 件)を引き継いで次 PR pgc-170 を開始してください。
+PKC2 v2.3.0 stack PR(pgc-99〜175、76 件)を引き継いで次 PR pgc-176 を開始してください。
 
 【必読 docs(順序固定)】
 1. /home/user/PKC2/CLAUDE.md(project 規律 + Language Policy:思考は EN、出力は JA)
@@ -268,7 +283,7 @@ PKC2 v2.3.0 stack PR(pgc-99〜169、71 件)を引き継いで次 PR pgc-170 を�
 - webhook subscribe が来たら反射的に unsubscribe(session policy「GitHub CI を気にしない、local CI のみ参照」)
 - CHANGELOG_v2.3.0.md 更新必須、新 doc は INDEX.md 同時登録(check:doc-orphans が CI で fail する)
 - commit message format は handoff doc §4.5 参照、必ず "https://claude.ai/code/session_017KG66tCdhQsbpARsXeRWiB" を含める
-- PR base は直前 PR の branch(pgc-170 の base は pgc-169 branch:claude/pgc-169-button-size-audit)
+- PR base は直前 PR の branch(pgc-176 の base は pgc-175 branch:claude/pgc-175-session-handoff-final-update)
 
 【最初の判断】
 handoff doc §3 backlog から最初の PR を選ぶ。優先度推奨:
@@ -296,4 +311,5 @@ merge 解禁 = user の終了宣言。それまで continuous stack mode。
 | date | event |
 |---|---|
 | 2026-05-24 | 前 session(pgc-99〜145 stack 47 PR)着地、handoff doc(pgc-146)起こし |
-| 2026-05-24 | **本 session 開始**:pgc-147〜169 stack 23 PR 着地(本 doc 作成時点で pgc-170 起こし中)── AI Hints Phase 1+2 完了 + wave-δ archetype UX 続編 + user bug 4 件 hotfix + audit doc 3 件。test 9509、bundle js 1968 / css 195 KB。**前々 session の継続で計 70 PR、handoff 引き継ぎ + autonomous 動作の実証** |
+| 2026-05-24 | **本 session 開始**:pgc-147〜169 stack 23 PR 着地(本 doc 作成時点で pgc-170 起こし中)── AI Hints Phase 1+2 完了 + wave-δ archetype UX 続編 + user bug 4 件 hotfix + audit doc 3 件。test 9509、bundle js 1968 / css 195 KB |
+| 2026-05-24 | **MCP reconnect 後の PR 一括作成 + 本 session 最終追加 stack**(pgc-171〜175):MCP github 復活で local 保存していた PR draft 10 件(pgc-161〜170)を一括 PR 作成 → 続けて **button audit step 1〜5 partial migration**(pgc-171 button base + header nav / pgc-172 view-mode + Inspector tab / pgc-173 Inspector dismiss / pgc-174 audit doc 更新)+ 本 session 最終 handoff doc 更新(pgc-175)。**本 session 合計 29 PR、前 session と合わせ 76 PR、handoff 規律 30〜50 件 / 1 セッション の上限近く**、次セッションは pgc-176 から button audit step 3-bis(Activity Bar square icon)+ step 4(format toolbar)+ step 6(`.pkc-btn` 統一)or 別領域(wave-δ phase 2 残り)から継続 |
