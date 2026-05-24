@@ -566,6 +566,11 @@
 .pkc-button-size-tab { min-height: 32px; font-size: var(--fs-base); padding: var(--space-1) var(--space-2); min-width: 4rem; }
 .pkc-button-size-toggle { min-height: 24px; font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); }
 .pkc-button-size-dismiss { min-height: 22px; font-size: var(--fs-xs); padding: var(--space-0-5) var(--space-1-5); }
+/* pgc-176 wave-δ #29(audit step 3-bis):Activity Bar 等の square icon
+   button 用 6th category。WCAG 2.5.8 推奨 44px に近い 40px square、
+   emoji glyph 表示で text tab とは別 sizing 必要(text tab は min-width
+   4rem で horizontal、本 category は width=height で square)。 */
+.pkc-button-size-square-tab { min-width: 40px; min-height: 40px; width: 40px; height: 40px; font-size: 1.2rem; padding: 0; }
 
 .pkc-header-nav-btn {
   font-size: var(--fs-sm);

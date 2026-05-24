@@ -96,6 +96,8 @@ base + variant は **大半 OK**。
 .pkc-button-size-tab { min-height: 32px; font-size: var(--fs-base); padding: var(--space-1) var(--space-2); min-width: 4rem; }
 .pkc-button-size-toggle { min-height: 24px; font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); }
 .pkc-button-size-dismiss { min-height: 22px; font-size: var(--fs-xs); padding: var(--space-0-5) var(--space-1-5); }
+/* pgc-176 step 3-bis 追加 */
+.pkc-button-size-square-tab { min-width: 40px; min-height: 40px; width: 40px; height: 40px; font-size: 1.2rem; padding: 0; }
 ```
 
 各 button class は `pkc-button-base pkc-button-size-<category>` を追加して
@@ -163,3 +165,4 @@ trade-off を user 確認後に決定。本 step 6 は **user 確認待ち**。
 | 2026-05-24 | **step 3 partial 着地**(pgc-172):view-mode tab 6 件 + Inspector tab 5 件 adopt(Activity Bar square icon は step 3-bis に分離)|
 | 2026-05-24 | **step 5 着地**(pgc-173):Inspector Hints 8 dismiss button adopt |
 | 2026-05-24 | 本 doc 4-rounds-1 update(pgc-174):step 1/2/3 partial/5 着地反映 + step 3-bis(square icon)分離 + step 6 user 確認事項(audit vs `.pkc-btn` 実態差)明文化 |
+| 2026-05-24 | **step 3-bis 着地**(pgc-176):`pkc-button-size-square-tab`(40px × 40px、emoji icon 1.2rem)新 category 追加、Activity Bar 6 tab + side-toggle button adopt |

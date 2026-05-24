@@ -69,7 +69,7 @@ export function buildActivityBarElement(): HTMLElement {
   bar.setAttribute('role', 'tablist');
   for (const { id, icon, label, tip } of ALL_TABS) {
     const btn = document.createElement('button');
-    btn.className = 'pkc-activity-bar-btn';
+    btn.className = 'pkc-button-base pkc-button-size-square-tab pkc-activity-bar-btn';
     btn.setAttribute('data-pkc-action', 'select-activity-tab');
     btn.setAttribute('data-pkc-activity-tab', id);
     btn.setAttribute('title', tip);
@@ -91,7 +91,7 @@ export function buildActivityBarElement(): HTMLElement {
   spacer.className = 'pkc-activity-bar-spacer';
   bar.appendChild(spacer);
   const sideToggle = document.createElement('button');
-  sideToggle.className = 'pkc-activity-bar-btn pkc-activity-bar-side-toggle';
+  sideToggle.className = 'pkc-button-base pkc-button-size-square-tab pkc-activity-bar-btn pkc-activity-bar-side-toggle';
   sideToggle.setAttribute('data-pkc-action', 'toggle-activity-bar-side');
   sideToggle.setAttribute('data-pkc-current-side', barSide);
   sideToggle.setAttribute(
