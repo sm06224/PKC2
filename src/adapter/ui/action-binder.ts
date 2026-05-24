@@ -7815,6 +7815,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
 
+    // pgc-206(user 報告 2026-05-24「ファイラ、マルチウィンドウ以前は
+    // もっと使い勝手良かったのに」):folder archetype は OS Finder /
+    // Explorer 流に「ダブルクリックでフォルダの中に入る」 が期待される。
+    // 旧 multi-window 統一導線では folder 種別を区別せず popup window を
+    // 開いていたが、folder の popup は本体が空(子は relation で繋がる)で
+    // ユーザー期待と乖離。folder の dblclick は:
+    //   - viewMode='filer' のとき: SELECT_ENTRY のみ(filer 側 click handler
+    //     で stayInFiler=true の路に乗り、自動的に新 scope へ navigate)
+    //   - その他の viewMode: SELECT_ENTRY + SET_VIEW_MODE='filer'(folder の
+    //     中身を Filer で見せる、これも OS 流の自然な挙動)
+    // popup は開かない。entry-window で folder を開きたい特殊要件は
+    // context menu の「Open in new window」 経路から(別 PR)。
+    if (entry.archetype === 'folder') {
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+      if (state.viewMode !== 'filer') {
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
+      }
+      return;
+    }
+
     // 2026-04-26 user direction: keep the desktop detached-window
     // double-tap UX even on touch devices — iPad in 3-pane mode
     // benefits from "double-tap → pin a reference window next to
