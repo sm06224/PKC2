@@ -123,8 +123,11 @@ HTML product」は外部 dep を拒否するため、最初は local-only が自
 
 - **pgc-153 着地** ✅:A 群 2 = `duplicate entry detection`(bigram Jaccard
   類似度 >= 0.5 の上位 3 件、🔁 info box + similarity% + section dismiss)
-- A 群 残り 4 件(5/6/7/8 = circular reference / outline lint / tag
-  imbalance / archetype mismatch)
+- **pgc-154 着地** ✅:A 群 6 = `outline lint`(H1 無し / H1 複数 /
+  heading skip、💡 info box + 3 種 issue kind + section dismiss、
+  text/folder/generic のみ対象)
+- A 群 残り 3 件(5/7/8 = circular reference / tag imbalance / archetype
+  mismatch)
 - 各 suggestion に「apply」「dismiss」 button
 - per-container suggestion history(localStorage)
 

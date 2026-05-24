@@ -331,3 +331,65 @@ describe('buildInspectorAiSection — duplicate detector(pgc-153)', () => {
     expect(buildInspectorAiSection(a, makeContainer([a])).querySelector('.pkc-inspector-ai-duplicates')).toBeNull();
   });
 });
+
+describe('buildInspectorAiSection — outline lint(pgc-154)', () => {
+  beforeEach(() => {
+    resetInspectorAiState();
+  });
+
+  it('case 30: heading 構造 OK な entry → outline section 出ない', () => {
+    const e = makeEntry({ lid: 'e', body: '# T\n## A\n## B' });
+    const el = buildInspectorAiSection(e);
+    expect(el.querySelector('.pkc-inspector-ai-outline')).toBeNull();
+  });
+
+  it('case 31: H1 無し → outline section + missing-h1 issue', () => {
+    const e = makeEntry({ lid: 'e', body: '## A\n## B' });
+    const el = buildInspectorAiSection(e);
+    const out = el.querySelector('.pkc-inspector-ai-outline');
+    expect(out).not.toBeNull();
+    expect(out?.getAttribute('data-pkc-warning-kind')).toBe('outline-lint');
+    const items = out?.querySelectorAll('.pkc-inspector-ai-outline-issue');
+    expect(items?.length).toBe(1);
+    expect(items?.[0]?.getAttribute('data-pkc-issue-kind')).toBe('missing-h1');
+  });
+
+  it('case 32: heading skip(H2→H4) → heading-skip issue', () => {
+    const e = makeEntry({ lid: 'e', body: '# T\n## A\n#### deep' });
+    const el = buildInspectorAiSection(e);
+    const issue = el.querySelector('.pkc-inspector-ai-outline-issue[data-pkc-issue-kind="heading-skip"]');
+    expect(issue).not.toBeNull();
+  });
+
+  it('case 33: dismiss → 次回 render で消える', () => {
+    const e = makeEntry({ lid: 'e', body: '## A\n## B' });
+    const el1 = buildInspectorAiSection(e);
+    const id = el1
+      .querySelector('.pkc-inspector-ai-outline [data-pkc-action="dismiss-ai-suggestion"]')
+      ?.getAttribute('data-pkc-suggestion-id');
+    expect(id).toBe('outline-lint:e');
+    dismissSuggestion(e.lid, id!);
+    const el2 = buildInspectorAiSection(e);
+    expect(el2.querySelector('.pkc-inspector-ai-outline')).toBeNull();
+  });
+
+  it('case 34: todo archetype は lint 対象外(features 確認のスマート assert)', () => {
+    const e: Entry = {
+      lid: 'e',
+      title: 'T',
+      body: JSON.stringify({ status: 'open', description: '## A' }),
+      archetype: 'todo',
+      created_at: '2026-05-24T00:00:00Z',
+      updated_at: '2026-05-24T00:00:00Z',
+    };
+    const el = buildInspectorAiSection(e);
+    expect(el.querySelector('.pkc-inspector-ai-outline')).toBeNull();
+  });
+
+  it('case 35: 順序性 ── H1 追加で section 消える', () => {
+    const before = makeEntry({ lid: 'e', body: '## A\n## B' });
+    const after = makeEntry({ lid: 'e', body: '# T\n## A\n## B' });
+    expect(buildInspectorAiSection(before).querySelector('.pkc-inspector-ai-outline')).not.toBeNull();
+    expect(buildInspectorAiSection(after).querySelector('.pkc-inspector-ai-outline')).toBeNull();
+  });
+});

@@ -31,6 +31,10 @@ import {
   detectDuplicates,
   type DuplicateMatch,
 } from '../../features/ai/duplicate-detector';
+import {
+  detectOutlineIssues,
+  type OutlineLintReport,
+} from '../../features/ai/outline-lint';
 
 // dismiss 状態は module-local。reload で消える(localStorage 化は後続 PR、
 // privacy 観点で session 限定の方が安全)。`<lid>:<suggestion-id>` を key
@@ -105,10 +109,23 @@ export function buildInspectorAiSection(
     section.appendChild(renderDuplicatesSection(entry.lid, duplicates));
   }
 
+  // pgc-154:outline lint(roadmap §2.2 A 群 6、Phase 2 2 件目)。
+  // markdown body の heading 階層を check、H1 無し / H1 複数 / heading
+  // skip(H2→H4 等)を 💡 info box で提示。entry.archetype が text /
+  // folder / generic のみ対象(todo / textlog 等は markdown 構造を
+  // 持たないため lint 対象外)。section dismiss 可能。
+  const outlineDismissed = isSuggestionDismissed(entry.lid, `outline-lint:${entry.lid}`);
+  const outlineReport: OutlineLintReport | null = !outlineDismissed
+    ? detectOutlineIssues(entry)
+    : null;
+  if (outlineReport && outlineReport.issues.length > 0) {
+    section.appendChild(renderOutlineLintSection(entry.lid, outlineReport));
+  }
+
   const raw = suggestFrontmatter(entry);
   const suggestions = raw.filter((s) => !isSuggestionDismissed(entry.lid, s.id));
 
-  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0) {
+  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0 && !outlineReport) {
     const empty = document.createElement('div');
     empty.className = 'pkc-inspector-ai-empty';
     empty.textContent = raw.length === 0
@@ -128,6 +145,47 @@ export function buildInspectorAiSection(
   }
 
   return section;
+}
+
+function renderOutlineLintSection(lid: string, report: OutlineLintReport): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'pkc-inspector-ai-outline';
+  div.setAttribute('data-pkc-warning-kind', 'outline-lint');
+  div.setAttribute('data-pkc-issue-count', String(report.issues.length));
+
+  const header = document.createElement('div');
+  header.className = 'pkc-inspector-ai-outline-header';
+  const icon = document.createElement('span');
+  icon.className = 'pkc-inspector-ai-outline-icon';
+  icon.textContent = '💡';
+  header.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'pkc-inspector-ai-outline-title';
+  title.textContent = `Outline hint(${report.issues.length})`;
+  header.appendChild(title);
+  div.appendChild(header);
+
+  const list = document.createElement('ul');
+  list.className = 'pkc-inspector-ai-outline-list';
+  for (const issue of report.issues) {
+    const li = document.createElement('li');
+    li.className = 'pkc-inspector-ai-outline-issue';
+    li.setAttribute('data-pkc-issue-kind', issue.kind);
+    li.textContent = issue.message;
+    list.appendChild(li);
+  }
+  div.appendChild(list);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
+  dismiss.setAttribute('data-pkc-suggestion-id', report.id);
+  dismiss.setAttribute('data-pkc-suggestion-lid', lid);
+  dismiss.textContent = 'Dismiss';
+  dismiss.title = 'この section を当面非表示にします(reload で復帰)';
+  div.appendChild(dismiss);
+
+  return div;
 }
 
 function renderDuplicatesSection(lid: string, matches: DuplicateMatch[]): HTMLElement {

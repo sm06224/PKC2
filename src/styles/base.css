@@ -6921,6 +6921,43 @@ mark.pkc-search-mark {
   font-family: var(--font-mono);
   font-weight: 600;
 }
+/* pgc-154 wave-γ #28:outline lint(roadmap §2.2 A 群 6、Phase 2 2 件目)。
+   markdown body の heading 階層を check、H1 無し / H1 複数 / heading
+   skip(H2→H4 等)を 💡 info box(neutral muted color)で提示。 */
+.pkc-inspector-ai-outline {
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-dim, var(--c-bg));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-outline-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-outline-title {
+  color: var(--c-fg);
+}
+.pkc-inspector-ai-outline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pkc-inspector-ai-outline-issue {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+  padding: 2px var(--space-1);
+}
 
 /* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
    flag ON 時に editor 末尾に compact metrics row(char / word / line)を
