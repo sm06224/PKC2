@@ -7,6 +7,10 @@ import {
   isSuggestionDismissed,
 } from '../../src/adapter/ui/inspector-ai-tab';
 import type { Entry } from '../../src/core/model/record';
+import type { Container } from '../../src/core/model/container';
+
+const NOW_ISO = '2026-05-24T00:00:00Z';
+const OLD_ISO = '2026-01-01T00:00:00Z'; // 約 143 日前
 
 function makeEntry(opts: Partial<Entry> & { body: string }): Entry {
   return {
@@ -14,9 +18,25 @@ function makeEntry(opts: Partial<Entry> & { body: string }): Entry {
     title: opts.title ?? '',
     body: opts.body,
     archetype: opts.archetype ?? 'text',
-    created_at: '2026-05-24T00:00:00Z',
-    updated_at: '2026-05-24T00:00:00Z',
+    created_at: opts.created_at ?? NOW_ISO,
+    updated_at: opts.updated_at ?? NOW_ISO,
     tags: opts.tags,
+  };
+}
+
+function makeContainer(entries: Entry[]): Container {
+  return {
+    meta: {
+      container_id: 'c1',
+      title: 'C',
+      created_at: NOW_ISO,
+      updated_at: NOW_ISO,
+      schema_version: 1,
+    },
+    entries,
+    relations: [],
+    revisions: [],
+    assets: {},
   };
 }
 
@@ -103,5 +123,76 @@ describe('buildInspectorAiSection — render', () => {
     const el = buildInspectorAiSection(makeEntry({ body: '本文 #foo #bar' }));
     const value = el.querySelector('.pkc-inspector-ai-value');
     expect(value?.textContent).toBe('#foo #bar');
+  });
+});
+
+describe('buildInspectorAiSection — abandoned warning(pgc-148)', () => {
+  beforeEach(() => {
+    resetInspectorAiState();
+  });
+
+  it('case 11: container を渡し古い entry なら abandoned warning が表示される', () => {
+    const e = makeEntry({ lid: 'e1', body: 'old', updated_at: OLD_ISO });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    const warn = el.querySelector('.pkc-inspector-ai-warning');
+    expect(warn).not.toBeNull();
+    expect(warn?.getAttribute('data-pkc-warning-kind')).toBe('abandoned');
+    expect(warn?.querySelector('.pkc-inspector-ai-warning-title')?.textContent).toBe('Abandoned entry');
+  });
+
+  it('case 12: 新しい entry では warning 出ない', () => {
+    const e = makeEntry({ lid: 'e1', body: 'new', updated_at: NOW_ISO });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    expect(el.querySelector('.pkc-inspector-ai-warning')).toBeNull();
+  });
+
+  it('case 13: container undefined で warning 計算しない(下位互換)', () => {
+    const e = makeEntry({ lid: 'e1', body: 'no container', updated_at: OLD_ISO });
+    const el = buildInspectorAiSection(e); // container 引数なし
+    expect(el.querySelector('.pkc-inspector-ai-warning')).toBeNull();
+  });
+
+  it('case 14: warning + frontmatter suggestion 両方 render', () => {
+    const e = makeEntry({
+      lid: 'e1',
+      title: '',
+      body: '# H1\n本文 #tag1',
+      updated_at: OLD_ISO,
+    });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    expect(el.querySelector('.pkc-inspector-ai-warning')).not.toBeNull();
+    expect(el.querySelectorAll('.pkc-inspector-ai-suggestion').length).toBe(2);
+  });
+
+  it('case 15: warning dismiss → next render で消える', () => {
+    const e = makeEntry({ lid: 'e1', body: 'old', updated_at: OLD_ISO });
+    const c = makeContainer([e]);
+    const el1 = buildInspectorAiSection(e, c);
+    const id = el1
+      .querySelector('.pkc-inspector-ai-warning')
+      ?.getAttribute('data-pkc-suggestion-id');
+    expect(id).toBe('abandoned:e1');
+    dismissSuggestion(e.lid, id!);
+    const el2 = buildInspectorAiSection(e, c);
+    expect(el2.querySelector('.pkc-inspector-ai-warning')).toBeNull();
+  });
+
+  it('case 16: warning dismiss button は dismiss-ai-suggestion action', () => {
+    const e = makeEntry({ lid: 'e1', body: 'x', updated_at: OLD_ISO });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    const btn = el
+      .querySelector('.pkc-inspector-ai-warning')
+      ?.querySelector('[data-pkc-action="dismiss-ai-suggestion"]');
+    expect(btn).not.toBeNull();
+    expect(btn?.getAttribute('data-pkc-suggestion-lid')).toBe('e1');
+    expect(btn?.getAttribute('data-pkc-suggestion-id')).toBe('abandoned:e1');
+  });
+
+  it('case 17: 順序性 ── warning のみで suggestion 0 件、empty 表示しない', () => {
+    // body 空 = frontmatter suggestion 0 件、updated_at 古い = warning あり
+    const e = makeEntry({ lid: 'e1', body: '', updated_at: OLD_ISO });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    expect(el.querySelector('.pkc-inspector-ai-warning')).not.toBeNull();
+    expect(el.querySelector('.pkc-inspector-ai-empty')).toBeNull();
   });
 });

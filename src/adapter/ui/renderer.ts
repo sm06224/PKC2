@@ -8955,7 +8955,9 @@ function renderMetaPaneImpl(
     // 出さず empty hint(meta-pane-inspector.ts labelToEmptyMessage)で
     // flag opt-in 経路を案内。
     if (shellInspectorAiLocalEnabled()) {
-      meta.appendChild(buildInspectorAiSection(entry));
+      // pgc-148:container を渡すことで abandoned entry warning も計算
+      // (frontmatter suggestion + abandoned 警告の両 inspector が同 panel に出る)。
+      meta.appendChild(buildInspectorAiSection(entry, container));
     }
     const strip = buildMetaPaneInspectorTabStrip();
     // tab strip は header / timestamps の直前(meta pane の最上段)に挿入

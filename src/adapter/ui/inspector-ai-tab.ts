@@ -14,10 +14,15 @@
 // meta-pane-inspector の visibleRegions に組込む。
 
 import type { Entry } from '../../core/model/record';
+import type { Container } from '../../core/model/container';
 import {
   suggestFrontmatter,
   type FrontmatterSuggestion,
 } from '../../features/ai/frontmatter-suggester';
+import {
+  detectAbandonedWarning,
+  type AbandonedWarning,
+} from '../../features/ai/abandoned-warning';
 
 // dismiss 状態は module-local。reload で消える(localStorage 化は後続 PR、
 // privacy 観点で session 限定の方が安全)。`<lid>:<suggestion-id>` を key
@@ -36,7 +41,10 @@ export function isSuggestionDismissed(lid: string, suggestionId: string): boolea
   return dismissedSuggestions.has(`${lid}:${suggestionId}`);
 }
 
-export function buildInspectorAiSection(entry: Entry): HTMLElement {
+export function buildInspectorAiSection(
+  entry: Entry,
+  container?: Container | null,
+): HTMLElement {
   const section = document.createElement('section');
   section.className = 'pkc-inspector-ai';
   section.setAttribute('data-pkc-region', 'inspector-ai-suggestions');
@@ -49,13 +57,25 @@ export function buildInspectorAiSection(entry: Entry): HTMLElement {
   const note = document.createElement('div');
   note.className = 'pkc-inspector-ai-note';
   note.textContent
-    = '本文から推測した frontmatter 候補です。LLM 接続なし、計算は端末内のみ。';
+    = '本文から推測した frontmatter 候補 + 使われていない entry 警告です。LLM 接続なし、計算は端末内のみ。';
   section.appendChild(note);
+
+  // pgc-148:abandoned entry warning(roadmap §2.2 A 群 4)。container
+  // 渡されたときのみ判定、updated_at が古く + relation 0 + link reference
+  // 0 件の entry に「使われていない候補」 warning を表示。dismiss のみ
+  // 提供(archive は archetype 別で複雑、後続 PR)。
+  const warning
+    = container && !isSuggestionDismissed(entry.lid, `abandoned:${entry.lid}`)
+      ? detectAbandonedWarning(entry, container)
+      : null;
+  if (warning) {
+    section.appendChild(renderAbandonedWarning(entry.lid, warning));
+  }
 
   const raw = suggestFrontmatter(entry);
   const suggestions = raw.filter((s) => !isSuggestionDismissed(entry.lid, s.id));
 
-  if (suggestions.length === 0) {
+  if (suggestions.length === 0 && !warning) {
     const empty = document.createElement('div');
     empty.className = 'pkc-inspector-ai-empty';
     empty.textContent = raw.length === 0
@@ -65,14 +85,51 @@ export function buildInspectorAiSection(entry: Entry): HTMLElement {
     return section;
   }
 
-  const list = document.createElement('ul');
-  list.className = 'pkc-inspector-ai-list';
-  for (const s of suggestions) {
-    list.appendChild(renderSuggestion(entry.lid, s));
+  if (suggestions.length > 0) {
+    const list = document.createElement('ul');
+    list.className = 'pkc-inspector-ai-list';
+    for (const s of suggestions) {
+      list.appendChild(renderSuggestion(entry.lid, s));
+    }
+    section.appendChild(list);
   }
-  section.appendChild(list);
 
   return section;
+}
+
+function renderAbandonedWarning(lid: string, w: AbandonedWarning): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'pkc-inspector-ai-warning';
+  div.setAttribute('data-pkc-warning-kind', 'abandoned');
+  div.setAttribute('data-pkc-suggestion-id', w.id);
+
+  const header = document.createElement('div');
+  header.className = 'pkc-inspector-ai-warning-header';
+  const icon = document.createElement('span');
+  icon.className = 'pkc-inspector-ai-warning-icon';
+  icon.textContent = '⚠️';
+  header.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'pkc-inspector-ai-warning-title';
+  title.textContent = 'Abandoned entry';
+  header.appendChild(title);
+  div.appendChild(header);
+
+  const detail = document.createElement('div');
+  detail.className = 'pkc-inspector-ai-warning-detail';
+  detail.textContent = w.reason;
+  div.appendChild(detail);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
+  dismiss.setAttribute('data-pkc-suggestion-id', w.id);
+  dismiss.setAttribute('data-pkc-suggestion-lid', lid);
+  dismiss.textContent = 'Dismiss';
+  dismiss.title = 'この警告を当面非表示にします(reload で復帰)';
+  div.appendChild(dismiss);
+
+  return div;
 }
 
 function renderSuggestion(lid: string, s: FrontmatterSuggestion): HTMLLIElement {

@@ -103,12 +103,15 @@ HTML product」は外部 dep を拒否するため、最初は local-only が自
   付き)。`src/features/ai/frontmatter-suggester.ts` + `src/adapter/ui/
   inspector-ai-tab.ts` + flag `shell.inspector_ai_local_enabled`(default
   OFF)。22 件 case matrix + 10 件 DOM test、bundle +6 KB
-- **pgc-148 候補**:A 群 4 = `abandoned entry warning`(updated_at +
-  relation/reference 数を元に「使われていない entry」 を提示、clean-up
-  workflow)── 計算は既存 link-index 再利用、bundle +2 KB 見込み
+- **pgc-148 着地** ✅:A 群 4 = `abandoned entry warning`(updated_at が 30
+  日以上前 + relation 0 件 + link reference 0 件 の AND で「使われていない
+  候補」 ⚠️ box を Inspector に表示、dismiss button のみ提供)。`src/features/
+  ai/abandoned-warning.ts` + `inspector-ai-tab.ts` 拡張(container 引数追加)。
+  15 件 case matrix + adapter test +7 件、bundle +1 KB(計算 logic は既存
+  link-index 再利用)
 - **pgc-149 候補**:A 群 10 = `broken link summary`(target 削除済の
-  reference を集約 + quick-fix button)── 既存 link-index 集約のみ、
-  bundle +2 KB 見込み
+  reference を集約 + quick-fix button)── 既存 link-index `index.broken`
+  を集約するだけ、bundle +1 KB 見込み
 - flag `shell.inspector_ai_local_enabled`(default OFF、opt-in)── 上記 3
   PR で同 flag を共有(機能内訳 = panel 内 sub-section)
 - LLM 接続なし、pure JS 計算 ── privacy / cost ゼロ
@@ -160,3 +163,4 @@ User が以下のいずれかを示せば次 PR で開始可能:
 |---|---|
 | 2026-05-24 | 本 doc 起こし(pgc-145、user 質問契機)── 4 phase の段階 roadmap + 3 接続戦略 + 3 群 25 機能を inventory、user direction 待ち |
 | 2026-05-24 | **pgc-147 着地** ── Phase 1 A1(frontmatter suggestion)を flag `shell.inspector_ai_local_enabled`(default OFF)経由で local-only 実装。Inspector 5 tab すべて placeholder 脱却(Properties / References / History / Style / AI 全 5/5 機能化)。`§1` 現状表の AI 行 placeholder → ✓ 機能化(local-only / 後続 PR で A 群残り)に。次 stack pgc-148(abandoned entry)、pgc-149(broken link summary)|
+| 2026-05-24 | **pgc-148 着地** ── Phase 1 A4(abandoned entry warning)を同 flag で実装。`updated_at >= 30 日 + relation 0 + link 0` の AND で `pkc-inspector-ai-warning` 橙 box を Inspector に表示、dismiss button。`src/features/ai/abandoned-warning.ts` 新規。次 stack pgc-149(broken link summary)で Phase 1 完了予定 |
