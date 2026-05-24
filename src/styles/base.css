@@ -6663,6 +6663,23 @@ mark.pkc-search-mark {
   font-style: italic;
   opacity: 0.8;
 }
+/* pgc-152 wave-δ #21:Inspector Style tab の todo subtask completion
+   graph(progress bar)。done/total から fill 比率を percent で
+   visualize、theme var で Light/Dark/CRT 追従。 */
+.pkc-inspector-progress-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: 4px;
+  background: var(--c-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pkc-inspector-progress-fill {
+  height: 100%;
+  background: var(--c-accent, #4a90e2);
+  transition: width 120ms ease-out;
+}
 
 /* pgc-147 wave-γ #24(MASTER.md §6.3 AI tab、inspector-ai-tab-roadmap §3
    Phase 1):Inspector AI tab local-only frontmatter suggester。flag

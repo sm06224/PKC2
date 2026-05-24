@@ -19,6 +19,7 @@ import { extractHeadingsFromMarkdown } from '../../features/markdown/markdown-to
 import { extractDocumentGlobals } from '../../features/markdown/document-globals';
 import { parseTextlogBody } from '../../features/textlog/textlog-body';
 import { parseTodoBody, isTodoPastDue, formatTodoDate } from '../../features/todo/todo-body';
+import { computeSubtaskStats } from '../../features/todo/todo-subtask';
 import { parseAttachmentBody } from './attachment-presenter';
 import { parseFormBody } from './form-presenter';
 import { getStructuralChildren } from '../../features/relation/tree';
@@ -147,6 +148,17 @@ export function buildInspectorStyleSection(entry: Entry, container?: Container |
       if (todo.archived) {
         addRow(dl, 'Archived', '📦 yes');
       }
+      // pgc-152 wave-δ #21(handoff §3.3 todo completion graph):
+      // todo description 内の inline subtask(`- [ ]` / `- [x]`)を
+      // 集計、N/M done(P%)を Inspector に表示。pgc-150 で導入した
+      // todo-subtask helper を再利用、subtask 0 件 entry には row 出さず
+      // ノイズなし。
+      const subs = computeSubtaskStats(todo.description ?? '');
+      if (subs.total > 0) {
+        const pct = Math.round((subs.done / subs.total) * 100);
+        const bar = renderProgressBar(subs.done, subs.total);
+        addRowHtml(dl, 'Subtasks', `${subs.done} / ${subs.total} done(${pct}%)`, bar);
+      }
     } catch {
       addRow(dl, 'Todo metadata', '(parse error)');
     }
@@ -238,6 +250,50 @@ function addRow(dl: HTMLElement, label: string, value: string): void {
   dd.className = 'pkc-inspector-style-dd';
   dd.textContent = value;
   dl.appendChild(dd);
+}
+
+/**
+ * pgc-152:subtask progress 等、value + extra HTML(progress bar 等)を
+ * 一行に並べる variant。extra は dd の append child として add。
+ * text content は addRow 同等、extra は visual element として独立。
+ */
+function addRowHtml(
+  dl: HTMLElement,
+  label: string,
+  value: string,
+  extra: HTMLElement,
+): void {
+  const dt = document.createElement('dt');
+  dt.className = 'pkc-inspector-style-dt';
+  dt.textContent = label;
+  dl.appendChild(dt);
+  const dd = document.createElement('dd');
+  dd.className = 'pkc-inspector-style-dd';
+  const span = document.createElement('span');
+  span.textContent = value;
+  dd.appendChild(span);
+  dd.appendChild(extra);
+  dl.appendChild(dd);
+}
+
+/**
+ * pgc-152:subtask completion graph 用 SVG progress bar。done / total
+ * から fill 比率を計算、視覚的に「あとどれくらい」 が一目でわかる。
+ * theme var(`--c-accent`、`--c-border`)に追従、Light / Dark / CRT
+ * いずれでも見える。
+ */
+function renderProgressBar(done: number, total: number): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pkc-inspector-progress-bar';
+  wrap.setAttribute('data-pkc-progress-done', String(done));
+  wrap.setAttribute('data-pkc-progress-total', String(total));
+  const fill = document.createElement('div');
+  fill.className = 'pkc-inspector-progress-fill';
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  fill.style.width = `${pct}%`;
+  fill.setAttribute('data-pkc-progress-percent', String(pct));
+  wrap.appendChild(fill);
+  return wrap;
 }
 
 function archetypeIcon(arch: string): string {
