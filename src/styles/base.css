@@ -534,6 +534,39 @@
   gap: var(--space-1);
 }
 
+/* pgc-171 wave-δ #26(button-size-audit-2026-05-24 step 1-2):button
+   全体の visual consistency 統一のための base helper(共通 base +
+   5 size category)。新 button class は本 helper を継承して個別
+   override を最小化、user 体感「ボタンサイズバラバラ」 を構造的に解消。
+   step 2 で header nav(pkc-header-nav-btn / pkc-header-path-nav-btn)
+   を base + size-icon に migration、step 3〜6 で他 category 順次。 */
+.pkc-button-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-base);
+  white-space: nowrap;
+  transition: background 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
+}
+.pkc-button-base:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+.pkc-button-base:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* size category(audit §3.1): 5 つに固定、新 button class は base +
+   いずれかを継承する。 */
+.pkc-button-size-action { min-height: 32px; font-size: var(--fs-sm); padding: var(--space-1-5) var(--space-2-5); }
+.pkc-button-size-icon { min-height: 24px; font-size: var(--fs-base); padding: var(--space-0-5) var(--space-1-5); min-width: 28px; }
+.pkc-button-size-tab { min-height: 32px; font-size: var(--fs-base); padding: var(--space-1) var(--space-2); min-width: 4rem; }
+.pkc-button-size-toggle { min-height: 24px; font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); }
+.pkc-button-size-dismiss { min-height: 22px; font-size: var(--fs-xs); padding: var(--space-0-5) var(--space-1-5); }
+
 .pkc-header-nav-btn {
   font-size: var(--fs-sm);
   line-height: 1;

@@ -1096,7 +1096,7 @@ function renderHeader(state: AppState): HTMLElement {
   if (!shellBackForwardInBreadcrumbEnabled()) {
     // pgc-160 user bug fix:標準 header nav も disabled 時 tooltip 改善。
     const navGroup = createElement('div', 'pkc-header-nav');
-    const histBackBtn = createElement('button', 'pkc-header-nav-btn');
+    const histBackBtn = createElement('button', 'pkc-button-base pkc-button-size-icon pkc-header-nav-btn');
     histBackBtn.setAttribute('data-pkc-action', 'go-back');
     const stdBackDisabled = state.navIndex <= 0;
     histBackBtn.setAttribute('title', stdBackDisabled
@@ -1106,7 +1106,7 @@ function renderHeader(state: AppState): HTMLElement {
     histBackBtn.textContent = '◀';
     if (stdBackDisabled) histBackBtn.setAttribute('disabled', '');
     navGroup.appendChild(histBackBtn);
-    const histFwdBtn = createElement('button', 'pkc-header-nav-btn');
+    const histFwdBtn = createElement('button', 'pkc-button-base pkc-button-size-icon pkc-header-nav-btn');
     histFwdBtn.setAttribute('data-pkc-action', 'go-forward');
     const stdFwdDisabled = state.navIndex >= state.navHistory.length - 1;
     histFwdBtn.setAttribute('title', stdFwdDisabled
@@ -1379,7 +1379,7 @@ function appendBackForwardIcons(nav: HTMLElement, state: AppState): void {
   // pgc-160 user bug fix(2026-05-24):disabled 時の tooltip で「履歴
   // なし」 を明示 ── user 体感「押せない」 を「履歴が無いから押せない」
   // に翻訳。aria-label も更新で screen reader にも伝わる。
-  const back = createElement('button', 'pkc-header-path-nav-btn pkc-header-path-nav-back');
+  const back = createElement('button', 'pkc-button-base pkc-button-size-icon pkc-header-path-nav-btn pkc-header-path-nav-back');
   back.setAttribute('data-pkc-action', 'go-back');
   const backDisabled = state.navIndex <= 0;
   back.setAttribute('title', backDisabled
@@ -1389,7 +1389,7 @@ function appendBackForwardIcons(nav: HTMLElement, state: AppState): void {
   back.textContent = '⇐';
   if (backDisabled) back.setAttribute('disabled', '');
   nav.appendChild(back);
-  const fwd = createElement('button', 'pkc-header-path-nav-btn pkc-header-path-nav-fwd');
+  const fwd = createElement('button', 'pkc-button-base pkc-button-size-icon pkc-header-path-nav-btn pkc-header-path-nav-fwd');
   fwd.setAttribute('data-pkc-action', 'go-forward');
   const fwdDisabled = state.navIndex >= state.navHistory.length - 1;
   fwd.setAttribute('title', fwdDisabled
