@@ -542,3 +542,24 @@ export const shellActivityBarBadgesEnabled = defineFlag<boolean>(
       'Activity Bar の 3 tab(Outline / Relations / Pinned)に count badge(visual indicator、現 entry に紐づく数)を表示',
   },
 );
+
+// Inspector History tab の各 revision row に「Show diff vs current」 を
+// 追加(v3 統合 master `v3-unification-master-2026-05-24.md` wave-α' G6
+// Inspector / Hints / AI 統一、handoff §3.5「Inspector History tab の
+// revision diff viewer」、pgc-181 wave-α' #4)。`shell.meta_pane_inspector_
+// enabled` 共依存(Inspector tab strip 自体が無いと revision row も
+// 出ない、構造的に自動成立)。
+//
+// ON で revision row 末尾に `<details>` (default 閉じ)を追加、開くと
+// `diffRows(rev.body, current_entry.body)` の line-level diff を inline
+// 表示。features/diff/line-diff の既存 pure function を再利用 ── canvas
+// 前方互換(spec §11.3)。
+export const shellRevisionDiffViewerEnabled = defineFlag<boolean>(
+  'shell.revision_diff_viewer_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Inspector History tab の各 revision row に「Show diff vs current」 inline diff viewer(line-level diff)を追加',
+  },
+);

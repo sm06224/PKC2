@@ -8,7 +8,7 @@
 
 ---
 
-## §1 現状 flag inventory(33 件、shell/text/meta-pane/sidebar/editor/filer + その他)
+## §1 現状 flag inventory(34 件、shell/text/meta-pane/sidebar/editor/filer + その他)
 
 ### §1.1 shell.* flag(26 件)
 
@@ -42,6 +42,7 @@
 | 26 | `shell.meta_pane_inspector_enabled` | pgc-109/112/117/118/123 | OFF | meta pane Inspector tab strip(5 tab)| **always-on 推奨**(meta pane の 13+ section が chunk 化、user 体感 positive)|
 | 27 | `shell.inspector_ai_local_enabled` | pgc-147〜166 | OFF | Inspector Hints tab(8 local lint、旧 AI tab)| 維持(pgc-166 で「AI 詐欺」 解消したが user 確認待ち)|
 | 33 | `shell.activity_bar_badges_enabled` | pgc-180 | OFF | Activity Bar 3 tab(Outline / Relations / Pinned)に count badge | 維持(`shell.activity_bar_enabled` 共依存、ON 後の user 体感確認待ち)|
+| 34 | `shell.revision_diff_viewer_enabled` | pgc-181 | OFF | Inspector History tab 各 revision row に「Show diff vs current」 inline line-level diff viewer | 維持(`shell.meta_pane_inspector_enabled` 共依存、ON 後の user 体感確認待ち)|
 
 ### §1.2 text.* flag(5 件)
 

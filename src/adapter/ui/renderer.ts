@@ -17,7 +17,8 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellInspectorAiLocalEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellInspectorAiLocalEnabled, shellRevisionDiffViewerEnabled } from './shell-flags';
+import { diffRows } from '../../features/diff/line-diff';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
@@ -8719,6 +8720,18 @@ function renderMetaPaneImpl(
         row.appendChild(actions);
       }
 
+      // pgc-181 wave-α' #4(v3 統合 master G6、handoff §3.5):「Show diff
+      // vs current」 inline diff viewer。`shell.revision_diff_viewer_enabled`
+      // ON + parseRevisionSnapshot success + 現 entry.body との差分計算
+      // (features/diff/line-diff の pure function を再利用)。
+      // `<details>` で lazy には開かない構造(初回 render 時に diff も作る)
+      // が、`diffRows` の LCS_LINE_BUDGET safety net(6000 行超で degraded)
+      // で大規模 entry にも対応。
+      if (parsed && shellRevisionDiffViewerEnabled()) {
+        const diff = renderRevisionDiff(parsed.body ?? '', entry.body ?? '');
+        if (diff) row.appendChild(diff);
+      }
+
       picker.appendChild(row);
     });
 
@@ -9155,6 +9168,41 @@ function renderLinkRefsSection(
  * - `data-pkc-toc-slug`      — slug of the heading (heading nodes)
  * - `data-pkc-log-id`        — owning article for headings / logs
  */
+// pgc-181 wave-α' #4(v3 統合 master G6、handoff §3.5):revision diff
+// viewer 本体。revision の body と現 entry.body を line-level diff し、
+// `<details>` で折りたためる inline 表示を返す。両 body が完全一致なら
+// `null`(visual noise 回避)。features/diff/line-diff の DiffRow[] を
+// op 別に CSS 分岐して render。
+function renderRevisionDiff(revBody: string, currentBody: string): HTMLElement | null {
+  const rows = diffRows(revBody, currentBody);
+  // 全 row が 'same' なら diff 無し(rev = current)、UI noise 回避で
+  // 非描画。
+  const hasChange = rows.some((r) => r.op !== 'same');
+  if (!hasChange) return null;
+  const wrap = createElement('details', 'pkc-revision-diff');
+  wrap.setAttribute('data-pkc-region', 'revision-diff');
+  const summary = createElement('summary', 'pkc-revision-diff-summary');
+  const addCount = rows.filter((r) => r.op === 'add').length;
+  const delCount = rows.filter((r) => r.op === 'del').length;
+  summary.textContent = `Show diff vs current(+${addCount} / −${delCount})`;
+  wrap.appendChild(summary);
+  const body = createElement('div', 'pkc-revision-diff-body');
+  for (const r of rows) {
+    const line = createElement('div', 'pkc-revision-diff-row');
+    line.setAttribute('data-pkc-diff-op', r.op);
+    const marker = createElement('span', 'pkc-revision-diff-marker');
+    marker.textContent = r.op === 'add' ? '+' : r.op === 'del' ? '−' : ' ';
+    line.appendChild(marker);
+    const text = createElement('span', 'pkc-revision-diff-text');
+    // add は new(right)、del は old(left)、same は left/right どちらも同
+    text.textContent = r.op === 'add' ? (r.right ?? '') : (r.left ?? '');
+    line.appendChild(text);
+    body.appendChild(line);
+  }
+  wrap.appendChild(body);
+  return wrap;
+}
+
 function renderFrontmatterSection(
   entry: Entry,
   canEdit: boolean,

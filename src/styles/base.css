@@ -4238,6 +4238,70 @@ mark.pkc-search-mark {
   margin-right: var(--space-1);
 }
 
+/* pgc-181 wave-α' #4(v3 統合 master G6、handoff §3.5):Inspector History
+   tab の各 revision row 末尾に inline diff viewer(`<details>` で折りたたみ)。
+   rev.body と現 entry.body の line-level diff を `+` / `−` marker + 色分け
+   背景で表示。`shell.revision_diff_viewer_enabled` ON 時に出現。 */
+.pkc-revision-diff {
+  margin-top: var(--space-1);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+}
+.pkc-revision-diff-summary {
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  user-select: none;
+}
+.pkc-revision-diff-summary:hover {
+  color: var(--c-fg);
+}
+.pkc-revision-diff-body {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  padding: var(--space-1) 0;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+.pkc-revision-diff-row {
+  display: flex;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  line-height: 1.4;
+  /* 長い行は折り返し(white-space: pre は overflow-x が増えがちで avoid) */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pkc-revision-diff-row[data-pkc-diff-op="add"] {
+  background: rgba(56, 161, 105, 0.12); /* green tint */
+  color: var(--c-fg);
+}
+.pkc-revision-diff-row[data-pkc-diff-op="del"] {
+  background: rgba(229, 62, 62, 0.12); /* red tint */
+  color: var(--c-fg);
+}
+.pkc-revision-diff-row[data-pkc-diff-op="same"] {
+  color: var(--c-fg-dim);
+}
+.pkc-revision-diff-marker {
+  width: 1ch;
+  flex: 0 0 auto;
+  text-align: center;
+  font-weight: 700;
+  color: var(--c-fg-dim);
+}
+.pkc-revision-diff-row[data-pkc-diff-op="add"] .pkc-revision-diff-marker {
+  color: #38a169;
+}
+.pkc-revision-diff-row[data-pkc-diff-op="del"] .pkc-revision-diff-marker {
+  color: #e53e3e;
+}
+.pkc-revision-diff-text {
+  flex: 1 1 auto;
+}
+
 /* ── Todo presenter ── */
 .pkc-todo-view {
   display: flex;
