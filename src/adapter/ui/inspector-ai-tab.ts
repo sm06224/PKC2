@@ -228,7 +228,7 @@ function renderTagImbalanceSection(lid: string, s: TagImbalanceSuggestion): HTML
   div.appendChild(popular);
 
   const dismiss = document.createElement('button');
-  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.className = 'pkc-button-base pkc-button-size-dismiss pkc-inspector-ai-dismiss';
   dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
   dismiss.setAttribute('data-pkc-suggestion-id', s.id);
   dismiss.setAttribute('data-pkc-suggestion-lid', lid);
@@ -265,7 +265,7 @@ function renderCircularReferenceSection(lid: string, c: CircularReference): HTML
   div.appendChild(detail);
 
   const dismiss = document.createElement('button');
-  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.className = 'pkc-button-base pkc-button-size-dismiss pkc-inspector-ai-dismiss';
   dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
   dismiss.setAttribute('data-pkc-suggestion-id', c.id);
   dismiss.setAttribute('data-pkc-suggestion-lid', lid);
@@ -302,7 +302,7 @@ function renderArchetypeMismatchSection(lid: string, s: ArchetypeMismatchSuggest
   div.appendChild(detail);
 
   const dismiss = document.createElement('button');
-  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.className = 'pkc-button-base pkc-button-size-dismiss pkc-inspector-ai-dismiss';
   dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
   dismiss.setAttribute('data-pkc-suggestion-id', s.id);
   dismiss.setAttribute('data-pkc-suggestion-lid', lid);
@@ -343,7 +343,7 @@ function renderOutlineLintSection(lid: string, report: OutlineLintReport): HTMLE
   div.appendChild(list);
 
   const dismiss = document.createElement('button');
-  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.className = 'pkc-button-base pkc-button-size-dismiss pkc-inspector-ai-dismiss';
   dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
   dismiss.setAttribute('data-pkc-suggestion-id', report.id);
   dismiss.setAttribute('data-pkc-suggestion-lid', lid);
@@ -399,7 +399,7 @@ function renderDuplicatesSection(lid: string, matches: DuplicateMatch[]): HTMLEl
   div.appendChild(list);
 
   const dismiss = document.createElement('button');
-  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.className = 'pkc-button-base pkc-button-size-dismiss pkc-inspector-ai-dismiss';
   dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
   dismiss.setAttribute('data-pkc-suggestion-id', `duplicates:${lid}`);
   dismiss.setAttribute('data-pkc-suggestion-lid', lid);
@@ -445,7 +445,7 @@ function renderBrokenLinkSummary(lid: string, b: BrokenLinkSummary): HTMLElement
   div.appendChild(list);
 
   const dismiss = document.createElement('button');
-  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.className = 'pkc-button-base pkc-button-size-dismiss pkc-inspector-ai-dismiss';
   dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
   dismiss.setAttribute('data-pkc-suggestion-id', b.id);
   dismiss.setAttribute('data-pkc-suggestion-lid', lid);
@@ -480,7 +480,7 @@ function renderAbandonedWarning(lid: string, w: AbandonedWarning): HTMLElement {
   div.appendChild(detail);
 
   const dismiss = document.createElement('button');
-  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.className = 'pkc-button-base pkc-button-size-dismiss pkc-inspector-ai-dismiss';
   dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
   dismiss.setAttribute('data-pkc-suggestion-id', w.id);
   dismiss.setAttribute('data-pkc-suggestion-lid', lid);
@@ -539,7 +539,7 @@ function renderSuggestion(lid: string, s: FrontmatterSuggestion): HTMLLIElement 
   actions.appendChild(applyBtn);
 
   const dismissBtn = document.createElement('button');
-  dismissBtn.className = 'pkc-inspector-ai-dismiss';
+  dismissBtn.className = 'pkc-button-base pkc-button-size-dismiss pkc-inspector-ai-dismiss';
   dismissBtn.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
   dismissBtn.setAttribute('data-pkc-suggestion-id', s.id);
   dismissBtn.setAttribute('data-pkc-suggestion-lid', lid);
