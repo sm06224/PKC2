@@ -918,8 +918,15 @@
   opacity: 1;
 }
 .pkc-activity-bar-btn {
-  width: 36px;
-  height: 36px;
+  /* pgc-136 wave-δ #10(user bug report 2026-05-24「左の縦型UIラベルを
+     押下した際に左paneが反応しない時がある」):tap target を 36 → 40px
+     に拡大(WCAG 2.5.8 推奨 44px に近づける、touch + 高密度 display 対応)。
+     `min-width` / `min-height` で明示し、emoji glyph の rendering 揺れに
+     よって button サイズが変わるのを防ぐ。 */
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -939,6 +946,18 @@
 .pkc-activity-bar-btn[data-pkc-active="true"] {
   border-left-color: var(--c-accent);
   color: var(--c-fg);
+}
+
+/* pgc-136 wave-δ #10:click 視覚 feedback。action-binder の
+   select-activity-tab handler が click 直後に `data-pkc-just-clicked="true"`
+   を立て、150ms 後に attribute を削除する。CSS は短い flash animation で
+   user の click が register されたことを示す。 */
+@keyframes pkc-activity-bar-click-pulse {
+  0%   { background: var(--c-accent); color: var(--c-bg, #000); }
+  100% { background: transparent; }
+}
+.pkc-activity-bar-btn[data-pkc-just-clicked="true"] {
+  animation: pkc-activity-bar-click-pulse 0.15s ease-out;
 }
 
 /* pgc-103 wave-γ #5(MASTER.md §4.5):Outline tab。Activity Bar から

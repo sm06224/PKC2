@@ -1271,6 +1271,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // module-local state を更新して SYS_SYNC_CHILD_WINDOWS で再描画
         // 強制(state.selectedLid 等は変えないが activity bar / sidebar の
         // 表示が切替わる)。tab id 不明な場合は no-op。
+        //
+        // pgc-136 wave-δ #10(user bug report 2026-05-24):click 視覚
+        // feedback。target に `data-pkc-just-clicked="true"` を立て、
+        // 150ms 後に削除 ── 「押されたが反応しない」体感事故を防ぐ。
+        // 同 attr で CSS animation が短い flash(accent bg)を再生する。
+        // ※ render 走行で button が再生成されるため、setTimeout 経由の
+        //   `target.removeAttribute` は最新 button(同 id の tab)を再 query
+        //   して removeAttribute する(古い node が detached でも問題ない)。
         e.preventDefault();
         e.stopPropagation();
         const tab = target.getAttribute('data-pkc-activity-tab');
@@ -1281,6 +1289,21 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           setActivityBarActiveTab(tab);
           const st = dispatcher.getState();
           dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+          // 再描画で button が再生成されるため、attr set は **再描画後**
+          // に新 button を再 query して set する(synchronous render path
+          // が完了した直後 = この行のすぐ次)。150ms 後に再 query して
+          // 削除(animation 終了)。
+          const tabId = tab;
+          const fresh = root.querySelector<HTMLElement>(
+            `[data-pkc-action="select-activity-tab"][data-pkc-activity-tab="${tabId}"]`,
+          );
+          if (fresh) fresh.setAttribute('data-pkc-just-clicked', 'true');
+          window.setTimeout(() => {
+            const fresh2 = root.querySelector<HTMLElement>(
+              `[data-pkc-action="select-activity-tab"][data-pkc-activity-tab="${tabId}"]`,
+            );
+            if (fresh2) fresh2.removeAttribute('data-pkc-just-clicked');
+          }, 150);
         }
         break;
       }
