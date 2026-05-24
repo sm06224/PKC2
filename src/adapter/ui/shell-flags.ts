@@ -422,3 +422,20 @@ export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
       'meta pane の頭に Inspector tab strip(Properties / References / History / Style / AI)を prepend、tab 別 section 可視性切替',
   },
 );
+
+// Inspector AI tab Phase 1 — local-only frontmatter suggester
+// (vscode-grade-overhaul-2026-05 MASTER.md §6.3 AI tab、pgc-147 wave-γ #24)。
+// pgc-145 で起こした `inspector-ai-tab-roadmap-2026-05.md` §3 Phase 1 の
+// A 群 1(frontmatter suggestion)を着地。ON で AI tab placeholder を
+// 「本文 H1 → title」「本文 #tag → frontmatter tags」 の差分提案 panel に
+// 置換、apply / dismiss button 付き。LLM 接続なし、計算は pure JS、
+// privacy / cost ゼロ。URL flag: `?pkc-flag=shell.inspector_ai_local_enabled=1`。
+export const shellInspectorAiLocalEnabled = defineFlag<boolean>(
+  'shell.inspector_ai_local_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Inspector AI tab を local-only frontmatter suggester に置換(LLM 接続なし、本文 H1 / #tag から候補)',
+  },
+);

@@ -6652,6 +6652,113 @@ mark.pkc-search-mark {
   opacity: 0.8;
 }
 
+/* pgc-147 wave-γ #24(MASTER.md §6.3 AI tab、inspector-ai-tab-roadmap §3
+   Phase 1):Inspector AI tab local-only frontmatter suggester。flag
+   `shell.inspector_ai_local_enabled` ON 時に本文 H1 / #tag から候補を
+   提示、apply / dismiss button 付き。LLM 接続なし。 */
+.pkc-inspector-ai {
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--c-border);
+}
+.pkc-inspector-ai-heading {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+  color: var(--c-fg);
+}
+.pkc-inspector-ai-note {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  margin-bottom: var(--space-2);
+  opacity: 0.8;
+}
+.pkc-inspector-ai-empty {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  font-style: italic;
+  padding: var(--space-2);
+  text-align: center;
+  opacity: 0.7;
+}
+.pkc-inspector-ai-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pkc-inspector-ai-suggestion {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--c-bg-dim, var(--c-bg));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-suggestion-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+}
+.pkc-inspector-ai-key {
+  background: var(--c-accent, #4a90e2);
+  color: #fff;
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.pkc-inspector-ai-confidence {
+  color: var(--c-fg-dim);
+  font-size: 0.85em;
+  letter-spacing: 0.05em;
+}
+.pkc-inspector-ai-confidence[data-pkc-confidence-level="high"] {
+  color: var(--c-accent, #4a90e2);
+}
+.pkc-inspector-ai-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--c-fg);
+  word-break: break-word;
+}
+.pkc-inspector-ai-reason {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  line-height: 1.4;
+}
+.pkc-inspector-ai-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+.pkc-inspector-ai-apply,
+.pkc-inspector-ai-dismiss {
+  flex: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: 3px;
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.pkc-inspector-ai-apply {
+  background: var(--c-accent, #4a90e2);
+  color: #fff;
+  border-color: var(--c-accent, #4a90e2);
+}
+.pkc-inspector-ai-apply:hover {
+  filter: brightness(1.1);
+}
+.pkc-inspector-ai-dismiss:hover {
+  background: var(--c-bg-hover, var(--c-bg-dim, var(--c-bg)));
+}
+
 /* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
    flag ON 時に editor 末尾に compact metrics row(char / word / line)を
    表示。editor 内で完結する目線移動最小の動線(Notion / Bear / Typora 流)。 */

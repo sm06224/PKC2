@@ -110,9 +110,12 @@ describe('pgc-109 meta pane Inspector tab strip scaffold', () => {
     expect(getMetaPaneInspectorActiveTab()).toBe('properties');
   });
 
-  it('flag ON:AI tab click → active 切替 + placeholder 表示', () => {
+  it('flag ON:AI tab click → active 切替 + empty hint(pgc-147 で flag opt-in 案内へ更新)', () => {
     // pgc-118:Style tab は metrics 実装されたので、placeholder 残りの
-    // AI tab で test。
+    // AI tab で test。pgc-147 で AI tab の visibleRegions が
+    // `['inspector-ai-suggestions']` に変更 ── `shell.inspector_ai_local_enabled`
+    // OFF の本 test では matched region 0 件 → applyInspectorTabFilter の
+    // appendNoContentHint(empty hint)が表示、note は flag opt-in 案内。
     setFlag(true);
     boot();
     const ai = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="ai"]')!;
@@ -120,11 +123,11 @@ describe('pgc-109 meta pane Inspector tab strip scaffold', () => {
     expect(getMetaPaneInspectorActiveTab()).toBe('ai');
     const stillAi = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="ai"]');
     expect(stillAi?.getAttribute('data-pkc-active')).toBe('true');
-    const ph = inspectorPlaceholder();
-    expect(ph).not.toBeNull();
-    expect(ph?.querySelector('.pkc-meta-inspector-placeholder-icon')?.textContent).toBe('🧠');
-    expect(ph?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('AI');
-    expect(ph?.querySelector('.pkc-meta-inspector-placeholder-note')?.textContent).toContain('Coming soon');
+    const hint = root.querySelector('[data-pkc-region="meta-inspector-empty-hint"]');
+    expect(hint).not.toBeNull();
+    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-icon')?.textContent).toBe('🧠');
+    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No AI yet');
+    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-note')?.textContent).toContain('inspector_ai_local_enabled');
   });
 
   it('flag ON:Style tab(pgc-118 で実装済)は placeholder ではなく Style metrics section', () => {
@@ -137,14 +140,21 @@ describe('pgc-109 meta pane Inspector tab strip scaffold', () => {
     expect(root.querySelector('[data-pkc-region="inspector-style-metrics"]')).not.toBeNull();
   });
 
-  it('flag ON:Properties に戻ると placeholder 消える(AI tab 経由)', () => {
+  it('flag ON:Properties に戻ると empty hint が Properties 用に切替わる(AI tab 経由、pgc-147 更新)', () => {
+    // pgc-147 で AI tab も empty hint 経路になったため、tab 切替で同じ
+    // `meta-inspector-empty-hint` region 内の title / note が tab 用に
+    // 切替わる(pane 内に frontmatter / revision 等が無い test fixture では
+    // 全 tab で empty hint が出る)。tab 切替の効果は title の遷移で assert。
     setFlag(true);
     boot();
     const ai = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="ai"]')!;
     ai.click();
-    expect(inspectorPlaceholder()).not.toBeNull();
+    const aiHint = root.querySelector('[data-pkc-region="meta-inspector-empty-hint"]');
+    expect(aiHint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No AI yet');
     const props = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="properties"]')!;
     props.click();
+    const propsHint = root.querySelector('[data-pkc-region="meta-inspector-empty-hint"]');
+    expect(propsHint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No Properties yet');
     expect(inspectorPlaceholder()).toBeNull();
   });
 

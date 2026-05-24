@@ -17,12 +17,13 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellInspectorAiLocalEnabled } from './shell-flags';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildInspectorStyleSection } from './inspector-style-tab';
+import { buildInspectorAiSection } from './inspector-ai-tab';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab, getActivityBarSide } from './activity-bar';
 import { buildOutlineTab } from './activity-outline-tab';
 import { buildRecentTab } from './activity-recent-tab';
@@ -8943,11 +8944,19 @@ function renderMetaPaneImpl(
   // pgc-109 wave-γ #10(MASTER.md §6.3):Inspector tab strip(flag ON 時)。
   // meta pane の頭に 5 tab(Properties / References / History / Style /
   // AI)の strip を prepend、各 tab の visibleRegions に応じて section
-  // 表示を絞る。AI は placeholder、Style は pgc-118 で実装。
+  // 表示を絞る。AI は pgc-147 で機能化、Style は pgc-118 で実装。
   if (shellMetaPaneInspectorEnabled()) {
     // pgc-118 wave-γ #18:Style tab を機能化 ── inspector-style-metrics
     // section を meta pane 末尾に挿入(visibleRegions に登録済)。
     meta.appendChild(buildInspectorStyleSection(entry, container));
+    // pgc-147 wave-γ #24(inspector-ai-tab-roadmap §3 Phase 1):AI tab を
+    // local-only frontmatter suggester に置換 ── 別 flag
+    // (shell.inspector_ai_local_enabled)で gate、OFF なら section 自体を
+    // 出さず empty hint(meta-pane-inspector.ts labelToEmptyMessage)で
+    // flag opt-in 経路を案内。
+    if (shellInspectorAiLocalEnabled()) {
+      meta.appendChild(buildInspectorAiSection(entry));
+    }
     const strip = buildMetaPaneInspectorTabStrip();
     // tab strip は header / timestamps の直前(meta pane の最上段)に挿入
     meta.insertBefore(strip, meta.firstChild);

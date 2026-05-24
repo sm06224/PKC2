@@ -141,6 +141,8 @@ import { toggleSplitView } from './split-view';
 import { setActivityBarActiveTab, toggleActivityBarSide } from './activity-bar';
 import { setActivitySearchQuery } from './activity-search-tab';
 import { setMetaPaneInspectorActiveTab } from './meta-pane-inspector';
+import { dismissSuggestion as dismissAiSuggestion } from './inspector-ai-tab';
+import type { FrontmatterValue } from '../../features/markdown/frontmatter';
 import { toggleFormatPanelVisible } from './format-panel-visibility';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
@@ -1287,6 +1289,53 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           const st = dispatcher.getState();
           dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         }
+        break;
+      }
+      case 'apply-ai-suggestion': {
+        // pgc-147 wave-γ #24(MASTER.md §6.3 AI tab、inspector-ai-tab-roadmap
+        // §3 Phase 1):Inspector AI tab で提示した frontmatter 候補を entry
+        // body の frontmatter block に書き込む。LLM 非経由、純粋な local 計算
+        // の結果を user 同意の下で適用。
+        e.preventDefault();
+        e.stopPropagation();
+        const lid = target.getAttribute('data-pkc-suggestion-lid');
+        const key = target.getAttribute('data-pkc-suggestion-key');
+        const valueRaw = target.getAttribute('data-pkc-suggestion-value');
+        const kind = target.getAttribute('data-pkc-suggestion-kind');
+        if (!lid || !key || valueRaw === null) break;
+        const st = dispatcher.getState();
+        if (!st.container) break;
+        const entry = st.container.entries.find((x) => x.lid === lid);
+        if (!entry) break;
+        const fm = parseLivePreviewFrontmatter(entry.body ?? '');
+        const meta = { ...(fm.meta as Record<string, FrontmatterValue>) };
+        if (kind === 'array') {
+          const newItems = valueRaw === '' ? [] : valueRaw.split(',');
+          const existing = Array.isArray(meta[key]) ? (meta[key] as Array<string>) : [];
+          const merged = [...existing];
+          for (const n of newItems) {
+            if (!merged.includes(n)) merged.push(n);
+          }
+          meta[key] = merged;
+        } else {
+          meta[key] = valueRaw;
+        }
+        const newBody = setFrontmatter(entry.body ?? '', meta);
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: newBody });
+        break;
+      }
+      case 'dismiss-ai-suggestion': {
+        // pgc-147 wave-γ #24:AI 提案 1 件を当 session 中だけ非表示にする。
+        // module-local Set に lid+suggestion-id を register、reload で復帰。
+        // localStorage 化は privacy 観点で後続 PR で検討(roadmap §2.3)。
+        e.preventDefault();
+        e.stopPropagation();
+        const lid = target.getAttribute('data-pkc-suggestion-lid');
+        const id = target.getAttribute('data-pkc-suggestion-id');
+        if (!lid || !id) break;
+        dismissAiSuggestion(lid, id);
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         break;
       }
       case 'toggle-activity-bar-side': {

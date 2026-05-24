@@ -93,7 +93,13 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
     icon: '🧠',
     label: 'AI',
     keybind: 'Ctrl+K I',
-    visibleRegions: [],
+    // pgc-147 wave-γ #24(MASTER.md §6.3、inspector-ai-tab-roadmap §3 Phase 1):
+    // AI tab を placeholder から脱却 ── flag `shell.inspector_ai_local_enabled`
+    // ON で `inspector-ai-tab.ts buildInspectorAiSection` が
+    // `data-pkc-region="inspector-ai-suggestions"` を inject。OFF だと
+    // section が無く matchedCount=0 → applyInspectorTabFilter の
+    // appendNoContentHint で flag opt-in 文言を表示。
+    visibleRegions: ['inspector-ai-suggestions'],
   },
 ];
 
@@ -223,8 +229,11 @@ function labelToEmptyMessage(tab: InspectorTab): string {
     case 'history':
       return 'No revisions yet. Edit and save the entry to create the first revision.';
     case 'style':
-    case 'ai':
       return 'Coming soon(wave-γ で順次実装中)';
+    case 'ai':
+      // pgc-147 wave-γ #24:AI tab を flag opt-in で local-only suggester に
+      // 解放。flag OFF の user に「Coming soon」ではなく opt-in 経路を案内。
+      return 'Flag Inspector で `shell.inspector_ai_local_enabled` を ON にすると本文 H1 / #tag から frontmatter 候補が出ます(LLM 接続なし、計算は端末内)';
   }
 }
 

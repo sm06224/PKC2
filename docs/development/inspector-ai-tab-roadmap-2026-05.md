@@ -17,10 +17,13 @@
 | 🔗 References | ✓ 機能化(relations / tags / link-index)|
 | 📜 History | ✓ 機能化(revision-history / picker / diff)|
 | 🎨 Style | ✓ 機能化(archetype-specific metrics、6 archetype 全対応)|
-| **🧠 AI** | **placeholder のみ**(本 doc の対象) |
+| 🧠 AI | **✓ pgc-147 着地**(Phase 1 A1 frontmatter suggestion、flag `shell.inspector_ai_local_enabled` opt-in、後続 PR で A 群 4/10 残り) |
 
-AI tab の current 実装:`meta-pane-inspector.ts` で `visibleRegions: []` ──
-placeholder("Coming soon")を出すだけ。
+pgc-147 までの AI tab:`meta-pane-inspector.ts` で `visibleRegions: []` ──
+placeholder("Coming soon")を出すだけ。pgc-147 で `visibleRegions:
+['inspector-ai-suggestions']` + `buildInspectorAiSection` 経路を flag opt-in
+で解放。flag OFF だと従来通り空、flag ON だと本文 H1 / `#tag` から
+frontmatter 候補を提示。
 
 ## §2 設計分岐点(user 議論待ち、user direction で決める)
 
@@ -95,14 +98,21 @@ HTML product」は外部 dep を拒否するため、最初は local-only が自
 
 ### Phase 1(scope 小、Tier 0 flag opt-in):local-only inspector
 
-- **pgc-146 候補**:AI tab placeholder を「local-only AI 分析」section に
-  置換。A 群 1〜3 件着地:
-  - `1. frontmatter suggestion`(現 body の heading 構造から提案)
-  - `2. abandoned entry warning`(updated_at + 関係数)
-  - `3. broken link summary`(既存 link-index 集約)
-- flag `shell.inspector_ai_local_enabled`(default OFF、opt-in)
+- **pgc-147 着地** ✅:A 群 1 = `frontmatter suggestion`(本文 H1 → title /
+  本文 `#tag` literal → frontmatter tags の差分提案、apply / dismiss button
+  付き)。`src/features/ai/frontmatter-suggester.ts` + `src/adapter/ui/
+  inspector-ai-tab.ts` + flag `shell.inspector_ai_local_enabled`(default
+  OFF)。22 件 case matrix + 10 件 DOM test、bundle +6 KB
+- **pgc-148 候補**:A 群 4 = `abandoned entry warning`(updated_at +
+  relation/reference 数を元に「使われていない entry」 を提示、clean-up
+  workflow)── 計算は既存 link-index 再利用、bundle +2 KB 見込み
+- **pgc-149 候補**:A 群 10 = `broken link summary`(target 削除済の
+  reference を集約 + quick-fix button)── 既存 link-index 集約のみ、
+  bundle +2 KB 見込み
+- flag `shell.inspector_ai_local_enabled`(default OFF、opt-in)── 上記 3
+  PR で同 flag を共有(機能内訳 = panel 内 sub-section)
 - LLM 接続なし、pure JS 計算 ── privacy / cost ゼロ
-- bundle 増分:~5KB(計算 logic のみ)
+- bundle 累計増分:~10 KB(pgc-147 で +6 KB、pgc-148/149 で +2 KB ずつ見込み)
 
 ### Phase 2(scope 中):A 群残り + UI 充実
 
@@ -149,3 +159,4 @@ User が以下のいずれかを示せば次 PR で開始可能:
 | date | event |
 |---|---|
 | 2026-05-24 | 本 doc 起こし(pgc-145、user 質問契機)── 4 phase の段階 roadmap + 3 接続戦略 + 3 群 25 機能を inventory、user direction 待ち |
+| 2026-05-24 | **pgc-147 着地** ── Phase 1 A1(frontmatter suggestion)を flag `shell.inspector_ai_local_enabled`(default OFF)経由で local-only 実装。Inspector 5 tab すべて placeholder 脱却(Properties / References / History / Style / AI 全 5/5 機能化)。`§1` 現状表の AI 行 placeholder → ✓ 機能化(local-only / 後続 PR で A 群残り)に。次 stack pgc-148(abandoned entry)、pgc-149(broken link summary)|

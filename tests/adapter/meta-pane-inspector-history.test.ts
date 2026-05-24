@@ -163,17 +163,21 @@ describe('pgc-117 Inspector History tab(中身肉付け + empty hint)', () => {
     }
   });
 
-  it('flag ON + AI tab(placeholder)では empty hint ではなく placeholder', () => {
-    // pgc-118:Style tab は metrics 実装されたので、placeholder 残りの
-    // AI tab で test。
+  it('flag ON + AI tab(`shell.inspector_ai_local_enabled` OFF)では empty hint で flag opt-in 案内(pgc-147 で更新)', () => {
+    // pgc-147 で AI tab を local-only frontmatter suggester に解放。
+    // visibleRegions = ['inspector-ai-suggestions'] に変更されたため、
+    // section が無い(`shell.inspector_ai_local_enabled` OFF)状態では
+    // matchedCount=0 → appendNoContentHint 経路 → empty hint。
+    // placeholder ではなく empty hint で「flag を ON にすると候補が出る」案内。
     setFlag(true);
     const d = boot(makeContainer(true));
     setMetaPaneInspectorActiveTab('ai');
     d.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: [] });
-    // AI は visibleRegions empty なので placeholder path
-    const ph = root.querySelector('[data-pkc-region="meta-inspector-placeholder"]');
-    expect(ph).not.toBeNull();
-    expect(emptyHint()).toBeNull(); // empty-hint は出さない(placeholder 優先)
+    expect(root.querySelector('[data-pkc-region="meta-inspector-placeholder"]')).toBeNull();
+    const hint = emptyHint();
+    expect(hint).not.toBeNull();
+    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-title')?.textContent).toBe('No AI yet');
+    expect(hint?.querySelector('.pkc-meta-inspector-placeholder-note')?.textContent).toContain('inspector_ai_local_enabled');
   });
 
   it('flag ON + revision あり entry で History → Properties に切替で hint 残らない', () => {
