@@ -6280,6 +6280,41 @@ mark.pkc-search-mark {
   border-left-color: var(--c-accent);
 }
 
+/* pgc-139 wave-δ #13(user bug report 2026-05-24「上部メニューや操作系が
+   実質 4 段程度占有しているのも少し重い」):header / breadcrumb /
+   view-mode bar / tab strip の縦 padding を圧縮する compact mode。
+   shellHeaderCompactEnabled() ON 時に renderer が shell root へ
+   `data-pkc-compact-header="true"` を立てて 4 段すべて一括で圧縮。
+   font-size も少し下げて密度感を出す。横幅 / 機能は不変、縦方向のみ。 */
+[data-pkc-compact-header="true"] .pkc-header {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  gap: var(--space-1-5);
+}
+[data-pkc-compact-header="true"] .pkc-header-title {
+  font-size: var(--fs-base);
+}
+[data-pkc-compact-header="true"] .pkc-header-path {
+  margin-top: var(--space-0-5);
+  padding-top: var(--space-0-5);
+  font-size: var(--fs-xs);
+}
+[data-pkc-compact-header="true"] .pkc-view-mode-bar {
+  padding: var(--space-1) var(--space-2);
+}
+[data-pkc-compact-header="true"] .pkc-view-mode-btn {
+  font-size: var(--fs-sm);
+  padding: var(--space-0-5) var(--space-2);
+}
+[data-pkc-compact-header="true"] .pkc-tab-strip {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+[data-pkc-compact-header="true"] .pkc-btn-create {
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--fs-sm);
+}
+
 /* ── Guidance & Interaction Hints ── */
 .pkc-guidance {
   line-height: 1.6;

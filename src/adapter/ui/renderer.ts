@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled } from './shell-flags';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
@@ -726,6 +726,13 @@ function renderError(error: string | null): HTMLElement {
 
 function renderShell(state: AppState): HTMLElement {
   const shell = createElement('div', 'pkc-shell');
+  // pgc-139 wave-δ #13(user bug report 2026-05-24):上部 4 段(header /
+  // breadcrumb / tab strip / view-mode bar)の縦 padding を圧縮する
+  // compact mode。CSS が `data-pkc-compact-header="true"` を見て padding /
+  // font-size を削減する。
+  if (shellHeaderCompactEnabled()) {
+    shell.setAttribute('data-pkc-compact-header', 'true');
+  }
 
   // Desktop header — appended FIRST so the legacy chrome stays
   // first in DOM order. Existing tests + the smoke suite call

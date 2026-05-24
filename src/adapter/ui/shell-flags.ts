@@ -238,6 +238,25 @@ export const shellEditorFooterWordcountEnabled = defineFlag<boolean>(
   },
 );
 
+// header / view-mode bar / tab strip / breadcrumb の上部 4 段を compact 化
+// (user bug report 2026-05-24「上部メニューや操作系が実質 4 段程度
+// 占有しているのも少し重い」、pgc-139 wave-δ #13)。ON で:
+//   - header padding を vertical 1.5 → 1(33% 削減)
+//   - header-path(breadcrumb)padding-top / margin-top も削減
+//   - view-mode-bar padding を 2.5 → 1(60% 削減)+ font-size sm → xs
+//   - tab-strip padding 削減
+// 横幅 / 機能は不変、縦方向だけ詰める ── density 重視 power user 向け。
+// OFF で従来 spacious layout。
+export const shellHeaderCompactEnabled = defineFlag<boolean>(
+  'shell.header_compact_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'header / breadcrumb / view-mode bar / tab strip の縦方向 padding を圧縮(上部 4 段の占有面積を約 40% 削減)',
+  },
+);
+
 // tray bar の chrome を細く / 静かに(user bug report 2026-05-24
 // 「不必要な隠し項目の耳が見えていたりで視覚ノイズが大きい」、pgc-138
 // wave-δ #12)。ON で 左右 tray bar(sidebar collapsed / meta collapsed 時
