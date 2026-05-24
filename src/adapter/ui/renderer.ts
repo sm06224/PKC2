@@ -1834,7 +1834,7 @@ function renderShellMenu(
     const dataLabel = createElement('span', 'pkc-shell-menu-label');
     dataLabel.textContent = 'Data';
     dataSection.appendChild(dataLabel);
-    dataSection.appendChild(renderExportImportInline(state));
+    dataSection.appendChild(renderExportImportInline(state, { autoOpen: true }));
     card.appendChild(dataSection);
   }
 
@@ -2772,7 +2772,7 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
   return section;
 }
 
-function renderExportImportInline(state: AppState): HTMLElement {
+function renderExportImportInline(state: AppState, options?: { autoOpen?: boolean }): HTMLElement {
   const group = createElement('div', 'pkc-eip-inline');
   group.setAttribute('data-pkc-region', 'export-import-panel');
 
@@ -2781,6 +2781,16 @@ function renderExportImportInline(state: AppState): HTMLElement {
   // full panel is hidden until the user explicitly opens it.
   const details = document.createElement('details');
   details.className = 'pkc-eip-details';
+  // pgc-205 (user 報告 2026-05-24「エクスポート導線が壊れたままだ」):
+  // shell menu Data section から呼ばれた時(`autoOpen: true`)は **既に
+  // shell menu overlay が open** で「Data…」 を二段クリックさせるのは
+  // 冗長(以前は header inline の collapse 1 段だけ、shell menu 移植時に
+  // 同 component を流用したため二重 collapse 化)。`autoOpen` で初期から
+  // 開いた状態にして 1 click 短縮、user の「Export 押せない」 体感を解消。
+  // header inline 経路(`autoOpen: false` / default)は従来通り collapse。
+  if (options?.autoOpen) {
+    details.open = true;
+  }
   const summary = document.createElement('summary');
   summary.className = 'pkc-btn pkc-btn-create pkc-eip-summary';
   summary.setAttribute('title', 'エクスポート・インポート操作');

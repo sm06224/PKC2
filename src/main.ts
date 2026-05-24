@@ -586,18 +586,31 @@ async function boot(): Promise<void> {
   mountNavHistory(dispatcher);
 
   // 7. Export handler: when phase becomes 'exporting', run export (async for compression)
+  //
+  // pgc-205 (user 報告 2026-05-24「エクスポート導線が壊れたままだ」):
+  // listener は phase==='exporting' の間に発生した **任意の他 dispatch**
+  // (SET_THEME / TOGGLE_MENU 等、phase guard 無し reducer)で再 fire し、
+  // 多重 exportContainerAsHtml を triggering(同 container を 2-3 個
+  // ダウンロード)していた。`exportInFlight` guard で BEGIN_EXPORT →
+  // SYS_FINISH_EXPORT/SYS_ERROR の 1 サイクル内は 1 回のみ実行する。
+  let exportInFlight = false;
   dispatcher.onState((state) => {
-    if (state.phase === 'exporting' && state.container) {
+    if (state.phase === 'exporting' && state.container && !exportInFlight) {
+      exportInFlight = true;
       const mode = state.exportMode ?? 'full';
       const mutability = state.exportMutability ?? 'editable';
-      exportContainerAsHtml(state.container, { mode, mutability }).then((result) => {
-        if (result.success) {
-          console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
-          dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
-        } else {
-          dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
-        }
-      });
+      exportContainerAsHtml(state.container, { mode, mutability })
+        .then((result) => {
+          if (result.success) {
+            console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+            dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
+          } else {
+            dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
+          }
+        })
+        .finally(() => {
+          exportInFlight = false;
+        });
     }
   });
 

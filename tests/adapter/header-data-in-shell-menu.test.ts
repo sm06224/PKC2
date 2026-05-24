@@ -77,6 +77,16 @@ describe('pgc-100 header Data… → Shell Menu 集約', () => {
       '[data-pkc-region="shell-menu-data"] [data-pkc-region="export-import-panel"]',
     );
   }
+  function shellMenuDataDetailsEl(): HTMLDetailsElement | null {
+    return root.querySelector(
+      '[data-pkc-region="shell-menu-data"] details.pkc-eip-details',
+    ) as HTMLDetailsElement | null;
+  }
+  function headerDataDetailsEl(): HTMLDetailsElement | null {
+    return root.querySelector(
+      '[data-pkc-region="header"] details.pkc-eip-details',
+    ) as HTMLDetailsElement | null;
+  }
 
   it('flag OFF:header に Data… inline、Shell Menu に Data section 無し', () => {
     setFlag(false);
@@ -110,5 +120,31 @@ describe('pgc-100 header Data… → Shell Menu 集約', () => {
     const section = shellMenuDataSection();
     const label = section!.querySelector('.pkc-shell-menu-label');
     expect(label?.textContent).toBe('Data');
+  });
+
+  it('pgc-205:flag ON で Shell Menu 内 Data… <details> は初期 open(`details.open === true`)', () => {
+    // user 報告「エクスポート導線が壊れたままだ」── shell menu を開いた
+    // 時点で既に menu overlay が表示されているので、その中の Data…
+    // collapse を更にクリックさせるのは冗長。`autoOpen: true` 経路で
+    // 初期から開く。
+    setFlag(true);
+    boot();
+    const details = shellMenuDataDetailsEl();
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(true);
+    // button が表示可能(open 状態で content が render される)を確認
+    const exportBtn = details!.querySelector(
+      'button[data-pkc-action="begin-export"][data-pkc-export-mode="full"]',
+    );
+    expect(exportBtn).not.toBeNull();
+  });
+
+  it('pgc-205:flag OFF の header inline <details> は従来通り closed(`details.open === false`)', () => {
+    // 後方互換 ── header inline 経路は header noise reduction を保つ。
+    setFlag(false);
+    boot();
+    const details = headerDataDetailsEl();
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(false);
   });
 });
