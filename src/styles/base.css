@@ -8000,6 +8000,23 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   cursor: help;
 }
 
+/* pgc-135 hotfix(user bug report 2026-05-23):shellDataInShellMenuEnabled
+   ON 時に header inline Data… が消える issue を救済する fallback button。
+   控えめ style(transparent + border のみ)で chrome ノイズを最小化、
+   click で Shell Menu を開いて Data section にアクセス。 */
+.pkc-header-export-fallback {
+  background: transparent;
+  border: 1px solid var(--c-border);
+  color: var(--c-fg-dim);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+}
+.pkc-header-export-fallback:hover {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-fg);
+  border-color: var(--c-fg-dim);
+}
+
 .pkc-calendar-todo-more {
   font-size: var(--fs-2xs);
   color: var(--c-muted);

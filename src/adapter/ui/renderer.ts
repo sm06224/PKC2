@@ -1203,8 +1203,24 @@ function renderHeader(state: AppState): HTMLElement {
     // pgc-100 wave-γ #2(MASTER.md §6.1 phase 2):flag ON 時は header から外し、
     // Shell Menu の "Data" section へ集約(`renderShellMenu` 側で同 element
     // を append する)。OFF で従来 header inline 表示。
+    //
+    // pgc-135 hotfix(user bug report 2026-05-23、全 flag ON で export 動線
+    // が見えなくなる issue):flag ON 時でも **小さな `📤 Export…` fallback
+    // button** を header に 1 個残す。click で Shell Menu を開く(Data
+    // section があるので user は即座に到達できる)。これで「export しよう
+    // としたら見つからない」事故を防ぎつつ、pgc-100 の集約方針は維持。
     if (!shellDataInShellMenuEnabled()) {
       header.appendChild(renderExportImportInline(state));
+    } else {
+      const exportFallback = createElement('button', 'pkc-btn pkc-btn-create pkc-header-export-fallback');
+      exportFallback.setAttribute('data-pkc-action', 'toggle-shell-menu');
+      exportFallback.setAttribute(
+        'title',
+        'Open Shell Menu(Data section に Export / Import 操作集約済)',
+      );
+      exportFallback.setAttribute('aria-label', 'Export / Import(opens Shell Menu)');
+      exportFallback.textContent = '📤 Export…';
+      header.appendChild(exportFallback);
     }
   }
 
