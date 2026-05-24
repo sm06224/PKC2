@@ -39,6 +39,10 @@ import {
   detectArchetypeMismatch,
   type ArchetypeMismatchSuggestion,
 } from '../../features/ai/archetype-mismatch';
+import {
+  detectCircularReference,
+  type CircularReference,
+} from '../../features/ai/circular-reference';
 
 // dismiss 状態は module-local。reload で消える(localStorage 化は後続 PR、
 // privacy 観点で session 限定の方が安全)。`<lid>:<suggestion-id>` を key
@@ -137,10 +141,21 @@ export function buildInspectorAiSection(
     section.appendChild(renderArchetypeMismatchSection(entry.lid, archetypeMismatch));
   }
 
+  // pgc-164:circular reference detector(roadmap §2.2 A 群 5、Phase 2
+  // 4 件目)。relation / `entry:` link graph で current entry を含む
+  // 循環を検出。BFS で 1 件目を提示、section dismiss 可能。
+  const circularDismissed = isSuggestionDismissed(entry.lid, `circular-ref:${entry.lid}`);
+  const circular: CircularReference | null = container && !circularDismissed
+    ? detectCircularReference(entry, container)
+    : null;
+  if (circular) {
+    section.appendChild(renderCircularReferenceSection(entry.lid, circular));
+  }
+
   const raw = suggestFrontmatter(entry);
   const suggestions = raw.filter((s) => !isSuggestionDismissed(entry.lid, s.id));
 
-  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0 && !outlineReport && !archetypeMismatch) {
+  if (suggestions.length === 0 && !warning && !broken && duplicates.length === 0 && !outlineReport && !archetypeMismatch && !circular) {
     const empty = document.createElement('div');
     empty.className = 'pkc-inspector-ai-empty';
     empty.textContent = raw.length === 0
@@ -160,6 +175,43 @@ export function buildInspectorAiSection(
   }
 
   return section;
+}
+
+function renderCircularReferenceSection(lid: string, c: CircularReference): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'pkc-inspector-ai-circular';
+  div.setAttribute('data-pkc-warning-kind', 'circular-reference');
+  div.setAttribute('data-pkc-cycle-length', String(c.path.length - 1));
+
+  const header = document.createElement('div');
+  header.className = 'pkc-inspector-ai-circular-header';
+  const icon = document.createElement('span');
+  icon.className = 'pkc-inspector-ai-circular-icon';
+  icon.textContent = '🔄';
+  header.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'pkc-inspector-ai-circular-title';
+  title.textContent = c.path.length === 2
+    ? 'Self-loop reference'
+    : `Circular reference(${c.path.length - 1} steps)`;
+  header.appendChild(title);
+  div.appendChild(header);
+
+  const detail = document.createElement('div');
+  detail.className = 'pkc-inspector-ai-circular-detail';
+  detail.textContent = c.reason;
+  div.appendChild(detail);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
+  dismiss.setAttribute('data-pkc-suggestion-id', c.id);
+  dismiss.setAttribute('data-pkc-suggestion-lid', lid);
+  dismiss.textContent = 'Dismiss';
+  dismiss.title = 'この section を当面非表示にします(reload で復帰)';
+  div.appendChild(dismiss);
+
+  return div;
 }
 
 function renderArchetypeMismatchSection(lid: string, s: ArchetypeMismatchSuggestion): HTMLElement {

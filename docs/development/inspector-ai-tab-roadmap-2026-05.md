@@ -130,7 +130,11 @@ HTML product」は外部 dep を拒否するため、最初は local-only が自
   archetype だが body が task list 60%+/timestamp 50%+/image 80%+ で
   todo / textlog / attachment 推奨、🧩 puzzle piece icon + section
   dismiss、text archetype のみ対象)
-- A 群 残り 2 件(5/7 = circular reference / tag imbalance)
+- **pgc-164 着地** ✅:A 群 5 = `circular reference detector`(relation +
+  markdown link を combined graph として BFS、current entry を含む循環
+  を 1 件検出 → 🔄 cycle icon、self-loop と N-step cycle で文言分岐、
+  provenance kind / MAX_DEPTH=32 / system entry 除外、section dismiss)
+- A 群 残り 1 件(7 = tag imbalance)
 - 各 suggestion に「apply」「dismiss」 button
 - per-container suggestion history(localStorage)
 
