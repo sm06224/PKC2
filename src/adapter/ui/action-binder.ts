@@ -173,6 +173,7 @@ import {
   handleSlashMenuKeydown,
   getSlashTriggerStart,
   registerAssetPickerCallback,
+  registerEntryPickerCallback,
 } from './slash-menu';
 import {
   closeAssetPicker,
@@ -1009,6 +1010,39 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       { start: ctx.replaceStart, end: ctx.replaceEnd },
       candidates,
       ctx.root,
+    );
+  });
+
+  // pgc-143 wave-δ #17(user bug report 2026-05-24「エントリリンクを
+  // 貼りやすくする動線」):/entry slash command の callback ── slash
+  // command が選択されたら `/entry` 文字列を消去して `[[` を残し、
+  // openEntryRefAutocomplete を発火(既存 `[[` autocomplete と同 path)。
+  registerEntryPickerCallback((ctx) => {
+    const state = dispatcher.getState();
+    const container = state.container;
+    if (!container) return;
+    // /entry 文字列を空に置換(autocomplete 用に `[[` を挿入する代わりに、
+    // direct picker 表示で 1 step 動線)
+    const before = ctx.textarea.value.slice(0, ctx.replaceStart);
+    const after = ctx.textarea.value.slice(ctx.replaceEnd);
+    const insertion = '[[';
+    ctx.textarea.value = before + insertion + after;
+    const caret = ctx.replaceStart + insertion.length;
+    ctx.textarea.setSelectionRange(caret, caret);
+    ctx.textarea.focus();
+    // autocomplete を 直接 open(`[[` の直後位置 = autocomplete bracketStart)
+    const currentLid = state.editingLid;
+    const filtered = container.entries.filter(
+      (e) => isUserEntry(e) && e.lid !== currentLid,
+    );
+    const candidates = reorderByRecentFirst(filtered, state.recentEntryRefLids);
+    openEntryRefAutocomplete(
+      ctx.textarea,
+      ctx.replaceStart,  // `[[` の開始位置
+      '',                // query は空 from start
+      candidates,
+      ctx.root,
+      'bracket',
     );
   });
 
@@ -8578,6 +8612,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     closeAssetAutocomplete();
     closeEntryRefAutocomplete();
     registerAssetPickerCallback(null);
+    registerEntryPickerCallback(null);
     registerEntryRefInsertCallback(null);
   };
 }

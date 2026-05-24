@@ -73,6 +73,20 @@ export function registerAssetPickerCallback(
   assetPickerCallback = cb;
 }
 
+/**
+ * pgc-143 wave-δ #17(user bug report 2026-05-24「エントリリンクを
+ * 貼りやすくする動線」):entry picker callback。slash command `/entry`
+ * から発火、entry を選んで `[title](entry:lid)` markdown link を挿入する。
+ * assetPickerCallback と同流儀(action-binder が register、cycle 回避)。
+ */
+let entryPickerCallback: ((ctx: SlashCommandContext) => void) | null = null;
+
+export function registerEntryPickerCallback(
+  cb: ((ctx: SlashCommandContext) => void) | null,
+): void {
+  entryPickerCallback = cb;
+}
+
 export const SLASH_COMMANDS: SlashCommand[] = [
   // ── Date / time ──
   { id: 'date', label: '/date — yyyy/MM/dd', insert: () => formatDate() },
@@ -113,6 +127,17 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: '/asset — Insert image asset',
     onSelect: (ctx) => {
       if (assetPickerCallback) assetPickerCallback(ctx);
+    },
+  },
+  // pgc-143 wave-δ #17:entry link 挿入動線(user bug report 2026-05-24
+  // 「エントリリンクを貼りやすくする動線も欲しい」)。`/entry` で entry
+  // picker を開き、選択 entry の `[title](entry:lid)` markdown link を挿入。
+  // 既存 `[[` autocomplete / `copy-entry-ref` context menu と並行動線。
+  {
+    id: 'entry',
+    label: '/entry — Insert link to another entry',
+    onSelect: (ctx) => {
+      if (entryPickerCallback) entryPickerCallback(ctx);
     },
   },
 
