@@ -3995,7 +3995,8 @@ describe('Action surface consolidation', () => {
   });
 
   it('Reset button moved to shell menu maintenance section', () => {
-    render(makeState(), root);
+    // pgc-207:shell menu は menuOpen=true 時のみ DOM build される(lazy build)
+    render(makeState({ menuOpen: true }), root);
     const resetBtn = root.querySelector('[data-pkc-action="clear-local-data"]');
     expect(resetBtn).not.toBeNull();
     const maintenance = resetBtn!.closest('[data-pkc-region="shell-menu-maintenance"]');
@@ -4006,7 +4007,7 @@ describe('Action surface consolidation', () => {
   });
 
   it('shell menu has Quick Help section', () => {
-    render(makeState(), root);
+    render(makeState({ menuOpen: true }), root);
     const help = root.querySelector('[data-pkc-region="shell-menu-help"]');
     expect(help).not.toBeNull();
     const items = help!.querySelectorAll('.pkc-shell-menu-help-item');
@@ -4014,7 +4015,7 @@ describe('Action surface consolidation', () => {
   });
 
   it('Quick Help mentions folder-export import and structure-not-restored caveat', () => {
-    render(makeState(), root);
+    render(makeState({ menuOpen: true }), root);
     const helpItems = root.querySelectorAll('.pkc-shell-menu-help-item');
     const importLine = Array.from(helpItems).find((li) =>
       li.textContent?.includes('インポート'),
@@ -7668,7 +7669,8 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
 
   describe('CLEAR button safety', () => {
     it('renders Reset button with danger class in shell menu maintenance', () => {
-      render(baseState(), root);
+      // pgc-207:shell menu は menuOpen=true 時のみ DOM build される(lazy build)
+      render(baseState({ menuOpen: true }), root);
       const btn = root.querySelector('[data-pkc-action="clear-local-data"]');
       expect(btn).not.toBeNull();
       expect(btn!.textContent).toContain('Reset');
@@ -7679,7 +7681,7 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     });
 
     it('has descriptive title attribute', () => {
-      render(baseState(), root);
+      render(baseState({ menuOpen: true }), root);
       const btn = root.querySelector('[data-pkc-action="clear-local-data"]') as HTMLElement;
       expect(btn.getAttribute('title')).toContain('IndexedDB');
     });
@@ -8286,18 +8288,22 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(menuBtn!.textContent).toBe('⚙');
   });
 
-  it('renders shell menu panel (hidden by default)', () => {
+  it('renders shell menu panel when open(pgc-207 lazy build:menuOpen=true で contents 構築)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
+      // pgc-207:shell menu の DOM contents は menuOpen=true 時のみ build される。
+      // この test は「menu items 表示」 を assert するため menuOpen を ON にする。
+      menuOpen: true,
     };
     render(state, root);
     const menu = root.querySelector('[data-pkc-region="shell-menu"]');
     expect(menu).not.toBeNull();
-    expect((menu as HTMLElement).style.display).toBe('none');
+    // pgc-207:menuOpen=true で表示 ON('' = visible)
+    expect((menu as HTMLElement).style.display).toBe('');
     // Overlay/card dialog structure
     expect(menu!.classList.contains('pkc-shell-menu-overlay')).toBe(true);
     expect(menu!.querySelector('.pkc-shell-menu-card')).not.toBeNull();
@@ -8402,6 +8408,10 @@ describe('Shell Menu Data Maintenance (orphan asset cleanup UI)', () => {
     calendarMonth: 4,
     multiSelectedLids: [],
     batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
+    // pgc-207:shell menu の contents は menuOpen=true 時のみ build される
+    // (lazy build)。本 describe の各 test は shell menu Data Maintenance /
+    // Storage Profile section を見るため default で menuOpen=true。
+    menuOpen: true,
     ...overrides,
   });
 
@@ -9005,6 +9015,10 @@ describe('Storage Profile dialog (renderer)', () => {
     multiSelectedLids: [],
     batchImportResult: null,
     collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
+    // pgc-207:Storage Profile launch button は shell menu の Data
+    // Maintenance section にある。shell menu の contents は menuOpen=true
+    // 時のみ build される(lazy build)、本 describe の test は default ON。
+    menuOpen: true,
     ...overrides,
   });
 

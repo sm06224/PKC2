@@ -1506,7 +1506,21 @@ function renderShellMenu(
   // never gets pushed below the right pane or clipped by the event log.
   const overlay = createElement('div', 'pkc-shell-menu-overlay');
   overlay.setAttribute('data-pkc-region', 'shell-menu');
-  overlay.style.display = state.menuOpen ? '' : 'none';
+  // pgc-207 (user 報告 2026-05-24「100エントリ程度で凄まじく動作が重い」):
+  // shell menu は ~850 行の builder で Theme / Scanline / Accent / Settings /
+  // Data section / Maintenance / Quick Help / Tools / Debug 等 ~200+ DOM
+  // node を生成する。従来は menuOpen=false でも全 DOM を build して
+  // `display:none` で隠していたため、毎 render の wasted work 大。本 PR で
+  // menuOpen=false 時は overlay placeholder のみ返す early return に最適化。
+  // menuOpen → true 遷移時は render-scope='full'(`menuOpen` is in full-trigger
+  // 一覧)で full re-render が triggers され、その render で menu DOM が
+  // build される。閉じた時も同様。後方互換完全(action-binder の menu DOM
+  // query は event delegation 経由で missing DOM へは event が届かない)。
+  if (!state.menuOpen) {
+    overlay.style.display = 'none';
+    return overlay;
+  }
+  overlay.style.display = '';
 
   const card = createElement('div', 'pkc-shell-menu-card');
 
