@@ -14,9 +14,9 @@
  * - **`#`** → tag(container 全 tag を frequency 順、Enter で TOGGLE_TAG_FILTER、pgc-184)
  * - **`@`** → recent(navHistory 末尾を新しい順 + 重複除去、pgc-185)
  *
- * 後続予定(scope 外、必要時に追加):
- * - **`?`** → help（keyboard shortcut 一覧 OPEN_SHORTCUT_HELP delegate)
- * - **`!`** → debug(Flags Inspector OPEN_FLAGS_INSPECTOR delegate)
+ * 全 7 mode 完備(pgc-192 で `?` help、pgc-194 で `!` debug 着地):
+ * - **`?`** → help(全 keymap binding 一覧、Enter で execute、pgc-192)
+ * - **`!`** → debug(Flags Inspector を delegate-open、pgc-194)
  *
  * Tier 0 flag `shell.quick_open_enabled`(default OFF)で gate。
  *
@@ -282,15 +282,16 @@ export function openQuickOpen(
   mountedRoot = overlay;
 
   let activeIndex = 0;
-  let mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent' | 'help' = 'entry';
+  let mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent' | 'help' | 'debug' = 'entry';
   let entryItems: RankedEntry[] = [];
   let commandItems: ReturnType<typeof rankCommands> = [];
   let headingItems: RankedHeading[] = [];
   let tagItems: RankedTag[] = [];
   let recentItems: RankedEntry[] = [];
   let helpItems: Array<{ binding: KeyBinding; title: string; chordText: string }> = [];
+  // pgc-194:debug mode は単一 entry(Flags Inspector を開く)。state 不要。
 
-  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent' | 'help'; effective: string; hint: string } {
+  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent' | 'help' | 'debug'; effective: string; hint: string } {
     if (q.startsWith('>')) {
       return { mode: 'command', effective: q.slice(1).trim(), hint: '🛠 Command mode' };
     }
@@ -305,6 +306,9 @@ export function openQuickOpen(
     }
     if (q.startsWith('?')) {
       return { mode: 'help', effective: q.slice(1).trim(), hint: '❓ Help mode(全 keymap binding を一覧、Enter で発火)' };
+    }
+    if (q.startsWith('!')) {
+      return { mode: 'debug', effective: q.slice(1).trim(), hint: '🔧 Debug mode(Flags Inspector を開く)' };
     }
     return { mode: 'entry', effective: q, hint: '' };
   }
@@ -321,6 +325,35 @@ export function openQuickOpen(
     }
     list.textContent = '';
     activeIndex = 0;
+
+    if (m === 'debug') {
+      // pgc-194:debug mode は単一 row「Open Flags Inspector」 のみ。Enter で
+      // executeCommand('app.flags')(既存 command palette 経路再利用)、
+      // 拡張余地として後で「dump state」 / 「performance trace」 等を
+      // 追加可能。effective query は filter なし(常に 1 件)。
+      empty.style.display = 'none';
+      list.style.display = '';
+      const li = document.createElement('li');
+      li.className = 'pkc-quick-open-item pkc-quick-open-item-active';
+      li.setAttribute('data-pkc-cmd-id', 'app.flags');
+      li.setAttribute('data-pkc-quick-mode', 'debug');
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'true');
+      const icon = document.createElement('span');
+      icon.className = 'pkc-quick-open-item-icon';
+      icon.textContent = '🔧';
+      li.appendChild(icon);
+      const title = document.createElement('span');
+      title.className = 'pkc-quick-open-item-title';
+      title.textContent = 'Flags Inspector を開く / Open Flags Inspector';
+      li.appendChild(title);
+      const meta = document.createElement('span');
+      meta.className = 'pkc-quick-open-item-meta';
+      meta.textContent = 'F12';
+      li.appendChild(meta);
+      list.appendChild(li);
+      return;
+    }
 
     if (m === 'help') {
       // pgc-192:keymap registry に登録されている全 binding を一覧。各 row に
@@ -635,6 +668,8 @@ export function openQuickOpen(
       ? Math.min(recentItems.length, 50)
       : mode === 'help'
       ? Math.min(helpItems.length, 50)
+      : mode === 'debug'
+      ? 1 // single row(Flags Inspector)
       : Math.min(entryItems.length, 50);
     if (len === 0) return;
     activeIndex = (next + len) % len;
@@ -702,6 +737,11 @@ export function openQuickOpen(
       executeCommand(id);
       return;
     }
+    if (mode === 'debug') {
+      cleanup();
+      executeCommand('app.flags');
+      return;
+    }
     const r = entryItems[Math.min(activeIndex, entryItems.length - 1)];
     if (!r) return;
     const lid = r.entry.lid;
@@ -761,6 +801,8 @@ export function openQuickOpen(
         ? Math.min(recentItems.length, 50)
         : mode === 'help'
         ? Math.min(helpItems.length, 50)
+        : mode === 'debug'
+        ? 1
         : Math.min(entryItems.length, 50);
       setActive(len - 1);
       return;
@@ -795,7 +837,7 @@ export function openQuickOpen(
       const tag = li.getAttribute('data-pkc-quick-tag');
       cleanup();
       if (tag) dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag });
-    } else if (m === 'help') {
+    } else if (m === 'help' || m === 'debug') {
       const id = li.getAttribute('data-pkc-cmd-id');
       cleanup();
       if (id) executeCommand(id);
