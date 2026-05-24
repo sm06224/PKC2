@@ -47,4 +47,12 @@ describe('pgc-191 format toolbar tooltip keybinds', () => {
     const mark = font?.ops.find((o) => o.label === '==');
     expect(mark?.title).not.toContain('Ctrl+');
   });
+
+  // pgc-193 wave-α' #16: backtick inline code shortcut
+
+  it('case 7: pgc-193 `` ` `` op の title に "(Ctrl+`)" を含む', () => {
+    const font = FORMAT_GROUPS.find((g) => g.id === 'font');
+    const code = font?.ops.find((o) => o.label === '`');
+    expect(code?.title).toContain('Ctrl+`');
+  });
 });

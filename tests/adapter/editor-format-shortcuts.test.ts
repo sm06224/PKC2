@@ -202,4 +202,30 @@ describe('pgc-186 editor format keyboard shortcuts(Ctrl+B / Ctrl+I)', () => {
     const e = mkEvent({ key: 'u', ctrlKey: true, altKey: true, target: ta });
     expect(handleEditorFormatShortcut(e)).toBe(false);
   });
+
+  // pgc-193 wave-α' #16: Ctrl+` for inline code
+
+  it('case 19: pgc-193 Ctrl+` で inline code `X` wrap', () => {
+    setFlag(true);
+    ta.setSelectionRange(0, 5);
+    const e = mkEvent({ key: '`', ctrlKey: true, target: ta });
+    expect(handleEditorFormatShortcut(e)).toBe(true);
+    expect(ta.value).toBe('`hello` world');
+  });
+
+  it('case 20: pgc-193 Cmd+`(Mac)も inline code 発火', () => {
+    setFlag(true);
+    ta.setSelectionRange(0, 5);
+    const e = mkEvent({ key: '`', metaKey: true, target: ta });
+    expect(handleEditorFormatShortcut(e)).toBe(true);
+    expect(ta.value).toBe('`hello` world');
+  });
+
+  it('case 21: pgc-193 Ctrl+Shift+` は Shift 修飾子で skip', () => {
+    setFlag(true);
+    ta.setSelectionRange(0, 5);
+    const e = mkEvent({ key: '`', ctrlKey: true, shiftKey: true, target: ta });
+    expect(handleEditorFormatShortcut(e)).toBe(false);
+    expect(ta.value).toBe('hello world');
+  });
 });

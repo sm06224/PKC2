@@ -8,6 +8,9 @@
 // `Ctrl+Shift+S`(strikethrough)を追加。Word / Notion / Obsidian の標準
 // shortcut セットを ほぼ網羅(Ctrl+K link は dialog 必須で別 PR scope 外)。
 //
+// pgc-193 wave-α' #16:`Ctrl+\`` で inline code(`` `X` ``)wrap を追加。
+// VSCode / Markdown editor 標準、コード片を簡単に inline `code` 化する。
+//
 // `editor.format_shortcuts_enabled` Tier 0 flag(default OFF)で gate、
 // browser default の `Ctrl+B`(bookmark side panel)を上書きするため
 // opt-in 必須。textarea 以外の target(input / 非編集領域)は skip。
@@ -34,6 +37,7 @@ import { editorFormatShortcutsEnabled } from './shell-flags';
  *   - `Ctrl+I` / `Cmd+I` → `*X*`(emphasis)
  *   - `Ctrl+U` / `Cmd+U` → `:X:underline:`(simple-inline underline、PKC dialect)
  *   - `Ctrl+Shift+S` / `Cmd+Shift+S` → `~~X~~`(strikethrough)
+ *   - `` Ctrl+` `` / `` Cmd+` `` → `` `X` ``(inline code、pgc-193)
  */
 export function handleEditorFormatShortcut(e: KeyboardEvent): boolean {
   if (!editorFormatShortcutsEnabled()) return false;
@@ -53,6 +57,9 @@ export function handleEditorFormatShortcut(e: KeyboardEvent): boolean {
   else if (!hasShift && key === 'i') transform = (s) => wrapInline(s, '*');
   else if (!hasShift && key === 'u') transform = (s) => applySimpleInlineAttr(s, 'underline');
   else if (hasShift && key === 's') transform = (s) => wrapInline(s, '~~');
+  // pgc-193:`` Ctrl+` `` で inline code wrap。backtick は browser default
+  // で何も bind しないので opt-in による override 副作用ゼロ。
+  else if (!hasShift && key === '`') transform = (s) => wrapInline(s, '`');
   if (!transform) return false;
   e.preventDefault();
   applyTransformToTextarea(ta, transform);

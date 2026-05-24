@@ -500,7 +500,7 @@ export const FORMAT_GROUPS: readonly FormatGroup[] = [
       // 下線は PKC MD に専用 marker が無く simple-inline `:text:underline:` で表現
       // する(renderer L-6、markdown-render.ts の attr `underline`)。
       { label: 'U', title: '下線(underline)— :text:underline:(Ctrl+U)', apply: (s) => applySimpleInlineAttr(s, 'underline') },
-      { label: '`', title: 'inline code — `text`', apply: (s) => wrapInline(s, '`') },
+      { label: '`', title: 'inline code — `text`(Ctrl+`)', apply: (s) => wrapInline(s, '`') },
       { label: '==', title: 'マーカー(mark)— ==text==', apply: (s) => wrapInline(s, '==') },
       // 強調点(圏点)の canonical delimiter は `^^`(renderer L-2 pkc_em_dot_caret)。
       // 旧 ribbon は `..` を使っていたが PKC MD に `..` 強調点は存在せず literal
