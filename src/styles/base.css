@@ -6789,6 +6789,50 @@ mark.pkc-search-mark {
   color: var(--c-fg);
   line-height: 1.4;
 }
+/* pgc-149 wave-γ #26:broken link summary(roadmap §2.2 A 群 3、
+   Phase 1 完了)。本文 entry: 参照のうち target 削除済を集約、Inspector
+   に橙(warning と danger の中間)で表示。 */
+.pkc-inspector-ai-broken {
+  border: 1px solid var(--c-danger, #dc2626);
+  background: var(--c-danger-bg, rgba(220, 38, 38, 0.06));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-broken-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-broken-title {
+  color: var(--c-danger, #dc2626);
+}
+.pkc-inspector-ai-broken-detail {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+}
+.pkc-inspector-ai-broken-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pkc-inspector-ai-broken-target {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--c-fg-dim);
+  background: var(--c-bg);
+  padding: 1px var(--space-1);
+  border-radius: 3px;
+}
 
 /* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
    flag ON 時に editor 末尾に compact metrics row(char / word / line)を

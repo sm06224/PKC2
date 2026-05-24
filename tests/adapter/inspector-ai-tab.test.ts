@@ -196,3 +196,77 @@ describe('buildInspectorAiSection — abandoned warning(pgc-148)', () => {
     expect(el.querySelector('.pkc-inspector-ai-empty')).toBeNull();
   });
 });
+
+describe('buildInspectorAiSection — broken link summary(pgc-149)', () => {
+  beforeEach(() => {
+    resetInspectorAiState();
+  });
+
+  it('case 18: 全 link 解決可なら broken section 出ない', () => {
+    const e = makeEntry({ lid: 'e1', body: '[ok](entry:e2)' });
+    const e2 = makeEntry({ lid: 'e2', body: '' });
+    const el = buildInspectorAiSection(e, makeContainer([e, e2]));
+    expect(el.querySelector('.pkc-inspector-ai-broken')).toBeNull();
+  });
+
+  it('case 19: broken link 1 件で section 表示', () => {
+    const e = makeEntry({ lid: 'e1', body: '[gone](entry:e_deleted)' });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    const broken = el.querySelector('.pkc-inspector-ai-broken');
+    expect(broken).not.toBeNull();
+    expect(broken?.getAttribute('data-pkc-warning-kind')).toBe('broken-links');
+    expect(broken?.getAttribute('data-pkc-broken-count')).toBe('1');
+    expect(broken?.querySelector('.pkc-inspector-ai-broken-title')?.textContent).toBe('Broken link(1)');
+  });
+
+  it('case 20: broken link 複数で複数形 title + target 列挙', () => {
+    const e = makeEntry({
+      lid: 'e1',
+      body: '[a](entry:zzz) [b](entry:aaa)',
+    });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    const broken = el.querySelector('.pkc-inspector-ai-broken');
+    expect(broken?.querySelector('.pkc-inspector-ai-broken-title')?.textContent).toBe('Broken links(2)');
+    const targets = Array.from(broken!.querySelectorAll('.pkc-inspector-ai-broken-target')).map((n) => n.textContent);
+    expect(targets).toEqual(['entry:aaa', 'entry:zzz']);
+  });
+
+  it('case 21: container undefined で broken 計算しない', () => {
+    const e = makeEntry({ lid: 'e1', body: '[gone](entry:nope)' });
+    const el = buildInspectorAiSection(e);
+    expect(el.querySelector('.pkc-inspector-ai-broken')).toBeNull();
+  });
+
+  it('case 22: dismiss → 次回 render で消える', () => {
+    const e = makeEntry({ lid: 'e1', body: '[g](entry:gone)' });
+    const c = makeContainer([e]);
+    const el1 = buildInspectorAiSection(e, c);
+    const id = el1
+      .querySelector('.pkc-inspector-ai-broken')
+      ?.getAttribute('data-pkc-suggestion-id');
+    expect(id).toBe('broken-links:e1');
+    dismissSuggestion(e.lid, id!);
+    const el2 = buildInspectorAiSection(e, c);
+    expect(el2.querySelector('.pkc-inspector-ai-broken')).toBeNull();
+  });
+
+  it('case 23: broken + suggestions 並列表示(順序:broken → suggestions)', () => {
+    // 注:abandoned warning は outgoing/backlinks 0 件が条件、broken
+    // link は outgoing 1 件として count されるため warning と broken は
+    // 同時成立しない(設計上の自然な exclusion)。warning + broken の
+    // 並列は別 test で個別に carve out 済(case 11 / case 19)。
+    const e = makeEntry({
+      lid: 'e1',
+      title: '',
+      body: '# H1\n[g](entry:gone)',
+      updated_at: NOW_ISO,
+    });
+    const el = buildInspectorAiSection(e, makeContainer([e]));
+    expect(el.querySelector('.pkc-inspector-ai-broken')).not.toBeNull();
+    expect(el.querySelectorAll('.pkc-inspector-ai-suggestion').length).toBe(1);
+    const children = Array.from(el.children).map((c) => c.className);
+    const brokenIdx = children.findIndex((c) => c.includes('broken'));
+    const listIdx = children.findIndex((c) => c.includes('list'));
+    expect(brokenIdx).toBeLessThan(listIdx);
+  });
+});

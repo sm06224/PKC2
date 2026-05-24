@@ -23,6 +23,10 @@ import {
   detectAbandonedWarning,
   type AbandonedWarning,
 } from '../../features/ai/abandoned-warning';
+import {
+  detectBrokenLinkSummary,
+  type BrokenLinkSummary,
+} from '../../features/ai/broken-link-summary';
 
 // dismiss 状態は module-local。reload で消える(localStorage 化は後続 PR、
 // privacy 観点で session 限定の方が安全)。`<lid>:<suggestion-id>` を key
@@ -72,10 +76,21 @@ export function buildInspectorAiSection(
     section.appendChild(renderAbandonedWarning(entry.lid, warning));
   }
 
+  // pgc-149:broken link summary(roadmap §2.2 A 群 3、Phase 1 完了)。
+  // 現 entry の outgoing `entry:` 参照のうち target が container に
+  // 存在しないものを集約。本文修正の起点動線。
+  const broken
+    = container && !isSuggestionDismissed(entry.lid, `broken-links:${entry.lid}`)
+      ? detectBrokenLinkSummary(entry, container)
+      : null;
+  if (broken) {
+    section.appendChild(renderBrokenLinkSummary(entry.lid, broken));
+  }
+
   const raw = suggestFrontmatter(entry);
   const suggestions = raw.filter((s) => !isSuggestionDismissed(entry.lid, s.id));
 
-  if (suggestions.length === 0 && !warning) {
+  if (suggestions.length === 0 && !warning && !broken) {
     const empty = document.createElement('div');
     empty.className = 'pkc-inspector-ai-empty';
     empty.textContent = raw.length === 0
@@ -95,6 +110,52 @@ export function buildInspectorAiSection(
   }
 
   return section;
+}
+
+function renderBrokenLinkSummary(lid: string, b: BrokenLinkSummary): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'pkc-inspector-ai-broken';
+  div.setAttribute('data-pkc-warning-kind', 'broken-links');
+  div.setAttribute('data-pkc-suggestion-id', b.id);
+  div.setAttribute('data-pkc-broken-count', String(b.count));
+
+  const header = document.createElement('div');
+  header.className = 'pkc-inspector-ai-broken-header';
+  const icon = document.createElement('span');
+  icon.className = 'pkc-inspector-ai-broken-icon';
+  icon.textContent = '🔗';
+  header.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'pkc-inspector-ai-broken-title';
+  title.textContent = `Broken link${b.count > 1 ? 's' : ''}(${b.count})`;
+  header.appendChild(title);
+  div.appendChild(header);
+
+  const detail = document.createElement('div');
+  detail.className = 'pkc-inspector-ai-broken-detail';
+  detail.textContent = b.reason;
+  div.appendChild(detail);
+
+  const list = document.createElement('ul');
+  list.className = 'pkc-inspector-ai-broken-list';
+  for (const targetLid of b.brokenLids) {
+    const li = document.createElement('li');
+    li.className = 'pkc-inspector-ai-broken-target';
+    li.textContent = `entry:${targetLid}`;
+    list.appendChild(li);
+  }
+  div.appendChild(list);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'pkc-inspector-ai-dismiss';
+  dismiss.setAttribute('data-pkc-action', 'dismiss-ai-suggestion');
+  dismiss.setAttribute('data-pkc-suggestion-id', b.id);
+  dismiss.setAttribute('data-pkc-suggestion-lid', lid);
+  dismiss.textContent = 'Dismiss';
+  dismiss.title = 'この警告を当面非表示にします(reload で復帰)';
+  div.appendChild(dismiss);
+
+  return div;
 }
 
 function renderAbandonedWarning(lid: string, w: AbandonedWarning): HTMLElement {
