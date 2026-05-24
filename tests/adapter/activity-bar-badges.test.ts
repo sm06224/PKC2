@@ -226,7 +226,7 @@ describe('pgc-180 Activity Bar tab badges', () => {
     expect(badges.relations).toBe(0);
   });
 
-  it('case 15: 既存 tab(Explorer / Search / Recent)は常に badge 0(設計対象外)', () => {
+  it('case 15: Explorer / Search badge は常に 0(設計対象外)、Recent は pgc-199 で navHistory ベース', () => {
     setFlag(true);
     const container = makeContainer([
       { lid: 'e1', title: 'X', body: '# A\n## B\n', archetype: 'text', created_at: TS, updated_at: TS },
@@ -235,6 +235,60 @@ describe('pgc-180 Activity Bar tab badges', () => {
     const badges = computeBadges(state);
     expect(badges.explorer).toBe(0);
     expect(badges.search).toBe(0);
+    // recent は navHistory 空(test では SELECT_ENTRY していない)なら 0
     expect(badges.recent).toBe(0);
+  });
+
+  // pgc-199 wave-α' #21:Recent badge — navHistory ベース dedup count
+
+  it('case 16: pgc-199 navHistory に 3 unique entry あれば recent badge = 3', () => {
+    setFlag(true);
+    const container = makeContainer([
+      { lid: 'e1', title: 'A', body: 'a', archetype: 'text', created_at: TS, updated_at: TS },
+      { lid: 'e2', title: 'B', body: 'b', archetype: 'text', created_at: TS, updated_at: TS },
+      { lid: 'e3', title: 'C', body: 'c', archetype: 'text', created_at: TS, updated_at: TS },
+    ]);
+    const state = makeState(container, 'e3');
+    // navHistory に e1 → e2 → e3 を積む
+    (state as { navHistory: string[] }).navHistory = ['e1', 'e2', 'e3'];
+    const badges = computeBadges(state);
+    expect(badges.recent).toBe(3);
+  });
+
+  it('case 17: pgc-199 navHistory 重複 lid は 1 件として count', () => {
+    setFlag(true);
+    const container = makeContainer([
+      { lid: 'e1', title: 'A', body: 'a', archetype: 'text', created_at: TS, updated_at: TS },
+      { lid: 'e2', title: 'B', body: 'b', archetype: 'text', created_at: TS, updated_at: TS },
+    ]);
+    const state = makeState(container, 'e1');
+    // e1 → e2 → e1 → e2 → e1 = unique 2
+    (state as { navHistory: string[] }).navHistory = ['e1', 'e2', 'e1', 'e2', 'e1'];
+    const badges = computeBadges(state);
+    expect(badges.recent).toBe(2);
+  });
+
+  it('case 18: pgc-199 削除済 lid(container に entry 無し)は skip', () => {
+    setFlag(true);
+    const container = makeContainer([
+      { lid: 'e1', title: 'A', body: 'a', archetype: 'text', created_at: TS, updated_at: TS },
+    ]);
+    const state = makeState(container, 'e1');
+    // e1(存在)+ e-deleted(container に無い)+ e1 = unique 1
+    (state as { navHistory: string[] }).navHistory = ['e1', 'e-deleted', 'e1'];
+    const badges = computeBadges(state);
+    expect(badges.recent).toBe(1);
+  });
+
+  it('case 19: pgc-199 opaque archetype は recent badge から除外', () => {
+    setFlag(true);
+    const container = makeContainer([
+      { lid: 'e1', title: 'A', body: 'a', archetype: 'text', created_at: TS, updated_at: TS },
+      { lid: 'e2', title: 'O', body: 'o', archetype: 'opaque', created_at: TS, updated_at: TS },
+    ]);
+    const state = makeState(container, 'e1');
+    (state as { navHistory: string[] }).navHistory = ['e1', 'e2'];
+    const badges = computeBadges(state);
+    expect(badges.recent).toBe(1); // e2 opaque は除外
   });
 });

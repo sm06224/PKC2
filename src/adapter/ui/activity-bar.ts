@@ -98,6 +98,23 @@ export function computeBadges(state?: AppState): Record<ActivityTab, number> {
   // entry pin tab だけが有意義(view tab は固定 6 種で pin しても情報希薄)。
   const pinned = getOpenTabs().filter((t) => t.pinned === true && t.kind !== 'view');
   empty.pinned = pinned.length;
+  // pgc-199 wave-α' #21:Recent badge ── state.navHistory の重複除去 unique 件数。
+  // 重複除去するのは Quick Open `@` recent mode(pgc-185)と同じ流儀:
+  // 「過去 N 件 unique entry」 の方が「ナビゲーションした回数」 より user
+  // 体感的に意味がある。container 未保有 entry(削除済 lid 等)も skip。
+  if (state.navHistory && state.container) {
+    const seen = new Set<string>();
+    const entryByLid = new Map(state.container.entries.map((e) => [e.lid, e]));
+    let count = 0;
+    for (let i = state.navHistory.length - 1; i >= 0; i--) {
+      const lid = state.navHistory[i]!;
+      if (seen.has(lid)) continue;
+      seen.add(lid);
+      const e = entryByLid.get(lid);
+      if (e && e.archetype !== 'opaque') count++;
+    }
+    empty.recent = count;
+  }
   return empty;
 }
 
