@@ -238,6 +238,22 @@ export const shellEditorFooterWordcountEnabled = defineFlag<boolean>(
   },
 );
 
+// todo overdue 視覚 indicator を sidebar / filer row にも展開(MASTER.md
+// §7 todo、pgc-134 wave-δ #9)。kanban / calendar は既に
+// `data-pkc-todo-overdue="true"` attr を立てているが、sidebar entry list と
+// filer row には未対応 ── todo の overdue を user が「リストを見るだけで」
+// 気づける動線が無い。ON で sidebar `<li>` / filer `<tr>` に同 attr を
+// 立て、CSS で warning border / `⚠` badge を見せる。OFF で従来挙動。
+export const shellTodoOverdueIndicatorEnabled = defineFlag<boolean>(
+  'shell.todo_overdue_indicator_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'sidebar / filer の todo row に overdue 視覚 indicator(⚠ badge + accent border)を追加',
+  },
+);
+
 // About entry に PKC-Markdown showcase section を追加(MASTER.md §2 U-19、
 // pgc-113 wave-γ #14)。「Aboutはかなり味気ない / 最近の変更があまり反映
 // されていない / もっと PKC-Markdown をドッグフーディングして積極的に

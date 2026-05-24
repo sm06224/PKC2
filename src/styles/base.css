@@ -7982,6 +7982,24 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   border-left: 2px solid var(--c-danger);
 }
 
+/* pgc-134 wave-δ #9(MASTER.md §7 todo):sidebar / filer の todo row
+   overdue indicator。shellTodoOverdueIndicatorEnabled() ON 時に renderer が
+   `data-pkc-todo-overdue="true"` attr を立て、本 selector で warning
+   border + ⚠ badge が見える。kanban / calendar の既存 overdue style と
+   視覚的に統一(同じ c-danger 色)。 */
+.pkc-entry-item[data-pkc-todo-overdue="true"],
+.pkc-filer-row[data-pkc-todo-overdue="true"] {
+  border-left: 2px solid var(--c-danger);
+}
+.pkc-todo-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-1);
+  color: var(--c-danger);
+  font-size: 0.95em;
+  cursor: help;
+}
+
 .pkc-calendar-todo-more {
   font-size: var(--fs-2xs);
   color: var(--c-muted);

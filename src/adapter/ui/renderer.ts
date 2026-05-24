@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled } from './shell-flags';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
@@ -4700,6 +4700,17 @@ function renderEntryItem(
       archivedBadge.textContent = 'Archived';
       li.appendChild(archivedBadge);
     }
+    // pgc-134 wave-δ #9(MASTER.md §7 todo):flag ON 時に overdue 視覚
+    // indicator を sidebar 行に追加。kanban / calendar と同じ
+    // `data-pkc-todo-overdue="true"` attr で CSS 統一、加えて `⚠` badge
+    // を行末に append(色覚弱者対応)。
+    if (shellTodoOverdueIndicatorEnabled() && isTodoPastDue(todo)) {
+      li.setAttribute('data-pkc-todo-overdue', 'true');
+      const overdueBadge = createElement('span', 'pkc-todo-overdue-badge');
+      overdueBadge.setAttribute('title', 'Overdue');
+      overdueBadge.textContent = '⚠';
+      li.appendChild(overdueBadge);
+    }
   }
 
   // Task completion badge
@@ -5971,6 +5982,15 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     }
     if (multiSet.has(child.lid)) {
       tr.setAttribute('data-pkc-multi-selected', 'true');
+    }
+    // pgc-134 wave-δ #9(MASTER.md §7 todo):flag ON 時に filer row でも
+    // overdue indicator。sidebar と同 attr / CSS で統一。
+    if (
+      shellTodoOverdueIndicatorEnabled() &&
+      child.archetype === 'todo' &&
+      isTodoPastDue(parseTodoBody(child.body))
+    ) {
+      tr.setAttribute('data-pkc-todo-overdue', 'true');
     }
 
     // PR-Δ3 multi-select checkbox cell(先頭に挿入)。
