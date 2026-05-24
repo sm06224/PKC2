@@ -160,4 +160,46 @@ describe('pgc-186 editor format keyboard shortcuts(Ctrl+B / Ctrl+I)', () => {
     applyWrapToTextarea(ta, '~~');
     expect(ta.value).toBe('~~hello~~ world');
   });
+
+  // pgc-187 wave-α' #10:Ctrl+U / Ctrl+Shift+S extensions
+
+  it('case 14: pgc-187 flag ON + Ctrl+U で simple-inline underline `:X:underline:` wrap', () => {
+    setFlag(true);
+    ta.setSelectionRange(0, 5);
+    const e = mkEvent({ key: 'u', ctrlKey: true, target: ta });
+    expect(handleEditorFormatShortcut(e)).toBe(true);
+    // applySimpleInlineAttr の出力 ── `:hello:underline:` + ` world`
+    expect(ta.value).toBe(':hello:underline: world');
+  });
+
+  it('case 15: pgc-187 flag ON + Ctrl+Shift+S で strikethrough `~~X~~` wrap', () => {
+    setFlag(true);
+    ta.setSelectionRange(0, 5);
+    const e = mkEvent({ key: 's', ctrlKey: true, shiftKey: true, target: ta });
+    expect(handleEditorFormatShortcut(e)).toBe(true);
+    expect(ta.value).toBe('~~hello~~ world');
+  });
+
+  it('case 16: pgc-187 Ctrl+Shift+B(他 key + shift)は依然 skip(将来 chord 予約)', () => {
+    setFlag(true);
+    ta.setSelectionRange(0, 5);
+    const e = mkEvent({ key: 'b', ctrlKey: true, shiftKey: true, target: ta });
+    expect(handleEditorFormatShortcut(e)).toBe(false);
+    expect(ta.value).toBe('hello world');
+  });
+
+  it('case 17: pgc-187 Cmd+U(Mac)も underline 発火', () => {
+    setFlag(true);
+    ta.setSelectionRange(0, 5);
+    const e = mkEvent({ key: 'u', metaKey: true, target: ta });
+    expect(handleEditorFormatShortcut(e)).toBe(true);
+    expect(ta.value).toBe(':hello:underline: world');
+  });
+
+  it('case 18: pgc-187 Ctrl+Alt+U は alt 修飾子で skip', () => {
+    setFlag(true);
+    ta.setSelectionRange(0, 5);
+    const e = mkEvent({ key: 'u', ctrlKey: true, altKey: true, target: ta });
+    expect(handleEditorFormatShortcut(e)).toBe(false);
+  });
 });
