@@ -156,11 +156,11 @@ describe('handleKeymapKeydown', () => {
 });
 
 describe('registerBuiltinKeymaps', () => {
-  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F + Alt+Shift+1..6 + Ctrl+K P/R/H/Y/I + Ctrl+\\ + Alt+ArrowLeft/Right(pgc-179)', () => {
+  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F + Alt+Shift+1..6 + Ctrl+K P/R/H/Y/I + Ctrl+\\ + Alt+ArrowLeft/Right + tab nav(pgc-182)', () => {
     resetKeymapRegistry();
     registerBuiltinKeymaps();
     const bs = getKeyBindings();
-    expect(bs.length).toBe(23); // 6 + 1 + 1 + 1 + 6 + 5 + 1(pgc-144 split-view.toggle)+ 2(pgc-179 history.back/forward)
+    expect(bs.length).toBe(27); // 6 + 1 + 1 + 1 + 6 + 5 + 1 + 2 + 4(pgc-182 tab.next/previous/close-active/reopen-last-closed)
     const ids = bs.map((b) => b.commandId).sort();
     expect(ids).toContain('view.detail');
     expect(ids).toContain('app.flags');
@@ -175,5 +175,9 @@ describe('registerBuiltinKeymaps', () => {
     expect(ids).toContain('split-view.toggle');
     expect(ids).toContain('history.back');
     expect(ids).toContain('history.forward');
+    expect(ids).toContain('tab.next');
+    expect(ids).toContain('tab.previous');
+    expect(ids).toContain('tab.close-active');
+    expect(ids).toContain('tab.reopen-last-closed');
   });
 });

@@ -16,7 +16,16 @@ import type { Dispatcher } from '../state/dispatcher';
 import type { ArchetypeId } from '../../core/model/record';
 import type { CommandMeta } from '../../features/command/types';
 import { registerCommand } from './command-palette';
-import { openViewTab, persistTabState, togglePinTab, getActiveTabLid } from './tab-strip';
+import {
+  openViewTab,
+  persistTabState,
+  togglePinTab,
+  getActiveTabLid,
+  getNextOpenTabLid,
+  getPreviousOpenTabLid,
+  closeActiveTab,
+  reopenLastClosedTab,
+} from './tab-strip';
 import { toggleSplitView } from './split-view';
 import { toggleFormatPanelVisible } from './format-panel-visibility';
 import { setActivityBarActiveTab, type ActivityTab } from './activity-bar';
@@ -241,6 +250,93 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       persistTabState();
       const st = dispatcher.getState();
       dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+    },
+  );
+
+  // ─── Tab navigation(pgc-182 wave-α' #5、v3 統合 master G2 nav 統一)─
+  // 開いている tab 間を cyclic に next / previous で移動する VSCode 流
+  // 動線。`Ctrl+PageDown` / `Ctrl+PageUp`(browser tab 切替と衝突するが
+  // keymap registry opt-in なので user 同意済)。textarea 編集中は
+  // handleKeymapKeydown が skip するため、編集中の cursor 移動と衝突なし。
+  registerCommand(
+    {
+      id: 'tab.next',
+      titleJa: '次の tab に移動',
+      titleEn: 'Next tab',
+      category: 'View',
+      keybind: 'Ctrl+PageDown',
+    },
+    () => {
+      const next = getNextOpenTabLid();
+      if (!next) return;
+      // view tab(__view:<mode>)なら SET_VIEW_MODE、entry tab なら SELECT_ENTRY
+      if (next.startsWith('__view:')) {
+        const mode = next.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+      } else {
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: next });
+      }
+    },
+  );
+  registerCommand(
+    {
+      id: 'tab.previous',
+      titleJa: '前の tab に移動',
+      titleEn: 'Previous tab',
+      category: 'View',
+      keybind: 'Ctrl+PageUp',
+    },
+    () => {
+      const prev = getPreviousOpenTabLid();
+      if (!prev) return;
+      if (prev.startsWith('__view:')) {
+        const mode = prev.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+      } else {
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: prev });
+      }
+    },
+  );
+  registerCommand(
+    {
+      id: 'tab.close-active',
+      titleJa: 'アクティブな tab を閉じる',
+      titleEn: 'Close active tab',
+      category: 'View',
+      keybind: 'Alt+W',
+    },
+    () => {
+      const nextLid = closeActiveTab();
+      persistTabState();
+      // closeActiveTab は次に focus すべき lid を返す ── 続けて SELECT/SET_VIEW
+      if (nextLid) {
+        if (nextLid.startsWith('__view:')) {
+          const mode = nextLid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        } else {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: nextLid });
+        }
+      }
+    },
+  );
+  registerCommand(
+    {
+      id: 'tab.reopen-last-closed',
+      titleJa: '直近閉じた tab を復元',
+      titleEn: 'Reopen last closed tab',
+      category: 'View',
+      keybind: 'Ctrl+Shift+T',
+    },
+    () => {
+      const lid = reopenLastClosedTab();
+      if (!lid) return;
+      persistTabState();
+      if (lid.startsWith('__view:')) {
+        const mode = lid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+      } else {
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+      }
     },
   );
 

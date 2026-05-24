@@ -169,4 +169,14 @@ export function registerBuiltinKeymaps(): void {
   // Keydown が skip するため cursor 単語移動と非衝突。
   registerKeyBinding('Alt+ArrowLeft', 'history.back');
   registerKeyBinding('Alt+ArrowRight', 'history.forward');
+  // pgc-182 wave-α' #5(v3 統合 master G2 nav 統一の延長):tab 切替 +
+  // 閉じる / 復元の 4 chord。VSCode 流(Ctrl+PageDown/PageUp で next/prev、
+  // Ctrl+Shift+T で reopen-last-closed、Alt+W で close-active)。browser
+  // tab 切替と Ctrl+PageUp/Down は衝突するが keymap registry opt-in での
+  // override で user 同意済。textarea / input は handleKeymapKeydown が
+  // skip するため編集中の cursor 移動と非衝突。
+  registerKeyBinding('Ctrl+PageDown', 'tab.next');
+  registerKeyBinding('Ctrl+PageUp', 'tab.previous');
+  registerKeyBinding('Alt+W', 'tab.close-active');
+  registerKeyBinding('Ctrl+Shift+T', 'tab.reopen-last-closed');
 }

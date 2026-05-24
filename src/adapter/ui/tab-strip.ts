@@ -263,6 +263,25 @@ export function getActiveTabLid(): string | null {
   return activeLid;
 }
 
+// pgc-182 wave-α' #5(v3 統合 master G2、roadmap 領域 1 nav 統一の延長):
+// 開いている tab を cyclic に next / previous 移動する helper(VSCode 流
+// `Ctrl+PageDown` / `Ctrl+PageUp` shortcut の data source)。
+// 開 tab が 0 件 or 1 件のみなら null を返す ── caller は no-op 判断。
+// 現 active の前後で 1 つ先 / 1 つ前を返し、末尾 ↔ 先頭で wrap-around。
+export function getNextOpenTabLid(): string | null {
+  if (openTabs.length <= 1) return null;
+  const i = openTabs.findIndex((t) => t.lid === activeLid);
+  if (i < 0) return openTabs[0]!.lid;
+  return openTabs[(i + 1) % openTabs.length]!.lid;
+}
+
+export function getPreviousOpenTabLid(): string | null {
+  if (openTabs.length <= 1) return null;
+  const i = openTabs.findIndex((t) => t.lid === activeLid);
+  if (i < 0) return openTabs[openTabs.length - 1]!.lid;
+  return openTabs[(i - 1 + openTabs.length) % openTabs.length]!.lid;
+}
+
 export function resetTabState(): void {
   openTabs = [];
   activeLid = null;
