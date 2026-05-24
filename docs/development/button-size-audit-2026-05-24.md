@@ -105,17 +105,41 @@ size を継承、独自 visual(色 / icon)だけ override する form に整理�
 
 ## §4 migration plan(段階導入、6+ PR)
 
-| step | 内容 | scope |
-|---|---|---|
-| 1 | `pkc-button-base` + 5 size category CSS を base.css に追加 | scope 小、既存 CSS 不変 |
-| 2 | header nav(`.pkc-header-nav-btn` / `.pkc-header-path-nav-btn`)を `pkc-button-base pkc-button-size-icon` に migration | scope 小 |
-| 3 | view-mode / Inspector / Activity tab を `pkc-button-size-tab` に migration | scope 中 |
-| 4 | format toolbar 全 button を `pkc-button-size-toggle` or 専用 size に migration | scope 大 |
-| 5 | Inspector dismiss / placeholder hint button を `pkc-button-size-dismiss` に | scope 小 |
-| 6 | 既存 `.pkc-btn` 系の inline override を削除、`pkc-button-size-action` 継承に統一 | scope 中 |
+| step | 内容 | scope | 状況 |
+|---|---|---|---|
+| 1 | `pkc-button-base` + 5 size category CSS を base.css に追加 | scope 小、既存 CSS 不変 | **pgc-171 着地** ✅ |
+| 2 | header nav(`.pkc-header-nav-btn` / `.pkc-header-path-nav-btn`)を `pkc-button-base pkc-button-size-icon` に migration | scope 小 | **pgc-171 着地**(step 1+2 結合) ✅ |
+| 3 | view-mode / Inspector / Activity tab を `pkc-button-size-tab` に migration | scope 中 | **pgc-172 着地**(view-mode + Inspector のみ。Activity Bar は square icon button で別 category 必要、後続) ✅ partial |
+| 4 | format toolbar 全 button を `pkc-button-size-toggle` or 専用 size に migration | scope 大 | TODO(後続 PR、format toolbar が `pkc-format-toolbar-btn` で ~40 件、変更影響大)|
+| 5 | Inspector dismiss / placeholder hint button を `pkc-button-size-dismiss` に | scope 小 | **pgc-173 着地**(Inspector Hints 8 dismiss button) ✅ |
+| 6 | 既存 `.pkc-btn` 系の inline override を削除、`pkc-button-size-action` 継承に統一 | scope 中 | TODO ── `.pkc-btn` 実 padding は `space-3`(audit `space-2-5` と微妙差)、`.pkc-button-size-action` を `.pkc-btn` 実態に合わせて 修正 → adopt が前提 |
 
 各 step は **Tier 0 flag 不要**(visual のみ、機能変化なし)、ただし
 **visual regression test(Playwright)** を各 step で 1 件追加推奨。
+
+### §4.1 step 3 で先送りした「Activity Bar square icon button」
+
+Activity Bar tab は **square icon button**(36-44px × 36-44px、icon-only)で
+horizontal text tab(min-width 4rem)とは別 size 必要。新 category
+`pkc-button-size-square-tab`(36px × 36px、min-width = min-height)を
+audit §3.1 に **追加して step 3-bis** として後続 PR で着地。
+
+### §4.2 step 6 で発覚した audit と実態の差
+
+`.pkc-btn` の現状実装:
+```css
+.pkc-btn { padding: var(--space-1-5) var(--space-3); font-size: var(--fs-base); ... }
+```
+
+audit §3.1 で定義した `pkc-button-size-action`:
+```css
+.pkc-button-size-action { min-height: 32px; font-size: var(--fs-sm); padding: var(--space-1-5) var(--space-2-5); }
+```
+
+**padding が `space-3` vs `space-2-5`**、**font-size が `base` vs `sm`** で微妙差。
+step 6 で `.pkc-btn` を `pkc-button-size-action` に統一する場合、**audit 値を
+`.pkc-btn` 実態に合わせるべき**(visual baseline 保証のため)。または、両者の
+trade-off を user 確認後に決定。本 step 6 は **user 確認待ち**。
 
 ---
 
@@ -135,3 +159,7 @@ size を継承、独自 visual(色 / icon)だけ override する form に整理�
 | date | event |
 |---|---|
 | 2026-05-24 | 本 doc 起こし(pgc-169、handoff user bug #4「ボタンサイズバラバラ」 step 1)|
+| 2026-05-24 | **step 1+2 着地**(pgc-171):`pkc-button-base` + 5 size category 導入 + header nav 4 件 adopt |
+| 2026-05-24 | **step 3 partial 着地**(pgc-172):view-mode tab 6 件 + Inspector tab 5 件 adopt(Activity Bar square icon は step 3-bis に分離)|
+| 2026-05-24 | **step 5 着地**(pgc-173):Inspector Hints 8 dismiss button adopt |
+| 2026-05-24 | 本 doc 4-rounds-1 update(pgc-174):step 1/2/3 partial/5 着地反映 + step 3-bis(square icon)分離 + step 6 user 確認事項(audit vs `.pkc-btn` 実態差)明文化 |
