@@ -213,12 +213,17 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
   );
 
   // ─── Split View(pgc-89、MASTER.md §5.5)─────
+  // pgc-144 wave-δ #18(user bug report 2026-05-24「センターペインに
+  // 編集結果を Split View のように反映する動線」):keybind `Ctrl+\\` 追加。
+  // VSCode の Split editor shortcut(Ctrl+\\)と一致、編集中に 1 step で
+  // Split View(右に read-only viewer = ライブ render 結果)が出る。
   registerCommand(
     {
       id: 'split-view.toggle',
       titleJa: 'Split View を toggle(右に read-only viewer)',
       titleEn: 'Toggle Split View(right read-only viewer)',
       category: 'View',
+      keybind: 'Ctrl+\\',
     },
     () => {
       toggleSplitView('right');

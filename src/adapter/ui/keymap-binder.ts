@@ -158,4 +158,9 @@ export function registerBuiltinKeymaps(): void {
   registerKeyBinding('Ctrl+K H', 'inspector.history');
   registerKeyBinding('Ctrl+K Y', 'inspector.style');
   registerKeyBinding('Ctrl+K I', 'inspector.ai');
+  // pgc-144 wave-δ #18(user bug report 2026-05-24「センターペインに
+  // 編集結果を Split View のように反映する動線」):VSCode 流の
+  // Split editor shortcut。`shell.split_view_enabled` + `shell.keymap_
+  // registry_enabled` 両方 ON で `Ctrl+\\` で Split View を toggle。
+  registerKeyBinding('Ctrl+\\', 'split-view.toggle');
 }
