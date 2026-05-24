@@ -235,6 +235,16 @@ export function buildInspectorStyleSection(entry: Entry, container?: Container |
   addRow(dl, 'Created', formatIso(entry.created_at));
   addRow(dl, 'Updated', formatIso(entry.updated_at));
 
+  // pgc-197 wave-α' #20:revision count を表示(container があり、>0 件のみ)。
+  // History tab(pgc-181 で diff viewer 着地)とは別 surface ── Style tab
+  // は単に「この entry が何回 snapshot されたか」 の情報的 metric。
+  if (container) {
+    const revCount = container.revisions.filter((r) => r.entry_lid === entry.lid).length;
+    if (revCount > 0) {
+      addRow(dl, 'Revisions', `${revCount}`);
+    }
+  }
+
   section.appendChild(dl);
 
   const note = document.createElement('div');
