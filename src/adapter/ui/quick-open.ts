@@ -30,6 +30,48 @@ import type { Dispatcher } from '../state/dispatcher';
 import { fuzzyMatchSingle, rankCommands } from '../../features/command/fuzzy';
 import { shellQuickOpenEnabled } from './shell-flags';
 import { getCommandMetas, executeCommand } from './command-palette';
+import { extractHeadingsFromMarkdown, type TocHeading } from '../../features/markdown/markdown-toc';
+
+interface RankedHeading {
+  readonly heading: TocHeading;
+  readonly score: number;
+}
+
+// pgc-183 wave-α' #6(v3 統合 master G2 nav 統一、wave-α POC §0 で「後続
+// PR で本格化」 と既知):Quick Open `:` mode を heading-jump に格上げ。
+// 現 entry(text / textlog)の見出しを抽出 + fuzzy match、Enter で
+// `scroll-to-heading` 同等の `#<slug>` scrollIntoView へ繋ぐ。
+// pgc-183:Quick Open heading mode で選択された heading slug を center pane
+// に scroll する helper。action-binder の `scroll-to-heading` handler と
+// 同経路(action-binder.ts:1247)── center pane 起点で `#<slug>` を探し、
+// 見つからなければ document 全体から fallback。
+function scrollToHeadingBySlug(slug: string): void {
+  if (typeof document === 'undefined') return;
+  const center = document.querySelector('[data-pkc-region="center"]')
+    ?? document.querySelector('.pkc-center');
+  const target =
+    (center?.querySelector(`#${CSS.escape(slug)}`) as HTMLElement | null)
+    ?? document.getElementById(slug);
+  if (target instanceof HTMLElement) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+export function rankHeadings(query: string, headings: readonly TocHeading[]): RankedHeading[] {
+  if (!query) {
+    return headings.map((h) => ({ heading: h, score: 1 }));
+  }
+  const out: RankedHeading[] = [];
+  for (const h of headings) {
+    const tr = fuzzyMatchSingle(query, h.text);
+    const sr = fuzzyMatchSingle(query, h.slug);
+    const score = Math.max(tr.score, sr.score);
+    if (score <= 0) continue;
+    out.push({ heading: h, score });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out;
+}
 
 interface RankedEntry {
   readonly entry: Entry;
@@ -176,16 +218,17 @@ export function openQuickOpen(
   mountedRoot = overlay;
 
   let activeIndex = 0;
-  let mode: 'entry' | 'command' = 'entry';
+  let mode: 'entry' | 'command' | 'heading' = 'entry';
   let entryItems: RankedEntry[] = [];
   let commandItems: ReturnType<typeof rankCommands> = [];
+  let headingItems: RankedHeading[] = [];
 
-  function detectMode(q: string): { mode: 'entry' | 'command'; effective: string; hint: string } {
+  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading'; effective: string; hint: string } {
     if (q.startsWith('>')) {
       return { mode: 'command', effective: q.slice(1).trim(), hint: '🛠 Command mode' };
     }
     if (q.startsWith(':')) {
-      return { mode: 'entry', effective: q, hint: '📑 Heading mode は POC 範囲外、entry 検索にフォールバック' };
+      return { mode: 'heading', effective: q.slice(1).trim(), hint: '📑 Heading mode(現 entry の見出し)' };
     }
     if (q.startsWith('#')) {
       return { mode: 'entry', effective: q, hint: '🏷 Tag mode は POC 範囲外、entry 検索にフォールバック' };
@@ -205,6 +248,53 @@ export function openQuickOpen(
     }
     list.textContent = '';
     activeIndex = 0;
+
+    if (m === 'heading') {
+      // pgc-183:現 entry の見出しを fuzzy match。selectedLid が無い / text/
+      // textlog 以外 / heading 0 件のときは empty state(明示メッセージ無し
+      // = pkc-quick-open-empty の "(該当エントリなし)" を再利用、汎用 UX)。
+      const state = dispatcher.getState();
+      const lid = state.selectedLid;
+      const entry = lid ? state.container?.entries.find((e) => e.lid === lid) : undefined;
+      const isMarkdown = entry && (entry.archetype === 'text' || entry.archetype === 'textlog');
+      const headings = isMarkdown ? extractHeadingsFromMarkdown(entry.body || '') : [];
+      headingItems = rankHeadings(effective, headings);
+      if (headingItems.length === 0) {
+        empty.style.display = '';
+        list.style.display = 'none';
+        return;
+      }
+      empty.style.display = 'none';
+      list.style.display = '';
+      const visible = headingItems.slice(0, 50);
+      for (let i = 0; i < visible.length; i++) {
+        const r = visible[i]!;
+        const li = document.createElement('li');
+        li.className = 'pkc-quick-open-item';
+        li.setAttribute('data-pkc-heading-slug', r.heading.slug);
+        li.setAttribute('data-pkc-quick-mode', 'heading');
+        li.setAttribute('role', 'option');
+        if (i === 0) {
+          li.classList.add('pkc-quick-open-item-active');
+          li.setAttribute('aria-selected', 'true');
+        }
+        const icon = document.createElement('span');
+        icon.className = 'pkc-quick-open-item-icon';
+        // heading level に応じた icon(H1=📚 / H2=📖 / H3+=📑)
+        icon.textContent = r.heading.level <= 1 ? '📚' : r.heading.level === 2 ? '📖' : '📑';
+        li.appendChild(icon);
+        const title = document.createElement('span');
+        title.className = 'pkc-quick-open-item-title';
+        title.textContent = r.heading.text;
+        li.appendChild(title);
+        const meta = document.createElement('span');
+        meta.className = 'pkc-quick-open-item-meta';
+        meta.textContent = `H${r.heading.level}`;
+        li.appendChild(meta);
+        list.appendChild(li);
+      }
+      return;
+    }
 
     if (m === 'command') {
       const metas = getCommandMetas();
@@ -287,7 +377,11 @@ export function openQuickOpen(
   }
 
   function setActive(next: number): void {
-    const len = mode === 'command' ? Math.min(commandItems.length, 50) : Math.min(entryItems.length, 50);
+    const len = mode === 'command'
+      ? Math.min(commandItems.length, 50)
+      : mode === 'heading'
+      ? Math.min(headingItems.length, 50)
+      : Math.min(entryItems.length, 50);
     if (len === 0) return;
     activeIndex = (next + len) % len;
     const all = list.querySelectorAll<HTMLLIElement>('.pkc-quick-open-item');
@@ -310,6 +404,16 @@ export function openQuickOpen(
       const id = r.meta.id;
       cleanup();
       executeCommand(id);
+      return;
+    }
+    if (mode === 'heading') {
+      const r = headingItems[Math.min(activeIndex, headingItems.length - 1)];
+      if (!r) return;
+      const slug = r.heading.slug;
+      cleanup();
+      // scroll-to-heading の action handler と同経路 ── center pane の
+      // `#<slug>` element へ scrollIntoView。
+      scrollToHeadingBySlug(slug);
       return;
     }
     const r = entryItems[Math.min(activeIndex, entryItems.length - 1)];
@@ -361,7 +465,11 @@ export function openQuickOpen(
     }
     if (e.key === 'End' && !e.shiftKey) {
       e.preventDefault();
-      const len = mode === 'command' ? Math.min(commandItems.length, 50) : Math.min(entryItems.length, 50);
+      const len = mode === 'command'
+        ? Math.min(commandItems.length, 50)
+        : mode === 'heading'
+        ? Math.min(headingItems.length, 50)
+        : Math.min(entryItems.length, 50);
       setActive(len - 1);
       return;
     }
@@ -382,11 +490,15 @@ export function openQuickOpen(
     if (!(e.target instanceof Element)) return;
     const li = e.target.closest<HTMLLIElement>('.pkc-quick-open-item');
     if (!li) return;
-    const isCommand = li.getAttribute('data-pkc-quick-mode') === 'command';
-    if (isCommand) {
+    const m = li.getAttribute('data-pkc-quick-mode');
+    if (m === 'command') {
       const id = li.getAttribute('data-pkc-cmd-id');
       cleanup();
       if (id) executeCommand(id);
+    } else if (m === 'heading') {
+      const slug = li.getAttribute('data-pkc-heading-slug');
+      cleanup();
+      if (slug) scrollToHeadingBySlug(slug);
     } else {
       const lid = li.getAttribute('data-pkc-quick-lid');
       cleanup();
