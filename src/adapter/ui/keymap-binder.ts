@@ -163,4 +163,10 @@ export function registerBuiltinKeymaps(): void {
   // Split editor shortcut。`shell.split_view_enabled` + `shell.keymap_
   // registry_enabled` 両方 ON で `Ctrl+\\` で Split View を toggle。
   registerKeyBinding('Ctrl+\\', 'split-view.toggle');
+  // pgc-179 wave-α' G2(v3 統合 master、roadmap 領域 1):履歴ナビ
+  // Alt+←/→。browser default の Alt+ArrowLeft/Right(back/forward)を
+  // PKC2 内 keymap registry で明示登録、textarea 編集中は handleKeymap
+  // Keydown が skip するため cursor 単語移動と非衝突。
+  registerKeyBinding('Alt+ArrowLeft', 'history.back');
+  registerKeyBinding('Alt+ArrowRight', 'history.forward');
 }

@@ -156,11 +156,11 @@ describe('handleKeymapKeydown', () => {
 });
 
 describe('registerBuiltinKeymaps', () => {
-  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F + Alt+Shift+1..6 + Ctrl+K P/R/H/Y/I + Ctrl+\\(pgc-144)', () => {
+  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F + Alt+Shift+1..6 + Ctrl+K P/R/H/Y/I + Ctrl+\\ + Alt+ArrowLeft/Right(pgc-179)', () => {
     resetKeymapRegistry();
     registerBuiltinKeymaps();
     const bs = getKeyBindings();
-    expect(bs.length).toBe(21); // 6 + 1 + 1 + 1 + 6 + 5 + 1(pgc-144 で split-view.toggle 追加)
+    expect(bs.length).toBe(23); // 6 + 1 + 1 + 1 + 6 + 5 + 1(pgc-144 split-view.toggle)+ 2(pgc-179 history.back/forward)
     const ids = bs.map((b) => b.commandId).sort();
     expect(ids).toContain('view.detail');
     expect(ids).toContain('app.flags');
@@ -173,5 +173,7 @@ describe('registerBuiltinKeymaps', () => {
     expect(ids).toContain('inspector.references');
     expect(ids).toContain('inspector.ai');
     expect(ids).toContain('split-view.toggle');
+    expect(ids).toContain('history.back');
+    expect(ids).toContain('history.forward');
   });
 });

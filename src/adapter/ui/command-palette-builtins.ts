@@ -136,6 +136,38 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
     clickAction('[data-pkc-action="toggle-shell-menu"]'),
   );
 
+  // ─── Navigation history(pgc-179 wave-α' G2、roadmap 領域 1)──
+  // browser history を Alt+←/→ で操作する VSCode / Obsidian 流の動線。
+  // 既存 `data-pkc-action="go-back"/"go-forward"` button(pgc-55、header
+  // nav + breadcrumb)と同経路 ── `window.history.back/forward()` →
+  // popstate → nav-history bridge が `GO_BACK` / `GO_FORWARD` dispatch。
+  // textarea / input 編集中は handleKeymapKeydown が skip するため、
+  // cursor 移動(Alt+← = 単語単位移動)とは衝突しない。
+  registerCommand(
+    {
+      id: 'history.back',
+      titleJa: '履歴を戻る',
+      titleEn: 'Go back',
+      category: 'Navigation',
+      keybind: 'Alt+ArrowLeft',
+    },
+    () => {
+      window.history.back();
+    },
+  );
+  registerCommand(
+    {
+      id: 'history.forward',
+      titleJa: '履歴を進む',
+      titleEn: 'Go forward',
+      category: 'Navigation',
+      keybind: 'Alt+ArrowRight',
+    },
+    () => {
+      window.history.forward();
+    },
+  );
+
   // ─── App ─────────────────────────────────────
   // About 表示は固定 lid を select するだけ(`select-about` action handler と
   // 同等)── action-binder.ts:3266 の挙動を migrate せず inline で再現。
