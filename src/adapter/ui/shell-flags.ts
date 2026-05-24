@@ -439,6 +439,22 @@ export const textTextlogLogSearchEnabled = defineFlag<boolean>(
   },
 );
 
+// Wordcount footer mobile compact format(wave-δ #23、pgc-156 handoff §3.5)。
+// ON で editor footer wordcount を mobile / 狭画面向けの **compact**
+// 表記に切替(`1234 chars · 250 words · 42 lines · ~3 min read` →
+// `1.2k · 250w · 42l · 3m`)。space 取らず status bar 内に収まる。
+// OFF で従来通り(完全後方互換)。
+// URL flag: `?pkc-flag=text.wordcount_mobile_compact_enabled=1`。
+export const textWordcountMobileCompactEnabled = defineFlag<boolean>(
+  'text.wordcount_mobile_compact_enabled',
+  false,
+  {
+    category: 'text',
+    description:
+      'editor footer wordcount を mobile compact 表記に切替(1.2k · 250w · 42l · 3m)',
+  },
+);
+
 // Wordcount footer noise exclusion(wave-δ #20、pgc-151 handoff §3.5)。
 // ON で editor footer wordcount が fenced code block / inline code /
 // image markup / footnote ref / HTML tag を除外して prose のみで

@@ -14,7 +14,7 @@
 
 import type { Entry } from '../../core/model/record';
 import { stripNoiseForWordcount } from '../../features/wordcount/wordcount-strip';
-import { textWordcountExcludeNoiseEnabled } from './shell-flags';
+import { textWordcountExcludeNoiseEnabled, textWordcountMobileCompactEnabled } from './shell-flags';
 
 /**
  * 標準的な読書速度(英語 ~200 wpm、日本語 ~600 char/min)。pgc-127 wave-δ
@@ -41,6 +41,23 @@ export function formatReadTime(minutes: number): string {
   if (minutes <= 0) return '<1 min';
   if (minutes < 1) return '<1 min';
   return `~${Math.round(minutes)} min read`;
+}
+
+/**
+ * pgc-156 wave-δ #23(handoff §3.5):mobile compact 表記。1000 以上の
+ * 数値を `1.2k` / `15k` のような SI 圧縮、unit は 1-char suffix。
+ * 読み時間は分のみで `m` 単位。狭画面 status bar 想定。
+ */
+export function formatCompactCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${Math.round(n / 1000)}k`;
+}
+
+export function formatReadTimeCompact(minutes: number): string {
+  if (minutes <= 0) return '<1m';
+  if (minutes < 1) return '<1m';
+  return `~${Math.round(minutes)}m`;
 }
 
 export function buildEditorFooterWordcount(entry: Entry): HTMLElement {
@@ -73,8 +90,16 @@ export function buildEditorFooterWordcount(entry: Entry): HTMLElement {
   metrics.setAttribute('data-pkc-line-count', String(lineCount));
   metrics.setAttribute('data-pkc-read-minutes', readMinutes.toFixed(2));
   if (excludeNoise) metrics.setAttribute('data-pkc-noise-excluded', 'true');
-  const noiseMark = excludeNoise ? '✂ prose only · ' : '';
-  metrics.textContent = `${noiseMark}${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
+  // pgc-156 wave-δ #23:mobile compact 表記。文字数 / word / line を SI
+  // 圧縮、read time も 1-char 単位。default は従来の「冗長 prose」 表記。
+  const compact = textWordcountMobileCompactEnabled();
+  if (compact) metrics.setAttribute('data-pkc-compact', 'true');
+  const noiseMark = excludeNoise ? (compact ? '✂ · ' : '✂ prose only · ') : '';
+  if (compact) {
+    metrics.textContent = `${noiseMark}${formatCompactCount(charCount)} · ${formatCompactCount(wordCount)}w · ${formatCompactCount(lineCount)}l · ${formatReadTimeCompact(readMinutes)}`;
+  } else {
+    metrics.textContent = `${noiseMark}${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
+  }
   footer.appendChild(metrics);
 
   return footer;
