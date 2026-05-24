@@ -25,6 +25,7 @@ import { renderMarkdown } from '../../features/markdown/markdown-render';
 // multi-window spec §11.3)。
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
+import { hydrateMermaidPlaceholders } from './mermaid-renderer';
 // pgc-97(audit pgc-77 Gap-14):S4 全 path で heading-fold が機能していな
 // かった(features 層 op 未連動)。pgc-96 で導入した injectFeaturesDomOps
 // pipeline に applyHeadingFold を追加し、center pane(S1)と同 contract に。
@@ -143,6 +144,15 @@ function injectFeaturesDomOps(
         entries: container.entries,
         currentContainerId: containerId,
       });
+      // pgc-203 wave-α' polish #24:built-in mermaid hydration(S4 entry-window)。
+      // S1 detail-presenter + S2 rendered-viewer と 3 surface parity 規約に
+      // 従い、S4 でも mermaid SVG を hydrate。fire-and-forget で render 完了は
+      // 次 frame 以降、tmp はその後 innerHTML として entry-window 子 window に
+      // serialize される ── HTML string 化 時点で svg 未完了の場合は
+      // placeholder のまま受け渡される(再 mount 時に同 hydrator が再 hydrate
+      // すべきだが、entry-window は子 window の document に直接書くため
+      // 別経路 ── known limitation、後続 PR で post-mount hydrate 経路を整備)。
+      void hydrateMermaidPlaceholders(tmp);
       // pgc-97(audit pgc-77 Gap-14):S1 / S2 と同様に native <details> で
       // top-level 見出しを折りたためるように。pure DOM 操作なので entries 有無
       // に依らず無条件で適用(detail-presenter.ts:139 と同 contract)。

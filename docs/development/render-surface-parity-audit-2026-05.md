@@ -498,7 +498,9 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
   「無くても本文は読める」レベル。
 - **🟢 Low**:CSS chrome のみ / interactive 機能のみ / 純粋な完備性。
 
-### Gap-1 `currentContainerId` 未連動(S2 / S3 live / S4 全 path)
+### Gap-1 `currentContainerId` 未連動(S2 / S3 live / S4 全 path)── ✅ **RESOLVED**(pgc-90、pgc-203 audit reconcile 確認)
+
+pgc-90 で S2(`rendered-viewer.ts:1081`)/ S3 live(`action-binder.ts:8184-8193`)/ S4(`entry-window.ts:142/244-248/671/772/1363`)に `currentContainerId` thread 済。本書では「open」 のまま残存していたが pgc-203 grep で resolve 済を確認。
 
 - **発生**:Viewer popup / Split View live re-render / entry-window 全
   render path で `RenderMarkdownOptions.currentContainerId` を渡していない。
@@ -524,7 +526,9 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 - **priority**:🔥 **High** ── card 機能 + pkc:// 同一 container 判定の両方
   に効く。
 
-### Gap-2 `hydrateCardPlaceholders` 未連動(S2)
+### Gap-2 `hydrateCardPlaceholders` 未連動(S2)── ✅ **RESOLVED**(pgc-90、pgc-203 audit reconcile 確認)
+
+`rendered-viewer.ts:1107-1110` で `hydrateCardPlaceholders` 呼び済。本書では「open」 のまま残存していたが pgc-203 grep で resolve 済を確認。
 
 - **発生**:Viewer popup。`expandTransclusions` は呼んでいるが
   `hydrateCardPlaceholders` を呼んでいない。
@@ -591,7 +595,9 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 - **priority**:🟡 Mid(現状維持で大きな user 体感影響なし、ただし spec
   に明示されていないと再発 risk)。
 
-### Gap-6 `parseFrontmatter` / `extractVars` 未連動(S4 全 path)
+### Gap-6 `parseFrontmatter` / `extractVars` 未連動(S4 全 path)── ✅ **RESOLVED**(pgc-90/96、pgc-203 audit reconcile 確認)
+
+`entry-window.ts:241-242 / 666-667 / 1351-1357` で `parseFrontmatter(raw).body` + `extractVars(raw)` thread 済。本書では「open」 のまま残存していたが pgc-203 grep で resolve 済を確認。
 
 - **発生**:S4 の text / textlog の全 render path で frontmatter strip +
   vars 抽出 + 連動が無い。
@@ -616,7 +622,9 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 - **priority**:🔥 **High** ── 「別窓に出すと frontmatter が見える / vars
   が展開されない」は user 報告対象。
 
-### Gap-7 `headingNumber` 未連動(S4 全 path)
+### Gap-7 `headingNumber` 未連動(S4 全 path)── ✅ **RESOLVED**(pgc-90/96、pgc-203 audit reconcile 確認)
+
+`entry-window.ts:243 / 668 / 1357` で `extractHeadingNumberConfig(raw)` → `renderMarkdown(..., { headingNumber })` thread 済。本書では「open」 のまま残存していたが pgc-203 grep で resolve 済を確認。
 
 - **発生**:S4 全 path で `headingNumber` を `renderMarkdown` に渡していない。
 - **現状**:frontmatter `heading-number: 1` 指定の entry を別窓で開くと、
@@ -725,7 +733,9 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 - **priority**:🔥 **High** ── critical な PKC dialect 群が全部効かない
   のは user 体感が悪い。S4 が editor / viewer 兼用なので影響が大きい。
 
-### Gap-14 S4 で `applyHeadingFold` 未連動
+### Gap-14 S4 で `applyHeadingFold` 未連動 ── ✅ **RESOLVED**(pgc-97、pgc-203 audit reconcile 確認)
+
+`entry-window.ts:149` で `applyHeadingFold(tmp)` 呼び済。本書では「open」 のまま残存していたが pgc-203 grep で resolve 済を確認。
 
 - **発生**:S4 全 path で `applyHeadingFold` を呼ばない。
 - **現状**:見出し折りたたみが S4 では機能しない。center pane で折りた
@@ -741,7 +751,9 @@ S4 の不足は **critical PKC dialect 装飾が半数以上で大量** ── �
 - **size**:中。
 - **priority**:🟡 Mid。
 
-### Gap-15 S4 で `expandTransclusions` / `hydrateCardPlaceholders` 未連動
+### Gap-15 S4 で `expandTransclusions` / `hydrateCardPlaceholders` 未連動 ── ✅ **RESOLVED**(pgc-96、pgc-203 audit reconcile 確認)
+
+`entry-window.ts:135-145` で `expandTransclusions(tmp, {...})` + `hydrateCardPlaceholders(tmp, {...})` 呼び済。本書では「open」 のまま残存していたが pgc-203 grep で resolve 済を確認。
 
 - **発生**:S4 全 path で 2 op 未連動。
 - **現状**:`![](entry:LID)` transclusion / card-link が placeholder の

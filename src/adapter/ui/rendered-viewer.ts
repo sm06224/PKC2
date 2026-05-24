@@ -51,6 +51,7 @@ import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-bo
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
+import { hydrateMermaidPlaceholders } from './mermaid-renderer';
 import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { buildAssetMimeMap, buildAssetNameMap } from './renderer';
 
@@ -1036,6 +1037,18 @@ export function openRenderedViewer(
   win.document.open();
   win.document.write(html);
   win.document.close();
+  // pgc-203 wave-α' polish #24:built-in mermaid hydration(S2 Viewer popup)。
+  // popup の document.body に対して main window context の mermaid module
+  // から SVG render を実行。fire-and-forget(非同期、render 完了は次 frame
+  // 以降)── win.document が closed なら no-op。
+  try {
+    const popupBody = win.document.body;
+    if (popupBody) {
+      void hydrateMermaidPlaceholders(popupBody);
+    }
+  } catch {
+    // popup access denied(cross-origin etc.)で fail silently
+  }
   if (opts.autoPrint) {
     // PR-V20 hotfix(2026-05-14、user audit「PDF 出力できない」):
     // PDF action は viewer 開きっぱなしで Print 手動操作だったが、ブラウザの
@@ -1108,6 +1121,14 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
     entries: container.entries,
     currentContainerId,
   });
+  // pgc-203 wave-α' polish #24:built-in mermaid hydration(S2 Viewer popup)。
+  // S1 detail-presenter と 3 surface parity 規約に従い、Viewer popup でも
+  // mermaid SVG を hydrate。Viewer popup は別 document(`window.open()`)
+  // 経由なので、本関数の戻り値 `tmp.innerHTML` を Viewer 側で再 mount した
+  // 後に hydrateMermaidPlaceholders を呼ぶ必要がある ── ここでは tmp の
+  // innerHTML として placeholder のまま返す(Viewer 側で post-mount hydrate)。
+  // 注:Viewer popup の post-mount hydrate は `mountRenderedViewer` 側で
+  // 別 path を用意する(本関数は HTML builder で同期完結)。
   // 領域 6:detail-presenter と同様、見出しを native <details> で畳める
   // よう再構成(CLAUDE.md §9 の 3 surface 一致)。
   applyHeadingFold(tmp);

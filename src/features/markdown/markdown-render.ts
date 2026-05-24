@@ -157,6 +157,20 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   if (/^html-render(\s|$)/.test(info)) {
     return buildHtmlSandboxIframe(token.content, sourceLineAttrs);
   }
+  // pgc-203 wave-α' polish #24(built-in mermaid):` ```mermaid` fence を
+  // placeholder div として出す。実 SVG render は adapter 層の
+  // `hydrateMermaidPlaceholders` が **lazy import('mermaid')** で行う
+  // ── core / features 層が browser API(mermaid.js)に直接依存しないよう、
+  // ここでは text content を `data-pkc-mermaid-src` に保持する placeholder
+  // のみ emit(I4 invariant:features 層 pure を維持)。
+  if (/^mermaid(\s|$)/.test(info)) {
+    // source を attribute に保存(HTML entity escape 必須)。escapeHtml は
+    // 既に markdown-it に内蔵。
+    const src = (token.content ?? '');
+    // attribute encode(quotes / lt / gt / amp 等)── md.utils.escapeHtml 使用。
+    const escaped = md.utils.escapeHtml(src);
+    return `<div class="pkc-mermaid-placeholder" data-pkc-mermaid-src="${escaped}"${sourceLineAttrs} data-pkc-md-block-kind="mermaid"><pre class="pkc-mermaid-source"><code class="language-mermaid">${escaped}</code></pre></div>`;
+  }
   // Pass inline renderer so CSV cells can carry markdown inline markup
   // (`**bold**` / `==highlight==` / `:text:attrs:` L-6 simple-inline 等)。
   // 2026-05-08 以前は plain-text escape しか効かず、user 報告で発覚。
