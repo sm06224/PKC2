@@ -525,4 +525,42 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       });
     },
   );
+
+  // pgc-190 wave-α' #13(handoff §3.4 wave-δ phase 2 textlog):textlog
+  // の「今日」 day section にジャンプする command。textlog presenter は
+  // 各 day section に `id="day-YYYY-MM-DD"` を付与する(textlog-presenter
+  // line 265-266)── DOM 上で id を query して scrollIntoView。
+  // 現 entry が textlog 以外、または today section が存在しない場合は
+  // **fallback**:textlog の最新 day section(`.pkc-textlog-day:first-
+  // child`)にジャンプ。両方 fail なら silent no-op。
+  registerCommand(
+    {
+      id: 'textlog.jump-today',
+      titleJa: 'Textlog の今日のログにジャンプ',
+      titleEn: 'Textlog: Jump to today(or latest day)',
+      category: 'View',
+    },
+    () => {
+      if (typeof document === 'undefined') return;
+      const center = document.querySelector('[data-pkc-region="center"]')
+        ?? document.querySelector('.pkc-center');
+      const root: ParentNode = center ?? document;
+      // 今日の date key を YYYY-MM-DD で生成(local time)
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const todayId = `day-${yyyy}-${mm}-${dd}`;
+      const todayEl = root.querySelector<HTMLElement>(`#${CSS.escape(todayId)}`);
+      if (todayEl) {
+        todayEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      // fallback:最新 day section(textlog は desc order なので最初の section が最新)
+      const latestEl = root.querySelector<HTMLElement>('.pkc-textlog-day');
+      if (latestEl) {
+        latestEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+  );
 }
