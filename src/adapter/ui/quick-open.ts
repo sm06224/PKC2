@@ -32,6 +32,27 @@ import { fuzzyMatchSingle, rankCommands } from '../../features/command/fuzzy';
 import { shellQuickOpenEnabled } from './shell-flags';
 import { getCommandMetas, executeCommand } from './command-palette';
 import { extractHeadingsFromMarkdown, type TocHeading } from '../../features/markdown/markdown-toc';
+import { getKeyBindings } from './keymap-binder';
+import type { KeyChord, KeyBinding } from '../../features/keymap/types';
+
+// pgc-192 wave-α' #15(v3 統合 master G2 nav 統一、Quick Open `?` mode):
+// 1 つの chord を「Ctrl+B」 / 「Alt+ArrowLeft」 形式の人間可読文字列に整形。
+function formatChord(chord: KeyChord): string {
+  const parts: string[] = [];
+  if (chord.ctrl) parts.push('Ctrl');
+  if (chord.shift) parts.push('Shift');
+  if (chord.alt) parts.push('Alt');
+  if (chord.meta) parts.push('Cmd');
+  // key は lowercase 化済み ── 表示用に capitalize(1 char) or as-is(複数 char)
+  const k = chord.key;
+  parts.push(k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1));
+  return parts.join('+');
+}
+
+// pgc-192:chord sequence(`[Ctrl+K, Ctrl+S]` 等)を空白区切り文字列に整形。
+export function formatKeybindSequence(seq: readonly KeyChord[]): string {
+  return seq.map(formatChord).join(' ');
+}
 
 interface RankedHeading {
   readonly heading: TocHeading;
@@ -261,14 +282,15 @@ export function openQuickOpen(
   mountedRoot = overlay;
 
   let activeIndex = 0;
-  let mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent' = 'entry';
+  let mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent' | 'help' = 'entry';
   let entryItems: RankedEntry[] = [];
   let commandItems: ReturnType<typeof rankCommands> = [];
   let headingItems: RankedHeading[] = [];
   let tagItems: RankedTag[] = [];
   let recentItems: RankedEntry[] = [];
+  let helpItems: Array<{ binding: KeyBinding; title: string; chordText: string }> = [];
 
-  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent'; effective: string; hint: string } {
+  function detectMode(q: string): { mode: 'entry' | 'command' | 'heading' | 'tag' | 'recent' | 'help'; effective: string; hint: string } {
     if (q.startsWith('>')) {
       return { mode: 'command', effective: q.slice(1).trim(), hint: '🛠 Command mode' };
     }
@@ -280,6 +302,9 @@ export function openQuickOpen(
     }
     if (q.startsWith('@')) {
       return { mode: 'recent', effective: q.slice(1).trim(), hint: '📜 Recent mode(navHistory 末尾を新しい順)' };
+    }
+    if (q.startsWith('?')) {
+      return { mode: 'help', effective: q.slice(1).trim(), hint: '❓ Help mode(全 keymap binding を一覧、Enter で発火)' };
     }
     return { mode: 'entry', effective: q, hint: '' };
   }
@@ -296,6 +321,69 @@ export function openQuickOpen(
     }
     list.textContent = '';
     activeIndex = 0;
+
+    if (m === 'help') {
+      // pgc-192:keymap registry に登録されている全 binding を一覧。各 row に
+      // chord 表記(`Ctrl+B` / `Alt+1` / `Ctrl+K H`)+ command title(getCommandMetas
+      // から lookup)を表示。effective query があれば chord 文字列 + title で
+      // fuzzy filter。Enter で対応 command を execute。空 list は empty state。
+      const metas = getCommandMetas();
+      const metaById = new Map(metas.map((cm) => [cm.id, cm]));
+      const bindings = getKeyBindings();
+      const all = bindings.map((b) => {
+        const chordText = formatKeybindSequence(b.sequence);
+        const cm = metaById.get(b.commandId);
+        const title = cm ? `${cm.titleJa} / ${cm.titleEn}` : b.commandId;
+        return { binding: b, title, chordText };
+      });
+      // empty query は all、それ以外は fuzzy filter(chord text または title)
+      if (!effective) {
+        helpItems = all;
+      } else {
+        helpItems = [];
+        for (const item of all) {
+          const tr = fuzzyMatchSingle(effective, item.title);
+          const cr = fuzzyMatchSingle(effective, item.chordText);
+          const score = Math.max(tr.score, cr.score);
+          if (score <= 0) continue;
+          helpItems.push(item);
+        }
+      }
+      if (helpItems.length === 0) {
+        empty.style.display = '';
+        list.style.display = 'none';
+        return;
+      }
+      empty.style.display = 'none';
+      list.style.display = '';
+      const visible = helpItems.slice(0, 50);
+      for (let i = 0; i < visible.length; i++) {
+        const r = visible[i]!;
+        const li = document.createElement('li');
+        li.className = 'pkc-quick-open-item';
+        li.setAttribute('data-pkc-cmd-id', r.binding.commandId);
+        li.setAttribute('data-pkc-quick-mode', 'help');
+        li.setAttribute('role', 'option');
+        if (i === 0) {
+          li.classList.add('pkc-quick-open-item-active');
+          li.setAttribute('aria-selected', 'true');
+        }
+        const icon = document.createElement('span');
+        icon.className = 'pkc-quick-open-item-icon';
+        icon.textContent = '⌨';
+        li.appendChild(icon);
+        const title = document.createElement('span');
+        title.className = 'pkc-quick-open-item-title';
+        title.textContent = r.title;
+        li.appendChild(title);
+        const meta = document.createElement('span');
+        meta.className = 'pkc-quick-open-item-meta';
+        meta.textContent = r.chordText;
+        li.appendChild(meta);
+        list.appendChild(li);
+      }
+      return;
+    }
 
     if (m === 'recent') {
       // pgc-185:state.navHistory(SELECT_ENTRY 履歴の末尾 N 件)を新しい順に
@@ -545,6 +633,8 @@ export function openQuickOpen(
       ? Math.min(tagItems.length, 50)
       : mode === 'recent'
       ? Math.min(recentItems.length, 50)
+      : mode === 'help'
+      ? Math.min(helpItems.length, 50)
       : Math.min(entryItems.length, 50);
     if (len === 0) return;
     activeIndex = (next + len) % len;
@@ -604,6 +694,14 @@ export function openQuickOpen(
       }
       return;
     }
+    if (mode === 'help') {
+      const r = helpItems[Math.min(activeIndex, helpItems.length - 1)];
+      if (!r) return;
+      const id = r.binding.commandId;
+      cleanup();
+      executeCommand(id);
+      return;
+    }
     const r = entryItems[Math.min(activeIndex, entryItems.length - 1)];
     if (!r) return;
     const lid = r.entry.lid;
@@ -661,6 +759,8 @@ export function openQuickOpen(
         ? Math.min(tagItems.length, 50)
         : mode === 'recent'
         ? Math.min(recentItems.length, 50)
+        : mode === 'help'
+        ? Math.min(helpItems.length, 50)
         : Math.min(entryItems.length, 50);
       setActive(len - 1);
       return;
@@ -695,6 +795,10 @@ export function openQuickOpen(
       const tag = li.getAttribute('data-pkc-quick-tag');
       cleanup();
       if (tag) dispatcher.dispatch({ type: 'TOGGLE_TAG_FILTER', tag });
+    } else if (m === 'help') {
+      const id = li.getAttribute('data-pkc-cmd-id');
+      cleanup();
+      if (id) executeCommand(id);
     } else {
       const lid = li.getAttribute('data-pkc-quick-lid');
       cleanup();
