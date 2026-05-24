@@ -423,6 +423,22 @@ export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
   },
 );
 
+// Textlog importance-only filter(wave-δ #24、pgc-157 handoff §3.3)。
+// ON で textlog presenter に「⭐ Only important」 toggle button を追加、
+// 押下中は `important` flag が立っている log entry だけ表示。pgc-155 の
+// search bar(keyword filter)と AND 条件で組合せ可能(検索結果のうち
+// important のみ)。OFF で従来通り(完全後方互換)。
+// URL flag: `?pkc-flag=text.textlog_importance_filter_enabled=1`。
+export const textTextlogImportanceFilterEnabled = defineFlag<boolean>(
+  'text.textlog_importance_filter_enabled',
+  false,
+  {
+    category: 'text',
+    description:
+      'textlog presenter に importance-only filter toggle(⭐)を追加し important log のみ表示',
+  },
+);
+
 // Textlog log search(wave-δ #22、pgc-155 handoff §3.3)。
 // ON で textlog presenter に keyword search input を表示、log entries を
 // space 区切り token AND 部分一致(case-insensitive)で絞り込み。

@@ -6993,6 +6993,28 @@ mark.pkc-search-mark {
   font-family: var(--font-mono);
   white-space: nowrap;
 }
+/* pgc-157 wave-δ #24:textlog importance-only toggle button。OFF
+   state は outline、ON state(data-pkc-active="true")は accent fill
+   で「active」 を visual に明示。 */
+.pkc-textlog-importance-toggle {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 80ms ease-out, color 80ms ease-out;
+}
+.pkc-textlog-importance-toggle:hover {
+  background: var(--c-bg-hover, var(--c-bg-dim, var(--c-bg)));
+}
+.pkc-textlog-importance-toggle[data-pkc-active="true"] {
+  background: var(--c-accent, #4a90e2);
+  color: #fff;
+  border-color: var(--c-accent, #4a90e2);
+}
 
 /* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
    flag ON 時に editor 末尾に compact metrics row(char / word / line)を

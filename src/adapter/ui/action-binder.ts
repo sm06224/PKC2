@@ -14,7 +14,7 @@ import { getPresenter } from './detail-presenter';
 import { runDebugReportDump } from './debug-report-button';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
 import { toggleSubtaskAt } from '../../features/todo/todo-subtask';
-import { setTextlogSearchQuery } from './textlog-presenter';
+import { setTextlogSearchQuery, toggleTextlogImportanceOnly } from './textlog-presenter';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
 import {
   toggleLogFlag,
@@ -1291,6 +1291,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           const st = dispatcher.getState();
           dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         }
+        break;
+      }
+      case 'toggle-textlog-importance-only': {
+        // pgc-157 wave-δ #24:textlog presenter の「⭐ Only important」
+        // toggle。module-local state を反転 + SYS_SYNC で再描画。
+        e.preventDefault();
+        e.stopPropagation();
+        const targetLid = target.getAttribute('data-pkc-lid');
+        if (!targetLid) break;
+        toggleTextlogImportanceOnly(targetLid);
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
         break;
       }
       case 'apply-ai-suggestion': {
