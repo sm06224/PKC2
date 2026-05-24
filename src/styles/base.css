@@ -6254,6 +6254,32 @@ mark.pkc-search-mark {
   border-left: 1px solid var(--c-border);
 }
 
+/* pgc-138 wave-δ #12(user bug report 2026-05-24):tray bar slim chrome。
+   shellTrayBarSlimEnabled() ON 時に renderer が `data-pkc-slim="true"` を
+   立て、tray が 20px → 6px に細くなり SIDEBAR / META text を hide。
+   `:hover` で accent border が見え、click 動線が維持される(title attr で
+   tooltip も継続)── 隠し pane の存在を控えめに hint しつつ視覚ノイズ
+   削減。 */
+.pkc-tray-bar[data-pkc-slim="true"] {
+  width: 6px;
+  font-size: 0; /* SIDEBAR / META text を完全に hide(content も空) */
+  background: transparent;
+  border-right: 1px solid var(--c-border-dim, var(--c-border));
+  transition: width 0.15s ease-out, background 0.15s;
+}
+.pkc-tray-bar[data-pkc-slim="true"].pkc-tray-bar-right {
+  border-right: none;
+  border-left: 1px solid var(--c-border-dim, var(--c-border));
+}
+.pkc-tray-bar[data-pkc-slim="true"]:hover {
+  width: 12px;
+  background: var(--c-accent-dim, rgba(51, 255, 102, 0.12));
+  border-right-color: var(--c-accent);
+}
+.pkc-tray-bar[data-pkc-slim="true"].pkc-tray-bar-right:hover {
+  border-left-color: var(--c-accent);
+}
+
 /* ── Guidance & Interaction Hints ── */
 .pkc-guidance {
   line-height: 1.6;

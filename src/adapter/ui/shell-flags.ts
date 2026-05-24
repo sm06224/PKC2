@@ -238,6 +238,23 @@ export const shellEditorFooterWordcountEnabled = defineFlag<boolean>(
   },
 );
 
+// tray bar の chrome を細く / 静かに(user bug report 2026-05-24
+// 「不必要な隠し項目の耳が見えていたりで視覚ノイズが大きい」、pgc-138
+// wave-δ #12)。ON で 左右 tray bar(sidebar collapsed / meta collapsed 時
+// の薄い縦 strip)を **20px → 6px** に細くし、`SIDEBAR` / `META` テキスト
+// 表示を非表示にする。`title` tooltip は残るため click 動線維持。
+// `:hover` で accent border が出るので「ここに collapsed pane あり」と
+// 分かる。OFF で従来の vertical text strip。
+export const shellTrayBarSlimEnabled = defineFlag<boolean>(
+  'shell.tray_bar_slim_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'collapsed pane の tray bar(左右の耳)を 20px → 6px に細く、SIDEBAR/META text を非表示にして視覚ノイズを削減',
+  },
+);
+
 // todo overdue 視覚 indicator を sidebar / filer row にも展開(MASTER.md
 // §7 todo、pgc-134 wave-δ #9)。kanban / calendar は既に
 // `data-pkc-todo-overdue="true"` attr を立てているが、sidebar entry list と

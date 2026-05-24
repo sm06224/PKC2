@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled } from './shell-flags';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
@@ -791,10 +791,14 @@ function renderShell(state: AppState): HTMLElement {
   const panePrefs = loadPanePrefs();
 
   // Left tray bar (shown when sidebar is collapsed)
+  // pgc-138 wave-δ #12:flag ON で tray bar の text を空にして slim 化
+  // (CSS が `data-pkc-slim` で chrome 削減)。OFF で従来の "SIDEBAR" 表記。
   const leftTray = createElement('div', 'pkc-tray-bar');
   leftTray.setAttribute('data-pkc-action', 'toggle-sidebar');
   leftTray.setAttribute('title', 'Click to expand sidebar');
-  leftTray.textContent = 'SIDEBAR';
+  const slimTray = shellTrayBarSlimEnabled();
+  leftTray.textContent = slimTray ? '' : 'SIDEBAR';
+  if (slimTray) leftTray.setAttribute('data-pkc-slim', 'true');
   leftTray.style.display = panePrefs.sidebar ? '' : 'none';
   leftTray.setAttribute('data-pkc-region', 'tray-left');
   main.appendChild(leftTray);
@@ -892,10 +896,12 @@ function renderShell(state: AppState): HTMLElement {
   }
 
   // Right tray bar (shown when meta pane is collapsed)
+  // pgc-138 wave-δ #12:同 flag で slim 化(text 空 + data-pkc-slim attr)。
   const rightTray = createElement('div', 'pkc-tray-bar pkc-tray-bar-right');
   rightTray.setAttribute('data-pkc-action', 'toggle-meta');
   rightTray.setAttribute('title', 'Click to expand meta pane');
-  rightTray.textContent = 'META';
+  rightTray.textContent = slimTray ? '' : 'META';
+  if (slimTray) rightTray.setAttribute('data-pkc-slim', 'true');
   // The right tray is only meaningful when a meta pane exists.
   rightTray.style.display = panePrefs.meta && hasMetaPane ? '' : 'none';
   rightTray.setAttribute('data-pkc-region', 'tray-right');
