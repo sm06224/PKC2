@@ -1002,6 +1002,33 @@
   color: var(--c-fg-dim);
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
+  /* pgc-180 wave-α' #3(v3 統合 master G8):badge を右上角に絶対配置する
+     ための基準点。 */
+  position: relative;
+}
+/* pgc-180 wave-α' #3:Activity Bar tab の count badge(visual count
+   indicator)。`shell.activity_bar_badges_enabled` ON 時、Outline /
+   Relations / Pinned の 3 tab で値 > 0 のとき icon の右上に小さく重ねる。
+   触り台(touch target)を阻害しないよう pointer-events: none。1〜2 桁
+   想定、99 超は activity-bar.ts 側で `99+` に圧縮。 */
+.pkc-activity-bar-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--c-accent, #3b82f6);
+  color: var(--c-bg, #fff);
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  box-sizing: border-box;
+  pointer-events: none;
+  /* 高密度 display での aliasing 軽減 */
+  letter-spacing: -0.02em;
 }
 .pkc-activity-bar-btn:hover {
   background: var(--c-hover, rgba(127, 127, 127, 0.1));

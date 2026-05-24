@@ -827,7 +827,7 @@ function renderShell(state: AppState): HTMLElement {
   // 下の "After all panes" 直前で append される。
   const activityBarSide = shellActivityBarEnabled() ? getActivityBarSide() : null;
   if (activityBarSide === 'left') {
-    main.appendChild(buildActivityBarElement());
+    main.appendChild(buildActivityBarElement(state));
   }
 
   // Left pane: entry list / tree / search / filters
@@ -918,7 +918,7 @@ function renderShell(state: AppState): HTMLElement {
   // pgc-116 wave-γ #16:Activity Bar が 'right' 側設定なら ここで append。
   // すべての pane(sidebar / center / meta / right tray)の右隣に置かれる。
   if (activityBarSide === 'right') {
-    main.appendChild(buildActivityBarElement());
+    main.appendChild(buildActivityBarElement(state));
   }
 
   shell.appendChild(main);

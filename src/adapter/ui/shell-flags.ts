@@ -523,3 +523,22 @@ export const shellInspectorAiLocalEnabled = defineFlag<boolean>(
       'Inspector AI tab を local-only frontmatter suggester に置換(LLM 接続なし、本文 H1 / #tag から候補)',
   },
 );
+
+// Activity Bar tab に小 badge(visual count indicator)を表示
+// (v3 統合 master `v3-unification-master-2026-05-24.md` wave-α' G8 visual
+// layer / theme / chrome 統一、handoff §3.5 後続候補、pgc-180 wave-α' #3)。
+// `shell.activity_bar_enabled` 必須(badge は activity bar 自体が無いと
+// 描画されない、自動的に共依存)。ON で 3 tab に count badge を上に重ねる:
+// Outline = 現 entry の heading 数 / Relations = outbound + inbound 数 /
+// Pinned = pinned tab 数(空ペーン無しのものに限る)。0 なら badge 非表示
+// (noise 回避)。Explorer / Search / Recent は count 算出が container 全体
+// scope or 非 deterministic でユーザーにとって意味希薄なので badge なし。
+export const shellActivityBarBadgesEnabled = defineFlag<boolean>(
+  'shell.activity_bar_badges_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'Activity Bar の 3 tab(Outline / Relations / Pinned)に count badge(visual indicator、現 entry に紐づく数)を表示',
+  },
+);

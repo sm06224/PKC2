@@ -13,6 +13,12 @@
 // 後続 PR で各 tab の中身を渡せるよう、`getActivityBarActiveTab()` を
 // export して renderer.ts 側の sidebar 描画分岐に使う。
 
+import type { AppState } from '../state/app-state';
+import { extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
+import { getRelationsForEntry } from '../../features/relation/selector';
+import { getOpenTabs } from './tab-strip';
+import { shellActivityBarBadgesEnabled } from './shell-flags';
+
 export type ActivityTab = 'explorer' | 'search' | 'outline' | 'relations' | 'recent' | 'pinned';
 
 const ALL_TABS: ReadonlyArray<{ id: ActivityTab; icon: string; label: string; tip: string }> = [
@@ -60,7 +66,47 @@ export function resetActivityBarState(): void {
   barSide = 'left';
 }
 
-export function buildActivityBarElement(): HTMLElement {
+// pgc-180:Activity Bar tab 別 count を算出(`shell.activity_bar_badges_
+// enabled` ON + state 指定時のみ実値、それ以外は全部 0 = badge 非表示)。
+// export して renderer.ts / test から直接 inspect 可能。
+export function computeBadges(state?: AppState): Record<ActivityTab, number> {
+  const empty: Record<ActivityTab, number> = {
+    explorer: 0,
+    search: 0,
+    outline: 0,
+    relations: 0,
+    recent: 0,
+    pinned: 0,
+  };
+  if (!state || !shellActivityBarBadgesEnabled()) return empty;
+  const lid = state.selectedLid;
+  const container = state.container;
+  // Outline:選択 entry の heading 数(text / textlog のみ意味あり)。
+  if (lid && container) {
+    const entry = container.entries.find((e) => e.lid === lid);
+    if (entry && (entry.archetype === 'text' || entry.archetype === 'textlog')) {
+      const headings = extractHeadingsFromMarkdown(entry.body || '');
+      empty.outline = headings.length;
+    }
+    // Relations:選択 entry の outbound + inbound relation 数。
+    if (entry) {
+      const directed = getRelationsForEntry(container.relations, lid);
+      empty.relations = directed.length;
+    }
+  }
+  // Pinned:pinned tab 数(view tab は除外、entry pin 専用カウント)。
+  // entry pin tab だけが有意義(view tab は固定 6 種で pin しても情報希薄)。
+  const pinned = getOpenTabs().filter((t) => t.pinned === true && t.kind !== 'view');
+  empty.pinned = pinned.length;
+  return empty;
+}
+
+// pgc-180 wave-α' #3(v3 統合 master G8、handoff §3.5):state を渡すと
+// Outline / Relations / Pinned の 3 tab に count badge を重ねる。flag
+// `shell.activity_bar_badges_enabled` OFF or state 未指定で従来通り badge
+// 無し(構造的に opt-in)。
+export function buildActivityBarElement(state?: AppState): HTMLElement {
+  const badges = computeBadges(state);
   const bar = document.createElement('aside');
   bar.className = 'pkc-activity-bar';
   bar.setAttribute('data-pkc-region', 'activity-bar');
@@ -82,6 +128,18 @@ export function buildActivityBarElement(): HTMLElement {
       btn.setAttribute('aria-selected', 'false');
     }
     btn.textContent = icon;
+    // pgc-180:Outline / Relations / Pinned に count badge を重ねる。
+    // 0 なら non-render(visual noise 回避)、99 超は "99+" 圧縮。
+    const count = badges[id];
+    if (count !== undefined && count > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'pkc-activity-bar-badge';
+      badge.setAttribute('data-pkc-badge-tab', id);
+      badge.setAttribute('aria-hidden', 'true'); // tooltip + aria-label に意味集約
+      badge.textContent = count > 99 ? '99+' : String(count);
+      btn.appendChild(badge);
+      btn.setAttribute('data-pkc-badge-count', String(count));
+    }
     bar.appendChild(btn);
   }
   // pgc-116 wave-γ #16:Activity Bar 末尾に left/right 切替 button(↔)
