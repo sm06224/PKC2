@@ -1,28 +1,29 @@
 /**
  * Quick Open overlay(vscode-grade-overhaul-2026-05 MASTER.md §4.2、wave-α
- * PR pgc-81 POC)。
+ * PR pgc-81 POC、wave-α' PR pgc-183〜185 で 5 mode 完備)。
  *
- * VSCode / Obsidian / Notion 流の **entry fuzzy launcher**。`Ctrl+P` 1 つで
- * 全 entry を fuzzy search、Enter で open。`Ctrl+P` は browser print を
- * 上書きする ── PKC2 では entry navigation の方が圧倒的に高頻度動作。
+ * VSCode / Obsidian / Notion 流の **universal fuzzy launcher**。`Ctrl+P`
+ * 1 つで 5 種の検索 mode を切替、Enter で execute。`Ctrl+P` は browser
+ * print を上書きする ── PKC2 では entry navigation の方が圧倒的に高頻度
+ * 動作。
  *
- * Mode prefix(Notion 流):
- * - **何もなし** → entry search(POC scope、本 PR)
+ * Mode prefix(5 mode 完備、pgc-183/184/185 で本格化):
+ * - **何もなし** → entry search(全 entry を title fuzzy + recency tie-break)
  * - **`>`** → command(Command Palette と同じ commands を delegate)
- * - **`:`** → heading(現 entry の見出しへ jump、後続 PR で本格化)
- * - **`#`** → tag(後続)
- * - **`@`** → recent only(後続)
- * - **`?`** → help（後続)
- * - **`!`** → debug（後続)
+ * - **`:`** → heading(現 entry の H1〜H3 見出しへ jump、pgc-183)
+ * - **`#`** → tag(container 全 tag を frequency 順、Enter で TOGGLE_TAG_FILTER、pgc-184)
+ * - **`@`** → recent(navHistory 末尾を新しい順 + 重複除去、pgc-185)
  *
- * POC scope:default = entry search、`>` で Command Palette、それ以外の
- * prefix は entry search に fall back(未実装 hint を空 state に出す)。
+ * 後続予定(scope 外、必要時に追加):
+ * - **`?`** → help（keyboard shortcut 一覧 OPEN_SHORTCUT_HELP delegate)
+ * - **`!`** → debug(Flags Inspector OPEN_FLAGS_INSPECTOR delegate)
  *
  * Tier 0 flag `shell.quick_open_enabled`(default OFF)で gate。
  *
  * Recent 出力:`state.navHistory`(`AppState` に既存)の末尾 5 件を popularity
  * top に並べる(query 空のとき)。query 非空時は score-desc sort + recent
- * tie-break。
+ * tie-break。`@` mode は navHistory を直接出す(entry mode の query 空時
+ * と同等だが mode 切替で明示的に意図表現)。
  */
 
 import type { Entry } from '../../core/model/record';
@@ -227,7 +228,7 @@ export function openQuickOpen(
   input.type = 'search';
   input.className = 'pkc-quick-open-input';
   input.setAttribute('data-pkc-field', 'quick-open-query');
-  input.setAttribute('placeholder', 'エントリ検索 (>= command、: = heading)…');
+  input.setAttribute('placeholder', 'エントリ検索(> command、: heading、# tag、@ recent)…');
   input.setAttribute('autocomplete', 'off');
   input.setAttribute('spellcheck', 'false');
   input.setAttribute('aria-label', 'Quick Open query');
@@ -253,7 +254,7 @@ export function openQuickOpen(
   const footer = document.createElement('div');
   footer.className = 'pkc-quick-open-footer';
   footer.innerHTML =
-    '<kbd>↑↓</kbd> 移動 · <kbd>Enter</kbd> 開く · <kbd>Ctrl+Enter</kbd> 別窓 · <kbd>Esc</kbd> 閉じる';
+    '<kbd>↑↓</kbd> 移動 · <kbd>Enter</kbd> 開く · <kbd>Ctrl+Enter</kbd> 別窓 · <kbd>Esc</kbd> 閉じる · <kbd>&gt; : # @</kbd> mode 切替';
   card.appendChild(footer);
 
   host.appendChild(overlay);
