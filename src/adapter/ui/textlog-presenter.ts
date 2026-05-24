@@ -704,19 +704,31 @@ function renderTextlogSearchBar(
     bar.appendChild(input);
   }
 
-  // pgc-157 importance toggle(flag ON 時)
+  // pgc-157 importance toggle(flag ON 時)── pgc-163 で <button> から
+  // <label><input type="checkbox" role="switch"> に変更(user bug
+  // report 2026-05-24「トグルをボタンで作る意味とは?」)。
+  // semantically toggle = checkbox/switch、screen reader にも適切に
+  // 「checked / unchecked」 が伝わる。click target は label 全体。
   if (textTextlogImportanceFilterEnabled()) {
-    const btn = document.createElement('button');
-    btn.className = 'pkc-textlog-importance-toggle';
-    btn.setAttribute('data-pkc-action', 'toggle-textlog-importance-only');
-    btn.setAttribute('data-pkc-lid', lid);
-    btn.setAttribute('aria-pressed', importanceOnly ? 'true' : 'false');
-    if (importanceOnly) btn.setAttribute('data-pkc-active', 'true');
-    btn.textContent = importanceOnly ? '⭐ Only important' : '⭐ All logs';
-    btn.title = importanceOnly
+    const label = document.createElement('label');
+    label.className = 'pkc-textlog-importance-toggle';
+    if (importanceOnly) label.setAttribute('data-pkc-active', 'true');
+    label.title = importanceOnly
       ? 'Showing only logs marked as important. Click to clear.'
       : 'Show only logs marked as important.';
-    bar.appendChild(btn);
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'pkc-textlog-importance-toggle-input';
+    input.setAttribute('role', 'switch');
+    input.setAttribute('data-pkc-action', 'toggle-textlog-importance-only');
+    input.setAttribute('data-pkc-lid', lid);
+    input.checked = importanceOnly;
+    label.appendChild(input);
+    const text = document.createElement('span');
+    text.className = 'pkc-textlog-importance-toggle-text';
+    text.textContent = importanceOnly ? '⭐ Only important' : '⭐ All logs';
+    label.appendChild(text);
+    bar.appendChild(label);
   }
 
   const count = document.createElement('span');

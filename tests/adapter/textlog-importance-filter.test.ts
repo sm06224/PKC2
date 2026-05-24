@@ -60,14 +60,18 @@ describe('textlog importance-only filter(pgc-157)', () => {
     expect(el.querySelector('.pkc-textlog-importance-toggle')).toBeNull();
   });
 
-  it('case 2: flag ON で toggle button 出る + default は OFF state', () => {
+  it('case 2: flag ON で toggle switch 出る + default は OFF state(pgc-163 で <button> → <label><input type="checkbox" role="switch">)', () => {
     setFlags(true);
     const el = textlogPresenter.renderBody(makeTextlog(FIXTURE));
-    const btn = el.querySelector('.pkc-textlog-importance-toggle');
-    expect(btn).not.toBeNull();
-    expect(btn?.getAttribute('aria-pressed')).toBe('false');
-    expect(btn?.getAttribute('data-pkc-active')).toBeNull();
-    expect(btn?.textContent).toContain('All logs');
+    const label = el.querySelector('.pkc-textlog-importance-toggle');
+    expect(label).not.toBeNull();
+    expect(label?.tagName.toLowerCase()).toBe('label');
+    const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(input).not.toBeNull();
+    expect(input?.getAttribute('role')).toBe('switch');
+    expect(input?.checked).toBe(false);
+    expect(label?.getAttribute('data-pkc-active')).toBeNull();
+    expect(label?.textContent).toContain('All logs');
   });
 
   it('case 3: importance only ON → 該当 log だけ表示 + count `M / N`', () => {
@@ -77,10 +81,11 @@ describe('textlog importance-only filter(pgc-157)', () => {
     const el = textlogPresenter.renderBody(entry);
     const count = el.querySelector('.pkc-textlog-search-count');
     expect(count?.textContent).toBe('2 / 4');
-    const btn = el.querySelector('.pkc-textlog-importance-toggle');
-    expect(btn?.getAttribute('aria-pressed')).toBe('true');
-    expect(btn?.getAttribute('data-pkc-active')).toBe('true');
-    expect(btn?.textContent).toContain('Only important');
+    const label = el.querySelector('.pkc-textlog-importance-toggle');
+    const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(input?.checked).toBe(true);
+    expect(label?.getAttribute('data-pkc-active')).toBe('true');
+    expect(label?.textContent).toContain('Only important');
   });
 
   it('case 4: importance only + 全 entry が important でない → empty placeholder', () => {
@@ -144,12 +149,12 @@ describe('textlog importance-only filter(pgc-157)', () => {
     expect(el2.querySelector('.pkc-textlog-search-count')?.textContent).toBe('2 / 4');
   });
 
-  it('case 10: toggle button の attr に lid', () => {
+  it('case 10: toggle switch の input attr に lid + action(pgc-163 で button → label+input)', () => {
     setFlags(true);
     const entry = makeTextlog(FIXTURE);
-    const btn = textlogPresenter.renderBody(entry).querySelector('.pkc-textlog-importance-toggle');
-    expect(btn?.getAttribute('data-pkc-lid')).toBe(entry.lid);
-    expect(btn?.getAttribute('data-pkc-action')).toBe('toggle-textlog-importance-only');
+    const input = textlogPresenter.renderBody(entry).querySelector<HTMLInputElement>('.pkc-textlog-importance-toggle input[type="checkbox"]');
+    expect(input?.getAttribute('data-pkc-lid')).toBe(entry.lid);
+    expect(input?.getAttribute('data-pkc-action')).toBe('toggle-textlog-importance-only');
   });
 
   it('case 11: 全 entry important + importance ON → 全件表示', () => {

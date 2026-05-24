@@ -7052,10 +7052,15 @@ mark.pkc-search-mark {
   font-family: var(--font-mono);
   white-space: nowrap;
 }
-/* pgc-157 wave-δ #24:textlog importance-only toggle button。OFF
-   state は outline、ON state(data-pkc-active="true")は accent fill
-   で「active」 を visual に明示。 */
+/* pgc-157 wave-δ #24:textlog importance-only toggle ── pgc-163 で
+   user 指摘「トグルをボタンで作る意味とは?」 を受け <label> +
+   <input type="checkbox" role="switch"> + <span> に semantic 変更。
+   click target は label 全体、checkbox は accent-color で OS 標準の
+   switch 風 visual、active state は data-pkc-active で text 強調。 */
 .pkc-textlog-importance-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-sm, 4px);
@@ -7064,15 +7069,28 @@ mark.pkc-search-mark {
   font-size: var(--fs-xs);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 80ms ease-out, color 80ms ease-out;
+  user-select: none;
+  transition: background 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
 }
 .pkc-textlog-importance-toggle:hover {
   background: var(--c-bg-hover, var(--c-bg-dim, var(--c-bg)));
+  border-color: var(--c-fg-dim);
 }
 .pkc-textlog-importance-toggle[data-pkc-active="true"] {
-  background: var(--c-accent, #4a90e2);
-  color: #fff;
+  background: var(--c-bg-accent-subtle, rgba(74, 144, 226, 0.08));
   border-color: var(--c-accent, #4a90e2);
+  color: var(--c-accent, #4a90e2);
+  font-weight: 600;
+}
+.pkc-textlog-importance-toggle-input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--c-accent, #4a90e2);
+  cursor: pointer;
+}
+.pkc-textlog-importance-toggle-text {
+  line-height: 1;
 }
 
 /* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
