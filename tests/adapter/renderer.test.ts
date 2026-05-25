@@ -2851,8 +2851,13 @@ describe('Renderer', () => {
     const targetSelect = createForm!.querySelector('[data-pkc-field="relation-target"]');
     expect(targetSelect).not.toBeNull();
     const options = targetSelect!.querySelectorAll('option');
-    // 1 default + 1 other entry (e2)
-    expect(options).toHaveLength(2);
+    // pgc-222(lazy options):render-time は placeholder のみ。user mousedown
+    // で action-binder の handleLazyTagTargetPopulate が options を inject する。
+    expect(options).toHaveLength(1);
+    expect(targetSelect!.getAttribute('data-pkc-lazy-options')).toBe('relation-target');
+    expect(targetSelect!.getAttribute('data-pkc-from-lid')).toBe('e1');
+    // 1 other entry (e2)が available 候補なので count attr は 1
+    expect(targetSelect!.getAttribute('data-pkc-lazy-available-count')).toBe('1');
 
     // Kind select
     const kindSelect = createForm!.querySelector('[data-pkc-field="relation-kind"]');

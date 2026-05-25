@@ -4,67 +4,122 @@
   "scenario": "select-entry",
   "measures": [
     {
-      "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 703.7000000000116,
-      "duration": 0
+      "name": "dispatch:SELECT_ENTRY",
+      "startTime": 680.0999999996275,
+      "duration": 57.10000000055879
     },
     {
-      "name": "dispatch:SELECT_ENTRY",
-      "startTime": 703.7000000000116,
-      "duration": 503
+      "name": "dispatch:SELECT_ENTRY:reduce",
+      "startTime": 680.2999999998137,
+      "duration": 0
     },
     {
       "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 703.7999999999884,
-      "duration": 498.1000000000349
+      "startTime": 680.2999999998137,
+      "duration": 56.5
     },
     {
-      "name": "render:phase=ready",
-      "startTime": 708,
-      "duration": 491.0999999999767
+      "name": "render:scope=selection-only",
+      "startTime": 680.7000000001863,
+      "duration": 54.299999999813735
     },
     {
       "name": "render:sidebar",
-      "startTime": 729.2999999999884,
-      "duration": 76
-    },
-    {
-      "name": "filter:applyFilters",
-      "startTime": 734.2999999999884,
-      "duration": 0
-    },
-    {
-      "name": "render:sidebar:filter-pipeline",
-      "startTime": 734.2999999999884,
-      "duration": 0.5
-    },
-    {
-      "name": "render:sidebar:sort",
-      "startTime": 734.7999999999884,
-      "duration": 1
-    },
-    {
-      "name": "tree:buildTree",
-      "startTime": 735.7999999999884,
-      "duration": 6.7999999999883585
-    },
-    {
-      "name": "render:sidebar:tree-loop",
-      "startTime": 742.5999999999767,
-      "duration": 60.300000000046566
+      "startTime": 681.0999999996275,
+      "duration": 4.400000000372529
     },
     {
       "name": "render:center",
-      "startTime": 806.2999999999884,
-      "duration": 7.100000000034925
+      "startTime": 691.9000000003725,
+      "duration": 5.3999999994412065
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 705.7000000001863,
+      "duration": 2.599999999627471
+    },
+    {
+      "name": "render:center",
+      "startTime": 708.2999999998137,
+      "duration": 3
     },
     {
       "name": "render:meta",
-      "startTime": 813.5,
-      "duration": 88.79999999998836
+      "startTime": 711.5,
+      "duration": 23.09999999962747
+    },
+    {
+      "name": "meta:startup",
+      "startTime": 712.5,
+      "duration": 11.599999999627471
+    },
+    {
+      "name": "meta:frontmatter",
+      "startTime": 724.0999999996275,
+      "duration": 0.10000000055879354
+    },
+    {
+      "name": "meta:toc",
+      "startTime": 724.2000000001863,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "meta:section-entry-tags",
+      "startTime": 724.2999999998137,
+      "duration": 0.10000000055879354
+    },
+    {
+      "name": "meta:middle-sections",
+      "startTime": 724.2999999998137,
+      "duration": 6.7000000001862645
+    },
+    {
+      "name": "meta:section-categorical-tag",
+      "startTime": 724.4000000003725,
+      "duration": 1.699999999254942
+    },
+    {
+      "name": "meta:section-move",
+      "startTime": 726.2000000001863,
+      "duration": 3.2000000001862645
+    },
+    {
+      "name": "meta:section-desc-profile",
+      "startTime": 729.4000000003725,
+      "duration": 1.5
+    },
+    {
+      "name": "meta:history",
+      "startTime": 731,
+      "duration": 0.2999999998137355
+    },
+    {
+      "name": "meta:relations",
+      "startTime": 731.4000000003725,
+      "duration": 1.599999999627471
+    },
+    {
+      "name": "meta:linkIndex",
+      "startTime": 733,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "meta:renderLinkIndexSections",
+      "startTime": 733.2000000001863,
+      "duration": 0.8999999994412065
+    },
+    {
+      "name": "meta:relation-create-form",
+      "startTime": 734.2000000001863,
+      "duration": 0.2999999998137355
+    },
+    {
+      "name": "meta:inspector",
+      "startTime": 734.5,
+      "duration": 0.09999999962747097
     }
   ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 35.57,
-  "capturedAt": "2026-04-28T20:03:05.924Z"
+  "heapUsedMb": 86.14,
+  "capturedAt": "2026-05-25T02:42:10.154Z"
 }

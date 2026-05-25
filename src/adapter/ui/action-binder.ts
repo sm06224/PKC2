@@ -79,6 +79,7 @@ import { exportContainerAsHtml } from '../platform/exporter';
 import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
+import { getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { htmlForRichCopy } from '../../features/markdown/rich-copy-transform';
 import { extractVars, parseFrontmatter as parseLivePreviewFrontmatter } from '../../features/markdown/frontmatter';
@@ -921,6 +922,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const t = touchTapThresholdPx();
     if (dx * dx + dy * dy > t * t) {
       pdrMenuMoved = true;
+    }
+  }
+
+  // pgc-222:tag-target / relation-target select の lazy options populate handler。
+  // renderer は `<option>` を render-time に build せず placeholder のみ。
+  // user が select を click した時に capture-phase で intercept、
+  // container.entries から N options を build して append。
+  // mark `data-pkc-lazy-populated="true"` で二度走を防ぐ。
+  function handleLazyTagTargetPopulate(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const t = e.target;
+    if (!(t instanceof HTMLSelectElement)) return;
+    const lazyKind = t.getAttribute('data-pkc-lazy-options');
+    if (lazyKind !== 'tag-target' && lazyKind !== 'relation-target') return;
+    if (t.getAttribute('data-pkc-lazy-populated') === 'true') return;
+    const fromLid = t.getAttribute('data-pkc-from-lid');
+    if (!fromLid) return;
+    const state = dispatcher.getState();
+    if (!state.container) return;
+    const userEntries = state.container.entries.filter((entry) => !entry.lid.startsWith('__'));
+    let available;
+    if (lazyKind === 'tag-target') {
+      available = getAvailableTagTargets(state.container.relations, userEntries, fromLid);
+    } else {
+      // relation-target:fromLid 以外の全 user entries(getUserEntries 相当)
+      available = userEntries.filter((entry) => entry.lid !== fromLid);
+    }
+    // 同 DocumentFragment pattern(pgc-217/218):N appendChild → 1 appendChild。
+    const frag = document.createDocumentFragment();
+    for (const ent of available) {
+      const opt = document.createElement('option');
+      opt.value = ent.lid;
+      const title = ent.title || `(${ent.lid})`;
+      opt.textContent = title.length > 32 ? title.slice(0, 31) + '…' : title;
+      opt.title = title;
+      frag.appendChild(opt);
+    }
+    t.appendChild(frag);
+    t.setAttribute('data-pkc-lazy-populated', 'true');
+    // placeholder option の textContent を「(候補 N、クリックで読込)」 →
+    // 短い canonical label に戻す(populate 済を示す)。
+    const placeholder = t.querySelector<HTMLOptionElement>('option[value=""]');
+    if (placeholder) {
+      placeholder.textContent = lazyKind === 'tag-target' ? '+ Tag' : '-- Target --';
     }
   }
 
@@ -8456,6 +8501,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Press-drag-release for anchored `<details>` menus (Data… and
   // More… — see `handleDetailsMenuMouseDown`).
   root.addEventListener('mousedown', handleDetailsMenuMouseDown);
+  // pgc-222:tag-target select の lazy options populate(mousedown 経由)。
+  // SELECT_ENTRY 時の render-time cost を 6.6ms@1000 → 0ms に削減、user 操作
+  // で初めて N option を build。focus event は touch device で fires しない
+  // ケースがあるため mousedown を使う(touch でも fires)。
+  root.addEventListener('mousedown', handleLazyTagTargetPopulate, true);
 
   // Mail-style swipe-to-delete on entry list rows (touch only).
   // touchmove uses `passive: false` so we can call preventDefault
@@ -8685,6 +8735,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('mousedown', handleColorPickerMouseDown);
     root.removeEventListener('mousedown', handleDetailsMenuMouseDown);
+    root.removeEventListener('mousedown', handleLazyTagTargetPopulate, true);
     root.removeEventListener('touchstart', handleEntrySwipeStart);
     root.removeEventListener('touchmove', handleEntrySwipeMove);
     root.removeEventListener('touchend', handleEntrySwipeEnd);

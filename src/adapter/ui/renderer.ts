@@ -8656,25 +8656,23 @@ function renderMetaPaneImpl(
       const select = document.createElement('select');
       select.setAttribute('data-pkc-field', 'tag-target');
       select.className = 'pkc-tag-select';
-      // pgc-218(pgc-217 と同型):options を DocumentFragment に batch して
-      // 1 appendChild に削減、N reflow → 1 reflow。`e.title || …` 評価も
-      // local cache。
-      const tagOptFrag = document.createDocumentFragment();
+      // pgc-222(pgc-221 で identify した meta:section-categorical-tag 6.6ms@1000
+      // への deeper attack):options を render 時に populate せず、placeholder
+      // のみ append。action-binder の mousedown/focus handler が populate する
+      // (`data-pkc-lazy-options="tag-target"` marker で識別)。SELECT_ENTRY 時の
+      // render-time cost を ~6ms → 0ms に削減、user が select を click した時
+      // にのみ N option を build(amortize)。
+      // option count は `data-pkc-lazy-available-count` で hint(後続 user-side
+      // search/filter UI の seed)。
+      select.setAttribute('data-pkc-lazy-options', 'tag-target');
+      select.setAttribute('data-pkc-lazy-available-count', String(available.length));
+      select.setAttribute('data-pkc-from-lid', entry.lid);
       const defaultOpt = document.createElement('option');
       defaultOpt.value = '';
-      defaultOpt.textContent = '+ Tag';
-      tagOptFrag.appendChild(defaultOpt);
-      for (const e of available) {
-        const opt = document.createElement('option');
-        opt.value = e.lid;
-        // Truncate so the dropdown panel stays inside the meta
-        // pane on long titles (see relation-target select).
-        const title = e.title || `(${e.lid})`;
-        opt.textContent = truncate(title, 32);
-        opt.title = title;
-        tagOptFrag.appendChild(opt);
-      }
-      select.appendChild(tagOptFrag);
+      defaultOpt.textContent = available.length > 0
+        ? `+ Tag (${available.length} 候補、クリックで読込)`
+        : '+ Tag';
+      select.appendChild(defaultOpt);
       addForm.appendChild(select);
 
       const addBtn = createElement('button', 'pkc-btn-small');
@@ -9991,25 +9989,21 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
   const targetSelect = document.createElement('select');
   targetSelect.setAttribute('data-pkc-field', 'relation-target');
   targetSelect.className = 'pkc-relation-select';
-  // pgc-217(pgc-216 で identify した renderRelationCreateForm 8x 線形
-  // scaling bug への attack):options を DocumentFragment に batch して
-  // 1 回の appendChild で targetSelect に投入。N appendChild → 1 appendChild
-  // で reflow / DOM mutation overhead を削減。
-  const optFrag = document.createDocumentFragment();
+  // pgc-222(pgc-217 fragment + pgc-221 で identify した残 5-27ms 線形 scaling
+  // への deeper attack):tag-target と同 pattern で options を lazy-populate 化。
+  // render 時は placeholder のみ、user mousedown で `handleLazyTagTargetPopulate`
+  // 相当の handler が options 注入。c-5000 で 27.20ms → 0ms 期待。
+  targetSelect.setAttribute('data-pkc-lazy-options', 'relation-target');
+  targetSelect.setAttribute('data-pkc-from-lid', fromLid);
+  // available count を hint(後続 user-side search seed)。
+  // entries は既に fromLid 除外前の総数なので -1 する。
+  targetSelect.setAttribute('data-pkc-lazy-available-count', String(Math.max(0, entries.length - 1)));
   const defaultOpt = document.createElement('option');
   defaultOpt.value = '';
-  defaultOpt.textContent = '-- Target --';
-  optFrag.appendChild(defaultOpt);
-  for (const e of entries) {
-    if (e.lid === fromLid) continue;
-    const opt = document.createElement('option');
-    opt.value = e.lid;
-    const title = e.title || `(${e.lid})`;
-    opt.textContent = truncate(title, 32);
-    opt.title = title;  // local cache で `e.title || …` を 2 度評価しない
-    optFrag.appendChild(opt);
-  }
-  targetSelect.appendChild(optFrag);
+  defaultOpt.textContent = entries.length > 1
+    ? `-- Target (${entries.length - 1} 候補、クリックで読込) --`
+    : '-- Target --';
+  targetSelect.appendChild(defaultOpt);
   row.appendChild(targetSelect);
 
   // Kind select
