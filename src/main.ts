@@ -226,6 +226,26 @@ async function boot(): Promise<void> {
       prevRenderState = state;
       return;
     }
+    if (renderScope === 'selection-only') {
+      // pgc-208(user 報告 2026-05-25「100エントリ程度で凄まじく動作が重い」):
+      // SELECT_ENTRY-only path。sidebar + center + meta の 3 region 差し替え
+      // のみ ── header / shell-menu / activity-bar / tray-bar の rebuild
+      // を skip。継続性 capture / restore は center pane scroll + 編集中
+      // textarea focus の保持に必要(sidebar 内 search input は selectedLid
+      // 変化と無関係なので影響少)。populateAttachmentPreviews は sidebar
+      // + center の両方を walk するため必要、populateInlineAssetPreviews も
+      // center body を見るので必要、cleanupBlobUrls は center 内 preview
+      // Blob を扱う(replace される)ので 1 回。
+      const continuity = captureRenderContinuity(root);
+      cleanupBlobUrls(root);
+      render(state, root, prevRenderState);
+      restoreRenderContinuity(root, continuity);
+      populateAttachmentPreviews(root, dispatcher);
+      populateInlineAssetPreviews(root, dispatcher);
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevRenderState = state;
+      return;
+    }
 
     // A-1 / A-2 (2026-04-23): continuity capture runs BEFORE the
     // full re-render wipes `root.innerHTML`. The helper records

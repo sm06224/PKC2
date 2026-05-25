@@ -385,6 +385,20 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
     endProfile();
     return;
   }
+  if (scope === 'selection-only') {
+    // pgc-208(user 報告 2026-05-25「100エントリ程度で凄まじく動作が重い」):
+    // SELECT_ENTRY-only 場合は header / shell-menu / activity-bar / tray-bar
+    // の rebuild を skip し、sidebar(行 highlight 更新)+ center pane
+    // (新 entry の content)+ meta pane(新 entry の metadata)の 3 region
+    // 差し替えに限定。breadcrumb の back/forward 状態など header の selection
+    // 連動部分は次 full render で同期(視覚的に古いまま残ることはほぼ無い、
+    // navigation history は selectedLid と同時 mutate なので)。bench で
+    // SELECT_ENTRY 52ms → ~20-25ms 短縮見込み(60FPS 16.7ms 予算近接)。
+    const endProfile = profileStart('render:scope=selection-only');
+    replaceSelectionRegions(state, root);
+    endProfile();
+    return;
+  }
   // PR #176 profile wave: outermost wrapper for the full-shell
   // rebuild. `render:phase=<phase>` is the canonical "renderer
   // wall-clock" measure used by the bench runner. No-op when
@@ -712,6 +726,157 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
       }
     });
   }
+}
+
+/**
+ * pgc-208(user 報告 2026-05-25「100エントリ程度で凄まじく動作が重い」):
+ * SELECT_ENTRY のみが起きた場合の narrow render path。
+ *
+ * Replace 3 region in-place:
+ *  - sidebar(`[data-pkc-region="sidebar"]`)── row highlight 更新、
+ *    scroll 位置 preserve
+ *  - center pane(`[data-pkc-region="center"]`)── 新 entry の detail/
+ *    body content
+ *  - meta pane(`[data-pkc-region="meta-pane"]`)── 新 entry の metadata /
+ *    references / inspector
+ *
+ * 据え置き(rebuild skip):
+ *  - header(breadcrumb は次 full render で同期、現在の SELECT_ENTRY 動線で
+ *    視覚的に古いまま残る局面は限定的)
+ *  - shell menu(menuOpen 不変なら lazy build 経路、開いていても他 user 操作で
+ *    再 trigger される)
+ *  - activity bar(badge は ~次 render で同期、Recent badge の遅延は許容)
+ *  - tray bar / floating UI / media viewer(selection 非依存)
+ *
+ * Region selector が見つからない場合は full render に fallback(boot 初期や
+ * viewMode 切替直後など)。
+ */
+function replaceSelectionRegions(state: AppState, root: HTMLElement): void {
+  const sidebarSel = '[data-pkc-region="sidebar"]';
+  const centerSel = '[data-pkc-region="center"]';
+  const metaSel = '[data-pkc-region="meta"]';
+
+  const oldSidebar = root.querySelector<HTMLElement>(sidebarSel);
+  const oldCenter = root.querySelector<HTMLElement>(centerSel);
+  const oldMeta = root.querySelector<HTMLElement>(metaSel);
+
+  // sidebar / center が不在(boot 直後 / viewMode 切替直後)は full に fallback
+  if (!oldSidebar || !oldCenter) {
+    fullShellRender(state, root);
+    return;
+  }
+
+  // sidebar:scroll 位置 preserve しつつ in-place replace
+  const sidebarScrollTop = oldSidebar.scrollTop;
+  const oldEntryList = oldSidebar.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+  const entryListScrollTop = oldEntryList?.scrollTop ?? 0;
+  const wasSidebarCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
+  const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
+  const newSidebar = renderSidebar(state, linkIndex);
+  if (wasSidebarCollapsed) newSidebar.setAttribute('data-pkc-collapsed', 'true');
+  oldSidebar.replaceWith(newSidebar);
+  newSidebar.scrollTop = sidebarScrollTop;
+  const newEntryList = newSidebar.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+  if (newEntryList) newEntryList.scrollTop = entryListScrollTop;
+
+  // center pane:replace
+  const newCenter = renderCenter(state);
+  oldCenter.replaceWith(newCenter);
+
+  // meta pane:viewMode='filer' のときの scope folder 切替も同期
+  // (renderShell と同 logic)。selected が system-about なら meta pane
+  // 非表示 → meta pane の有無が変化する場合(visibility transition)は
+  // resize handle 含めた layout 再構成が必要 → full に fallback。
+  // meta pane が継続的に visible / 継続的に invisible の case は in-place
+  // replace で済む。
+  let metaTarget = findSelectedEntry(state);
+  if (state.viewMode === 'filer' && state.container) {
+    const scope = resolveFilerScope(state);
+    if (scope) metaTarget = scope;
+  }
+  const hasMetaPane = !!metaTarget && metaTarget.archetype !== 'system-about';
+  const hadMetaPane = oldMeta !== null;
+  if (hasMetaPane !== hadMetaPane) {
+    // visibility transition:resize handle layout も変わるので full に fall back
+    fullShellRender(state, root);
+    return;
+  }
+  if (hasMetaPane && oldMeta) {
+    const canEdit = state.phase === 'ready' && !state.readonly;
+    const newMeta = renderMetaPane(
+      metaTarget!,
+      canEdit,
+      state.container,
+      linkIndex,
+      state.tagFilter,
+      state.metaPaneMode ?? 'all',
+    );
+    const wasMetaCollapsed = oldMeta.getAttribute('data-pkc-collapsed') === 'true';
+    if (wasMetaCollapsed) newMeta.setAttribute('data-pkc-collapsed', 'true');
+    oldMeta.replaceWith(newMeta);
+  }
+
+  // root attribute も sync(data-pkc-has-selection の class が selection-only
+  // render path 内でも正しく反映される)
+  root.setAttribute(
+    'data-pkc-has-selection',
+    state.selectedLid ? 'true' : 'false',
+  );
+
+  // rAF-deferred sidebar scroll re-apply(layout が settle した後の clamp 対策)
+  const raf = root.ownerDocument?.defaultView?.requestAnimationFrame;
+  if (raf) {
+    raf(() => {
+      if (newSidebar.isConnected && newSidebar.scrollTop !== sidebarScrollTop) {
+        newSidebar.scrollTop = sidebarScrollTop;
+      }
+      if (newEntryList && newEntryList.isConnected && newEntryList.scrollTop !== entryListScrollTop) {
+        newEntryList.scrollTop = entryListScrollTop;
+      }
+    });
+  }
+}
+
+/**
+ * Fallback path:selection-only が region 検出に失敗した場合用に full shell
+ * render を直接 trigger する。`render()` の本体 fall-through を再利用すると
+ * scope 計算ループになるため、独立 helper として切り出し。
+ */
+function fullShellRender(state: AppState, root: HTMLElement): void {
+  // Save scroll positions before clearing
+  const prevSidebarScroll =
+    root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]')?.scrollTop ?? null;
+  const prevEntryListScroll =
+    root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]')?.scrollTop ?? null;
+  const prevCenterScroll =
+    root.querySelector<HTMLElement>('.pkc-center-content')?.scrollTop ?? null;
+  root.innerHTML = '';
+  root.setAttribute('data-pkc-phase', state.phase);
+  root.setAttribute('data-pkc-embedded', String(state.embedded));
+  root.setAttribute('data-pkc-readonly', String(state.readonly));
+  root.setAttribute(
+    'data-pkc-has-selection',
+    state.selectedLid ? 'true' : 'false',
+  );
+  applySystemSettings(root, state.settings, state);
+  switch (state.phase) {
+    case 'initializing':
+      root.appendChild(renderInitializing());
+      break;
+    case 'error':
+      root.appendChild(renderError(state.error));
+      break;
+    case 'ready':
+    case 'editing':
+    case 'exporting':
+      root.appendChild(renderShell(state));
+      break;
+  }
+  // scroll restore omitted in this fallback path — full render() pass below
+  // (next dispatch) will restore via its own block.
+  void prevSidebarScroll;
+  void prevEntryListScroll;
+  void prevCenterScroll;
 }
 
 function renderInitializing(): HTMLElement {
