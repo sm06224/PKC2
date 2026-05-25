@@ -9656,10 +9656,34 @@ export function populateInlineAssetPreviews(root: HTMLElement, dispatcher: Dispa
   const containers = root.querySelectorAll<HTMLElement>(
     '.pkc-md-rendered:not(.pkc-text-edit-preview)',
   );
+  if (containers.length === 0) return;
 
   const state = dispatcher.getState();
   const container = state.container;
   if (!container) return;
+
+  // pgc-235:旧 path は per-chip に container.entries 全件 walk + 全 attachment
+  // body parse で `O(C × K × N)` cost。**1 度だけ全 attachment を index 化**
+  // し、以後 O(1) Map.get で resolve。lazy build:chip が無い container では
+  // index 構築自体を skip。
+  let assetByKey: Map<string, { mime: string; base64: string }> | null = null;
+  const buildAssetIndex = (): Map<string, { mime: string; base64: string }> => {
+    const map = new Map<string, { mime: string; base64: string }>();
+    for (const entry of container.entries) {
+      if (entry.archetype !== 'attachment') continue;
+      const att = parseAttachmentBody(entry.body);
+      if (!att.asset_key) continue;
+      let base64 = '';
+      if (container.assets?.[att.asset_key] != null) {
+        base64 = container.assets[att.asset_key]!;
+      } else if (att.data) {
+        base64 = att.data;
+      }
+      if (!base64 || !att.mime) continue;
+      map.set(att.asset_key, { mime: att.mime, base64 });
+    }
+    return map;
+  };
 
   for (const mdContainer of containers) {
     const chipLinks = mdContainer.querySelectorAll<HTMLAnchorElement>('a[href^="#asset-"]');
@@ -9671,24 +9695,10 @@ export function populateInlineAssetPreviews(root: HTMLElement, dispatcher: Dispa
       const assetKey = href.slice('#asset-'.length);
       if (!assetKey) continue;
 
-      // Find the attachment entry for this asset key
-      let mime = '';
-      let base64 = '';
-      for (const entry of container.entries) {
-        if (entry.archetype !== 'attachment') continue;
-        const att = parseAttachmentBody(entry.body);
-        if (att.asset_key !== assetKey) continue;
-        mime = att.mime;
-        // Resolve data from container.assets or legacy body.data
-        if (att.asset_key && container.assets?.[att.asset_key] != null) {
-          base64 = container.assets[att.asset_key]!;
-        } else if (att.data) {
-          base64 = att.data;
-        }
-        break;
-      }
-
-      if (!base64 || !mime) continue;
+      if (!assetByKey) assetByKey = buildAssetIndex();
+      const found = assetByKey.get(assetKey);
+      if (!found) continue;
+      const { mime, base64 } = found;
 
       const previewType = classifyPreviewType(mime);
       if (previewType !== 'pdf' && previewType !== 'audio' && previewType !== 'video') continue;
