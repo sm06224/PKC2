@@ -13,14 +13,15 @@
 - [0. これは何 / 読み方](#0-これは何--読み方)
 - [1. 設計原則(6 つ)](#1-設計原則6-つ)
 - [2. 用語と凡例](#2-用語と凡例)
-- [3. 全記法対応表(87 項目早見表)](#3-全記法対応表87-項目早見表)
-- [4. 文字装飾(インライン)18 項目詳細](#4-文字装飾インライン18-項目詳細)
-- [5. リンク / 埋め込み / カード 9 項目詳細](#5-リンク--埋め込み--カード-9-項目詳細)
-- [6. 段落 / 構造 / リスト / 表 15 項目詳細](#6-段落--構造--リスト--表-15-項目詳細)
-- [7. コードブロック / 描画 / 図 / 数式 9 項目詳細](#7-コードブロック--描画--図--数式-9-項目詳細)
-- [8. 装飾系 / コメント / footnote 11 項目詳細](#8-装飾系--コメント--footnote-11-項目詳細)
-- [9. frontmatter / 文書 globals 7 項目詳細](#9-frontmatter--文書-globals-7-項目詳細)
-- [10. 寛容 alias(Postel's Law)7 項目](#10-寛容-aliaspostels-law7-項目)
+- [3. 全記法対応表(scope 分割、97 項目)](#3-全記法対応表scope-分割97-項目)
+- [4. 文字装飾(インライン)各項目の詳細振る舞い](#4-文字装飾インライン各項目の詳細振る舞い)
+- [5. リンク / 埋め込み / カード 詳細](#5-リンク--埋め込み--カード-詳細§32 2--§38-future-ref)
+- [6. 段落 / 構造 / リスト / 表 詳細](#6-段落--構造--リスト--表-詳細§331--§332--§336)
+- [7. コードブロック / 描画 / 図 / 数式 詳細](#7-コードブロック--描画--図--数式-詳細§333--§334)
+- [8. 装飾系 / コメント / TOC / footnote 詳細](#8-装飾系--コメント--toc--footnote-詳細§335--§336--§323-footnote-参照経路)
+- [9. frontmatter / 文書 globals 詳細](#9-frontmatter--文書-globals-詳細§34-全-10-項目)
+- [10. 寛容 alias(Postel's Law、§3.6 全 7 項目)](#10-寛容-aliaspostels-law§36-全-7-項目)
+- [10b. CommonMark / GFM base 詳細](#10b-commonmark--gfm-base-詳細§35-全-4-項目)
 - [11. インライン ↔ ブロック対応関係](#11-インライン--ブロック対応関係)
 - [12. future 提案:ブロック装飾箱(block format wrapper)](#12-future-提案ブロック装飾箱block-format-wrapper)
 - [13. canonicalize 写像(simple ↔ formal)](#13-canonicalize-写像simple--formal)
@@ -196,109 +197,250 @@ PKC2 は同じ markdown を 5 つの surface で描画する:
 
 ---
 
-## 3. 全記法対応表(87 項目早見表)
+## 3. 全記法対応表(scope 分割、97 項目)
 
-> 全 PKC Markdown 拡張機能を 1 つの表に集約。詳細は §4-§10。
+### 3.0 凡例 ── scope 列
 
-| # | カテゴリ | 機能 | simple | formal | 頻度 | status |
-|---|---------|------|--------|--------|------|--------|
-| 1 | 文字装飾 | 太字 | `**T**` | `:strong:[T]` | very freq | ✅ |
-| 2 | 文字装飾 | 斜体 | `*T*` | `:emphasis:[T]` | very freq | ✅ |
-| 3 | 文字装飾 | 取り消し | `~~T~~` | `:strike:[T]` | freq | ✅ |
-| 4 | 文字装飾 | inline code | `` `T` `` | `:code:[T]` | very freq | ✅ |
-| 5 | 文字装飾 | マーカー(黄色) | `==T==` | `:mark:[T]` | freq | ✅ |
-| 6 | 文字装飾 | マーカー(色) | `==[red]T==` | `:mark:[T]{color=red}` | occasional | ✅ |
-| 7 | 文字装飾 | 圏点 / 傍点 | `^^T^^` | `:emdot:[T]{style=dot\|circle}` | occasional | ✅ |
-| 8 | 文字装飾 | ルビ | `[base\|読み]`(将来)/ `[[ruby:..]]`(旧) | `:ruby:[base]{rt="読み"}` | occasional | 🔄 |
-| 9 | 文字装飾 | 色 / 背景 / サイズ | `:text:red,bg-yellow,1.2em:` | `:span:[text]{color=red bg=yellow size=1.2em}` | occasional | ✅ |
-| 10 | 文字装飾 | 上付き | — | `:sup:[T]` | rare | ✅ |
-| 11 | 文字装飾 | 下付き | — | `:sub:[T]` | rare | ✅ |
-| 12 | 文字装飾 | inline 数式 | `$x^2$` | `:math:{src="x^2"}` | occasional | ✅ |
-| 13 | 文字装飾 | inline コメント | `%%T%%` | `:comment:[T]{hidden=true}` | occasional | ✅ |
-| 14 | 文字装飾 | footnote 参照 | `[^id]` | `:fn-ref:{id="id"}` | occasional | ✅ |
-| 15 | 文字装飾 | inline footnote | `本文^[補足]` | `:fn:[補足]` | occasional | ✅ |
-| 16 | 文字装飾 | 変数展開 | `{{vars.x}}` | `:var:[vars.x]` | freq(vars 使用時) | ✅ |
-| 17 | 文字装飾 | inline span + attrs | — | `:span:[T]{class=… #id key=v}` | rare | ✅ |
-| 18 | 文字装飾 | inline 簡易属性 default em-dot | `:T::` | `:emdot:[T]` | rare | 📝 |
-| 19 | リンク | 外部 link | `[L](url)` | `:link:[L]{href="url"}` | very freq | ✅ |
-| 20 | リンク | entry link | `[L](entry:LID)` | `:link:[L]{ref="entry:LID"}` | freq | ✅ |
-| 21 | リンク | entry card | `@[L](entry:LID)` | `:card:[L]{ref="entry:LID"}` | freq | ✅ |
-| 22 | リンク | entry embed seamless | `![L](entry:LID)` | `:embed:[L]{ref="entry:LID"}` | freq | 🔄 |
-| 23 | リンク | entry embed quote | `![L](entry:LID){quote}` | `:embed:[L]{ref="entry:LID" mode="quote"}` | occasional | 📝 |
-| 24 | リンク | 画像(URL) | `![alt](https://…)` | `:image:{src="url" alt="alt"}` | freq | ✅ |
-| 25 | リンク | 画像(asset) | `![alt](asset:KEY)` | `:image:{src="asset:KEY" alt="alt"}` | freq | ✅ |
-| 26 | リンク | asset link(非画像) | `[L](asset:KEY)` | `:asset-link:[L]{key="KEY"}` | occasional | ✅ |
-| 27 | リンク | 他 container permalink | `[L](pkc://c/e)` | `:link:[L]{href="pkc://…" kind="permalink"}` | rare | ✅ |
-| 28 | リンク | block ref(同 doc anchor) | `[#id]` | `:block-ref:{id="…"}` | occasional | 📝 |
-| 29 | リンク | term ref(用語) | `[?term]` | `:term-ref:{name="term"}` | occasional | 📝 |
-| 30 | リンク | 自動採番 ref | `[@fig1]` `[@tab1]` `[@eq1]` | `:autoref:{id="fig1"}` | occasional | ✅ |
-| 31 | 段落 | heading h1-h6 | `# T` 〜 `###### T` | `:::heading{level=N} T :::` | very freq | ✅ |
-| 32 | 段落 | heading + attrs | `# T {#id .cls k=v}` | 同上 + attrs | freq | ✅ |
-| 33 | 段落 | paragraph(default) | (自動) | `:::paragraph T :::` | very freq | ✅ |
-| 34 | 段落 | paragraph + indent | `__T` / `＿T` | `:::paragraph{indent=N} T :::` | freq | ✅ |
-| 35 | 段落 | paragraph + align logical | `\|\|T`(center)/ `\|>T`(end、+typo 3 形) | `:::paragraph{align=center\|end\|start} T :::` | occasional | 🔄 |
-| 36 | 段落 | paragraph + align physical | — | `:::paragraph{align=left\|right\|top\|bottom} T :::` | rare | ✅ formal-only |
-| 37 | 構造 | bullet list | `- T`(`*` `+` 同義) | `:::list{kind=bullet} :::` | very freq | ✅ |
-| 38 | 構造 | ordered list | `1. T` | `:::list{kind=ordered start=N} :::` | very freq | ✅ |
-| 39 | 構造 | task list | `- [ ] T` / `- [x] T` | `:::list{kind=task} :::` | freq | ✅ |
-| 40 | 構造 | blockquote | `> T` | `:::quote T :::` | freq | ✅ |
-| 41 | 構造 | quote + author | — | `:::quote{author="X" year=Y} T :::` | rare | ✅ |
-| 42 | 構造 | table(GFM) | `\| h \| h \|\n\|---\|---\|...` | `:::table{align=["L","R"]} :::` | freq | ✅ |
-| 43 | 構造 | hr / horizontal rule | `---` 行単独 | `:::break{kind=rule}` | occasional | ✅ |
-| 44 | 構造 | page break | `+++` 行単独 | `:::break{kind=page}` | occasional | ✅ |
-| 45 | 構造 | page break + role | `+++ {role=cover}` | `:::break{kind=page role=cover}` | occasional | ✅ |
-| 46 | 構造 | 空行マーカー | `_` 行単独(1)/ `_<N>`(N=1-50) | `:::blank{count=N}` | occasional | ✅ |
-| 47 | コード | code(plain) | ` ```code``` ` | `:::code :::` | freq | ✅ |
-| 48 | コード | code(lang 指定) | ` ```ts code``` ` | `:::code{lang="ts"} :::` | freq | ✅ |
-| 49 | コード | rendered code(tree/mermaid/json{view}/dbschema/binary/query/…) | ` ```tree ``` ` 等 | `:::code-render{lang="tree"} :::` | freq(用途次第) | ✅ |
-| 50 | コード | HTML sandbox fence | ` ```html-render <svg>…</svg>``` ` | `:::code{lang="html-render"} :::` | rare | ✅ |
-| 51 | 図表式 | figure block | `:::figure{#fig1}\n![](src)\n^^^ caption\n:::` | 同左 | occasional | ✅ |
-| 52 | 図表式 | table block | `:::table{#tab1}\n…\n:::` | 同左 | occasional | ✅ |
-| 53 | 図表式 | equation block | `$$\frac{a}{b}$$` 行単独 | `:::equation :::` | occasional | ✅ |
-| 54 | 図表式 | caption formal | `:::figure` 内 `:caption:[T]` | 同左 | occasional | ✅ |
-| 55 | 装飾系 | semantic callout(8 role) | — | `:::section{role=note\|tip\|warning\|caution\|important\|info\|danger\|summary} :::` | occasional | ✅ |
-| 56 | 装飾系 | conditional block | — | `:::if{format=html\|markdown\|docx} :::` | rare | ✅ |
-| 57 | 装飾系 | block comment | `%%%\n…\n%%%` | `:::comment :::` | occasional | ✅ |
-| 58 | 装飾系 | **block format wrapper(任意 class くくり)** | **未着地、§12 提案中** | **同上** | **occasional** | **📝** |
-| 59 | frontmatter | notation profile | `notation: pkc-markdown-1.0` | 同左 | rare | ✅ |
-| 60 | frontmatter | writing direction | `writing: vertical\|horizontal` | 同左 | rare | ✅ |
-| 61 | frontmatter | direction(LTR/RTL) | `direction: rtl\|ltr` | 同左 | rare | ✅ |
-| 62 | frontmatter | document align | `align: left\|right\|center\|top\|bottom` | 同左 | rare | ✅ |
-| 63 | frontmatter | layout(段組組版、9 種) | `layout: a4-2col` 等 | 同左 | occasional | ✅ |
-| 64 | frontmatter | vars 定義 | `vars: { x: 値 }` | 同左 | freq(vars 使用時) | ✅ |
-| 65 | frontmatter | notation_overrides | `notation_overrides: { ruby: false }` | 同左 | rare | ✅ |
-| 66 | footnote | comment-as-footnote | `%%[fn] T %%` | `:comment:[T]{visibility=footnote}` | occasional | ✅ |
-| 67 | footnote | comment-as-footnote + id | `%%[fn=src1] T %%` | `:comment:[T]{visibility=footnote id="src1"}` | occasional | ✅ |
-| 68 | footnote | footnote 定義(行頭) | `[^id]: 定義` | — | occasional | ✅ |
-| 69 | math | block math | `$$…$$` 行単独 | `:::math $$…$$ :::` | occasional | ✅ |
-| 70 | macros | macro expansion | — | `:macro:[name](args)` | rare | 📝 |
-| 71 | 寛容 | `:lead:[T]` | PKC2005 | canonical: 段落 + `==T==` 等 | (AI 由来) | ✅ tolerant |
-| 72 | 寛容 | `:spacing:{size=N}` | PKC2006 | canonical: `_<N>` | (AI 由来) | ✅ tolerant |
-| 73 | 寛容 | `:align:{position=X}` | PKC2007 | canonical: 行頭 `\|\|` `\|>` `<\|` | (AI 由来) | ✅ tolerant |
-| 74 | 寛容 | `:quote:{attribution=…}` | PKC2008 | canonical: `:::quote{author="…"}` | (AI 由来) | ✅ tolerant |
-| 75 | 寛容 | `:::note` `:::warning` etc 8 種 | PKC2009 | canonical: `:::section{role=NAME}` | (AI 由来) | ✅ tolerant |
-| 76 | 寛容 | `:::callout{type=X}` | PKC2010 | canonical: `:::section{role=X}` | (AI 由来) | ✅ tolerant |
-| 77 | 寛容 | `:::admonition{type=X title=Y}` | PKC2011 | canonical: `:::section{role=X}` + `## Y` | (AI 由来) | ✅ tolerant |
-| 78 | deny | `:::toc{depth=N}` | ❌ 未実装 + PKC1010 warning | (Phase 3 PR-2V で正式実装予定) | — | ❌ |
-| 79 | deny | `:::frontmatter` `:::body` | ❌ 未実装 + PKC1010 warning | (Phase 3 PR-2W で正式実装予定) | — | ❌ |
-| 80 | deny | inline HTML(`<div>` 等本文) | ❌ `html: false` で escape | 推奨: `` ```html-render `` fence | — | ❌ |
-| 81 | deny | `:span:[…]{style="…"}` | ❌ XSS allowlist 外、silent skip | 推奨: `:span:[…]{class=warn}` | — | ❌ |
-| 82 | deny | 行頭 `>>>` `===` 等独自記号 | ❌ commonmark 標準衝突 | 推奨: 本書記載構文のみ | — | ❌ |
-| 83 | 廃止 | `[[em:..]]` | ❌ deprecated | 移行先: `^^..^^`(#7) | — | ❌ |
-| 84 | 廃止 | `[[ruby:base\|読]]` | 🔄 deprecated | 移行先: `[base\|読]`(#8、将来) | — | 🔄 |
-| 85 | 廃止 | `<\|T` 物理左寄せ | 🔄 reform で end に正規化 | 物理左は formal `:::paragraph{align=left}`(#36) | — | 🔄 |
-| 86 | 廃止 | `^x^` 上付き | ❌ 廃止予定 | 移行先: `:sup:[x]` または `$x^2$` | — | ❌ |
-| 87 | 廃止 | `~x~` 下付き | ❌ 廃止予定 | 移行先: `:sub:[x]` または `$a_n$` | — | ❌ |
+各記法は **scope**(効果範囲)で分類:
 
-**統計**:全 87 項目 / ✅ 既実装 64 / 🔄 過渡期 5 / 📝 未着地 5 / ❌ 廃止 / deny 13。simple 形あり 60 / formal-only 27。
+| scope | 意味 | DOM 出力例 |
+|-------|------|----------|
+| **I**(Inline) | 行内、部分的に効く装飾 | `<span>` / `<a>` / `<strong>` / `<em>` / `<code>` / `<mark>` 等 |
+| **B**(Block) | 行 / 段落単位、行頭 marker や `:::name{...}` 3 行構造 | `<div>` / `<p>` / `<h1-6>` / `<ul>` / `<ol>` / `<blockquote>` / `<figure>` / `<table>` 等 |
+| **F**(Frontmatter) | YAML、文書全体に効く | doc 属性 |
+| **C**(CommonMark/GFM base) | 本書拡張ではない、commonmark / GFM の base 仕様 | (base 準拠) |
+
+判別基準は **parser 経路 + DOM 出力**(`<span>` 系 = I、`<div>` 系 = B)。
+
+### 3.1 全体 summary
+
+| scope | 件数 | 範囲 |
+|-------|-----|------|
+| I Inline(canonical + transitional)| 28 | §3.2 |
+| B Block(canonical + transitional + future #60)| 32 | §3.3 |
+| F Frontmatter | 10 | §3.4 |
+| C CommonMark/GFM base | 4 | §3.5 |
+| 寛容 alias(I/B 混在)| 7 | §3.6 |
+| 廃止 / deny(I/B/F 混在)| 11 | §3.7 |
+| 未着地 future inline(#93-#97、#60 は §3.3.7)| 5 | §3.8 |
+| **合計(unique #)** | **97** | (#1-#97 通し番号)|
+
+### 3.2 Inline 記法(I scope、28 項目)
+
+#### 3.2.1 文字装飾(#1-#11)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 1 | 太字 | `**T**` | `:strong:[T]` | very freq | ✅ |
+| 2 | 斜体 | `*T*` | `:emphasis:[T]` | very freq | ✅ |
+| 3 | 取り消し | `~~T~~`(GFM) | `:strike:[T]` | freq | ✅ |
+| 4 | inline code | `` `T` `` | `:code:[T]` | very freq | ✅ |
+| 5 | マーカー(黄色) | `==T==` | `:mark:[T]` | freq | ✅ |
+| 6 | マーカー(色) | `==[red]T==` | `:mark:[T]{color=red}` | occasional | ✅ |
+| 7 | 圏点 / 傍点 | `^^T^^` | `:emdot:[T]{style=dot\|circle}` | occasional | ✅ |
+| 8 | ルビ | `[[ruby:base\|読み]]`(現)/ `[base\|読み]`(将来) | `:ruby:[base]{rt="読み"}` | occasional | 🔄 |
+| 9 | 色 / 背景 / サイズ簡易 | `:T:red,bg-yellow,1.2em:` | `:span:[T]{color=red bg=yellow size=1.2em}` | occasional | ✅ |
+| 10 | 上付き | — | `:sup:[T]` | rare | ✅ formal-only |
+| 11 | 下付き | — | `:sub:[T]` | rare | ✅ formal-only |
+
+#### 3.2.2 リンク / 埋め込み / カード(#12-#20)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 12 | 外部 link | `[L](url)` | `:link:[L]{href="url"}` | very freq | ✅ |
+| 13 | entry link | `[L](entry:LID)` | `:link:[L]{ref="entry:LID"}` | freq | ✅ |
+| 14 | entry card | `@[L](entry:LID)` | `:card:[L]{ref="entry:LID"}` | freq | ✅ |
+| 15 | entry embed seamless | `![L](entry:LID)` | `:embed:[L]{ref="entry:LID"}` | freq | 🔄 |
+| 16 | 画像(URL) | `![alt](https://…)` | `:image:{src="url" alt="alt"}` | freq | ✅ |
+| 17 | 画像(asset) | `![alt](asset:KEY)` | `:image:{src="asset:KEY" alt="alt"}` | freq | ✅ |
+| 18 | asset link(非画像) | `[L](asset:KEY)` | `:asset-link:[L]{key="KEY"}` | occasional | ✅ |
+| 19 | 他 container permalink | `[L](pkc://c/e)` | `:link:[L]{href="pkc://…" kind="permalink"}` | rare | ✅ |
+| 20 | 自動採番 ref | `[@fig1]` `[@tab1]` `[@eq1]` | `:autoref:{id="fig1"}` | occasional | ✅ |
+
+#### 3.2.3 inline 数式 / コメント / footnote 参照(#21-#26)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 21 | inline 数式 | `$x^2$` | `:math:{src="x^2"}` | occasional | ✅ |
+| 22 | inline コメント | `%%T%%` | `:comment:[T]{hidden=true}` | occasional | ✅ |
+| 23 | footnote 参照 | `[^id]` | `:fn-ref:{id="id"}` | occasional | ✅ |
+| 24 | inline footnote | `本文^[補足]` | `:fn:[補足]` | occasional | ✅ |
+| 25 | comment-as-footnote(無 id) | `%%[fn] T %%` | `:comment:[T]{visibility=footnote}` | occasional | ✅ |
+| 26 | comment-as-footnote(+id) | `%%[fn=src1] T %%` | `:comment:[T]{visibility=footnote id="src1"}` | occasional | ✅ |
+
+#### 3.2.4 変数 / その他 inline(#27-#28)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 27 | 変数展開 | `{{vars.x}}` | `:var:[vars.x]` | freq(vars 使用時) | ✅ |
+| 28 | inline span + attrs | — | `:span:[T]{class=… #id key=v}` | rare | ✅ formal-only |
+
+### 3.3 Block 記法(B scope、32 項目)
+
+#### 3.3.1 見出し / 段落 / 字下げ / align(#29-#34)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 29 | heading h1-h6 | `# T` 〜 `###### T` | `:::heading{level=N} T :::` | very freq | ✅ |
+| 30 | heading + attrs(Pandoc trailing) | `# T {#id .cls k=v}` | `:::heading{level=N #id .cls k=v} T :::` | freq | ✅ |
+| 31 | paragraph(default) | (自動) | `:::paragraph T :::` | very freq | ✅ |
+| 32 | paragraph + indent | `__T` / `＿T` | `:::paragraph{indent=N} T :::` | freq | ✅ |
+| 33 | paragraph + align logical | `\|\|T`(center)/ `\|>T`(end、typo 寛容 3 形) | `:::paragraph{align=center\|end\|start} T :::` | occasional | 🔄 |
+| 34 | paragraph + align physical | — | `:::paragraph{align=left\|right\|top\|bottom} T :::` | rare | ✅ formal-only |
+
+#### 3.3.2 リスト / quote / 表(#35-#41)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 35 | bullet list | `- T`(`*` `+` 同義) | `:::list{kind=bullet} :::` | very freq | ✅ |
+| 36 | ordered list | `1. T` | `:::list{kind=ordered start=N} :::` | very freq | ✅ |
+| 37 | task list(GFM) | `- [ ] T` / `- [x] T` | `:::list{kind=task} :::` | freq | ✅ |
+| 38 | blockquote | `> T` | `:::quote T :::` | freq | ✅ |
+| 39 | quote + author | — | `:::quote{author="X" year=Y} T :::` | rare | ✅ formal-only |
+| 40 | 表(GFM) | `\| h \| h \|\n\|---\|---\|...` | `:::table{align=["L","R"]} :::` | freq | ✅ |
+| 41 | **CSV/TSV/PSV 表 fence** | ` ```csv\nh1,h2\nv1,v2\n``` `(lang=csv/tsv/psv) | (table 自動変換) | occasional | ✅ |
+
+#### 3.3.3 コード block(#42-#45)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 42 | code(plain) | ` ```code``` ` | `:::code :::` | freq | ✅ |
+| 43 | code(lang 指定 + syntax highlight) | ` ```ts code``` ` | `:::code{lang="ts"} :::` | freq | ✅ |
+| 44 | rendered code(`tree` / `mermaid` / `json{view}` / `dbschema` / `binary` / `query` 等) | ` ```tree``` ` 等 | `:::code-render{lang="tree"} :::` | freq(用途次第) | ✅ |
+| 45 | HTML sandbox fence | ` ```html-render <svg>…</svg>``` ` | `:::code{lang="html-render"} :::` | rare | ✅ |
+
+#### 3.3.4 図 / 表 block / 数式 / 自動採番(#46-#50)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 46 | figure block | `:::figure{#fig1}\n![](src)\n^^^ caption\n:::` | 同左 | occasional | ✅ |
+| 47 | table block | `:::table{#tab1}\n…\n:::` | 同左 | occasional | ✅ |
+| 48 | equation block | `$$\frac{a}{b}$$` 行単独 | `:::equation :::` または `:::math :::` | occasional | ✅ |
+| 49 | caption(`:::figure` 内) | `^^^ caption` 行 | `:caption:[T]` | occasional | ✅ |
+| 50 | block math(equation 同義) | `$$T$$` 行単独 | `:::math $$T$$ :::` | occasional | ✅ |
+
+#### 3.3.5 装飾系 directive / コールアウト / コメント(#51-#54)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 51 | semantic callout(8 role) | — | `:::section{role=summary\|info\|note\|tip\|caution\|important\|warning\|danger} :::` | occasional | ✅ formal-only |
+| 52 | conditional block | — | `:::if{format=html\|markdown\|docx\|pptx\|pdf} :::` | rare | ✅ formal-only |
+| 53 | block comment | `%%%\n…\n%%%` | `:::comment :::` | occasional | ✅ |
+| 54 | **TOC block**(目次自動生成) | — | `:::toc{depth=N}` | occasional | ✅ formal-only(2026-05-12 PR-2V 着地) |
+
+#### 3.3.6 区切り / 空行 / footnote 定義(#55-#59)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 55 | hr(horizontal rule) | `---` 行単独 | `:::break{kind=rule}` | occasional | ✅ |
+| 56 | page break | `+++` 行単独 | `:::break{kind=page}` | occasional | ✅ |
+| 57 | page break + role | `+++ {role=cover}` | `:::break{kind=page role=cover}` | occasional | ✅ |
+| 58 | 空行マーカー | `_` 行単独(1)/ `_<N>`(N=1-50) | `:::blank{count=N}` | occasional | ✅ |
+| 59 | footnote 定義(行頭) | `[^id]: 定義` | — | occasional | ✅ |
+
+#### 3.3.7 未着地 block future(#60、§12 参照)
+
+| # | 機能 | simple | formal | 頻度 | status |
+|---|------|--------|--------|------|--------|
+| 60 | **block format wrapper(任意 class くくり)** | `:::.cls.cls\nbody\n:::` / `:::red,bg-yellow,1.2em\nbody\n:::` | `:::format{.cls #id key=v}\nbody\n:::` | occasional | 📝 §12 |
+
+### 3.4 Frontmatter / 文書 globals(F scope、10 項目)
+
+| # | key | 値 | default | 頻度 | status |
+|---|-----|---|---------|------|--------|
+| 61 | `notation` | profile 名(`pkc-markdown-1.0` / `pkc-markdown-1.0-ai-safe` / `commonmark` 等) | `pkc-markdown-1.0` | rare | ✅ |
+| 62 | `writing` | `horizontal` / `vertical` | `horizontal` | rare | ✅ |
+| 63 | `direction` | `ltr` / `rtl` | `ltr` | rare | ✅ |
+| 64 | `align` | `left` / `right` / `center` / `top` / `bottom`(writing 依存) | (writing 依存) | rare | ✅ |
+| 65 | `layout`(段組組版、9 種)| `a4-1col` / `a4-2col` / `a4-3col` / `b5-*` / `letter-*` / `legal-*` | — | occasional | ✅ |
+| 66 | `vars` | `{nested map}` または `vars.x: value` | — | freq(vars 使用時) | ✅ |
+| 67 | `notation_overrides` | `{ruby: false}` 等個別機能 off | — | rare | ✅ |
+| 68 | **`heading-number`**(見出しアウトライン採番)| `true` / `on` / `<N>`(L1 開始番号) | `false` | occasional | ✅ |
+| 69 | **`list-number`**(順序リスト採番モード)| `uniform` / `sequential` | `sequential` | rare | ✅ |
+| 70 | **`kind`** | string(meta 情報) | — | rare | ✅ |
+
+### 3.5 CommonMark / GFM base(C scope、本書独自拡張ではない 4 項目)
+
+| # | 機能 | 動作 | 頻度 | status |
+|---|------|------|------|--------|
+| 71 | **Linkify**(URL 自動 link 化) | `https://...` を自動 `<a>` 化 | very freq | ✅ base(commonmark + markdown-it linkify) |
+| 72 | **Typographer**(smart quote / em-dash) | `--` → `—`、`...` → `…`、`"X"` → `“X”` 等 | freq | ✅ base(markdown-it typographer) |
+| 73 | **GFM strikethrough** | #3 `~~T~~` の base | freq | ✅ base(GFM) |
+| 74 | **GFM table** | #40 の base | freq | ✅ base(GFM) |
+
+(GFM footnote `[^id]` も base、#23-#24 / #59 で既掲)
+
+### 3.6 寛容 alias(Postel's Law、PR-2L PKC2005-2011 の 7 項目)
+
+AI hallucinate 形を実 render path に格上げ、`console.info` + DOM `data-pkc-canonical` で 3 つ組 hint(detected / interpretedAs / canonical)。
+
+| # | scope | AI が書く形 | 寛容 parse 後 | code | canonical |
+|---|-------|----------|------------|------|------|
+| 75 | I | `:lead:[content]` | `<span class="pkc-lead">` | PKC2005 | 段落 + `==content==` 等 |
+| 76 | I | `:spacing:{size=N}` | blank line marker | PKC2006 | `_<N>` |
+| 77 | I | `:align:{position=X}` | 次段落 align 適用 | PKC2007 | 行頭 `\|\|` `\|>` `<\|` |
+| 78 | I | `:quote:{attribution=…}` | `<small class="pkc-attribution">` | PKC2008 | `:::quote{author="…"}` |
+| 79 | B | `:::note` / `:::warning` / `:::tip` / `:::info` / `:::caution` / `:::important` / `:::danger` / `:::summary` | `:::section{role=NAME}` alias | PKC2009 | `:::section{role=…}` |
+| 80 | B | `:::callout{type=X}` | `:::section{role=X}` alias | PKC2010 | 同上 |
+| 81 | B | `:::admonition{type=X title=Y}` | `:::section{role=X}` + `## Y` | PKC2011 | 同上 |
+
+### 3.7 廃止 / deny(11 項目)
+
+| # | scope | 旧 / 危険形 | 状態 | 推奨 |
+|---|-------|----------|------|------|
+| 82 | I | `[[em:..]]` | ❌ deprecated | `^^..^^`(#7) |
+| 83 | I | `[[ruby:base\|読]]` | 🔄 deprecated(現は accept、将来 deny)| `[base\|読]`(#8) |
+| 84 | B | `<\|T` 物理左寄せ | 🔄 reform で end に正規化 | 物理左は formal `:::paragraph{align=left}`(#34) |
+| 85 | I | `^x^` 上付き(simple) | ❌ 廃止予定 | `:sup:[x]`(#10) or `$x^2$` |
+| 86 | I | `~x~` 下付き(simple) | ❌ 廃止予定 | `:sub:[x]`(#11) or `$a_n$` |
+| 87 | I/B | inline HTML(`<div>` `<style>` 等本文に)| ❌ `html: false` で escape | 複雑 layout は `` ```html-render `` fence(#45) |
+| 88 | I | `:span:[…]{style="…"}` | ❌ XSS allowlist 外、silent skip | `:span:[…]{class=warn}` |
+| 89 | B | 行頭 `>>>` `===` 等独自記号 | ❌ commonmark 標準衝突 | 本書記載構文のみ |
+| 90 | I | `:role:[…]` で未知 role(`:foo:[X]` 等)| ❌ implementation 不一致、fall-through | allowlist 内のみ(§4.15) |
+| 91 | F | frontmatter > 16KB | ❌ size cap、parse 中止 + warning | コンパクトに |
+| 92 | B | `:::frontmatter` / `:::body` directive | ❌ 未実装 + PKC1010 warning | Phase 3 PR-2W で正式実装予定 |
+
+### 3.8 未着地 future 提案(5 項目)
+
+| # | scope | 機能 | simple | formal | 着地条件 |
+|---|-------|------|--------|--------|---------|
+| 60 | B | block format wrapper(任意 class) | `:::.cls\nbody\n:::` 等 | `:::format{.cls #id} body :::` | §12 詳細、§16 Q1-Q6 user 判断 + 実装 PR landing |
+| 93 | I | block ref(同 doc 内 anchor) | `[#block-id]` | `:block-ref:{id="…"}` | spec のみ、Phase 後段 |
+| 94 | I | term ref(用語参照) | `[?term]` | `:term-ref:{name="term"}` | spec のみ、Phase 後段 |
+| 95 | I | macro expansion | — | `:macro:[name](args)` | spec のみ、Phase 後段 |
+| 96 | I | inline 簡易属性 default em-dot | `:T::` | `:emdot:[T]` | catalog #35 spec のみ |
+| 97 | I | entry embed quote chrome | `![L](entry:LID){quote}` | `:embed:[L]{mode="quote"}` | spec のみ |
+
+### 3.9 統計(#1-#97 通し番号、status / scope 別 cross-tab)
+
+| status | 件数 | 内訳 |
+|--------|-----|------|
+| ✅ canonical(実装済 stable)| 74 | I:25 + B:30 + F:10 + C:4 + 寛容 7 / 廃止 transitional 0(廃止系は 🔄 / ❌ 側) |
+| 🔄 過渡期(寛容 accept + warning)| 4 | #8 `[[ruby:..]]` / #33 `<\|`(align logical typo)/ #15 entry embed default 切替 / #83 [[ruby]] 同義 |
+| 📝 未着地 future(本書 promote + PR landing 待ち)| 6 | #60 block format wrapper / #93 block ref / #94 term ref / #95 macro / #96 inline em-dot default / #97 embed quote |
+| ❌ 廃止 / deny | 11 | §3.7 #82-#92(`[[em:]]` / `<\|` 物理 / `^x^` / `~x~` / inline HTML / `style=` / frontmatter cap / 独自記号 / 未知 role / `:::frontmatter` / [[ruby 旧形)|
+
+**scope 別 cross-tab**(unique # は §3.2-§3.4 のいずれかに 1 度だけ登録、寛容 / 廃止 / future は scope 補足):
+
+| scope | canonical | 寛容 alias | 廃止 / deny | future | 計 |
+|-------|----------|----------|-----------|--------|---|
+| Inline(I) | 25(#1-#28 から #25 #26 除く)| 4(#75-#78) | 6(#82, #83, #85, #86, #87 I 部分, #88, #90)| 5(#93-#97)| **40** |
+| Block(B) | 30(#29-#59) | 3(#79-#81) | 4(#84, #87 B 部分, #89, #92)| 1(#60)| **38** |
+| Frontmatter(F)| 10(#61-#70)| 0 | 1(#91 size cap)| 0 | **11** |
+| base(C)| 4(#71-#74)| — | — | — | **4** |
+| **合計** | **69** | **7** | **11** | **6** | **93** ※注 |
+
+※注: 合計が 93 になるのは #87(inline HTML)が I + B 両 scope で deny(本表は I+B にそれぞれ計上、unique # は 1)。実数は #1-#97 = 97 unique。
 
 ---
 
-## 4. 文字装飾(インライン)18 項目詳細
+## 4. 文字装飾(インライン)各項目の詳細振る舞い
 
-> インライン = 行の中で部分的に効く装飾。
+> インライン = 行の中で部分的に効く装飾。本章は §3.2.1 文字装飾(#1-#11)+ §3.2.3 inline 数式 / コメント / footnote 参照(#21-#26)+ §3.2.4 変数 / その他(#27-#28)を deep-dive する。
+>
+> **§4.1-§4.16 の見出しに付く `#N` は §3 の通し番号と対応**(§3 で scope 分割した後の番号)。
 
-### 4.1 #1 太字
+### 4.1 太字(§3.2.1 #1)
 
 | 軸 | 値 |
 |----|---|
@@ -308,7 +450,7 @@ PKC2 は同じ markdown を 5 つの surface で描画する:
 | 内部表現 | `Strong { children }` |
 | 注意 | `__text__` も commonmark 標準で太字、ただし PKC2 では `__` は行頭で indent 用(#34)なので競合回避のため本文中での `__bold__` は推奨しない |
 
-### 4.2 #2 斜体
+### 4.2 斜体(§3.2.1 #2)
 
 ```markdown
 *斜体*           ← simple
@@ -317,14 +459,14 @@ PKC2 は同じ markdown を 5 つの surface で描画する:
 
 `_text_` も commonmark 標準で斜体、行中なら衝突なし。
 
-### 4.3 #3 取り消し線
+### 4.3 取り消し線(§3.2.1 #3)
 
 ```markdown
 ~~消去線~~       ← simple(GFM)
 :strike:[消去線] ← formal
 ```
 
-### 4.4 #4 inline code
+### 4.4 inline code(§3.2.1 #4)
 
 ```markdown
 `code`           ← simple
@@ -333,7 +475,7 @@ PKC2 は同じ markdown を 5 つの surface で描画する:
 
 backtick 内の `:role:[…]` 等 PKC 拡張は **発火しない**(inline code は literal)。
 
-### 4.5 #5 マーカー(黄色)
+### 4.5 マーカー(黄色)(§3.2.1 #5)
 
 ```markdown
 ==重要==         ← simple、<mark>重要</mark>、default 黄色
@@ -342,7 +484,7 @@ backtick 内の `:role:[…]` 等 PKC 拡張は **発火しない**(inline code 
 
 CSS:`mark { background: yellow; }`(custom theme で変更可)。
 
-### 4.6 #6 マーカー(色指定)
+### 4.6 マーカー(色指定)(§3.2.1 #6)
 
 ```markdown
 ==[red]赤マーカー==              ← simple、色指定
@@ -351,7 +493,7 @@ CSS:`mark { background: yellow; }`(custom theme で変更可)。
 
 色 vocabulary: `red` / `blue` / `green` / `yellow` / `cyan` / `magenta` / `orange` / `purple` / `pink` / `gray` 等(`base.css` 定義の named color)。
 
-### 4.7 #7 圏点 / 傍点
+### 4.7 圏点 / 傍点(§3.2.1 #7)
 
 ```markdown
 ^^大事^^           ← simple、各文字上に点
@@ -361,7 +503,7 @@ CSS:`mark { background: yellow; }`(custom theme で変更可)。
 
 内部 nested markdown 効く(`^^**bold**^^` 等、PR-2P)。
 
-### 4.8 #8 ルビ(ふりがな)
+### 4.8 ルビ(ふりがな)(§3.2.1 #8)
 
 ```markdown
 [難読|なんどく]                ← simple(将来 default、現状は migration 段階)
@@ -369,7 +511,7 @@ CSS:`mark { background: yellow; }`(custom theme で変更可)。
 :ruby:[難読]{rt="なんどく"}    ← formal
 ```
 
-### 4.9 #9 色 / 背景 / サイズ(inline 簡易属性、L-6)
+### 4.9 色 / 背景 / サイズ(inline 簡易属性、L-6)(§3.2.1 #9)
 
 ```markdown
 :重要:red:                       ← 赤文字
@@ -388,7 +530,7 @@ CSS:`mark { background: yellow; }`(custom theme で変更可)。
 - style: `italic`
 - align: 無し(inline で align は意味なし、block #35-#36 参照)
 
-### 4.10 #10-#11 上付き / 下付き
+### 4.10 上付き / 下付き(§3.2.1 #10-#11)
 
 ```markdown
 x:sup:[2]    ← x²、formal-only
@@ -397,7 +539,7 @@ a:sub:[n]    ← aₙ、formal-only
 
 simple なし。math mode `$x^2$` `$a_n$` で代替可。
 
-### 4.11 #12 inline 数式
+### 4.11 inline 数式(§3.2.3 #21)
 
 ```markdown
 $x^2 + y^2 = z^2$    ← KaTeX 構文
@@ -406,7 +548,7 @@ $x^2 + y^2 = z^2$    ← KaTeX 構文
 
 block 数式は #69、`$$…$$` 行単独。
 
-### 4.12 #13 inline コメント
+### 4.12 inline コメント(§3.2.3 #22)
 
 ```markdown
 本文 %%メモ%% つづき     ← 「メモ」 は render されない
@@ -415,7 +557,7 @@ block 数式は #69、`$$…$$` 行単独。
 
 著者向けのメモ。export(docx/pptx)時も出力されない(`:::if{format=...}` で format 別表示制御は #56)。
 
-### 4.13 #14-#15 footnote(参照 + inline)
+### 4.13 footnote(参照 + inline)(§3.2.3 #23-#24)
 
 ```markdown
 本文[^src1]            ← 参照、本文末尾の定義へ
@@ -424,7 +566,7 @@ block 数式は #69、`$$…$$` 行単独。
 本文^[直アタッチ補足]   ← inline footnote、その場で定義
 ```
 
-### 4.14 #16 変数展開
+### 4.14 変数展開(§3.2.4 #27)
 
 frontmatter で:
 ```yaml
@@ -438,7 +580,7 @@ vars:
 {{vars.product}} {{vars.version}}    ← 「PKC2 2.3」
 ```
 
-### 4.15 #17 inline span + attrs
+### 4.15 inline span + attrs(§3.2.4 #28)
 
 ```markdown
 :span:[文字列]{class=warn #id-1 data-key=value}    ← formal-only
@@ -446,7 +588,7 @@ vars:
 
 simple なし(`:text:attrs:` で大半 vocabulary cover、それ以外の任意 attrs は formal)。`style=…` は禁止(XSS、#81)。
 
-### 4.16 #18 inline 簡易属性 default em-dot(未着地)
+### 4.16 inline 簡易属性 default em-dot(未着地、§3.8 #96)
 
 ```markdown
 :重要::    ← attrs 省略 = em-dot 適用
@@ -457,9 +599,9 @@ simple なし(`:text:attrs:` で大半 vocabulary cover、それ以外の任意 
 
 ---
 
-## 5. リンク / 埋め込み / カード 9 項目詳細
+## 5. リンク / 埋め込み / カード 詳細(§3.2.2 + §3.8 future ref)
 
-### 5.1 #19-#27 リンク / 埋め込みの選び方
+### 5.1 リンク / 埋め込みの選び方(§3.2.2 #12-#19)
 
 | 用途 | 書き方 | 表示 |
 |------|------|------|
@@ -473,14 +615,14 @@ simple なし(`:text:attrs:` で大半 vocabulary cover、それ以外の任意 
 | 非画像 asset(PDF / zip 等) | `[label](asset:KEY)` | ダウンロード link |
 | 別 container | `[label](pkc://container/entry)` | permalink |
 
-### 5.2 #28-#29 block ref / term ref(未着地)
+### 5.2 block ref / term ref(未着地、§3.8 #93-#94)
 
 ```markdown
 [#section-1]    ← 同 doc 内 block へ anchor link、📝 未着地
 [?用語]         ← 用語集参照、📝 未着地
 ```
 
-### 5.3 #30 自動採番参照
+### 5.3 自動採番参照(§3.2.2 #20)
 
 ```markdown
 :::figure{#fig1}\n![](url)\n^^^ タイトル\n:::    ← figure block(#51)
@@ -494,9 +636,9 @@ $$E=mc^2$$    ← 数式に id 付ければ [@eq1] で参照
 
 ---
 
-## 6. 段落 / 構造 / リスト / 表 15 項目詳細
+## 6. 段落 / 構造 / リスト / 表 詳細(§3.3.1 + §3.3.2 + §3.3.6)
 
-### 6.1 #31-#32 見出し
+### 6.1 見出し(§3.3.1 #29-#30)
 
 ```markdown
 # h1                          ← simple
@@ -506,7 +648,7 @@ $$E=mc^2$$    ← 数式に id 付ければ [@eq1] で参照
 
 階段:h1 16pt / h2 14pt / h3 12pt / h4-h6 10.5pt(default theme)。
 
-### 6.2 #33-#36 段落 / indent / align
+### 6.2 段落 / indent / align(§3.3.1 #31-#34)
 
 ```markdown
 普通の段落(改行 2 つで分離)。
@@ -526,7 +668,7 @@ __先頭 1 字下げ                ← 半角 `__` 2 文字
 - logical(`start` / `end` / `center`)= 縦書き / RTL 文脈で意味を保つ。simple `||` `|>` `<|` 等
 - physical(`left` / `right` / `top` / `bottom`)= 強制的に物理方向、formal-only
 
-### 6.3 #37-#39 リスト
+### 6.3 リスト(§3.3.2 #35-#37)
 
 ```markdown
 - bullet
@@ -541,7 +683,7 @@ __先頭 1 字下げ                ← 半角 `__` 2 文字
 
 formal: `:::list{kind=bullet|ordered|task} :::`。
 
-### 6.4 #40-#41 quote
+### 6.4 quote(§3.3.2 #38-#39)
 
 ```markdown
 > 通常引用     ← commonmark
@@ -553,7 +695,9 @@ formal: `:::list{kind=bullet|ordered|task} :::`。
 
 複数 entry を 1 quote で囲める(`:::quote{author} ![](entry:A) ![](entry:B) :::`)。
 
-### 6.5 #42 table(GFM + align)
+### 6.5 table(GFM + align、§3.3.2 #40)+ CSV/TSV/PSV fence(§3.3.2 #41)
+
+GFM 標準 table:
 
 ```markdown
 | col1 | col2 | col3 |
@@ -564,7 +708,32 @@ formal: `:::list{kind=bullet|ordered|task} :::`。
 
 `:----:` で center、`----:` で right、`:----` で left。formal: `:::table{align=["L","C","R"]} :::`。
 
-### 6.6 #43-#46 hr / page break / 空行
+**CSV/TSV/PSV fence**(`renderCsvFence` 経路):
+
+````markdown
+```csv
+名前,年齢,職業
+山田,30,エンジニア
+鈴木,25,デザイナー
+```
+
+```tsv
+col1<TAB>col2<TAB>col3
+A<TAB>B<TAB>C
+```
+
+```psv
+col1|col2|col3
+A|B|C
+```
+````
+
+- `csv` / `tsv` / `psv` lang を fence info に指定すると自動的に GFM table へ変換 → HTML `<table>` で render
+- 1 行目 = header(自動)
+- セル内 inline markdown 効く(typo / 強調 等)
+- 巨大 CSV を貼り付けるだけで table 化、手動 `|---|` 区切りより簡潔
+
+### 6.6 hr / page break / 空行(§3.3.6 #55-#58)
 
 ```markdown
 ---            ← hr、horizontal rule
@@ -584,9 +753,9 @@ _5             ← 5 空行 marker(N=1-50)
 
 ---
 
-## 7. コードブロック / 描画 / 図 / 数式 9 項目詳細
+## 7. コードブロック / 描画 / 図 / 数式 詳細(§3.3.3 + §3.3.4)
 
-### 7.1 #47-#50 コードブロック
+### 7.1 コードブロック(§3.3.3 #42-#45)
 
 ```markdown
 ```
@@ -611,7 +780,7 @@ function f(): void {}
 
 詳細は別 spec(`docs/development/notation-redesign-2026-05/06-code-block-ecosystem.md`)。
 
-### 7.2 #51-#54 figure / table / equation
+### 7.2 figure / table block / equation / caption(§3.3.4 #46-#49)
 
 ```markdown
 :::figure{#fig1}
@@ -635,7 +804,7 @@ $$
 - `[@fig1]` `[@tab1]` `[@eq1]` で本文中参照、自動採番
 - caption は内部 nested markdown 効く
 
-### 7.3 #69 block math
+### 7.3 block math(§3.3.4 #50)
 
 ```markdown
 $$
@@ -647,9 +816,9 @@ KaTeX で render。inline math は `$…$`(#12)、block は `$$…$$` 行単独�
 
 ---
 
-## 8. 装飾系 / コメント / footnote 11 項目詳細
+## 8. 装飾系 / コメント / TOC / footnote 詳細(§3.3.5 + §3.3.6 + §3.2.3 footnote 参照経路)
 
-### 8.1 #55 semantic callout(8 role)
+### 8.1 semantic callout(8 role)(§3.3.5 #51)
 
 ```markdown
 :::section{role=note}
@@ -675,7 +844,7 @@ KaTeX で render。inline math は `$…$`(#12)、block は `$$…$$` 行単独�
 
 寛容 alias:`:::note` `:::warning` 等は自動的に `:::section{role=NAME}` に rewrite(#75-#77)。
 
-### 8.2 #56 conditional block
+### 8.2 conditional block(§3.3.5 #52)
 
 ```markdown
 :::if{format=html}
@@ -689,7 +858,7 @@ Word export 時のみ表示
 
 format vocabulary: `html` / `markdown` / `docx` / `pptx` / `pdf`。
 
-### 8.3 #57 block comment
+### 8.3 block comment(§3.3.5 #53)
 
 ```markdown
 %%%
@@ -703,11 +872,28 @@ formal 形、同じ動作
 :::
 ```
 
-### 8.4 #58 block format wrapper
+### 8.3.1 TOC block(§3.3.5 #54、2026-05-12 PR-2V 着地)
+
+```markdown
+:::toc{depth=2}
+:::
+
+:::toc{depth=3}
+:::
+```
+
+- `depth=N` で表示する見出し階層を指定(N=1 で h1 のみ / N=2 で h1+h2 / N=6 で全部)
+- 文書内の見出し(`#`-`######`)を **自動検出して目次 HTML を生成**(`<nav class="pkc-toc-formal">`)
+- click で該当 section へ scroll
+- multi-instance OK(複数の `:::toc{}` を 1 文書内に置ける)
+- depth 省略時 default は 3
+- 見出しが無い文書だと空 `<nav>` を出力(将来 hint 表示候補)
+
+### 8.4 block format wrapper(§3.3.7 #60、未着地、§12 参照)
 
 **📝 未着地、§12 で詳細提案**。複数段落を任意 class でくくる装飾箱。
 
-### 8.5 #66-#68 footnote
+### 8.5 footnote(参照経路 §3.2.3 #25-#26、定義経路 §3.3.6 #59)
 
 ```markdown
 本文 [^src1] を参照。
@@ -725,7 +911,7 @@ inline 直アタッチ:
 
 ---
 
-## 9. frontmatter / 文書 globals 7 項目詳細
+## 9. frontmatter / 文書 globals 詳細(§3.4 全 10 項目)
 
 YAML frontmatter で文書全体の設定:
 
@@ -733,20 +919,23 @@ YAML frontmatter で文書全体の設定:
 ---
 title: ドキュメントタイトル
 author: 山田太郎
-notation: pkc-markdown-1.0      # default
-writing: vertical                # horizontal | vertical
-direction: rtl                   # ltr | rtl
-align: top                       # vertical 時: top|bottom|center
-layout: a4-2col                  # 段組組版
+kind: report                     # meta 情報(任意 string、#70)
+notation: pkc-markdown-1.0       # profile 名(#61、default)
+writing: vertical                # horizontal | vertical(#62)
+direction: rtl                   # ltr | rtl(#63)
+align: top                       # vertical 時: top|bottom|center(#64)
+layout: a4-2col                  # 段組組版 9 種(#65)
+heading-number: true             # 見出しアウトライン採番 on(#68)
+list-number: uniform             # 順序リスト採番モード(#69)
 vars:
-  product: PKC2
+  product: PKC2                  # 変数定義(#66)
   version: "2.3"
 notation_overrides:
-  ruby: false                    # ruby 機能 off
+  ruby: false                    # 個別機能 off(#67)
 ---
 ```
 
-### 9.1 #63 layout(段組組版、9 種)
+### 9.1 layout(段組組版、9 種)(§3.4 #65)
 
 | 用紙 \ 段数 | 1col | 2col | 3col |
 |------------|------|------|------|
@@ -757,7 +946,7 @@ notation_overrides:
 
 screen でカード表示、`@media print` で paper 出力(docx / pptx export も追従)。
 
-### 9.2 #64 vars(変数展開)
+### 9.2 vars(変数展開)(§3.4 #66)
 
 frontmatter で定義 → 本文中 `{{vars.path.to.value}}` で展開。
 
@@ -772,27 +961,112 @@ vars:
 {{vars.product.name}} {{vars.product.version}}    ← 「PKC2 2.3」
 ```
 
-### 9.3 size cap
+### 9.3 heading-number(見出しアウトライン採番)(§3.4 #68)
+
+frontmatter に `heading-number` を設定すると h1-h6 に自動採番が付く:
+
+```yaml
+heading-number: true   # 有効化、L1 開始番号 = 1
+heading-number: on     # 同上
+heading-number: 3      # 有効化、L1 開始番号 = 3
+heading-number: false  # 無効(default)
+```
+
+出力例(`heading-number: true` の場合):
+
+```
+# 章タイトル        → 1. 章タイトル
+## 節タイトル       → 1.1. 節タイトル
+## 別の節          → 1.2. 別の節
+# 第2章            → 2. 第2章
+```
+
+実装:`extractHeadingNumberConfig`(`src/features/markdown/document-globals.ts`)。CSS counter で表示制御、export 経路でも保持。
+
+### 9.4 list-number(順序リスト採番モード)(§3.4 #69)
+
+順序リスト(`1.` `2.` ...)の採番方法を指定:
+
+```yaml
+list-number: sequential   # default、書いた番号順に連番(1. 2. 3.)
+list-number: uniform      # 全 `1.` を書いても render 時に 1. 2. 3. に自動連番
+```
+
+`uniform` モード:diff friendly に「全部 1.」 で書ける(rebase 等で順序変更時に手動採番修正が不要)。`sequential` モード:user が書いた数字通りに表示。
+
+### 9.5 kind(meta string)(§3.4 #70)
+
+任意 string で文書 type を示す:
+
+```yaml
+kind: report      # / article / memo / spec / etc.
+```
+
+`kind` は parser / renderer は使わず、外部 tool(検索 / template 適用 / export 経路)で参照する meta hook。
+
+### 9.6 size cap
 
 frontmatter は SOFT 16KB / HARD 1MB。超えると parse 中止 + warning。
 
 ---
 
-## 10. 寛容 alias(Postel's Law)7 項目
+## 10. 寛容 alias(Postel's Law、§3.6 全 7 項目)
 
 AI が hallucinate しがちな形を実 render path に格上げ、`console.info` + DOM `data-pkc-canonical` で 3 つ組 hint(detected / interpretedAs / canonical)。
 
-| # | AI が書く形 | 寛容 parse 後 | code | canonical(推奨形)|
-|---|----------|------------|------|------|
-| 71 | `:lead:[content]` | `<span class="pkc-lead">` | PKC2005 | 段落 + `==content==` 等 |
-| 72 | `:spacing:{size=N}` | blank line marker | PKC2006 | `_<N>` |
-| 73 | `:align:{position=X}` | 次段落 align 適用 | PKC2007 | 行頭 `\|\|` `\|>` `<\|` |
-| 74 | `:quote:{attribution=…}` | `<small class="pkc-attribution">` | PKC2008 | `:::quote{author="…"}` |
-| 75 | `:::note` `:::warning` `:::tip` `:::info` `:::caution` `:::important` `:::danger` `:::summary` | `:::section{role=NAME}` alias | PKC2009 | `:::section{role=…}` |
-| 76 | `:::callout{type=X}` | `:::section{role=X}` alias | PKC2010 | 同上 |
-| 77 | `:::admonition{type=X title=Y}` | `:::section{role=X}` + `## Y` | PKC2011 | 同上 |
+| # | scope | AI が書く形 | 寛容 parse 後 | code | canonical(推奨形)|
+|---|-------|----------|------------|------|------|
+| 75 | I | `:lead:[content]` | `<span class="pkc-lead">` | PKC2005 | 段落 + `==content==` 等 |
+| 76 | I | `:spacing:{size=N}` | blank line marker | PKC2006 | `_<N>` |
+| 77 | I | `:align:{position=X}` | 次段落 align 適用 | PKC2007 | 行頭 `\|\|` `\|>` `<\|` |
+| 78 | I | `:quote:{attribution=…}` | `<small class="pkc-attribution">` | PKC2008 | `:::quote{author="…"}` |
+| 79 | B | `:::note` `:::warning` `:::tip` `:::info` `:::caution` `:::important` `:::danger` `:::summary` | `:::section{role=NAME}` alias | PKC2009 | `:::section{role=…}` |
+| 80 | B | `:::callout{type=X}` | `:::section{role=X}` alias | PKC2010 | 同上 |
+| 81 | B | `:::admonition{type=X title=Y}` | `:::section{role=X}` + `## Y` | PKC2011 | 同上 |
 
 AI repair tool は console / DOM 経由で canonical 形を学習可能(`docs/spec/markdown-dialect-for-ai-authors-v3.md` §2.3 参照)。
+
+---
+
+## 10b. CommonMark / GFM base 詳細(§3.5 全 4 項目)
+
+本書独自拡張ではない、commonmark + GFM の base 仕様が実装に組み込まれているもの。
+
+### 10b.1 Linkify(§3.5 #71)
+
+`https://...` / `http://...` などの URL を **書くだけで `<a>` 化**:
+
+```markdown
+詳細は https://example.com を参照。
+                ↓
+詳細は <a href="https://example.com">https://example.com</a> を参照。
+```
+
+明示 link 構文 `[label](url)` も併存(#12)。markdown-it `linkify: true` config 由来。
+
+### 10b.2 Typographer(§3.5 #72)
+
+入力中の ASCII 記号を **自動的に typographic な文字に変換**(markdown-it `typographer: true` 由来):
+
+| 入力 | 出力 |
+|------|------|
+| `--` | `–`(en-dash) |
+| `---` | `—`(em-dash) |
+| `...` | `…`(ellipsis) |
+| `"text"` | `“text”`(smart double quote) |
+| `'text'` | `‘text’`(smart single quote) |
+| `+-` | `±` |
+| `(c)` `(r)` `(tm)` | `©` `®` `™` |
+
+無効化したい場合は frontmatter `notation_overrides: { typographer: false }`(個別機能 off、#67)。
+
+### 10b.3 GFM strikethrough(§3.5 #73)
+
+GitHub Flavored Markdown 標準の `~~text~~` → `<del>text</del>` 取り消し線(#3)。
+
+### 10b.4 GFM table(§3.5 #74)
+
+GFM 標準 pipe-table(#40 + #41 CSV fence)。
 
 ---
 
@@ -807,40 +1081,41 @@ AI repair tool は console / DOM 経由で canonical 形を学習可能(`docs/sp
 - 短文 → 長文の格上げが自然(改行入れたいだけなら inline → block へ rewrap)
 - AI / canonicalize が一意経路で処理可能
 
-### 11.2 装飾系の対応表(#7、#9 等 inline ↔ #58 block format wrapper future)
+### 11.2 装飾系の対応表(§3.2.1 文字装飾 inline ↔ §3.3.7 #60 block format wrapper future)
 
-| やりたいこと | inline | block(future、§12)| 同一 vocabulary? |
+| やりたいこと | inline(§3.2) | block(§3.3 / §3.8 future)| 同一 vocabulary? |
 |-----------|--------|--------|---------|
-| 太字 | `**text**`(#1) | (なし、`**`は inline 限定) | inline 限定 |
-| 黄色マーカー | `==text==`(#5) | `:::bg-yellow\n本文\n:::` | はい、`==` ⟷ `:::bg-yellow` |
-| 任意背景色 | `:text:bg-red:`(#9) | `:::bg-red\n本文\n:::` | はい、完全対称 |
-| 色 | `:text:red:`(#9) | `:::red\n本文\n:::` | はい、完全対称 |
-| サイズ | `:text:1.2em:`(#9) | `:::1.2em\n本文\n:::` | はい、完全対称 |
-| 色 + 背景 + サイズ | `:text:red,bg-white,1.2em:`(#9) | `:::red,bg-white,1.2em\n本文\n:::` | はい、完全対称 |
-| 任意 CSS class | (inline は `:span:[text]{class=cls}` formal のみ #17) | `:::.highlight.important\n本文\n:::`(simple)| block-only simple 提供 |
+| 太字 | `**text**`(#1) | (なし、`**` は inline 限定) | inline 限定 |
+| 黄色マーカー | `==text==`(#5) | `:::bg-yellow\n本文\n:::`(#60) | はい、`==` ⟷ `:::bg-yellow` |
+| 任意背景色 | `:text:bg-red:`(#9) | `:::bg-red\n本文\n:::`(#60) | はい、完全対称 |
+| 色 | `:text:red:`(#9) | `:::red\n本文\n:::`(#60) | はい、完全対称 |
+| サイズ | `:text:1.2em:`(#9) | `:::1.2em\n本文\n:::`(#60) | はい、完全対称 |
+| 色 + 背景 + サイズ | `:text:red,bg-white,1.2em:`(#9) | `:::red,bg-white,1.2em\n本文\n:::`(#60) | はい、完全対称 |
+| 任意 CSS class | (inline は `:span:[text]{class=cls}` formal のみ、#28)| `:::.highlight.important\n本文\n:::`(#60 simple)| block-only simple 提供 |
 | 圏点 | `^^text^^`(#7) | (なし) | inline 限定 |
 | ルビ | `[base\|読み]`(#8) | (なし) | inline 限定 |
 | 上付き / 下付き | `:sup:[T]` `:sub:[T]`(#10-#11) | (なし) | inline 限定、用途稀 |
 
 ### 11.3 構造系の対応(既対応)
 
-| やりたいこと | inline | block | 同等? |
+| やりたいこと | inline(§3.2) | block(§3.3) | 同等? |
 |-----------|--------|--------|---------|
-| 引用 | (なし、`> text` 行単位のみ) | `> text` / `:::quote :::` | block 限定 |
-| コメント(隠し) | `%%text%%`(#13)| `%%%\n…\n%%%` / `:::comment :::`(#57)| はい、隠し動作は同じ |
-| 数式 | `$x^2$`(#12) | `$$\frac{a}{b}$$` 行単独(#69) | はい、$ 数で分岐 |
-| footnote | 参照 `[^id]`(#14)/ 直アタッチ `^[T]`(#15) | 定義 `[^id]: T`(行頭、#68) | はい、参照と定義 |
-| variable | `{{vars.x}}`(#16)| 同左(inline 経路のみ)| inline で発火 |
+| 引用 | (なし、`> text` 行単位のみ) | `> text`(#38)/ `:::quote :::`(#39)| block 限定 |
+| コメント(隠し) | `%%text%%`(#22)| `%%%\n…\n%%%` / `:::comment :::`(#53)| はい、隠し動作は同じ |
+| 数式 | `$x^2$`(#21) | `$$\frac{a}{b}$$` 行単独(#48 / #50) | はい、$ 数で分岐 |
+| footnote | 参照 `[^id]`(#23)/ 直アタッチ `^[T]`(#24)| 定義 `[^id]: T`(行頭、#59)| はい、参照と定義 |
+| variable | `{{vars.x}}`(#27)| 同左(inline 経路のみ) | inline で発火 |
 
 ### 11.4 意図的非対称(設計判断)
 
-| 機能 | inline | block | 理由 |
+| 機能 | inline(§3.2) | block(§3.3) | 理由 |
 |------|--------|-------|------|
-| 見出し | (なし) | `# h1` 〜 `###### h6`(#31) | inline で見出しは意味上不要 |
+| 見出し | (なし) | `# h1` 〜 `###### h6`(#29)| inline で見出しは意味上不要 |
 | 段落 | (default) | (default) | implicit、明示は formal `:::paragraph` のみ |
-| 箇条書き | (なし) | `- item` / `1. item`(#37-#39)| inline で意味上不要 |
-| 表 | (なし) | GFM table(#42) | inline で意味上不要 |
-| 装飾箱(任意 class)| (なし) | `:::.cls`(future、§12)| block-only、複段落くくり用途 |
+| 箇条書き | (なし) | `- item` / `1. item`(#35-#37)| inline で意味上不要 |
+| 表 | (なし) | GFM table(#40)/ CSV fence(#41)| inline で意味上不要 |
+| 装飾箱(任意 class) | (なし) | `:::.cls`(#60 future、§12)| block-only、複段落くくり用途 |
+| TOC | (なし) | `:::toc{depth=N}`(#54)| block 限定、目次自動生成 |
 
 ---
 
@@ -1131,19 +1406,23 @@ window.PKC.ast.renderMarkdown(ast: AstDocument): string    // canonicalize MD em
 
 ---
 
-## 15. やってはいけないこと(deny list)
+## 15. やってはいけないこと(deny list、§3.7 詳細)
 
-| ❌ NG | 何が起きる | 推奨 |
-|-------|---------|------|
-| `<div>` `<style>` 等 inline HTML 本文に | `html: false`、escape されて literal 表示 | `` ```html-render `` fence(#50) |
-| `[[em:..]]` 新規生成 | 動くけど deprecated warning | `^^..^^`(#7) |
-| `<\|text` を物理左寄せとして | logical end に解釈される | 物理左は formal `:::paragraph{align=left}`(#36) |
-| `:role:[…]` で知らない role 名 | render されない、文字列化 | allowlist 内のみ(`:strong:` `:emphasis:` `:code:` `:strike:` `:caption:` `:autoref:` `:sup:` `:sub:` `:span:`) |
-| `:span:[…]{style="…"}` | XSS allowlist 外、silent skip | `:span:[…]{class=warn}` で CSS class |
-| frontmatter 16KB 超 | size cap で parse 中止 + warning | コンパクトに |
-| 行頭 `>>>` `===` 等独自記号 | commonmark 標準衝突 | 本書記載構文のみ |
-| `:::toc{depth=N}` `:::frontmatter` `:::body` | 未実装 + PKC1010 warning | Phase 3 着地待ち(PR-2V/2W) |
-| **§12 future syntax 着地前に emit** | **render されない** | **本書 promote + 実装 PR landing 待ち** |
+| ❌ NG | scope | 何が起きる | 推奨 |
+|-------|-------|---------|------|
+| `<div>` `<style>` 等 inline HTML 本文に(#87) | I/B | `html: false`、escape されて literal 表示 | `` ```html-render `` fence(#45) |
+| `[[em:..]]` 新規生成(#82) | I | 動くけど deprecated warning | `^^..^^`(#7) |
+| `<\|text` を物理左寄せとして(#84) | B | logical end に解釈される | 物理左は formal `:::paragraph{align=left}`(#34) |
+| `:role:[…]` で知らない role 名(#90) | I | render されない、文字列化 | allowlist 内のみ(`:strong:` `:emphasis:` `:code:` `:strike:` `:mark:` `:emdot:` `:ruby:` `:caption:` `:autoref:` `:sup:` `:sub:` `:span:` `:fn:` `:fn-ref:` `:var:` `:math:` `:comment:` `:link:` `:card:` `:embed:` `:image:` `:asset-link:`) |
+| `:span:[…]{style="…"}`(#88) | I | XSS allowlist 外、silent skip | `:span:[…]{class=warn}` で CSS class |
+| frontmatter 16KB 超(#91) | F | size cap で parse 中止 + warning | コンパクトに |
+| 行頭 `>>>` `===` 等独自記号(#89) | B | commonmark 標準衝突 | 本書記載構文のみ |
+| `:::frontmatter` / `:::body` directive(#92) | B | 未実装 + PKC1010 warning | Phase 3 PR-2W で正式実装予定 |
+| `[[ruby:..]]` 新規生成(#83) | I | 🔄 deprecated、現は accept | `[base\|読]`(#8) |
+| `^x^` / `~x~` 上下付き simple(#85-#86) | I | ❌ 廃止予定 | `:sup:[x]`(#10)/ `:sub:[x]`(#11)/ math `$x^2$` |
+| **§12 future syntax 着地前に emit**(#60) | B | **render されない** | 本書 promote + 実装 PR landing 待ち |
+
+(`:::toc{depth=N}` は **2026-05-12 PR-2V で実装着地済**、#54 として block 記法に移行。deny list から削除)
 
 ---
 
