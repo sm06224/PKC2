@@ -802,17 +802,26 @@ function replaceSelectionRegions(state: AppState, root: HTMLElement): void {
     return;
   }
   if (hasMetaPane && oldMeta) {
-    const canEdit = state.phase === 'ready' && !state.readonly;
-    const newMeta = renderMetaPane(
-      metaTarget!,
-      canEdit,
-      state.container,
-      linkIndex,
-      state.tagFilter,
-      state.metaPaneMode ?? 'all',
-    );
     const wasMetaCollapsed = oldMeta.getAttribute('data-pkc-collapsed') === 'true';
-    if (wasMetaCollapsed) newMeta.setAttribute('data-pkc-collapsed', 'true');
+    // pgc-224(renderShell と同 doctrine):collapsed の時は placeholder で
+    // build skip。展開時(toggle-meta → full render)で完全 meta が build される。
+    let newMeta: HTMLElement;
+    if (wasMetaCollapsed) {
+      newMeta = createElement('aside', 'pkc-meta-pane');
+      newMeta.setAttribute('data-pkc-region', 'meta');
+      newMeta.setAttribute('data-pkc-collapsed', 'true');
+      newMeta.setAttribute('data-pkc-lazy-meta', 'true');
+    } else {
+      const canEdit = state.phase === 'ready' && !state.readonly;
+      newMeta = renderMetaPane(
+        metaTarget!,
+        canEdit,
+        state.container,
+        linkIndex,
+        state.tagFilter,
+        state.metaPaneMode ?? 'all',
+      );
+    }
     oldMeta.replaceWith(newMeta);
   }
 
@@ -1063,9 +1072,23 @@ function renderShell(state: AppState): HTMLElement {
     if (panePrefs.meta) rightHandle.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(rightHandle);
 
-    const canEdit = state.phase === 'ready' && !state.readonly;
-    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter, state.metaPaneMode ?? 'all');
-    if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
+    // pgc-224(pgc-207 shell menu lazy build と同 doctrine):meta pane が
+    // collapsed(panePrefs.meta=true)の時は full meta DOM を build せず、
+    // placeholder のみ append。展開時(toggle-meta dispatch)は render 走り
+    // panePrefs.meta=false で完全 meta が build される。
+    // render:meta 17.5-23ms@c-1000+ を collapsed user で完全 skip。
+    let metaPane: HTMLElement;
+    if (panePrefs.meta) {
+      // collapsed placeholder。region attribute は維持(action-binder の
+      // event delegation が meta region を query するため)。
+      metaPane = createElement('aside', 'pkc-meta-pane');
+      metaPane.setAttribute('data-pkc-region', 'meta');
+      metaPane.setAttribute('data-pkc-collapsed', 'true');
+      metaPane.setAttribute('data-pkc-lazy-meta', 'true');
+    } else {
+      const canEdit = state.phase === 'ready' && !state.readonly;
+      metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter, state.metaPaneMode ?? 'all');
+    }
     main.appendChild(metaPane);
   }
 
