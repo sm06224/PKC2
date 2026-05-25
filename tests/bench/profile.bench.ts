@@ -210,7 +210,13 @@ for (const scale of SCALES) {
     test('search keystroke: type "meet" into sidebar search', async ({ page }) => {
       await setupScenario(page, scale);
       await clearPerf(page);
-      const search = page.locator('[data-pkc-field="search"]').first();
+      // pgc-213(bench fix):`sidebar.mode` default が 'tree' → 'filer' に
+      // 変更された(sidebar-flags.ts L27)。filer mode の search input は
+      // `data-pkc-field="sidebar-filer-search"`、tree mode は `"search"`。
+      // 両 mode 対応に拡張、いずれか present な方を click。
+      const search = page
+        .locator('[data-pkc-field="sidebar-filer-search"], [data-pkc-field="search"]')
+        .first();
       await search.click();
       for (const ch of 'meet') {
         await search.press(ch);
