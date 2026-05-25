@@ -2,8 +2,54 @@
   "scale": "c-1000",
   "entries": 1000,
   "scenario": "select-entry",
-  "measures": [],
+  "measures": [
+    {
+      "name": "dispatch:SELECT_ENTRY",
+      "startTime": 599.3999999999069,
+      "duration": 48.90000000037253
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY:reduce",
+      "startTime": 599.7000000001863,
+      "duration": 0.10000000009313226
+    },
+    {
+      "name": "dispatch:SELECT_ENTRY:notify-state",
+      "startTime": 599.8000000002794,
+      "duration": 48.09999999962747
+    },
+    {
+      "name": "render:scope=selection-only",
+      "startTime": 600,
+      "duration": 45.60000000009313
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 600.3000000002794,
+      "duration": 1.599999999627471
+    },
+    {
+      "name": "render:center",
+      "startTime": 605.3999999999069,
+      "duration": 2.7000000001862645
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 614.6000000000931,
+      "duration": 0.8999999999068677
+    },
+    {
+      "name": "render:center",
+      "startTime": 615.5,
+      "duration": 1.6000000000931323
+    },
+    {
+      "name": "render:meta",
+      "startTime": 617.1000000000931,
+      "duration": 27.200000000186265
+    }
+  ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 53.56,
-  "capturedAt": "2026-05-25T01:32:22.231Z"
+  "heapUsedMb": 55.78,
+  "capturedAt": "2026-05-25T01:41:24.706Z"
 }

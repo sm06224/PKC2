@@ -255,12 +255,19 @@ for (const scale of SCALES) {
     test('select entry: click a sidebar row', async ({ page }) => {
       await setupScenario(page, scale);
       await clearPerf(page);
+      // pgc-214(bench fix):pgc-213 と同型の sidebar.mode default 'filer'
+      // 対応。filer mode の row は `<li.pkc-sidebar-filer-item>`、tree mode
+      // は `<li.pkc-entry-item>`。両方を data-pkc-action="select-entry" +
+      // data-pkc-lid で query(両 mode 共通の attribute)。
+      // また sidebar click は dblclick window(250ms)分だけ SELECT_ENTRY
+      // dispatch を defer する(action-binder L1532-1533)ので、50ms 待機
+      // では measures が空になる(旧 bench bug)。300ms 待機に拡張。
       const firstRow = page
-        .locator('.pkc-entry-list li.pkc-entry-item[data-pkc-lid]')
+        .locator('[data-pkc-region="sidebar"] [data-pkc-action="select-entry"][data-pkc-lid]')
         .first();
       if (await firstRow.count()) {
         await firstRow.click();
-        await page.waitForTimeout(50);
+        await page.waitForTimeout(300);
       }
       const dump = await dumpProfile(page);
       writeResult({
