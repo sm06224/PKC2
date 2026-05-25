@@ -9592,6 +9592,13 @@ function collectAssetNameMap(container: Container): Record<string, string> {
  */
 export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispatcher): void {
   const previews = root.querySelectorAll<HTMLElement>('[data-pkc-region="attachment-preview"]');
+  if (previews.length === 0) return;
+  // pgc-234:旧 path は per-preview に `entries.find(...)` で O(N) walk、
+  // 複数 preview があると O(P × N)。state と entryByLid Map を loop の外で
+  // **1 度だけ build** し、以後 O(1) Map.get で lookup。
+  const state = dispatcher.getState();
+  const containerSandboxDefault = resolveContainerSandboxDefault(state.container?.meta.sandbox_policy);
+  let entryByLid: Map<string, import('../../core/model/record').Entry> | null = null;
   for (const el of previews) {
     // Skip if already populated (has child elements beyond placeholder)
     if (el.querySelector('img, video, audio, iframe, object')) continue;
@@ -9604,12 +9611,14 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
 
     // Read sandbox_allow from the entry body for HTML previews.
     // Fallback chain: per-entry override → container default → strict.
-    const state = dispatcher.getState();
-    const entryForPreview = state.container?.entries.find((e) => e.lid === lid);
+    if (!entryByLid && state.container) {
+      entryByLid = new Map(state.container.entries.map((e) => [e.lid, e]));
+    }
+    const entryForPreview = entryByLid?.get(lid);
     const entryAllow = entryForPreview
       ? parseAttachmentBody(entryForPreview.body).sandbox_allow
       : undefined;
-    const sandboxAllow = entryAllow ?? resolveContainerSandboxDefault(state.container?.meta.sandbox_policy);
+    const sandboxAllow = entryAllow ?? containerSandboxDefault;
     populatePreviewElement(el, resolved, 'pkc-attachment-preview-img', sandboxAllow);
   }
 }
