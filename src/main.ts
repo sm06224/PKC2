@@ -10,6 +10,7 @@ import {
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
 import { computeRenderScope } from './adapter/ui/render-scope';
+import { getFilterIndexes } from './adapter/ui/filter-cache';
 import type { AppState } from './adapter/state/app-state';
 import { createLocationNavTracker } from './adapter/ui/location-nav';
 import { preferredEditFocusSelector } from './adapter/ui/edit-focus';
@@ -297,8 +298,10 @@ async function boot(): Promise<void> {
     // explicit `beginLogEdit` focus win because it runs before
     // this branch on the same tick.
     if (!continuity.focus && state.phase === 'editing') {
+      // pgc-240:filter-cache の entryByLid Map で O(1) lookup ── onState
+      // listener は毎 render 後に走るため hot path、O(N) walk を解消。
       const editingEntry = state.editingLid && state.container
-        ? state.container.entries.find((e) => e.lid === state.editingLid) ?? null
+        ? getFilterIndexes(state.container).entryByLid.get(state.editingLid) ?? null
         : null;
       const bodyFieldSelector = preferredEditFocusSelector(editingEntry?.archetype);
       const target =
