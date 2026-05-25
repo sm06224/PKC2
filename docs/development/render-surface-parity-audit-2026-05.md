@@ -681,15 +681,23 @@ pgc-90 で S2(`rendered-viewer.ts:1081`)/ S3 live(`action-binder.ts:8184-8193`)/
 - **priority**:🟡 Mid(textlog × asset の組合せは niche、ただし textlog で
   画像を貼る用途は実在)。
 
-### Gap-10 S2 inline CSS の 4 件 mirror 不足(footnote / transclusion / task)
+### Gap-10 S2 inline CSS の 4 件 mirror 不足(footnote / transclusion / task)── ✅ **RESOLVED**(pgc-210、audit 数値再評価:過去 PR で既 mirror 済)
 
-- **発生**:S2 inline CSS で `pkc-footnote-ref` / `pkc-task-badge` /
+pgc-210 grep reconcile:**4 件すべて `rendered-viewer.ts` inline `<style>` に既 mirror 済**。詳細:
+- `.pkc-md-rendered .pkc-footnote-ref`:L627, L632, L637, L638, L639(5 rule)
+- `.pkc-md-rendered .pkc-task-badge`:L641
+- `.pkc-md-rendered [data-pkc-task-complete="true"] .pkc-task-badge` + `.pkc-md-rendered .pkc-task-badge[data-pkc-task-complete="true"]`:L646, L647(2 rule)
+- `.pkc-md-rendered .pkc-transclusion-broken`:L659(1 rule)
+
+合計 **9 rule reference** が S2 inline CSS に存在(footnote 5 + task 2 + transclusion-broken 1 + footnote::before/::after は 5 内含)。audit 当時の「4 件不足」 推定は陳腐化していた(過去の PR-2L / PR-2K / PR-2N で mirror 済)。本 doc-only PR で RESOLVED marker + line number 参照を記録、今後の新 rule 追加時は **base.css + rendered-viewer.ts inline style 両方** に追加する規約を継続(Gap-13 と同じ doctrine)。
+
+---
+
+- **発生**(audit 当時):S2 inline CSS で `pkc-footnote-ref` / `pkc-task-badge` /
   `pkc-task-complete` / `pkc-transclusion-broken` 等 4 件不足。
-- **目指す**:base.css の該当 rule を `rendered-viewer.ts` の inline `<style>`
-  に mirror。
-- **アプローチ**:1 PR で 4 件まとめて mirror。
-- **size**:小(20〜40 行 CSS)。
-- **priority**:🟡 Mid(footnote は機能影響あり、他は chrome)。
+- **解消**:過去 PR(PR-2L / PR-2K / PR-2N)で順次 mirror 済、pgc-210 grep で確認。
+- **size**:小(20〜40 行 CSS、過去 PR で完遂)。
+- **priority**:🟡 Mid(footnote は機能影響あり、他は chrome)── pgc-210 で RESOLVED 確認。
 
 ### Gap-11 S2 / S4 で table interactive UI を意図的に外している
 
