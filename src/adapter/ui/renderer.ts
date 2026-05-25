@@ -76,7 +76,7 @@ import { findSubLocationHits } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { buildConnectedLidSet, buildInboundCountMap, getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { buildConnectednessSets, type ConnectednessSets } from '../../features/connectedness';
-import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
+import { getTagsForEntry } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import {
   buildTree,
@@ -8696,43 +8696,37 @@ function renderMetaPaneImpl(
     tagSection.appendChild(chip);
   }
 
-  if (canEdit) {
-    const available = getAvailableTagTargets(container.relations, getUserEntries(container.entries), entry.lid);
-    if (available.length > 0) {
-      const addForm = createElement('span', 'pkc-tag-add');
-      addForm.setAttribute('data-pkc-region', 'tag-add');
-      addForm.setAttribute('data-pkc-from', entry.lid);
+  // pgc-226(pgc-222 lazy options の deeper attack):pgc-222 で options 構築
+  // は lazy 化したが、visibility 判定の `getAvailableTagTargets(...).length > 0`
+  // 自体が container.relations + entries を walk する N+M cost で
+  // c-5000 で ~5ms 残存。**visibility check も lazy 化**:cheap な
+  // `container.entries.length > 1` で「他に entry がある」 だけ確認、actual
+  // available は user mousedown 時に handler が compute する。`available=0`
+  // のときに select が表示される問題は handler 側で空 options + placeholder
+  // 「(候補無し)」 表示で対処(後方互換維持)。
+  if (canEdit && container.entries.length > 1) {
+    const addForm = createElement('span', 'pkc-tag-add');
+    addForm.setAttribute('data-pkc-region', 'tag-add');
+    addForm.setAttribute('data-pkc-from', entry.lid);
 
-      const select = document.createElement('select');
-      select.setAttribute('data-pkc-field', 'tag-target');
-      select.className = 'pkc-tag-select';
-      // pgc-222(pgc-221 で identify した meta:section-categorical-tag 6.6ms@1000
-      // への deeper attack):options を render 時に populate せず、placeholder
-      // のみ append。action-binder の mousedown/focus handler が populate する
-      // (`data-pkc-lazy-options="tag-target"` marker で識別)。SELECT_ENTRY 時の
-      // render-time cost を ~6ms → 0ms に削減、user が select を click した時
-      // にのみ N option を build(amortize)。
-      // option count は `data-pkc-lazy-available-count` で hint(後続 user-side
-      // search/filter UI の seed)。
-      select.setAttribute('data-pkc-lazy-options', 'tag-target');
-      select.setAttribute('data-pkc-lazy-available-count', String(available.length));
-      select.setAttribute('data-pkc-from-lid', entry.lid);
-      const defaultOpt = document.createElement('option');
-      defaultOpt.value = '';
-      defaultOpt.textContent = available.length > 0
-        ? `+ Tag (${available.length} 候補、クリックで読込)`
-        : '+ Tag';
-      select.appendChild(defaultOpt);
-      addForm.appendChild(select);
+    const select = document.createElement('select');
+    select.setAttribute('data-pkc-field', 'tag-target');
+    select.className = 'pkc-tag-select';
+    select.setAttribute('data-pkc-lazy-options', 'tag-target');
+    select.setAttribute('data-pkc-from-lid', entry.lid);
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '+ Tag (クリックで読込)';
+    select.appendChild(defaultOpt);
+    addForm.appendChild(select);
 
-      const addBtn = createElement('button', 'pkc-btn-small');
-      addBtn.setAttribute('data-pkc-action', 'add-tag');
-      addBtn.setAttribute('title', 'Add a tag to this entry');
-      addBtn.textContent = 'Add';
-      addForm.appendChild(addBtn);
+    const addBtn = createElement('button', 'pkc-btn-small');
+    addBtn.setAttribute('data-pkc-action', 'add-tag');
+    addBtn.setAttribute('title', 'Add a tag to this entry');
+    addBtn.textContent = 'Add';
+    addForm.appendChild(addBtn);
 
-      tagSection.appendChild(addForm);
-    }
+    tagSection.appendChild(addForm);
   }
 
   meta.appendChild(tagSection);

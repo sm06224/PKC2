@@ -377,6 +377,9 @@ describe('Mutation → Shell integration', () => {
 
     const select = addForm!.querySelector<HTMLSelectElement>('[data-pkc-field="tag-target"]');
     expect(select).not.toBeNull();
+    // pgc-226:tag-target select は lazy populate なので options は初期 placeholder のみ。
+    // user mousedown(capture-phase handler)で populate されるので test 側で simulate。
+    select!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
     select!.value = 'e2';
 
     // Click add button

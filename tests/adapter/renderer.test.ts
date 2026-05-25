@@ -2958,7 +2958,7 @@ describe('Renderer', () => {
     expect(addBtn).not.toBeNull();
   });
 
-  it('tag add form excludes already-tagged entries', () => {
+  it('tag add form shows lazy select even when all targets already tagged (pgc-226)', () => {
     const containerWithTags: Container = {
       ...mockContainer,
       relations: [
@@ -2971,9 +2971,16 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    // e2 is already tagged, so no available targets (only 2 entries total)
+    // pgc-226:render-time の visibility check は `container.entries.length > 1` の
+    // cheap check のみ。actual available の判定は user mousedown 時に lazy で行う。
+    // 「e2 already tagged → addForm は出ない」 という古い semantic は廃止。
+    // available=0 の case は action-binder 側で「(候補無し)」 placeholder で対処。
     const addForm = root.querySelector('[data-pkc-region="tag-add"]');
-    expect(addForm).toBeNull(); // no form when all tagged
+    expect(addForm).not.toBeNull();
+    const select = addForm!.querySelector<HTMLSelectElement>('[data-pkc-field="tag-target"]');
+    expect(select).not.toBeNull();
+    expect(select!.getAttribute('data-pkc-lazy-options')).toBe('tag-target');
+    expect(select!.getAttribute('data-pkc-lazy-populated')).toBeNull();
   });
 
   it('tags section always shows even with no tags', () => {

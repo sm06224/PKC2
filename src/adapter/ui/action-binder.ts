@@ -961,11 +961,17 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
     t.appendChild(frag);
     t.setAttribute('data-pkc-lazy-populated', 'true');
-    // placeholder option の textContent を「(候補 N、クリックで読込)」 →
+    // placeholder option の textContent を「(クリックで読込)」 →
     // 短い canonical label に戻す(populate 済を示す)。
+    // pgc-226:available=0 のとき「(候補無し)」 表示で「Add 押せるが何も起きない」
+    // false positive を user に明示。
     const placeholder = t.querySelector<HTMLOptionElement>('option[value=""]');
     if (placeholder) {
-      placeholder.textContent = lazyKind === 'tag-target' ? '+ Tag' : '-- Target --';
+      if (available.length === 0) {
+        placeholder.textContent = lazyKind === 'tag-target' ? '+ Tag (候補無し)' : '-- 候補無し --';
+      } else {
+        placeholder.textContent = lazyKind === 'tag-target' ? '+ Tag' : '-- Target --';
+      }
     }
   }
 
