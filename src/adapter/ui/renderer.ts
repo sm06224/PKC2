@@ -8460,6 +8460,11 @@ function renderMetaPaneImpl(
   activeTagFilter: ReadonlySet<string> | undefined = undefined,
   metaPaneMode: 'all' | 'properties' | 'references' = 'all',
 ): HTMLElement {
+  // pgc-219:bench で render:meta 開始から最初の sub-profile (meta:frontmatter)
+  // 開始まで 20ms 程度のギャップが c-1000 で観測された(pgc-216 sub-profile
+  // 群の "unmeasured" 部分の一部)。header / Copy link button / timestamps の
+  // build 区間を `meta:startup` sub-profile で覆い、startup overhead を identify。
+  const endProfStartup = profileStart('meta:startup');
   const meta = createElement('aside', 'pkc-meta-pane');
   meta.setAttribute('data-pkc-region', 'meta');
 
@@ -8497,6 +8502,7 @@ function renderMetaPaneImpl(
   updated.textContent = `Updated: ${formatTimestamp(entry.updated_at)}`;
   timestamps.appendChild(updated);
   meta.appendChild(timestamps);
+  endProfStartup();
 
   // Table of Contents (TEXT / TEXTLOG with h1–h3 headings).
   // 領域 10-6 ζ'' Phase 2a — Frontmatter property table.
