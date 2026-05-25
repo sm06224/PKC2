@@ -8384,8 +8384,15 @@ function renderView(
     // できないため、ここで補完する。
     hydrateAppIconAssetOptions(view, container);
   } else if (container?.assets) {
-    const mimeByKey = buildAssetMimeMap(container);
-    const nameByKey = buildAssetNameMap(container);
+    // pgc-229:`buildAssetMimeMap` / `buildAssetNameMap` は container.entries
+    // 全件を walk して attachment archetype entry を filter。c-5000 で
+    // 2 walk 合計 ~1-2ms 累積。container.assets が空(asset data 無し)なら
+    // map は必ず空、walk 自体無意味 ── early skip で empty map を pass。
+    // body が asset: ref を持たない場合の cost は presenter 側 `hasAssetReferences`
+    // gate で既に短絡されているが、map build 自体の cost は本 PR で除去。
+    const hasAnyAsset = Object.keys(container.assets).length > 0;
+    const mimeByKey = hasAnyAsset ? buildAssetMimeMap(container) : {};
+    const nameByKey = hasAnyAsset ? buildAssetNameMap(container) : {};
     // `container.entries` is passed so text-like presenters can expand
     // `![](entry:...)` transclusions (P1 Slice 5-B). Non-text presenters
     // (attachment / folder / todo / form) ignore this 5th argument.
