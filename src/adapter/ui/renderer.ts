@@ -5946,12 +5946,14 @@ function renderFilerTrashTable(state: AppState): HTMLElement {
 function resolveFilerScope(state: AppState): Entry | null {
   const lid = state.selectedLid;
   if (!lid || !state.container) return null;
-  const entry = state.container.entries.find((e) => e.lid === lid);
+  // pgc-239:filter-cache の entryByLid Map で 2 つの lookup を O(1) に。
+  const byLid = getFilterIndexes(state.container).entryByLid;
+  const entry = byLid.get(lid);
   if (!entry) return null;
   if (entry.archetype === 'folder') return entry;
   const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, lid);
   if (ancestors.length === 0) return null;
-  return state.container.entries.find((e) => e.lid === ancestors[0]) ?? null;
+  return byLid.get(ancestors[0]!) ?? null;
 }
 
 /**
@@ -6040,9 +6042,11 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
   ];
   if (scope && state.container) {
     const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, scope.lid);
+    // pgc-239:filter-cache の entryByLid Map で loop 内 lookup を O(1) に。
+    const byLid = getFilterIndexes(state.container).entryByLid;
     // ancestors are nearest-first; reverse to get root-to-current order.
     for (const aLid of ancestors.slice().reverse()) {
-      const a = state.container.entries.find((e) => e.lid === aLid);
+      const a = byLid.get(aLid);
       if (a) trail.push({ label: a.title || a.lid, lid: a.lid });
     }
     trail.push({ label: scope.title || scope.lid, lid: scope.lid, isCurrent: true });
@@ -11024,7 +11028,8 @@ function renderFolderContents(folder: Entry, container: Container): HTMLElement 
  */
 function resolveContextFolder(state: AppState): Entry | null {
   if (!state.selectedLid || !state.container) return null;
-  const selected = state.container.entries.find((e) => e.lid === state.selectedLid);
+  // pgc-239:filter-cache の entryByLid Map で O(1) lookup。
+  const selected = getFilterIndexes(state.container).entryByLid.get(state.selectedLid);
   if (!selected) return null;
 
   if (selected.archetype === 'folder') return selected;
@@ -11406,7 +11411,10 @@ function renderAboutCredits(
 
 function findSelectedEntry(state: AppState): Entry | null {
   if (!state.selectedLid || !state.container) return null;
-  return state.container.entries.find((e) => e.lid === state.selectedLid) ?? null;
+  // pgc-239:filter-cache の entryByLid Map で O(1) lookup ── 3 callers
+  // (renderShell L808 / renderShell L1081 / renderCenterImpl L5308)で
+  // 毎 render に呼ばれる hot path、O(N) → O(1) に変換。
+  return getFilterIndexes(state.container).entryByLid.get(state.selectedLid) ?? null;
 }
 
 /**
