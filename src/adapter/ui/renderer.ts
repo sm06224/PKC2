@@ -703,9 +703,18 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
   const entryListScrollTop = oldEntryList?.scrollTop ?? 0;
   const wasCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
 
-  const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
-  const newSidebar = renderSidebar(state, linkIndex);
-  if (wasCollapsed) newSidebar.setAttribute('data-pkc-collapsed', 'true');
+  // pgc-225(pgc-224 と同 doctrine):collapsed の時は placeholder で build skip。
+  // 展開時(toggle-sidebar → full render)で完全 sidebar が build される。
+  let newSidebar: HTMLElement;
+  if (wasCollapsed) {
+    newSidebar = createElement('aside', 'pkc-sidebar');
+    newSidebar.setAttribute('data-pkc-region', 'sidebar');
+    newSidebar.setAttribute('data-pkc-collapsed', 'true');
+    newSidebar.setAttribute('data-pkc-lazy-sidebar', 'true');
+  } else {
+    const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
+    newSidebar = renderSidebar(state, linkIndex);
+  }
 
   oldSidebar.replaceWith(newSidebar);
   newSidebar.scrollTop = scrollTop;
@@ -772,8 +781,17 @@ function replaceSelectionRegions(state: AppState, root: HTMLElement): void {
   const entryListScrollTop = oldEntryList?.scrollTop ?? 0;
   const wasSidebarCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
   const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
-  const newSidebar = renderSidebar(state, linkIndex);
-  if (wasSidebarCollapsed) newSidebar.setAttribute('data-pkc-collapsed', 'true');
+  // pgc-225(renderShell と同 doctrine):collapsed の時は placeholder で
+  // build skip。展開時は full render で完全 sidebar が build される。
+  let newSidebar: HTMLElement;
+  if (wasSidebarCollapsed) {
+    newSidebar = createElement('aside', 'pkc-sidebar');
+    newSidebar.setAttribute('data-pkc-region', 'sidebar');
+    newSidebar.setAttribute('data-pkc-collapsed', 'true');
+    newSidebar.setAttribute('data-pkc-lazy-sidebar', 'true');
+  } else {
+    newSidebar = renderSidebar(state, linkIndex);
+  }
   oldSidebar.replaceWith(newSidebar);
   newSidebar.scrollTop = sidebarScrollTop;
   const newEntryList = newSidebar.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
@@ -1010,7 +1028,17 @@ function renderShell(state: AppState): HTMLElement {
   // tab 別 builder へ振り分け。pgc-103 で outline tab を実装、未実装の
   // tab は placeholder("Coming soon")で fallback。
   let sidebar: HTMLElement;
-  if (shellActivityBarEnabled()) {
+  // pgc-225(pgc-224 と同 doctrine):sidebar が collapsed(panePrefs.sidebar
+  // =true)の時は full DOM(filer ~100 row tree / outline / recent / etc.)を
+  // build せず placeholder のみ append。展開時(toggle-sidebar dispatch)で
+  // 完全 sidebar が build される。c-100+ で tree-loop / flat-loop / etc.の
+  // 数 ms cost を完全 skip。
+  if (panePrefs.sidebar) {
+    sidebar = createElement('aside', 'pkc-sidebar');
+    sidebar.setAttribute('data-pkc-region', 'sidebar');
+    sidebar.setAttribute('data-pkc-collapsed', 'true');
+    sidebar.setAttribute('data-pkc-lazy-sidebar', 'true');
+  } else if (shellActivityBarEnabled()) {
     const tab = getActivityBarActiveTab();
     switch (tab) {
       case 'explorer':
@@ -1038,7 +1066,6 @@ function renderShell(state: AppState): HTMLElement {
   } else {
     sidebar = renderSidebar(state, linkIndex);
   }
-  if (panePrefs.sidebar) sidebar.setAttribute('data-pkc-collapsed', 'true');
   main.appendChild(sidebar);
 
   // Resize handle: sidebar ↔ center
