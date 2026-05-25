@@ -11306,6 +11306,34 @@ function findSelectedEntry(state: AppState): Entry | null {
  * Format an ISO timestamp for display.
  * Shows date and time in a compact human-readable form.
  */
+// pgc-220(pgc-219 で identify した meta:startup 12ms の主因):
+// `new Intl.DateTimeFormat()` は constructor が重量級(locale parse +
+// options bake)。formatTimestamp が呼ばれる度に毎回新規生成していたため
+// SELECT_ENTRY 1 回で 2 instance 作成 → ~数 ms のロス。
+// locale + options は実質 static(navigator.language は session 中不変)
+// なので、module-local cache で 1 度だけ生成する。
+let cachedTimestampFormatter: Intl.DateTimeFormat | null = null;
+let cachedTimestampLocale: string | null = null;
+
+function getTimestampFormatter(): Intl.DateTimeFormat {
+  const locale = (typeof navigator !== 'undefined' && navigator.language) || 'ja-JP';
+  if (cachedTimestampFormatter && cachedTimestampLocale === locale) {
+    return cachedTimestampFormatter;
+  }
+  cachedTimestampLocale = locale;
+  cachedTimestampFormatter = new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    // 2026-05-06 — en-US default would emit "AM/PM"。日本語 / 英語
+    // 共通で 24 時間表示にして UI を簡潔にする(user 指示 G6)。
+    hour12: false,
+  });
+  return cachedTimestampFormatter;
+}
+
 function formatTimestamp(iso: string): string {
   // 2026-05-06 user direction:「日時関連のロケール解決がされていない
   // 表示があるため、ファイラの日時もエントリごとの右ペインの日時表示
@@ -11314,18 +11342,7 @@ function formatTimestamp(iso: string): string {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    const locale = (typeof navigator !== 'undefined' && navigator.language) || 'ja-JP';
-    const fmt = new Intl.DateTimeFormat(locale, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      // 2026-05-06 — en-US default would emit "AM/PM"。日本語 / 英語
-      // 共通で 24 時間表示にして UI を簡潔にする(user 指示 G6)。
-      hour12: false,
-    });
-    return fmt.format(d);
+    return getTimestampFormatter().format(d);
   } catch {
     return iso;
   }

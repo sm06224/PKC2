@@ -267,7 +267,10 @@ for (const scale of SCALES) {
         .first();
       if (await firstRow.count()) {
         await firstRow.click();
-        await page.waitForTimeout(300);
+        // pgc-220:bench instability で 300ms 待機でも measures: [] になる
+        // case が混じる(JIT warm-up / IDB read 後の dispatch defer 揺らぎ)。
+        // 500ms に拡張して安定化。dblclick window 250ms + 余裕。
+        await page.waitForTimeout(500);
       }
       const dump = await dumpProfile(page);
       writeResult({

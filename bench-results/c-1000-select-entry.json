@@ -5,101 +5,101 @@
   "measures": [
     {
       "name": "dispatch:SELECT_ENTRY",
-      "startTime": 638.8000000007451,
-      "duration": 56.799999999813735
+      "startTime": 642.0999999996275,
+      "duration": 65.5
     },
     {
       "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 639.2000000001863,
+      "startTime": 642.3999999994412,
       "duration": 0
     },
     {
       "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 639.2000000001863,
-      "duration": 55.700000000186265
+      "startTime": 642.5,
+      "duration": 63.69999999925494
     },
     {
       "name": "render:scope=selection-only",
-      "startTime": 639.5,
-      "duration": 48.40000000037253
+      "startTime": 642.7999999998137,
+      "duration": 57.799999999813735
     },
     {
       "name": "render:sidebar",
-      "startTime": 639.7000000001863,
-      "duration": 1.7000000001862645
+      "startTime": 643,
+      "duration": 1.7999999998137355
     },
     {
       "name": "render:center",
-      "startTime": 644.9000000003725,
+      "startTime": 648.6999999992549,
       "duration": 3
     },
     {
       "name": "render:sidebar",
-      "startTime": 653.8000000007451,
-      "duration": 0.7999999998137355
+      "startTime": 669.1999999992549,
+      "duration": 0.900000000372529
     },
     {
       "name": "render:center",
-      "startTime": 654.9000000003725,
-      "duration": 1.099999999627471
+      "startTime": 670.0999999996275,
+      "duration": 1.2999999998137355
     },
     {
       "name": "render:meta",
-      "startTime": 656.6000000005588,
-      "duration": 29.700000000186265
+      "startTime": 671.6999999992549,
+      "duration": 27.5
     },
     {
       "name": "meta:startup",
-      "startTime": 657.4000000003725,
-      "duration": 11.900000000372529
+      "startTime": 672.5999999996275,
+      "duration": 11.700000000186265
     },
     {
       "name": "meta:frontmatter",
-      "startTime": 669.4000000003725,
-      "duration": 0.09999999962747097
+      "startTime": 684.5,
+      "duration": 0
     },
     {
       "name": "meta:toc",
-      "startTime": 669.6000000005588,
+      "startTime": 684.5999999996275,
       "duration": 0
     },
     {
       "name": "meta:middle-sections",
-      "startTime": 669.7000000001863,
-      "duration": 9.600000000558794
+      "startTime": 684.5999999996275,
+      "duration": 7.5
     },
     {
       "name": "meta:history",
-      "startTime": 679.4000000003725,
+      "startTime": 692.2999999998137,
       "duration": 0.20000000018626451
     },
     {
       "name": "meta:relations",
-      "startTime": 679.6000000005588,
-      "duration": 1
+      "startTime": 692.5,
+      "duration": 0.8999999994412065
     },
     {
       "name": "meta:linkIndex",
-      "startTime": 680.6000000005588,
+      "startTime": 693.5999999996275,
       "duration": 0
     },
     {
       "name": "meta:renderLinkIndexSections",
-      "startTime": 680.8000000007451,
-      "duration": 0.2999999998137355
+      "startTime": 693.7999999998137,
+      "duration": 0.39999999944120646
     },
     {
       "name": "meta:relation-create-form",
-      "startTime": 681.1000000005588,
-      "duration": 5
+      "startTime": 694.2999999998137,
+      "duration": 4.7000000001862645
     },
     {
       "name": "meta:inspector",
-      "startTime": 686.2000000001863,
-      "duration": 0.10000000055879354
+      "startTime": 699.1999999992549,
+      "duration": 0
     }
   ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 56.15,
-  "capturedAt": "2026-05-25T02:14:41.979Z"
+  "heapUsedMb": 55.78,
+  "capturedAt": "2026-05-25T02:21:40.257Z"
 }
