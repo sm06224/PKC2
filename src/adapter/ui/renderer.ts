@@ -8531,9 +8531,11 @@ function renderMetaPaneImpl(
   // row sits ahead of Relation lists).
   // pgc-216:entry-tags + categorical + tag section + move + description +
   // profile を 1 sub-profile で覆う(各 section ~1-2ms で合計 6-10ms 想定)。
-  // section 単位 lazy build や per-section memoize の attack target を
-  // construct で identify。
+  // pgc-221:meta:middle-sections 9.6ms@1000 を 5 section sub-profile に
+  // split、最重 section を identify。entryTags / categorical+tag /
+  // move-to-folder / description / profile の 5 グループ。
   const endProfMiddleSections = profileStart('meta:middle-sections');
+  const endProfEntryTags = profileStart('meta:section-entry-tags');
   const entryTagSection = createElement('div', 'pkc-entry-tags');
   entryTagSection.setAttribute('data-pkc-region', 'entry-tags');
   entryTagSection.setAttribute('data-pkc-lid', entry.lid);
@@ -8605,6 +8607,8 @@ function renderMetaPaneImpl(
   }
 
   meta.appendChild(entryTagSection);
+  endProfEntryTags();
+  const endProfCategoricalTag = profileStart('meta:section-categorical-tag');
 
   // Tags section (categorical relation — Slice A §2 "Categorical").
   // The DOM region / class / action names stay stable so existing
@@ -8684,6 +8688,8 @@ function renderMetaPaneImpl(
   }
 
   meta.appendChild(tagSection);
+  endProfCategoricalTag();
+  const endProfMove = profileStart('meta:section-move');
 
   // Move to Folder
   if (canEdit) {
@@ -8738,6 +8744,8 @@ function renderMetaPaneImpl(
 
     meta.appendChild(moveSection);
   }
+  endProfMove();
+  const endProfDescProfile = profileStart('meta:section-desc-profile');
 
   // Filer display profile (folder archetype only) —領域 10-6 ζ'' Phase 1.
   // Phase 1 only ships `'explorer'`; Phase 2b/3a will add `'graph'` /
@@ -8844,6 +8852,7 @@ function renderMetaPaneImpl(
 
     meta.appendChild(profileSection);
   }
+  endProfDescProfile();
   endProfMiddleSections();
 
   // History section
