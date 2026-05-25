@@ -236,9 +236,16 @@ async function boot(): Promise<void> {
       // + center の両方を walk するため必要、populateInlineAssetPreviews も
       // center body を見るので必要、cleanupBlobUrls は center 内 preview
       // Blob を扱う(replace される)ので 1 回。
+      // pgc-212(pgc-208 follow-up bug fix):新 entry の center/meta content
+      // にも WCAG contrast shift が必要。pgc-208 では `applyWcagResolverNow`
+      // を skip していたため新規 inline color の AA 4.5:1 未達が補正されず
+      // user の theme.wcag_auto_shift flag(default ON)の意図と乖離。
+      // resolver は pure DOM walk(独立 layer、render path に介入しない)
+      // ので selection-only path でも安全に call できる。
       const continuity = captureRenderContinuity(root);
       cleanupBlobUrls(root);
       render(state, root, prevRenderState);
+      applyWcagResolverNow(root);
       restoreRenderContinuity(root, continuity);
       populateAttachmentPreviews(root, dispatcher);
       populateInlineAssetPreviews(root, dispatcher);

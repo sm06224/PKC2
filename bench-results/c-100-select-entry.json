@@ -2,69 +2,8 @@
   "scale": "c-100",
   "entries": 100,
   "scenario": "select-entry",
-  "measures": [
-    {
-      "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 210.90000000002328,
-      "duration": 0
-    },
-    {
-      "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 210.90000000002328,
-      "duration": 48
-    },
-    {
-      "name": "dispatch:SELECT_ENTRY",
-      "startTime": 210.90000000002328,
-      "duration": 52
-    },
-    {
-      "name": "render:phase=ready",
-      "startTime": 211.29999999998836,
-      "duration": 47.5
-    },
-    {
-      "name": "render:sidebar",
-      "startTime": 213.20000000001164,
-      "duration": 2.3999999999650754
-    },
-    {
-      "name": "filter:applyFilters",
-      "startTime": 213.90000000002328,
-      "duration": 0
-    },
-    {
-      "name": "render:sidebar:filter-pipeline",
-      "startTime": 213.90000000002328,
-      "duration": 0
-    },
-    {
-      "name": "render:sidebar:sort",
-      "startTime": 213.90000000002328,
-      "duration": 0
-    },
-    {
-      "name": "tree:buildTree",
-      "startTime": 213.90000000002328,
-      "duration": 0.19999999995343387
-    },
-    {
-      "name": "render:sidebar:tree-loop",
-      "startTime": 214.09999999997672,
-      "duration": 1.400000000023283
-    },
-    {
-      "name": "render:center",
-      "startTime": 215.70000000001164,
-      "duration": 2.2000000000116415
-    },
-    {
-      "name": "render:meta",
-      "startTime": 217.90000000002328,
-      "duration": 5.399999999965075
-    }
-  ],
+  "measures": [],
   "bootElapsedMs": -1,
-  "heapUsedMb": 9.54,
-  "capturedAt": "2026-04-28T20:02:48.964Z"
+  "heapUsedMb": 50.96,
+  "capturedAt": "2026-05-25T01:25:10.371Z"
 }
