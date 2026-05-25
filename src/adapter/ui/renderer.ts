@@ -10952,13 +10952,19 @@ function renderFolderContents(folder: Entry, container: Container): HTMLElement 
   heading.textContent = 'Contents';
   section.appendChild(heading);
 
-  // Find children via structural relations
+  // pgc-233:旧 path は `container.entries.find` を per-child child 数回呼んで
+  // O(R × N) worst case(R = structural relations、N = entries)。folder の
+  // 直下 child は数件でも entries.find が N walk なので、entryByLid Map で
+  // O(1) lookup に変換 ── c-5000 で folder render が dramatically 軽量化。
   const children: Entry[] = [];
+  let entryByLid: Map<string, Entry> | null = null;
   for (const r of container.relations) {
-    if (r.kind === 'structural' && r.from === folder.lid) {
-      const child = container.entries.find((e) => e.lid === r.to);
-      if (child) children.push(child);
+    if (r.kind !== 'structural' || r.from !== folder.lid) continue;
+    if (!entryByLid) {
+      entryByLid = new Map(container.entries.map((e) => [e.lid, e]));
     }
+    const child = entryByLid.get(r.to);
+    if (child) children.push(child);
   }
 
   if (children.length === 0) {
