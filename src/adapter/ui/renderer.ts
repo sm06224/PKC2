@@ -9966,18 +9966,25 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
   const targetSelect = document.createElement('select');
   targetSelect.setAttribute('data-pkc-field', 'relation-target');
   targetSelect.className = 'pkc-relation-select';
+  // pgc-217(pgc-216 で identify した renderRelationCreateForm 8x 線形
+  // scaling bug への attack):options を DocumentFragment に batch して
+  // 1 回の appendChild で targetSelect に投入。N appendChild → 1 appendChild
+  // で reflow / DOM mutation overhead を削減。
+  const optFrag = document.createDocumentFragment();
   const defaultOpt = document.createElement('option');
   defaultOpt.value = '';
   defaultOpt.textContent = '-- Target --';
-  targetSelect.appendChild(defaultOpt);
+  optFrag.appendChild(defaultOpt);
   for (const e of entries) {
     if (e.lid === fromLid) continue;
     const opt = document.createElement('option');
     opt.value = e.lid;
-    opt.textContent = truncate(e.title || `(${e.lid})`, 32);
-    opt.title = e.title || `(${e.lid})`;
-    targetSelect.appendChild(opt);
+    const title = e.title || `(${e.lid})`;
+    opt.textContent = truncate(title, 32);
+    opt.title = title;  // local cache で `e.title || …` を 2 度評価しない
+    optFrag.appendChild(opt);
   }
+  targetSelect.appendChild(optFrag);
   row.appendChild(targetSelect);
 
   // Kind select
