@@ -60,7 +60,7 @@ async function loadMermaid(): Promise<typeof import('mermaid')> {
 }
 
 let theme_listener_attached = false;
-let pendingRoots = new Set<HTMLElement>();
+const pendingRoots = new Set<HTMLElement>();
 
 /**
  * theme 切替時、現 hydrated root を全 re-hydrate。`matchMedia` listener は

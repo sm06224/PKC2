@@ -211,7 +211,7 @@ describe('pgc-184 Quick Open tag mode(`#`)', () => {
     // tag mode
     input.value = '#';
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    let tagItems = host.querySelectorAll<HTMLLIElement>('.pkc-quick-open-item[data-pkc-quick-mode="tag"]');
+    const tagItems = host.querySelectorAll<HTMLLIElement>('.pkc-quick-open-item[data-pkc-quick-mode="tag"]');
     expect(tagItems.length).toBeGreaterThan(0);
     // entry mode
     input.value = '';

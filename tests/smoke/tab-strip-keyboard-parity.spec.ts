@@ -12,7 +12,7 @@ test.describe('Tab keyboard + restoration parity', () => {
     await page.goto('/pkc2.html?pkc-flag=shell.tabs_enabled=1');
     await page.waitForSelector('#pkc-root');
     await page.evaluate(() => {
-      try { localStorage.removeItem('pkc2.tabStrip'); } catch {}
+      try { localStorage.removeItem('pkc2.tabStrip'); } catch { /* noop */ }
     });
     // reload で clean state を反映(IndexedDB は別 store なので残るが、tab
     // strip 関連は initial state からの再 boot 経路を試験する)

@@ -122,7 +122,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
     setFlag(true);
     // dynamic import mock の error flag を立てる
     const m = await import('mermaid');
-    (m.default as { __setRenderShouldThrow: (v: boolean) => void }).__setRenderShouldThrow(true);
+    (m.default as unknown as { __setRenderShouldThrow: (v: boolean) => void }).__setRenderShouldThrow(true);
     root.appendChild(makePlaceholder('invalid-syntax'));
     await hydrateMermaidPlaceholders(root);
     // placeholder は残存、error element が prepend
@@ -132,16 +132,16 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
     expect(ph?.querySelector('.pkc-mermaid-error')).not.toBeNull();
     expect(ph?.querySelector('.pkc-mermaid-error')?.textContent).toContain('Mermaid render error');
     // cleanup
-    (m.default as { __setRenderShouldThrow: (v: boolean) => void }).__setRenderShouldThrow(false);
+    (m.default as unknown as { __setRenderShouldThrow: (v: boolean) => void }).__setRenderShouldThrow(false);
   });
 
   it('case 7: mermaid.initialize が theme="default" で呼ばれる(matchMedia 未対応 happy-dom default)', async () => {
     setFlag(true);
     const m = await import('mermaid');
-    (m.default as { __resetInitCalls: () => void }).__resetInitCalls();
+    (m.default as unknown as { __resetInitCalls: () => void }).__resetInitCalls();
     root.appendChild(makePlaceholder('flowchart TD\n  A --> B'));
     await hydrateMermaidPlaceholders(root);
-    const calls = (m.default as { __initCalls: () => unknown[] }).__initCalls();
+    const calls = (m.default as unknown as { __initCalls: () => unknown[] }).__initCalls();
     expect(calls.length).toBeGreaterThan(0);
     const opts = calls[0] as { theme: string; securityLevel: string };
     // happy-dom matchMedia default(no dark match)= 'default'

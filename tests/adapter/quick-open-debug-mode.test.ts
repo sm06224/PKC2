@@ -115,7 +115,7 @@ describe('pgc-194 Quick Open debug mode(`!`)', () => {
     openQuickOpen(host, d);
     const input = host.querySelector<HTMLInputElement>('[data-pkc-field="quick-open-query"]')!;
     const hint = host.querySelector('.pkc-quick-open-mode-hint');
-    for (const [prefix, name] of [['>', 'Command'], [':', 'Heading'], ['#', 'Tag'], ['@', 'Recent'], ['?', 'Help'], ['!', 'Debug']]) {
+    for (const [prefix, name] of [['>', 'Command'], [':', 'Heading'], ['#', 'Tag'], ['@', 'Recent'], ['?', 'Help'], ['!', 'Debug']] as const) {
       input.value = prefix;
       input.dispatchEvent(new Event('input', { bubbles: true }));
       expect(hint?.textContent).toContain(name);

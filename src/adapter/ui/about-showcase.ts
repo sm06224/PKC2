@@ -1,7 +1,7 @@
 // About entry PKC-Markdown showcase(MASTER.md §2 U-19、pgc-113 wave-γ #14)。
 //
 // user direction(2026-05-23):
-//   「Aboutはかなり味気ないよね　しかも最近の変更があまり反映されていない
+//   「Aboutはかなり味気ないよね しかも最近の変更があまり反映されていない
 //    もっとPKC-Markdownをドッグフーディングして、積極的にアピールしたほうがいい」
 //
 // `shell.about_pkc_markdown_showcase_enabled` flag ON 時に renderAboutView が

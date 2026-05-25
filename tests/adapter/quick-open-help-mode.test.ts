@@ -19,7 +19,6 @@ import { setContainerFlagSource } from '@adapter/flags';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import {
   resetCommandRegistry,
-  executeCommand,
 } from '@adapter/ui/command-palette';
 import { registerBuiltinCommands } from '@adapter/ui/command-palette-builtins';
 import {
@@ -185,7 +184,7 @@ describe('pgc-192 Quick Open help mode(`?`)', () => {
     openQuickOpen(host, d);
     const input = host.querySelector<HTMLInputElement>('[data-pkc-field="quick-open-query"]')!;
     const hint = host.querySelector('.pkc-quick-open-mode-hint');
-    for (const [prefix, name] of [['>', 'Command'], [':', 'Heading'], ['#', 'Tag'], ['@', 'Recent'], ['?', 'Help']]) {
+    for (const [prefix, name] of [['>', 'Command'], [':', 'Heading'], ['#', 'Tag'], ['@', 'Recent'], ['?', 'Help']] as const) {
       input.value = prefix;
       input.dispatchEvent(new Event('input', { bubbles: true }));
       expect(hint?.textContent).toContain(name);

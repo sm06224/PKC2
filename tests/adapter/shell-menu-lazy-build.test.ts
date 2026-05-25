@@ -22,7 +22,12 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { __resetRegistry, __resetUrlCache } from '@adapter/flags';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 import { render } from '@adapter/ui/renderer';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import type { Container } from '@core/model/container';
@@ -119,12 +124,10 @@ describe('pgc-207 shell menu lazy build(menuOpen=false 時に DOM 生成を skip
 
   it('case 5: structural — renderShellMenu 内部に `if (!state.menuOpen)` early return が存在', () => {
     // 後続 PR でこの早期 return を消した場合に test で検知
-    const fs = require('fs');
-    const path = require('path');
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '..', '..', 'src/adapter/ui/renderer.ts'),
+    const src = readFileSync(
+      resolve(__dirname, '..', '..', 'src/adapter/ui/renderer.ts'),
       'utf8',
-    ) as string;
+    );
     const renderShellMenuIdx = src.indexOf('function renderShellMenu(');
     expect(renderShellMenuIdx).toBeGreaterThan(-1);
     // 関数開始から最初の 1000 char 以内に `if (!state.menuOpen)` + `return overlay`

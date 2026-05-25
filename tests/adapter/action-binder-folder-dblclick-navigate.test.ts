@@ -101,7 +101,7 @@ describe('pgc-206 handleDblClickAction folder navigate(popup 開かない)', () 
       dispatched.push(a.type);
       return origDispatch(a);
     });
-    (dispatcher as { dispatch: typeof spy }).dispatch = spy;
+    (dispatcher as unknown as { dispatch: typeof spy }).dispatch = spy;
 
     const root = document.createElement('div');
     document.body.appendChild(root);
@@ -135,7 +135,7 @@ describe('pgc-206 handleDblClickAction folder navigate(popup 開かない)', () 
       dispatched.push(entry);
       return origDispatch(a);
     });
-    (dispatcher as { dispatch: typeof spy }).dispatch = spy;
+    (dispatcher as unknown as { dispatch: typeof spy }).dispatch = spy;
 
     const root = document.createElement('div');
     document.body.appendChild(root);

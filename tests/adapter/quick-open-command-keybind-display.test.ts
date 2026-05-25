@@ -17,6 +17,7 @@ import {
   registerCommand,
 } from '@adapter/ui/command-palette';
 import type { Container } from '@core/model/container';
+import type { CommandCategory } from '@features/command/types';
 
 const TS = '2026-05-24T00:00:00Z';
 
@@ -54,7 +55,7 @@ describe('pgc-195 Quick Open command mode keybind display', () => {
     const d = createDispatcher();
     d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mkContainer() });
     registerCommand(
-      { id: 'test.with-keybind', titleJa: 'A', titleEn: 'A', category: 'Test', keybind: 'Ctrl+T' },
+      { id: 'test.with-keybind', titleJa: 'A', titleEn: 'A', category: 'Test' as unknown as CommandCategory, keybind: 'Ctrl+T' },
       () => undefined,
     );
     openQuickOpen(host, d);
@@ -70,7 +71,7 @@ describe('pgc-195 Quick Open command mode keybind display', () => {
     const d = createDispatcher();
     d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mkContainer() });
     registerCommand(
-      { id: 'test.no-keybind', titleJa: 'B', titleEn: 'B', category: 'TestCat' },
+      { id: 'test.no-keybind', titleJa: 'B', titleEn: 'B', category: 'TestCat' as unknown as CommandCategory },
       () => undefined,
     );
     openQuickOpen(host, d);
@@ -86,11 +87,11 @@ describe('pgc-195 Quick Open command mode keybind display', () => {
     const d = createDispatcher();
     d.dispatch({ type: 'SYS_INIT_COMPLETE', container: mkContainer() });
     registerCommand(
-      { id: 'test.foo', titleJa: 'Foo', titleEn: 'Foo', category: 'A', keybind: 'Ctrl+F' },
+      { id: 'test.foo', titleJa: 'Foo', titleEn: 'Foo', category: 'A' as unknown as CommandCategory, keybind: 'Ctrl+F' },
       () => undefined,
     );
     registerCommand(
-      { id: 'test.bar', titleJa: 'Bar', titleEn: 'Bar', category: 'B' },
+      { id: 'test.bar', titleJa: 'Bar', titleEn: 'Bar', category: 'B' as unknown as CommandCategory },
       () => undefined,
     );
     openQuickOpen(host, d);

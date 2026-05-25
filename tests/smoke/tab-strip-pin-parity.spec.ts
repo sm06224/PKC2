@@ -8,7 +8,7 @@ test.describe('Tab pin parity', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/pkc2.html?pkc-flag=shell.tabs_enabled=1&pkc-flag=shell.command_palette_enabled=1');
     await page.waitForSelector('#pkc-root');
-    await page.evaluate(() => { try { localStorage.removeItem('pkc2.tabStrip'); } catch {} });
+    await page.evaluate(() => { try { localStorage.removeItem('pkc2.tabStrip'); } catch { /* noop */ } });
     await page.reload();
     await page.waitForSelector('#pkc-root');
     await page.waitForTimeout(500);
