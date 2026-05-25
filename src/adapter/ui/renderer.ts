@@ -3653,15 +3653,19 @@ function renderAdvancedFiltersPanel(
     && state.container.entries.some(
       (e) => e.archetype === 'folder' && bucketTitles.has(e.title),
     );
+  // pgc-231:従来は filterActive のとき userEntries 全件に対し
+  // `getStructuralParent`(O(R) walk)を回し O(N×R) になっていた。
+  // `getFilterIndexes(container).bucketChildLids` は同 semantic の
+  // memoized Set(filter-cache.ts L85-96)── O(N) Set.has check に
+  // 置換、c-5000 + 検索 active で keystroke ごとに走っていた
+  // **O(N×R) を O(N) に圧縮**。
   const hasBucketedEntryInResults =
     filterActive
     && !!state.container
     && (() => {
-      const containerRef = state.container!;
-      return userEntries.some((e) => {
-        const parent = getStructuralParent(containerRef.relations, containerRef.entries, e.lid);
-        return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
-      });
+      const { bucketChildLids } = getFilterIndexes(state.container!);
+      if (bucketChildLids.size === 0) return false;
+      return userEntries.some((e) => bucketChildLids.has(e.lid));
     })();
   const colorStrip = renderColorFilterStrip(userEntries, state.colorTagFilter ?? new Set());
   const hasColorsInUse = colorStrip !== null;
