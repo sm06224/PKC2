@@ -33,6 +33,8 @@ import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placemen
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import { buildConnectedLidSet, buildInboundCountMap } from '../../features/relation/selector';
 import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
+import { isSystemArchetype } from '../../core/model/record';
+import type { Entry } from '../../core/model/record';
 
 export interface FilterIndexes {
   /**
@@ -72,6 +74,13 @@ export interface FilterIndexes {
    * し、bucket folder walk と同じ pass で collect する。
    */
   colorTagsInUse: ReadonlySet<string>;
+  /**
+   * pgc-237:`getUserEntries(container.entries)` 相当の memoize 配列。
+   * isSystemArchetype 除外後の user-content entry 一覧。
+   * sidebar / filer / relation-create / autoDetect で再三 walk されていた
+   * O(N) filter を container ref ごとに 1 度だけ実行、以後は配列を共有。
+   */
+  userEntries: readonly import('../../core/model/record').Entry[];
 }
 
 let cachedContainer: Container | null = null;
@@ -84,8 +93,12 @@ function buildIndexes(container: Container): FilterIndexes {
   // colorTagsInUse(pgc-232):同 single pass で collect ── 別 pass で
   // walk すると c-5000 で N walk が 2 回になる無駄。COLOR_TAG_IDS 全て
   // 集まったら break で短絡(早期完了 ── pgc-pgc 元 inline ロジックと同等)。
+  // userEntries(pgc-237):isSystemArchetype 除外後の user-content array
+  // も同 single pass で collect ── getUserEntries(container.entries) の
+  // O(N) walk が 3 callers + α で何度も走っていた cost を一括 amortize。
   const hiddenBucketLids = new Set<string>();
   const colorTagsInUse = new Set<string>();
+  const userEntriesMut: Entry[] = [];
   const colorTarget = COLOR_TAG_IDS.length;
   for (const e of container.entries) {
     if (e.archetype === 'folder' && bucketTitles.has(e.title)) {
@@ -97,7 +110,11 @@ function buildIndexes(container: Container): FilterIndexes {
     if (colorTagsInUse.size < colorTarget && isColorTagId(e.color_tag)) {
       colorTagsInUse.add(e.color_tag);
     }
+    if (!isSystemArchetype(e.archetype)) {
+      userEntriesMut.push(e);
+    }
   }
+  const userEntries: readonly Entry[] = userEntriesMut;
 
   // bucketChildLids: entries whose structural parent is a bucket folder.
   // Implementation: scan structural relations once, mark `to` lids
@@ -131,6 +148,7 @@ function buildIndexes(container: Container): FilterIndexes {
     backlinkCounts,
     connectedLids,
     colorTagsInUse,
+    userEntries,
   };
 }
 

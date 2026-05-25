@@ -49,7 +49,6 @@ import { isExplicitAlbum } from '../../features/album/album-metadata';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
 import { getFilerThumbPx } from './filer-flags';
 import type { Container } from '../../core/model/container';
-import { getUserEntries } from '../../core/model/container';
 import type { Revision } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
 import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/system-settings-payload';
@@ -3785,9 +3784,11 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   // tree sidebar 同等の検索オプションを獲得する(user 指摘「ツリー表示の
   // 検索オプションが無くなっている」への対応)。どの filter 軸も立って
   // いなければ従来どおり現スコープの folder navigation を表示。
-  const userEntries = (state.container?.entries ?? []).filter(
-    (e) => !isSystemArchetype(e.archetype),
-  );
+  // pgc-237:userEntries は filter-cache で memoize 済 ── inline filter walk
+  // を skip。applyFilters が mutable Entry[] を要求するため shallow spread copy。
+  const userEntries: Entry[] = state.container
+    ? [...getFilterIndexes(state.container).userEntries]
+    : [];
   const rawQuery = state.sidebarFilerQuery ?? '';
   // searchAxisActive:`applyFilters` が駆動する軸(query / archetype / tag /
   // color)。`filtering` はそれに加え unreferenced lens も含む ─ pgc-49 で
@@ -4007,7 +4008,13 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
 
-  const allEntries = getUserEntries(state.container?.entries ?? []);
+  // pgc-237:userEntries は filter-cache で memoize 済 ── container ref で
+  // re-render 跨ぎ cache hit、O(N) walk を skip。downstream の `applyFilters`
+  // が mutable Entry[] を要求するため spread copy(memoize cache 自体は
+  // readonly preserve、shallow copy のみ ── 中の Entry object refs は共有)。
+  const allEntries: Entry[] = state.container
+    ? [...getFilterIndexes(state.container).userEntries]
+    : [];
 
   // Search input (always shown when entries exist)
   if (allEntries.length > 0) {
@@ -5231,7 +5238,12 @@ function renderCenterImpl(state: AppState): HTMLElement {
   const center = createElement('section', 'pkc-center');
   center.setAttribute('data-pkc-region', 'center');
 
-  const userEntries = getUserEntries(state.container?.entries ?? []);
+  // pgc-237:userEntries は filter-cache で memoize 済 ── container ref で
+  // re-render 跨ぎ cache hit、O(N) walk を skip。fallback として state.container
+  // が undefined の場合は empty array。
+  const userEntries = state.container
+    ? getFilterIndexes(state.container).userEntries
+    : [];
 
   // pgc-85 / pgc-87(MASTER.md §4.3):Tab strip(複数 entry 同時 open +
   // workspace-level view tab)。flag ON で常時描画(open tabs が無くても
@@ -9241,7 +9253,8 @@ function renderMetaPaneImpl(
   // popup での attack target にする。
   if (canEdit && container.entries.length > 1) {
     const endProfRelCreate = profileStart('meta:relation-create-form');
-    meta.appendChild(renderRelationCreateForm(entry.lid, getUserEntries(container.entries)));
+    // pgc-237:userEntries は filter-cache で memoize 済 ── O(N) walk skip。
+    meta.appendChild(renderRelationCreateForm(entry.lid, getFilterIndexes(container).userEntries));
     endProfRelCreate();
   }
 
