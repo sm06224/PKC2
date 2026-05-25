@@ -735,11 +735,12 @@ export function pushTitleUpdate(
  *   - No append area, no flag-toggle / copy-anchor buttons — the
  *     entry-window view pane is read-oriented; in-place mutation
  *     happens via the edit pane (structured editor).
- *   - Asset-reference resolution is NOT applied here. The entry-window
- *     rendered viewer has historically rendered TEXTLOG as raw
- *     markdown; Slice 4-A preserves that behavior rather than
- *     introducing new asset semantics. Asset support for TEXTLOG
- *     rendered viewer is a separate concern.
+ *
+ * pgc-211 (audit pgc-77 Gap-9 resolved):per-log の asset reference
+ * resolution を S2 `buildTextlogBodyHtml` と equivalent な流儀で実装。
+ * `![](asset:K)` / `[label](asset:K)` を currentContainerRef の assets /
+ * mime / name map で resolve(canonical path 一致)。container 不在 / asset
+ * 参照無しなら no-op で従来挙動を維持。
  */
 function buildTextlogViewBodyHtml(lid: string, body: string): string {
   const stubEntry: Entry = {
@@ -779,7 +780,21 @@ function buildTextlogViewBodyHtml(lid: string, body: string): string {
       const logVars = extractVars(logRaw);
       const logStripped = parseFrontmatter(logRaw).body;
       const containerId = currentContainerRef?.meta?.container_id ?? '';
-      let bodyHtml = renderMarkdown(logStripped, { vars: logVars, currentContainerId: containerId }) || '';
+      // pgc-211 (audit pgc-77 Gap-9): per-log の asset reference を resolve。
+      // canonical S2 `rendered-viewer.ts` `buildTextlogBodyHtml` L1176 と
+      // 同流儀。currentContainerRef から assets / mime / name map を build
+      // して `resolveAssetReferences` に渡す。container 不在 / asset 参照
+      // 無しなら no-op で従来挙動を維持(後方互換完全)。
+      let logToRender = logStripped;
+      if (currentContainerRef && logStripped && hasAssetReferences(logStripped)) {
+        const assetCtx = {
+          assets: currentContainerRef.assets,
+          mimeByKey: buildAssetMimeMapLocal(currentContainerRef),
+          nameByKey: buildAssetNameMapLocal(currentContainerRef),
+        };
+        logToRender = resolveAssetReferences(logStripped, assetCtx);
+      }
+      let bodyHtml = renderMarkdown(logToRender, { vars: logVars, currentContainerId: containerId }) || '';
       bodyHtml = injectFeaturesDomOps(bodyHtml, lid, currentContainerRef);
       parts.push(
         `<article class="pkc-textlog-log" id="log-${escapeForAttr(log.id)}" data-pkc-log-id="${escapeForAttr(log.id)}" data-pkc-lid="${escapeForAttr(lid)}"${importantAttr}>`,

@@ -663,23 +663,22 @@ pgc-90 で S2(`rendered-viewer.ts:1081`)/ S3 live(`action-binder.ts:8184-8193`)/
   挙動と一致)。`tests/adapter/entry-window-doc-globals.test.ts` 9 件
   pass。
 
-### Gap-9 textlog asset reference resolution 未対応(S2 / S4 textlog)
+### Gap-9 textlog asset reference resolution 未対応(S2 / S4 textlog)── ✅ **RESOLVED**(pgc-211)
+
+pgc-211 で S4 `buildTextlogViewBodyHtml` に S2 と equivalent な per-log asset resolution を実装。`hasAssetReferences(logStripped)` で early-exit guard、`currentContainerRef` から `{ assets, mimeByKey, nameByKey }` map を build して `resolveAssetReferences` に渡す。container 不在 / asset 参照無しなら no-op で従来挙動を維持(後方互換完全)。`pushTextlogViewBodyUpdate` 経由の live refresh path も同 builder を経由するので一括対応。canonical S2 `rendered-viewer.ts` `buildTextlogBodyHtml` L1176 の流儀と一致、S1 textlog presenter も同等経路。Slice 4-A 時点の「保留事項」 を pgc-211 で closure、OQ-S4-2 user 判断待ちを bypass(`進めろ` user direction 2026-05-25 を受けて autonomous 着地)。
+
+---
 
 - **発生**:
   - S2 `buildTextlogBodyHtml`(L1019-1069):per-log で `resolveAssetSource`
     を呼んでいる ✅(L1047)── 実は OK だった。
   - S4 `buildTextlogViewBodyHtml`(`entry-window.ts` L572-615):L566-570
     comment で「asset reference resolution は NOT 適用」明示。
-- **現状の差分**:**S2 は対応、S4 は意図的未対応**。S4 で textlog の per-log
-  に `![](asset:K)` を書いても画像が出ない。
-- **目指す**:S2 と等価 ── per-log で asset 解決を入れる。ただし
-  `assetContext` から asset 配列を取って渡す経路の設計が必要。textlog 用に
-  `pushTextlogViewBodyUpdate` 経由で push する live refresh path も対応する。
-- **アプローチ**:Slice 4-A 時点での保留事項 ── まず **保留継続を確認**
-  (OQ-S4-2)→ 解消なら別 spec(中サイズ PR)。
-- **size**:中。
-- **priority**:🟡 Mid(textlog × asset の組合せは niche、ただし textlog で
-  画像を貼る用途は実在)。
+- **現状の差分**(audit 当時):**S2 は対応、S4 は意図的未対応**。
+- **解消**(pgc-211):S4 で per-log の `![](asset:K)` 画像 + `[label](asset:K)`
+  chip が正しく resolve され表示されるように。S2/S4 contract が一致。
+- **size**:中(15 行追加 + import 既存利用)。
+- **priority**:🟡 Mid → ✅ RESOLVED。
 
 ### Gap-10 S2 inline CSS の 4 件 mirror 不足(footnote / transclusion / task)── ✅ **RESOLVED**(pgc-210、audit 数値再評価:過去 PR で既 mirror 済)
 
