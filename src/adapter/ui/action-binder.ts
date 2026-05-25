@@ -926,6 +926,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
 
   // pgc-222:tag-target / relation-target select の lazy options populate handler。
+  // pgc-227:move-target にも拡張。
   // renderer は `<option>` を render-time に build せず placeholder のみ。
   // user が select を click した時に capture-phase で intercept、
   // container.entries から N options を build して append。
@@ -935,19 +936,40 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const t = e.target;
     if (!(t instanceof HTMLSelectElement)) return;
     const lazyKind = t.getAttribute('data-pkc-lazy-options');
-    if (lazyKind !== 'tag-target' && lazyKind !== 'relation-target') return;
+    if (lazyKind !== 'tag-target' && lazyKind !== 'relation-target' && lazyKind !== 'move-target') return;
     if (t.getAttribute('data-pkc-lazy-populated') === 'true') return;
     const fromLid = t.getAttribute('data-pkc-from-lid');
     if (!fromLid) return;
     const state = dispatcher.getState();
     if (!state.container) return;
     const userEntries = state.container.entries.filter((entry) => !entry.lid.startsWith('__'));
-    let available;
+    let available: { lid: string; title: string }[];
+    let currentParentLid: string | null = null;
     if (lazyKind === 'tag-target') {
-      available = getAvailableTagTargets(state.container.relations, userEntries, fromLid);
-    } else {
+      const ents = getAvailableTagTargets(state.container.relations, userEntries, fromLid);
+      available = ents.map((e) => ({ lid: e.lid, title: e.title }));
+    } else if (lazyKind === 'relation-target') {
       // relation-target:fromLid 以外の全 user entries(getUserEntries 相当)
-      available = userEntries.filter((entry) => entry.lid !== fromLid);
+      available = userEntries
+        .filter((entry) => entry.lid !== fromLid)
+        .map((e) => ({ lid: e.lid, title: e.title }));
+    } else {
+      // move-target(pgc-227):folder archetype の entry で、自分自身と
+      // 自分の descendants を除外。descendant 判定は structural relation walk。
+      const descendants = new Set<string>();
+      const collectDescendants = (lid: string): void => {
+        for (const r of state.container!.relations) {
+          if (r.kind === 'structural' && r.from === lid && !descendants.has(r.to)) {
+            descendants.add(r.to);
+            collectDescendants(r.to);
+          }
+        }
+      };
+      collectDescendants(fromLid);
+      available = userEntries
+        .filter((e) => e.archetype === 'folder' && e.lid !== fromLid && !descendants.has(e.lid))
+        .map((e) => ({ lid: e.lid, title: e.title }));
+      currentParentLid = t.getAttribute('data-pkc-current-parent-lid');
     }
     // 同 DocumentFragment pattern(pgc-217/218):N appendChild → 1 appendChild。
     const frag = document.createDocumentFragment();
@@ -957,6 +979,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const title = ent.title || `(${ent.lid})`;
       opt.textContent = title.length > 32 ? title.slice(0, 31) + '…' : title;
       opt.title = title;
+      if (lazyKind === 'move-target' && currentParentLid === ent.lid) {
+        opt.selected = true;
+      }
       frag.appendChild(opt);
     }
     t.appendChild(frag);
@@ -968,10 +993,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const placeholder = t.querySelector<HTMLOptionElement>('option[value=""]');
     if (placeholder) {
       if (available.length === 0) {
-        placeholder.textContent = lazyKind === 'tag-target' ? '+ Tag (候補無し)' : '-- 候補無し --';
-      } else {
-        placeholder.textContent = lazyKind === 'tag-target' ? '+ Tag' : '-- Target --';
+        if (lazyKind === 'tag-target') placeholder.textContent = '+ Tag (候補無し)';
+        else if (lazyKind === 'relation-target') placeholder.textContent = '-- 候補無し --';
+        else placeholder.textContent = currentParentLid ? '↑ Root level' : '(root)';
+      } else if (lazyKind === 'tag-target') {
+        placeholder.textContent = '+ Tag';
+      } else if (lazyKind === 'relation-target') {
+        placeholder.textContent = '-- Target --';
       }
+      // move-target は populate 後も placeholder text を保つ(currentParent
+      // 表示の「↑ Root level」「(root)」 が user の現在地理解に有用)。
     }
   }
 

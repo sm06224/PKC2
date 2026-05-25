@@ -82,7 +82,6 @@ import {
   buildTree,
   sortTreeNodes,
   getBreadcrumb,
-  getAvailableFolders,
   getStructuralParent,
   collectDescendantLids,
   getStructuralChildren,
@@ -8734,8 +8733,15 @@ function renderMetaPaneImpl(
   const endProfMove = profileStart('meta:section-move');
 
   // Move to Folder
+  // pgc-227(pgc-222 lazy options doctrine の move-target 適用):従来は
+  // render-time に `getAvailableFolders` で descendant walk(O(R))+ folder
+  // filter(O(N))していたが、c-5000 で `meta:section-move` 2.5ms 累積。
+  // **options を lazy-build 化** ── render-time は placeholder のみ append、
+  // user の select mousedown 時に handler(`handleLazyTagTargetPopulate`
+  // 拡張)が full folders を populate。`getStructuralParent` は「in: X」
+  // label / placeholder text / selected option mark のため render-time に
+  // 残す(structural relation 1 件目で短絡で安価)。
   if (canEdit) {
-    const folders = getAvailableFolders(container.entries, container.relations, entry.lid);
     const moveSection = createElement('div', 'pkc-move-to-folder');
     moveSection.setAttribute('data-pkc-region', 'move-to-folder');
     moveSection.setAttribute('data-pkc-lid', entry.lid);
@@ -8755,27 +8761,20 @@ function renderMetaPaneImpl(
     const select = document.createElement('select');
     select.setAttribute('data-pkc-field', 'move-target');
     select.className = 'pkc-move-select';
+    select.setAttribute('data-pkc-lazy-options', 'move-target');
+    select.setAttribute('data-pkc-from-lid', entry.lid);
+    if (currentParent) {
+      select.setAttribute('data-pkc-current-parent-lid', currentParent.lid);
+    }
 
-    // pgc-218(pgc-217 と同型):options を DocumentFragment に batch。
-    const moveOptFrag = document.createDocumentFragment();
+    // Placeholder option:render-time に 1 つだけ append。user mousedown 時に
+    // handler が full folders を populate し、current parent option を select する。
     const noneOpt = document.createElement('option');
     noneOpt.value = '';
     noneOpt.textContent = currentParent ? '↑ Root level' : '(root)';
     if (!currentParent) noneOpt.selected = true;
-    moveOptFrag.appendChild(noneOpt);
+    select.appendChild(noneOpt);
 
-    for (const f of folders) {
-      const opt = document.createElement('option');
-      opt.value = f.lid;
-      // Truncate to keep the dropdown panel inside the meta pane
-      // (see relation-target select for the same rationale).
-      const title = f.title || `(${f.lid})`;
-      opt.textContent = truncate(title, 32);
-      opt.title = title;
-      if (currentParent && currentParent.lid === f.lid) opt.selected = true;
-      moveOptFrag.appendChild(opt);
-    }
-    select.appendChild(moveOptFrag);
     moveSection.appendChild(select);
 
     const moveBtn = createElement('button', 'pkc-btn-small');
