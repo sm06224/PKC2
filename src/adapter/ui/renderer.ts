@@ -1217,8 +1217,10 @@ function renderMobileHeader(state: AppState): HTMLElement {
     backBtn.textContent = '‹ List';
     bar.appendChild(backBtn);
 
-    const selectedTitle =
-      state.container?.entries.find((e) => e.lid === state.selectedLid)?.title ?? '';
+    // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
+    const selectedTitle = state.container && state.selectedLid
+      ? (getFilterIndexes(state.container).entryByLid.get(state.selectedLid)?.title ?? '')
+      : '';
     const titleEl = createElement('span', 'pkc-mobile-header-title');
     titleEl.textContent = truncate(selectedTitle || '(untitled)', 28);
     bar.appendChild(titleEl);
@@ -1634,7 +1636,10 @@ function renderHeaderPathTrail(state: AppState): HTMLElement | null {
   const integratedBackForward = shellBackForwardInBreadcrumbEnabled();
 
   // 通常 path:選択あり + entry 存在 → 階層パス描画。
-  const entry = lid ? container?.entries.find((e) => e.lid === lid) : undefined;
+  // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
+  const entry = lid && container
+    ? getFilterIndexes(container).entryByLid.get(lid)
+    : undefined;
   if (!container || !lid || !entry) {
     if (!integratedBackForward) return null;
     // flag ON で選択無し:icon だけの minimal nav。
@@ -3067,8 +3072,9 @@ function renderExportImportInline(state: AppState, options?: { autoOpen?: boolea
   // .textlog.zip, batch bundle = .texts.zip / .textlogs.zip /
   // .mixed.zip / .folder-export.zip).
 
-  const selectedEntry = state.selectedLid
-    ? state.container?.entries.find((e) => e.lid === state.selectedLid)
+  // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
+  const selectedEntry = state.selectedLid && state.container
+    ? getFilterIndexes(state.container).entryByLid.get(state.selectedLid)
     : undefined;
 
   // --- Group 1: Share (standalone HTML, openable without PKC2) ---
@@ -5313,7 +5319,10 @@ function renderCenterImpl(state: AppState): HTMLElement {
   const canEdit = state.phase === 'ready' && !state.readonly;
 
   // Show About when: explicitly selected OR no user entries exist
-  const aboutEntry = state.container?.entries.find((e) => e.lid === ABOUT_LID);
+  // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
+  const aboutEntry = state.container
+    ? getFilterIndexes(state.container).entryByLid.get(ABOUT_LID)
+    : undefined;
   const showAbout = selected?.archetype === 'system-about'
     || (userEntries.length === 0 && !selected && aboutEntry);
   if (showAbout) {

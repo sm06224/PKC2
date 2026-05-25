@@ -81,6 +81,14 @@ export interface FilterIndexes {
    * O(N) filter を container ref ごとに 1 度だけ実行、以後は配列を共有。
    */
   userEntries: readonly import('../../core/model/record').Entry[];
+  /**
+   * pgc-238:`container.entries` 全件を lid → Entry の Map に index 化。
+   * `state.container?.entries.find((e) => e.lid === X)` が hot path に
+   * 散在(header title / Data menu / breadcrumb / about lookup 等)、
+   * c-5000 で per-render に複数 O(N) walk が走っていた cost を **container
+   * ref ごとに 1 度だけ Map build** + O(1) Map.get に変換。
+   */
+  entryByLid: ReadonlyMap<string, import('../../core/model/record').Entry>;
 }
 
 let cachedContainer: Container | null = null;
@@ -96,11 +104,16 @@ function buildIndexes(container: Container): FilterIndexes {
   // userEntries(pgc-237):isSystemArchetype 除外後の user-content array
   // も同 single pass で collect ── getUserEntries(container.entries) の
   // O(N) walk が 3 callers + α で何度も走っていた cost を一括 amortize。
+  // entryByLid(pgc-238):container.entries 全件を lid → Entry の Map に
+  // index 化 ── header title / Data menu / breadcrumb / about lookup 等で
+  // `entries.find(...)` していた per-render N walk を O(1) Map.get に変換。
   const hiddenBucketLids = new Set<string>();
   const colorTagsInUse = new Set<string>();
   const userEntriesMut: Entry[] = [];
+  const entryByLidMut = new Map<string, Entry>();
   const colorTarget = COLOR_TAG_IDS.length;
   for (const e of container.entries) {
+    entryByLidMut.set(e.lid, e);
     if (e.archetype === 'folder' && bucketTitles.has(e.title)) {
       hiddenBucketLids.add(e.lid);
       for (const d of collectDescendantLids(container.relations, e.lid)) {
@@ -115,13 +128,14 @@ function buildIndexes(container: Container): FilterIndexes {
     }
   }
   const userEntries: readonly Entry[] = userEntriesMut;
+  const entryByLid: ReadonlyMap<string, Entry> = entryByLidMut;
 
   // bucketChildLids: entries whose structural parent is a bucket folder.
   // Implementation: scan structural relations once, mark `to` lids
   // whose `from` is a bucket-titled folder. O(R) instead of N × O(R)
   // (= per-entry getStructuralParent walk, the pre-PR-189 path).
+  // pgc-238:entryByLid は上で build 済みを再利用、別 Map 作らない。
   const bucketChildLids = new Set<string>();
-  const entryByLid = new Map(container.entries.map((e) => [e.lid, e]));
   for (const rel of container.relations) {
     if (rel.kind !== 'structural') continue;
     const parent = entryByLid.get(rel.from);
@@ -149,6 +163,7 @@ function buildIndexes(container: Container): FilterIndexes {
     connectedLids,
     colorTagsInUse,
     userEntries,
+    entryByLid,
   };
 }
 
