@@ -8503,12 +8503,18 @@ function renderMetaPaneImpl(
   // Body-leading `---\n…\n---\n` YAML produces a small key/value list
   // here so book / youtube / paper / film / album metadata is visible
   // in the meta pane without rendering it inside the markdown.
+  // pgc-216:frontmatter parsing(YAML mini parser)+ TOC enumeration
+  // (markdown body から h1-h3 抽出)の cost を sub-profile で識別。
+  const endProfFrontmatter = profileStart('meta:frontmatter');
   const frontmatterSection = renderFrontmatterSection(entry, canEdit);
   if (frontmatterSection) meta.appendChild(frontmatterSection);
+  endProfFrontmatter();
 
   // Hidden entirely when the body produces zero headings, per spec §4.
+  const endProfToc = profileStart('meta:toc');
   const tocSection = renderTocSection(entry);
   if (tocSection) meta.appendChild(tocSection);
+  endProfToc();
 
   if (!container) return meta;
 
@@ -8517,6 +8523,11 @@ function renderMetaPaneImpl(
   // lightweight per-entry Tag attribute appears first in the meta
   // pane's visual order (W1 Slice A §5.2 visual hierarchy: Tag chip
   // row sits ahead of Relation lists).
+  // pgc-216:entry-tags + categorical + tag section + move + description +
+  // profile を 1 sub-profile で覆う(各 section ~1-2ms で合計 6-10ms 想定)。
+  // section 単位 lazy build や per-section memoize の attack target を
+  // construct で identify。
+  const endProfMiddleSections = profileStart('meta:middle-sections');
   const entryTagSection = createElement('div', 'pkc-entry-tags');
   entryTagSection.setAttribute('data-pkc-region', 'entry-tags');
   entryTagSection.setAttribute('data-pkc-lid', entry.lid);
@@ -8817,6 +8828,7 @@ function renderMetaPaneImpl(
 
     meta.appendChild(profileSection);
   }
+  endProfMiddleSections();
 
   // History section
   // pgc-215:revisions / history / branches を 1 sub-profile で括る
@@ -9082,6 +9094,10 @@ function renderMetaPaneImpl(
   // Existing data-pkc-region ids of each sub-panel are preserved so per-
   // panel tests, the sidebar badge scroll target, and the delete flow
   // continue to work. See docs/development/unified-backlinks-v1.md.
+  // pgc-216:relations resolution + Outgoing / Backlinks group build を
+  // 1 sub-profile で計測(container.relations 全 walk + lid 解決 + 2 group
+  // 描画、container 内 relation 数に比例)。
+  const endProfRelations = profileStart('meta:relations');
   const directed = getRelationsForEntry(container.relations, entry.lid);
   const resolved = resolveRelations(directed, container.entries);
   const outbound = resolved.filter((r) => r.direction === 'outbound');
@@ -9091,6 +9107,7 @@ function renderMetaPaneImpl(
   relSection.setAttribute('data-pkc-region', 'relations');
   relSection.appendChild(renderRelationGroup('Outgoing relations', 'outgoing', outbound, canEdit));
   relSection.appendChild(renderRelationGroup('Backlinks', 'backlinks', inbound, canEdit));
+  endProfRelations();
 
   // PR-δ: reuse LinkIndex computed at `renderShell` level (spec §5.7)
   // so the sidebar connectedness pass and the References sub-panels
@@ -9134,8 +9151,15 @@ function renderMetaPaneImpl(
 
   meta.appendChild(referencesSection);
 
+  // pgc-216 v2:`renderRelationCreateForm` は <select> 内に全 user entries
+  // を <option> として展開する(L9966-9973、N entries で N option DOM 操作)。
+  // 100 entries で ~5ms、1000 entries で ~50ms、5000 entries で ~250ms の
+  // 線形 cost。本 sub-profile で実測値を計測、後続 PR で datalist 化や lazy
+  // popup での attack target にする。
   if (canEdit && container.entries.length > 1) {
+    const endProfRelCreate = profileStart('meta:relation-create-form');
     meta.appendChild(renderRelationCreateForm(entry.lid, getUserEntries(container.entries)));
+    endProfRelCreate();
   }
 
   // Sandbox control section for HTML attachments
