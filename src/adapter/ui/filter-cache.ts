@@ -32,6 +32,7 @@ import { collectDescendantLids, getStructuralParent } from '../../features/relat
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import { buildConnectedLidSet, buildInboundCountMap } from '../../features/relation/selector';
+import { isColorTagId, COLOR_TAG_IDS } from '../../features/color/color-palette';
 
 export interface FilterIndexes {
   /**
@@ -63,6 +64,14 @@ export interface FilterIndexes {
    * outside this set).
    */
   connectedLids: ReadonlySet<string>;
+  /**
+   * pgc-232:container 内で実際に使われている color_tag id の集合。
+   * `renderColorFilterStrip` が描画判定 + 表示 chip 列を決めるのに使う。
+   * 旧 path は keystroke / re-render ごとに container.entries 全件 walk
+   * していた(c-5000 で typical case ~3-5ms)。container ref で memoize
+   * し、bucket folder walk と同じ pass で collect する。
+   */
+  colorTagsInUse: ReadonlySet<string>;
 }
 
 let cachedContainer: Container | null = null;
@@ -72,13 +81,21 @@ function buildIndexes(container: Container): FilterIndexes {
   const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
 
   // hiddenBucketLids: bucket folders + their descendants
+  // colorTagsInUse(pgc-232):同 single pass で collect ── 別 pass で
+  // walk すると c-5000 で N walk が 2 回になる無駄。COLOR_TAG_IDS 全て
+  // 集まったら break で短絡(早期完了 ── pgc-pgc 元 inline ロジックと同等)。
   const hiddenBucketLids = new Set<string>();
+  const colorTagsInUse = new Set<string>();
+  const colorTarget = COLOR_TAG_IDS.length;
   for (const e of container.entries) {
     if (e.archetype === 'folder' && bucketTitles.has(e.title)) {
       hiddenBucketLids.add(e.lid);
       for (const d of collectDescendantLids(container.relations, e.lid)) {
         hiddenBucketLids.add(d);
       }
+    }
+    if (colorTagsInUse.size < colorTarget && isColorTagId(e.color_tag)) {
+      colorTagsInUse.add(e.color_tag);
     }
   }
 
@@ -113,6 +130,7 @@ function buildIndexes(container: Container): FilterIndexes {
     unreferencedAttachmentLids,
     backlinkCounts,
     connectedLids,
+    colorTagsInUse,
   };
 }
 

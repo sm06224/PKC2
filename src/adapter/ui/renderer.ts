@@ -3667,7 +3667,13 @@ function renderAdvancedFiltersPanel(
       if (bucketChildLids.size === 0) return false;
       return userEntries.some((e) => bucketChildLids.has(e.lid));
     })();
-  const colorStrip = renderColorFilterStrip(userEntries, state.colorTagFilter ?? new Set());
+  // pgc-232:colorTagsInUse は filter-cache.ts で memoize 済(container
+  // ref で keystroke / re-render 跨ぎ cache hit)。1 度だけ entries walk、
+  // 各 keystroke で再計算しない。
+  const memoizedColorsInUse = state.container
+    ? getFilterIndexes(state.container).colorTagsInUse
+    : undefined;
+  const colorStrip = renderColorFilterStrip(userEntries, state.colorTagFilter ?? new Set(), memoizedColorsInUse);
   const hasColorsInUse = colorStrip !== null;
   const hasAnyToggle =
     hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults || hasColorsInUse;
@@ -10815,15 +10821,23 @@ function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>): HTMLElement {
 function renderColorFilterStrip(
   allEntries: readonly Entry[],
   current: ReadonlySet<string>,
+  inUseOverride?: ReadonlySet<string>,
 ): HTMLElement | null {
-  const inUse = new Set<string>();
-  const target = COLOR_TAG_IDS.length;
-  for (const entry of allEntries) {
-    if (isColorTagId(entry.color_tag)) {
-      inUse.add(entry.color_tag);
-      if (inUse.size === target) break;
+  // pgc-232:caller(`renderAdvancedFiltersPanel`)が `getFilterIndexes`
+  // 経由で memoized `colorTagsInUse` を渡せる。container ref で memoize
+  // されているため keystroke / re-render で再計算 0。fallback として
+  // 旧 inline walk を残す(test / 単体呼出 用)。
+  const inUse = inUseOverride ?? (() => {
+    const local = new Set<string>();
+    const target = COLOR_TAG_IDS.length;
+    for (const entry of allEntries) {
+      if (isColorTagId(entry.color_tag)) {
+        local.add(entry.color_tag);
+        if (local.size === target) break;
+      }
     }
-  }
+    return local;
+  })();
   if (inUse.size === 0) return null;
 
   const strip = createElement('div', 'pkc-color-filter-strip');
