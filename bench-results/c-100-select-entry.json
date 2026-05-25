@@ -5,51 +5,71 @@
   "measures": [
     {
       "name": "dispatch:SELECT_ENTRY",
-      "startTime": 575.2000000001863,
-      "duration": 41.89999999990687
+      "startTime": 595.5,
+      "duration": 36.10000000055879
     },
     {
       "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 575.5,
-      "duration": 0
+      "startTime": 595.8000000007451,
+      "duration": 0.09999999962747097
     },
     {
       "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 575.6000000000931,
-      "duration": 41.1999999997206
+      "startTime": 596,
+      "duration": 35.200000000186265
     },
     {
       "name": "render:scope=selection-only",
-      "startTime": 575.7999999998137,
-      "duration": 39.3000000002794
+      "startTime": 596.1000000005588,
+      "duration": 33.09999999962747
     },
     {
       "name": "render:sidebar",
-      "startTime": 576.1000000000931,
-      "duration": 1
+      "startTime": 596.4000000003725,
+      "duration": 1.099999999627471
     },
     {
       "name": "render:center",
-      "startTime": 584.1000000000931,
+      "startTime": 600.7000000001863,
       "duration": 1.7999999998137355
     },
     {
       "name": "render:sidebar",
-      "startTime": 593.2999999998137,
+      "startTime": 609.8000000007451,
       "duration": 0.5
     },
     {
       "name": "render:center",
-      "startTime": 593.7999999998137,
+      "startTime": 610.4000000003725,
       "duration": 0.40000000037252903
     },
     {
       "name": "render:meta",
-      "startTime": 594.3999999999069,
-      "duration": 20.200000000186265
+      "startTime": 611,
+      "duration": 17.90000000037253
+    },
+    {
+      "name": "meta:history",
+      "startTime": 626.3000000007451,
+      "duration": 0.09999999962747097
+    },
+    {
+      "name": "meta:linkIndex",
+      "startTime": 627.6000000005588,
+      "duration": 0
+    },
+    {
+      "name": "meta:renderLinkIndexSections",
+      "startTime": 627.9000000003725,
+      "duration": 0.20000000018626451
+    },
+    {
+      "name": "meta:inspector",
+      "startTime": 628.8000000007451,
+      "duration": 0
     }
   ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 51.66,
-  "capturedAt": "2026-05-25T01:41:22.781Z"
+  "heapUsedMb": 51.73,
+  "capturedAt": "2026-05-25T01:49:50.498Z"
 }

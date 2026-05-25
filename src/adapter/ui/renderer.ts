@@ -8819,6 +8819,10 @@ function renderMetaPaneImpl(
   }
 
   // History section
+  // pgc-215:revisions / history / branches を 1 sub-profile で括る
+  // (pgc-181 revision diff viewer flag が ON だと per-revision diff
+  // compute が重くなる)。
+  const endProfHistory = profileStart('meta:history');
   const revCount = getRevisionCount(container, entry.lid);
   if (revCount > 0) {
     const latest = getLatestRevision(container, entry.lid);
@@ -9068,6 +9072,7 @@ function renderMetaPaneImpl(
     renderBranchSubtree(tree, branches, 0);
     meta.appendChild(branches);
   }
+  endProfHistory();
 
   // Unified References umbrella (v1, Option E) — groups the two distinct
   // reference systems under one heading so the meta pane stops having
@@ -9091,7 +9096,11 @@ function renderMetaPaneImpl(
   // so the sidebar connectedness pass and the References sub-panels
   // share the same per-render result. Fallback keeps this function
   // callable in isolation (tests / future call sites).
+  // pgc-215:linkIndex build を sub-profile で計測(meta pane 20ms
+  // のうち linkIndex 自体が何 ms か切り分け)。
+  const endProfLinkIndex = profileStart('meta:linkIndex');
   const linkIndex = sharedLinkIndex ?? buildLinkIndex(container);
+  endProfLinkIndex();
 
   const referencesSection = createElement('section', 'pkc-references');
   referencesSection.setAttribute('data-pkc-region', 'references');
@@ -9116,7 +9125,12 @@ function renderMetaPaneImpl(
   );
 
   referencesSection.appendChild(relSection);
+  // pgc-215:renderLinkIndexSections は backlinks-by-target walk + section
+  // build で linkIndex の dispose-heavy 部分(References sub-panel 内の
+  // entry refs / asset refs / external links 等)を含む。
+  const endProfLinkSections = profileStart('meta:renderLinkIndexSections');
   referencesSection.appendChild(renderLinkIndexSections(entry, linkIndex, container));
+  endProfLinkSections();
 
   meta.appendChild(referencesSection);
 
@@ -9197,6 +9211,9 @@ function renderMetaPaneImpl(
   // meta pane の頭に 5 tab(Properties / References / History / Style /
   // AI)の strip を prepend、各 tab の visibleRegions に応じて section
   // 表示を絞る。AI は pgc-147 で機能化、Style は pgc-118 で実装。
+  // pgc-215:inspector section 全体を 1 sub-profile で囲む(flag OFF なら
+  // skip、ON なら Style + AI + tab strip + filter の合計を計測)。
+  const endProfInspector = profileStart('meta:inspector');
   if (shellMetaPaneInspectorEnabled()) {
     // pgc-118 wave-γ #18:Style tab を機能化 ── inspector-style-metrics
     // section を meta pane 末尾に挿入(visibleRegions に登録済)。
@@ -9216,6 +9233,7 @@ function renderMetaPaneImpl(
     meta.insertBefore(strip, meta.firstChild);
     applyInspectorTabFilter(meta);
   }
+  endProfInspector();
 
   return meta;
 }
