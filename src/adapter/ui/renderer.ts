@@ -2002,18 +2002,23 @@ function renderShellMenu(
   // `renderExportImportInline(state)` を call するので機能差ゼロ、視覚的
   // 位置だけが header → shell-menu に移る。OFF で本 section 非表示
   // (従来 header inline)。`!readonly` 限定(header inline と同条件)。
+  // pgc-209(pgc-205 probe finding):従来 `phase === 'ready'` で gating
+  // していたため、export 中(phase='exporting')に Data section が消えて
+  // しまい、再描画 race で「rapid double-click → 2 downloads」 が起き得た。
+  // export 中も Data section を visible のままにし、Export ボタンを disable
+  // する(視覚 feedback「Exporting…」+ click 防御)。
   if (
     shellDataInShellMenuEnabled() &&
     state.container &&
     !state.readonly &&
-    state.phase === 'ready'
+    (state.phase === 'ready' || state.phase === 'exporting')
   ) {
     const dataSection = createElement('div', 'pkc-shell-menu-section');
     dataSection.setAttribute('data-pkc-region', 'shell-menu-data');
     const dataLabel = createElement('span', 'pkc-shell-menu-label');
-    dataLabel.textContent = 'Data';
+    dataLabel.textContent = state.phase === 'exporting' ? 'Data (Exporting…)' : 'Data';
     dataSection.appendChild(dataLabel);
-    dataSection.appendChild(renderExportImportInline(state, { autoOpen: true }));
+    dataSection.appendChild(renderExportImportInline(state, { autoOpen: true, exporting: state.phase === 'exporting' }));
     card.appendChild(dataSection);
   }
 
@@ -2951,7 +2956,7 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
   return section;
 }
 
-function renderExportImportInline(state: AppState, options?: { autoOpen?: boolean }): HTMLElement {
+function renderExportImportInline(state: AppState, options?: { autoOpen?: boolean; exporting?: boolean }): HTMLElement {
   const group = createElement('div', 'pkc-eip-inline');
   group.setAttribute('data-pkc-region', 'export-import-panel');
 
@@ -2970,9 +2975,15 @@ function renderExportImportInline(state: AppState, options?: { autoOpen?: boolea
   if (options?.autoOpen) {
     details.open = true;
   }
+  // pgc-209:`exporting=true` のとき details `data-pkc-exporting` attribute
+  // を付与(CSS 側で visual feedback の余地 + post-pass で button disable)。
+  const isExporting = options?.exporting === true;
+  if (isExporting) {
+    details.setAttribute('data-pkc-exporting', 'true');
+  }
   const summary = document.createElement('summary');
   summary.className = 'pkc-btn pkc-btn-create pkc-eip-summary';
-  summary.setAttribute('title', 'エクスポート・インポート操作');
+  summary.setAttribute('title', isExporting ? 'エクスポート実行中…' : 'エクスポート・インポート操作');
   // 2026-04-26 user audit: opt this details into the press-drag-
   // release UX (`handleDetailsMenuMouseDown`) so the panel follows
   // the macOS native menu idiom. mousedown opens the panel, drag
@@ -3337,6 +3348,25 @@ function renderExportImportInline(state: AppState, options?: { autoOpen?: boolea
 
   details.appendChild(content);
   group.appendChild(details);
+
+  // pgc-209(pgc-205 probe finding「rapid double-click → 2 downloads」 対策):
+  // export 中は全 action button(begin-export / export-* / import-* / new pkc)
+  // を disable。reducer 側で BEGIN_EXPORT が phase='exporting' 中は blocked
+  // (state===prev で render listener 非発火、parallel call は防止済)だが、
+  // **button が DOM に visible のまま rapid click が貯まる** ケース(50-100ms
+  // 間の SYS_FINISH_EXPORT → phase='ready' → re-mount → 次 click 受理)で
+  // sequential 多重 export が起き得るため、export 中は visual feedback +
+  // browser-level click 抑止の両方を入れる。
+  if (isExporting) {
+    const actionButtons = group.querySelectorAll<HTMLButtonElement>(
+      'button[data-pkc-action]',
+    );
+    for (const btn of Array.from(actionButtons)) {
+      btn.disabled = true;
+      btn.setAttribute('data-pkc-disabled-reason', 'exporting');
+      btn.setAttribute('aria-disabled', 'true');
+    }
+  }
 
   return group;
 }
