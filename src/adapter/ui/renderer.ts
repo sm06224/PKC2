@@ -100,7 +100,21 @@ import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
 import { syncLinkMigrationDialogFromState } from './link-migration-dialog';
 import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
-import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
+import { parseTodoBody as parseTodoBodyRaw, formatTodoDate, isTodoPastDue } from './todo-presenter';
+import type { TodoBody } from '../../features/todo/todo-body';
+
+// pgc-241:`parseTodoBody` は JSON.parse を含む O(L) cost。sidebar render で
+// 全 todo entry に対して archived check + status badge build などで 3-5 site
+// から呼ばれる。entry ref で memoize し container 跨ぎは WeakMap で自動 GC。
+const todoBodyMemo = new WeakMap<import('../../core/model/record').Entry, TodoBody>();
+function parseTodoBody(body: string, entry?: import('../../core/model/record').Entry): TodoBody {
+  if (!entry) return parseTodoBodyRaw(body);
+  const cached = todoBodyMemo.get(entry);
+  if (cached) return cached;
+  const parsed = parseTodoBodyRaw(body);
+  todoBodyMemo.set(entry, parsed);
+  return parsed;
+}
 import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
 import { deriveDisplayFilename } from './image-optimize/paste-optimization';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
@@ -3650,7 +3664,7 @@ function renderAdvancedFiltersPanel(
   filterActive: boolean,
 ): HTMLElement | null {
   const hasArchivedTodo = userEntries.some(
-    (e) => e.archetype === 'todo' && parseTodoBody(e.body).archived,
+    (e) => e.archetype === 'todo' && parseTodoBody(e.body, e).archived,
   );
   const hasAttachment = userEntries.some((e) => e.archetype === 'attachment');
   const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
@@ -3825,7 +3839,7 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   if (!state.showArchived) {
     matched = matched.filter((e) => {
       if (e.archetype !== 'todo') return true;
-      return !parseTodoBody(e.body).archived;
+      return !parseTodoBody(e.body, e).archived;
     });
   }
   // ② searchHideBuckets:検索軸が立っているときのみ ASSETS / TODOS bucket
@@ -4251,7 +4265,7 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   if (!state.showArchived) {
     filtered = filtered.filter((e) => {
       if (e.archetype !== 'todo') return true;
-      return !parseTodoBody(e.body).archived;
+      return !parseTodoBody(e.body, e).archived;
     });
   }
   // Hide entries inside auto-bucket folders (ASSETS / TODOS) from
@@ -5031,7 +5045,7 @@ function renderEntryItem(
 
   // Todo status indicator
   if (entry.archetype === 'todo') {
-    const todo = parseTodoBody(entry.body);
+    const todo = parseTodoBody(entry.body, entry);
     const statusBadge = createElement('span', 'pkc-todo-status-badge');
     statusBadge.setAttribute('data-pkc-todo-status', todo.status);
     statusBadge.textContent = todo.status === 'done' ? '[x]' : '[ ]';
@@ -6342,7 +6356,7 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     if (
       shellTodoOverdueIndicatorEnabled() &&
       child.archetype === 'todo' &&
-      isTodoPastDue(parseTodoBody(child.body))
+      isTodoPastDue(parseTodoBody(child.body, child))
     ) {
       tr.setAttribute('data-pkc-todo-overdue', 'true');
     }
