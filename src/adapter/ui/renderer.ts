@@ -9399,8 +9399,16 @@ function renderLinkIndexSections(
   const backlinks = linkIndex.backlinksByTarget.get(entry.lid) ?? [];
   const brokenForEntry = outgoing.filter((r) => !r.resolved);
 
+  // pgc-228:titleByLid Map は container.entries の O(N) walk で、
+  // c-5000 で ~1ms 累積。refs が全 0 のとき(typical case ── 大半の
+  // entry は外部 link を持たない)この walk は完全に無駄。
+  // **lazy build**:全 refs が空なら Map 自体を作らず、empty Map で
+  // pass(各 renderLinkRefsSection 内で refs.length === 0 short-circuit)。
+  const totalRefs = outgoing.length + backlinks.length + brokenForEntry.length;
   const titleByLid = new Map<string, string>();
-  for (const e of container.entries) titleByLid.set(e.lid, e.title);
+  if (totalRefs > 0) {
+    for (const e of container.entries) titleByLid.set(e.lid, e.title);
+  }
 
   wrap.appendChild(
     renderLinkRefsSection('Outgoing links', 'link-index-outgoing', outgoing, titleByLid, 'target'),
