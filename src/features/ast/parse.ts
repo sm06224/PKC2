@@ -29,6 +29,7 @@ import type {
   AstCodeBlock,
   AstDocument,
   AstHeading,
+  AstImage,
   AstInline,
   AstInlineCode,
   AstLink,
@@ -221,11 +222,17 @@ function walkInline(tokens: readonly Token[]): AstInline[] {
         linkKind,
         children: popped.children,
       };
+      // pgc-243:`[text](url "title")` の title を保持(可換性、CommonMark spec)。
+      if (popped._title) node.title = popped._title;
       top().push(node);
     } else if (type === 'image') {
       const src = tok.attrGet('src') ?? '';
       const alt = tok.content ?? '';
-      top().push({ kind: 'image', src, alt });
+      const title = tok.attrGet('title') ?? undefined;
+      const node: AstImage = { kind: 'image', src, alt };
+      // pgc-243:`![alt](src "title")` の title を保持(可換性、CommonMark spec)。
+      if (title) node.title = title;
+      top().push(node);
     } else if (type === 'html_inline') {
       // raw HTML — wrap in span として保持(IR は HTML を text として扱わない、
       // canonical な意味付けは canonicalize で行う)
@@ -344,6 +351,11 @@ function walkBlocks(tokens: readonly Token[]): AstBlock[] {
     } else if (type === 'table_open') {
       const close = findCloseIdx(tokens, i, 'table_close');
       const rows: AstTableRow[] = [];
+      // pgc-243:GFM table の column alignment は markdown-it が `th_open` /
+      // `td_open` token の `style="text-align:left|right|center"` attr に
+      // 載せる。AstTable.align: ReadonlyArray<...> field に転記して
+      // 双方向可換性を保つ(`<th style>` / `:---:` 構文の round-trip)。
+      let columnAlign: Array<'left' | 'right' | 'center' | null> | null = null;
       let j = i + 1;
       while (j < close) {
         const t = tokens[j]!;
@@ -363,6 +375,14 @@ function walkBlocks(tokens: readonly Token[]): AstBlock[] {
                 ? walkInline(inlineTok.children ?? [])
                 : [];
               cells.push({ kind: 'table-cell', children });
+              // pgc-243:column alignment 抽出。table 全体で 1 度だけ build
+              // (header 行を見れば全列の alignment が揃っている前提、GFM 仕様)。
+              if (!columnAlign) {
+                columnAlign = [];
+              }
+              const styleAttr = ct.attrGet('style') ?? '';
+              const alignMatch = /text-align:\s*(left|right|center)/.exec(styleAttr);
+              columnAlign.push((alignMatch?.[1] ?? null) as 'left' | 'right' | 'center' | null);
               k = cellClose + 1;
             } else {
               k++;
@@ -378,6 +398,11 @@ function walkBlocks(tokens: readonly Token[]): AstBlock[] {
         kind: 'table',
         rows,
       };
+      // pgc-243:全列 null(alignment 未指定)の場合は省略、明示 alignment が
+      // 1 件でも在れば保持。
+      if (columnAlign && columnAlign.some((a) => a !== null)) {
+        node.align = columnAlign;
+      }
       const pos = tokenPos(tok);
       if (pos) node.pos = pos;
       result.push(node);

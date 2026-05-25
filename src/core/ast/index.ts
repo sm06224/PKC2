@@ -140,6 +140,11 @@ export interface AstLink extends AstNodeBase {
   /** kind: external / entry / asset / permalink. */
   linkKind: 'external' | 'entry' | 'asset' | 'permalink';
   children: readonly AstInline[];
+  /**
+   * pgc-243:CommonMark `[text](url "title")` の title attribute、
+   * HTML `<a title>` と双方向可換に保持。未指定なら省略。
+   */
+  title?: string;
 }
 
 export interface AstCard extends AstNodeBase {
@@ -160,6 +165,11 @@ export interface AstImage extends AstNodeBase {
   kind: 'image';
   src: string;
   alt: string;
+  /**
+   * pgc-243:CommonMark `![alt](src "title")` の title attribute、
+   * HTML `<img title>` と双方向可換に保持。未指定なら省略。
+   */
+  title?: string;
 }
 
 export interface AstAutoRef extends AstNodeBase {

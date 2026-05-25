@@ -653,8 +653,13 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
     }
     case 'link': {
       const text = renderInlines(node.children, mode);
+      // pgc-243:title が在れば CommonMark `"title"` 構文で markdown に復元、
+      // 双方向可換性を保証。title 内の `"` は `\"` で escape。
+      const titleSuffix = node.title
+        ? ` "${node.title.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+        : '';
       // entry / asset / permalink は PKC では pkc:// scheme で復元
-      return `[${text}](${node.href})`;
+      return `[${text}](${node.href}${titleSuffix})`;
     }
     case 'card': {
       const text = renderInlines(node.children, mode);
@@ -669,8 +674,13 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
       }
       return `[${text}](${node.ref})`;
     }
-    case 'image':
-      return `![${escapeText(node.alt)}](${node.src})`;
+    case 'image': {
+      // pgc-243:title が在れば CommonMark `"title"` 構文で復元(双方向可換)。
+      const titleSuffix = node.title
+        ? ` "${node.title.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+        : '';
+      return `![${escapeText(node.alt)}](${node.src}${titleSuffix})`;
+    }
     case 'auto-ref':
       // PR-2JJ v2 hotfix(2026-05-13):PKC mode は formal form `[@id]`、
       // GFM mode は plain `@id`(GFM consumer は brackets 解釈しないので)。

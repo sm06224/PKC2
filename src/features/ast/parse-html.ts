@@ -321,6 +321,15 @@ function parseBlockChildrenOrInlineFallback(nodes: ChildNode[]): AstBlock[] {
 
 function parseTable(el: HTMLElement): AstTable {
   const rows: AstTableRow[] = [];
+  // pgc-243:GFM table column alignment は `<th style="text-align:X">` で
+  // legacy markdown-it が emit する。最初に見つかる完全 row の cell style を
+  // header 行と同じ位置で抽出して、AstTable.align(双方向可換)に転記。
+  let columnAlign: Array<'left' | 'right' | 'center' | null> | null = null;
+  const extractAlign = (cellEl: HTMLElement): 'left' | 'right' | 'center' | null => {
+    const style = cellEl.getAttribute('style') ?? '';
+    const m = /text-align:\s*(left|right|center)/.exec(style);
+    return (m?.[1] ?? null) as 'left' | 'right' | 'center' | null;
+  };
   // happy-dom DOMParser だと HTMLTableElement の `tHead` / `tBodies` プロパティが
   // 期待通り設置されないことがあるので、`querySelector(:scope > thead)` 経路で
   // 明示的に取り出す(child element 限定で nested <table> を踏まない)。
@@ -332,13 +341,17 @@ function parseTable(el: HTMLElement): AstTable {
     for (const tr of Array.from(parent.children)) {
       if (tr.tagName.toLowerCase() !== 'tr') continue;
       const cells: AstTableCell[] = [];
+      const rowAlign: Array<'left' | 'right' | 'center' | null> = [];
       for (const cellEl of Array.from(tr.children)) {
         cells.push({
           kind: 'table-cell',
           children: parseInlineChildren(Array.from(cellEl.childNodes)),
         } as AstTableCell);
+        rowAlign.push(extractAlign(cellEl as HTMLElement));
       }
       rows.push({ kind: 'table-row', isHeader, cells } as AstTableRow);
+      // pgc-243:最初に column 数が一致する row(typically header)の alignment を採用
+      if (!columnAlign && rowAlign.length > 0) columnAlign = rowAlign;
     }
   };
   const thead = directChild('thead');
@@ -350,6 +363,7 @@ function parseTable(el: HTMLElement): AstTable {
     for (const tr of Array.from(el.children)) {
       if (tr.tagName.toLowerCase() !== 'tr') continue;
       const cells: AstTableCell[] = [];
+      const rowAlign: Array<'left' | 'right' | 'center' | null> = [];
       let allTh = true;
       for (const cellEl of Array.from(tr.children)) {
         if (cellEl.tagName.toLowerCase() !== 'th') allTh = false;
@@ -357,12 +371,19 @@ function parseTable(el: HTMLElement): AstTable {
           kind: 'table-cell',
           children: parseInlineChildren(Array.from(cellEl.childNodes)),
         } as AstTableCell);
+        rowAlign.push(extractAlign(cellEl as HTMLElement));
       }
       rows.push({ kind: 'table-row', isHeader: firstRow && allTh, cells } as AstTableRow);
+      if (!columnAlign && rowAlign.length > 0) columnAlign = rowAlign;
       firstRow = false;
     }
   }
-  return { kind: 'table', rows };
+  const node: AstTable = { kind: 'table', rows };
+  // pgc-243:全列 null(alignment 未指定)なら省略、明示 1 件でもあれば保持。
+  if (columnAlign && columnAlign.some((a) => a !== null)) {
+    node.align = columnAlign;
+  }
+  return node;
 }
 
 // ── Inline 解析 ──────────────────────────────────────────
@@ -458,19 +479,28 @@ function parseInlineElement(el: HTMLElement): AstInline | null {
       }
       const linkKindMatch = /pkc-link-([\w-]+)/.exec(cls);
       const linkKind = (linkKindMatch?.[1] ?? 'external') as AstLink['linkKind'];
-      return {
+      const node: AstLink = {
         kind: 'link',
         href,
         linkKind,
         children: parseInlineChildren(Array.from(el.childNodes)),
-      } as AstLink;
+      };
+      // pgc-243:HTML `<a title>` を AST に保持(双方向可換)。
+      const title = el.getAttribute('title');
+      if (title) node.title = title;
+      return node;
     }
-    case 'img':
-      return {
+    case 'img': {
+      const node: AstImage = {
         kind: 'image',
         src: el.getAttribute('src') ?? '',
         alt: el.getAttribute('alt') ?? '',
-      } as AstImage;
+      };
+      // pgc-243:HTML `<img title>` を AST に保持(双方向可換)。
+      const title = el.getAttribute('title');
+      if (title) node.title = title;
+      return node;
+    }
     case 'cite': {
       // pkc-citation `<cite class="pkc-citation" data-pkc-cite-id="X">`
       const id = el.getAttribute('data-pkc-cite-id');
