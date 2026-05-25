@@ -65,6 +65,7 @@
 | 23 | conditional block | — | `:::if{format=html} content :::` | `Directive{name="if", attrs, children}` | rare | ✅ spec のみ、未実装 |
 | 24 | comment block(隠し) | `%%%\nblock comment\n%%%` | `:::comment{block=true} content :::` | `Comment{kind=block, hidden=true}` | occasional | ✅ wave-10-2 L-4 |
 | 25 | blank line marker(空行)| `_`(行単独 = 1 空行)/ `_3`(3 空行)| `:::blank{count=1}` / `:::blank{count=3}` | `Blank{count}` | occasional | ✅ wave-10-2 L-8 |
+| 25b | **block format wrapper(任意 class くくり)** | `:::.cls.cls\nbody\n:::`(class chain)/ `:::red,bg-yellow,1.2em\nbody\n:::`(vocabulary 同型、inline #34 対応物) | `:::format{.cls .cls #id key=v}\nbody\n:::` | `AstFormatBlock{classes, styles?, blockId?, indent?, align?, kvs?, children}` | occasional | 📝 NEW、人間向け spec v4 §12 + `pkc-block-format-attr-syntax-v1-minimum-scope.md` 参照、Q1-Q6 user 判断 + 実装着地で確定 |
 
 ## 1.3 inline 修飾
 
