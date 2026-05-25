@@ -8646,19 +8646,25 @@ function renderMetaPaneImpl(
       const select = document.createElement('select');
       select.setAttribute('data-pkc-field', 'tag-target');
       select.className = 'pkc-tag-select';
+      // pgc-218(pgc-217 と同型):options を DocumentFragment に batch して
+      // 1 appendChild に削減、N reflow → 1 reflow。`e.title || …` 評価も
+      // local cache。
+      const tagOptFrag = document.createDocumentFragment();
       const defaultOpt = document.createElement('option');
       defaultOpt.value = '';
       defaultOpt.textContent = '+ Tag';
-      select.appendChild(defaultOpt);
+      tagOptFrag.appendChild(defaultOpt);
       for (const e of available) {
         const opt = document.createElement('option');
         opt.value = e.lid;
         // Truncate so the dropdown panel stays inside the meta
         // pane on long titles (see relation-target select).
-        opt.textContent = truncate(e.title || `(${e.lid})`, 32);
-        opt.title = e.title || `(${e.lid})`;
-        select.appendChild(opt);
+        const title = e.title || `(${e.lid})`;
+        opt.textContent = truncate(title, 32);
+        opt.title = title;
+        tagOptFrag.appendChild(opt);
       }
+      select.appendChild(tagOptFrag);
       addForm.appendChild(select);
 
       const addBtn = createElement('button', 'pkc-btn-small');
@@ -8696,22 +8702,26 @@ function renderMetaPaneImpl(
     select.setAttribute('data-pkc-field', 'move-target');
     select.className = 'pkc-move-select';
 
+    // pgc-218(pgc-217 と同型):options を DocumentFragment に batch。
+    const moveOptFrag = document.createDocumentFragment();
     const noneOpt = document.createElement('option');
     noneOpt.value = '';
     noneOpt.textContent = currentParent ? '↑ Root level' : '(root)';
     if (!currentParent) noneOpt.selected = true;
-    select.appendChild(noneOpt);
+    moveOptFrag.appendChild(noneOpt);
 
     for (const f of folders) {
       const opt = document.createElement('option');
       opt.value = f.lid;
       // Truncate to keep the dropdown panel inside the meta pane
       // (see relation-target select for the same rationale).
-      opt.textContent = truncate(f.title || `(${f.lid})`, 32);
-      opt.title = f.title || `(${f.lid})`;
+      const title = f.title || `(${f.lid})`;
+      opt.textContent = truncate(title, 32);
+      opt.title = title;
       if (currentParent && currentParent.lid === f.lid) opt.selected = true;
-      select.appendChild(opt);
+      moveOptFrag.appendChild(opt);
     }
+    select.appendChild(moveOptFrag);
     moveSection.appendChild(select);
 
     const moveBtn = createElement('button', 'pkc-btn-small');
