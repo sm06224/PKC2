@@ -9319,10 +9319,21 @@ function formatAssetReference(entry: Entry): string {
 
 /**
  * Resolve attachment base64 data from container.assets or legacy body.data.
+ *
+ * pgc-236:optional `entryByLidOverride` Map を受け取れる ── 呼び出し側
+ * (`populateAttachmentPreviews` 等)で複数 lid を一括解決する場合、Map を
+ * 1 度 build して渡すことで per-call の O(N) `entries.find` walk を完全除去。
+ * 未指定なら従来通り state から `entries.find` で walk(test / 単発呼出)。
  */
-function resolveAttachmentData(lid: string, dispatcher: Dispatcher): { data: string; mime: string; name: string } | null {
+function resolveAttachmentData(
+  lid: string,
+  dispatcher: Dispatcher,
+  entryByLidOverride?: Map<string, import('../../core/model/record').Entry>,
+): { data: string; mime: string; name: string } | null {
   const state = dispatcher.getState();
-  const entry = state.container?.entries.find((e) => e.lid === lid);
+  const entry = entryByLidOverride
+    ? entryByLidOverride.get(lid)
+    : state.container?.entries.find((e) => e.lid === lid);
   if (!entry || entry.archetype !== 'attachment') return null;
 
   const att = parseAttachmentBody(entry.body);
@@ -9593,12 +9604,19 @@ function collectAssetNameMap(container: Container): Record<string, string> {
 export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispatcher): void {
   const previews = root.querySelectorAll<HTMLElement>('[data-pkc-region="attachment-preview"]');
   if (previews.length === 0) return;
-  // pgc-234:旧 path は per-preview に `entries.find(...)` で O(N) walk、
-  // 複数 preview があると O(P × N)。state と entryByLid Map を loop の外で
-  // **1 度だけ build** し、以後 O(1) Map.get で lookup。
+  // pgc-234 / pgc-236:旧 path は per-preview に `entries.find(...)` で O(N)
+  // walk、複数 preview があると O(P × N)。loop の外で 1 度だけ Map build し、
+  // **resolveAttachmentData にも override として渡す** ことで以後 O(1) Map.get。
+  // pgc-236 で resolveAttachmentData の per-call N walk も完全除去。
   const state = dispatcher.getState();
   const containerSandboxDefault = resolveContainerSandboxDefault(state.container?.meta.sandbox_policy);
   let entryByLid: Map<string, import('../../core/model/record').Entry> | null = null;
+  const ensureEntryByLid = (): Map<string, import('../../core/model/record').Entry> | null => {
+    if (!entryByLid && state.container) {
+      entryByLid = new Map(state.container.entries.map((e) => [e.lid, e]));
+    }
+    return entryByLid;
+  };
   for (const el of previews) {
     // Skip if already populated (has child elements beyond placeholder)
     if (el.querySelector('img, video, audio, iframe, object')) continue;
@@ -9606,15 +9624,13 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     const lid = el.getAttribute('data-pkc-lid');
     if (!lid) continue;
 
-    const resolved = resolveAttachmentData(lid, dispatcher);
+    const map = ensureEntryByLid();
+    const resolved = resolveAttachmentData(lid, dispatcher, map ?? undefined);
     if (!resolved) continue;
 
     // Read sandbox_allow from the entry body for HTML previews.
     // Fallback chain: per-entry override → container default → strict.
-    if (!entryByLid && state.container) {
-      entryByLid = new Map(state.container.entries.map((e) => [e.lid, e]));
-    }
-    const entryForPreview = entryByLid?.get(lid);
+    const entryForPreview = map?.get(lid);
     const entryAllow = entryForPreview
       ? parseAttachmentBody(entryForPreview.body).sandbox_allow
       : undefined;
