@@ -115,7 +115,22 @@ function parseTodoBody(body: string, entry?: import('../../core/model/record').E
   todoBodyMemo.set(entry, parsed);
   return parsed;
 }
-import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
+import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
+import type { AttachmentBody } from './attachment-presenter';
+
+// pgc-242:`parseAttachmentBody` も pgc-241 と同 doctrine の JSON.parse memoize。
+// `buildAssetMimeMap` / `buildAssetNameMap` / `hydrateAppIconAssetOptions` /
+// 各種 attachment-specific 経路で per-attachment に parse されるため、render
+// 跨ぎ + 同 render 内の重複 parse を WeakMap で削減。
+const attachmentBodyMemo = new WeakMap<import('../../core/model/record').Entry, AttachmentBody>();
+function parseAttachmentBody(body: string, entry?: import('../../core/model/record').Entry): AttachmentBody {
+  if (!entry) return parseAttachmentBodyRaw(body);
+  const cached = attachmentBodyMemo.get(entry);
+  if (cached) return cached;
+  const parsed = parseAttachmentBodyRaw(body);
+  attachmentBodyMemo.set(entry, parsed);
+  return parsed;
+}
 import { deriveDisplayFilename } from './image-optimize/paste-optimization';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { pad2 } from '../../features/datetime/datetime-format';
@@ -7431,7 +7446,7 @@ function hydrateAppIconAssetOptions(view: HTMLElement, container: Container): vo
   const imageAttachments: { assetKey: string; label: string }[] = [];
   for (const e of container.entries) {
     if (e.archetype !== 'attachment') continue;
-    const ea = parseAttachmentBody(e.body);
+    const ea = parseAttachmentBody(e.body, e);
     if (!ea.asset_key) continue;
     if (!ea.mime?.startsWith('image/')) continue;
     if (container.assets[ea.asset_key] == null) continue;
@@ -7493,7 +7508,7 @@ function renderLauncherView(state: AppState): HTMLElement {
     // asset_key を持つ image attachment の MIME を逆引き
     for (const e of state.container?.entries ?? []) {
       if (e.archetype !== 'attachment') continue;
-      const ea = parseAttachmentBody(e.body);
+      const ea = parseAttachmentBody(e.body, e);
       if (ea.asset_key === assetKey && ea.mime?.startsWith('image/')) {
         return `data:${ea.mime};base64,${base64}`;
       }
@@ -7503,7 +7518,7 @@ function renderLauncherView(state: AppState): HTMLElement {
   const registered: { lid: string; name: string; iconText: string; iconImageUrl: string | null }[] = [];
   for (const entry of state.container?.entries ?? []) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.registered_as_app !== true) continue;
     if (classifyPreviewType(att.mime) !== 'html') continue;
     const iconImageUrl = att.app_icon_asset_key
@@ -9287,7 +9302,7 @@ function renderMetaPaneImpl(
 
   // Sandbox control section for HTML attachments
   if (entry.archetype === 'attachment') {
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (isHtml(att.mime) || isSvg(att.mime)) {
       const sandboxSection = createElement('div', 'pkc-sandbox-control');
       sandboxSection.setAttribute('data-pkc-region', 'sandbox-control');
@@ -10958,7 +10973,7 @@ export function buildAssetMimeMap(container: Container): Record<string, string> 
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.asset_key && att.mime) {
       map[att.asset_key] = att.mime;
     }
@@ -10976,7 +10991,7 @@ export function buildAssetNameMap(container: Container): Record<string, string> 
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.asset_key && att.name) {
       map[att.asset_key] = deriveDisplayFilename(att.name, att.mime);
     }
@@ -11904,7 +11919,7 @@ export function renderDetachedPanel(entry: Entry, container: Container | null): 
  */
 function renderDetachedAttachment(entry: Entry, container: Container | null): HTMLElement {
   const root = createElement('div', 'pkc-detached-attachment');
-  const att = parseAttachmentBody(entry.body);
+  const att = parseAttachmentBody(entry.body, entry);
 
   if (!att.name) {
     const empty = createElement('div', 'pkc-attachment-empty');
