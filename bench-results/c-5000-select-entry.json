@@ -5,121 +5,121 @@
   "measures": [
     {
       "name": "dispatch:SELECT_ENTRY",
-      "startTime": 680.0999999996275,
-      "duration": 57.10000000055879
+      "startTime": 767.4000000003725,
+      "duration": 59.59999999962747
     },
     {
       "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 680.2999999998137,
-      "duration": 0
+      "startTime": 767.6000000005588,
+      "duration": 0.09999999962747097
     },
     {
       "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 680.2999999998137,
-      "duration": 56.5
+      "startTime": 767.7000000001863,
+      "duration": 59
     },
     {
       "name": "render:scope=selection-only",
-      "startTime": 680.7000000001863,
-      "duration": 54.299999999813735
+      "startTime": 768.2000000001863,
+      "duration": 56.299999999813735
     },
     {
       "name": "render:sidebar",
-      "startTime": 681.0999999996275,
-      "duration": 4.400000000372529
+      "startTime": 768.6000000005588,
+      "duration": 4.7999999998137355
     },
     {
       "name": "render:center",
-      "startTime": 691.9000000003725,
-      "duration": 5.3999999994412065
+      "startTime": 778.9000000003725,
+      "duration": 5.2999999998137355
     },
     {
       "name": "render:sidebar",
-      "startTime": 705.7000000001863,
-      "duration": 2.599999999627471
+      "startTime": 791.2000000001863,
+      "duration": 2.900000000372529
     },
     {
       "name": "render:center",
-      "startTime": 708.2999999998137,
-      "duration": 3
+      "startTime": 794.2000000001863,
+      "duration": 3.099999999627471
     },
     {
       "name": "render:meta",
-      "startTime": 711.5,
-      "duration": 23.09999999962747
+      "startTime": 797.4000000003725,
+      "duration": 26.59999999962747
     },
     {
       "name": "meta:startup",
-      "startTime": 712.5,
-      "duration": 11.599999999627471
+      "startTime": 798.2999999998137,
+      "duration": 11.900000000372529
     },
     {
       "name": "meta:frontmatter",
-      "startTime": 724.0999999996275,
+      "startTime": 810.2999999998137,
       "duration": 0.10000000055879354
     },
     {
       "name": "meta:toc",
-      "startTime": 724.2000000001863,
-      "duration": 0.09999999962747097
+      "startTime": 810.4000000003725,
+      "duration": 0
     },
     {
       "name": "meta:section-entry-tags",
-      "startTime": 724.2999999998137,
-      "duration": 0.10000000055879354
+      "startTime": 810.5,
+      "duration": 0
     },
     {
       "name": "meta:middle-sections",
-      "startTime": 724.2999999998137,
-      "duration": 6.7000000001862645
+      "startTime": 810.5,
+      "duration": 10
     },
     {
       "name": "meta:section-categorical-tag",
-      "startTime": 724.4000000003725,
-      "duration": 1.699999999254942
+      "startTime": 810.6000000005588,
+      "duration": 5.699999999254942
     },
     {
       "name": "meta:section-move",
-      "startTime": 726.2000000001863,
-      "duration": 3.2000000001862645
+      "startTime": 816.4000000003725,
+      "duration": 2.5
     },
     {
       "name": "meta:section-desc-profile",
-      "startTime": 729.4000000003725,
-      "duration": 1.5
+      "startTime": 819,
+      "duration": 1.400000000372529
     },
     {
       "name": "meta:history",
-      "startTime": 731,
-      "duration": 0.2999999998137355
+      "startTime": 820.5,
+      "duration": 0.40000000037252903
     },
     {
       "name": "meta:relations",
-      "startTime": 731.4000000003725,
+      "startTime": 820.9000000003725,
       "duration": 1.599999999627471
     },
     {
       "name": "meta:linkIndex",
-      "startTime": 733,
-      "duration": 0.09999999962747097
+      "startTime": 822.5,
+      "duration": 0
     },
     {
       "name": "meta:renderLinkIndexSections",
-      "startTime": 733.2000000001863,
-      "duration": 0.8999999994412065
+      "startTime": 822.7000000001863,
+      "duration": 0.900000000372529
     },
     {
       "name": "meta:relation-create-form",
-      "startTime": 734.2000000001863,
-      "duration": 0.2999999998137355
+      "startTime": 823.6000000005588,
+      "duration": 0.39999999944120646
     },
     {
       "name": "meta:inspector",
-      "startTime": 734.5,
-      "duration": 0.09999999962747097
+      "startTime": 824,
+      "duration": 0
     }
   ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 86.14,
-  "capturedAt": "2026-05-25T02:42:10.154Z"
+  "heapUsedMb": 59.88,
+  "capturedAt": "2026-05-25T02:47:41.853Z"
 }

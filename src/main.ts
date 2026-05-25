@@ -247,8 +247,14 @@ async function boot(): Promise<void> {
       render(state, root, prevRenderState);
       applyWcagResolverNow(root);
       restoreRenderContinuity(root, continuity);
-      populateAttachmentPreviews(root, dispatcher);
-      populateInlineAssetPreviews(root, dispatcher);
+      // pgc-223:selection-only path で populate helpers の walk scope を
+      // `.pkc-main` に限定(header / shell-menu / activity-bar / tray-bar /
+      // floating UI は selection 不変で walk 不要)。`main` element が無い
+      // (boot 直後 / 視覚 mode 切替直後 等)は full root に fallback。
+      // c-5000 で populate 経由の N-walk overhead を ~10-15ms 削減見込み。
+      const mainScope = root.querySelector<HTMLElement>('.pkc-main') ?? root;
+      populateAttachmentPreviews(mainScope, dispatcher);
+      populateInlineAssetPreviews(mainScope, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
       return;
