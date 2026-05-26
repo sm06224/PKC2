@@ -893,7 +893,7 @@ HTML5 semantic markup として意味のある grouping。
 
 出力:`<section class="pkc-section-callout pkc-section-section" data-pkc-role="section">…</section>`。
 
-#### 8.1.4 attrs 付き(id / class / 任意 key)(#51c、頻度 occasional)
+#### 8.1.4 attrs 付き(id / class / layout hint / 任意 key)(#51c、頻度 occasional)
 
 `:::section{...}` の `{...}` には role 以外の attrs も書ける:
 
@@ -902,12 +902,27 @@ HTML5 semantic markup として意味のある grouping。
 id="my-anchor" + 追加 class="extra-class" 付き note。
 :::
 
-:::section{role=cover layout=hero data-section-num=1}
-任意 attrs(layout は layout hint として分離処理、他は data-pkc-* として attach)。
+:::section{role=cover columns=2 float=right}
+layout hint 付き(columns/float は `AstSection.layout` に分離)。
+:::
+
+:::section{role=note data-section-num=1 custom-key=value}
+任意 key は `attrs.kvs` に保持、HTML 出力時に data-* 属性として attach 候補。
 :::
 ```
 
-実装:`extractLayoutHint` で `layout=` を `AstSection.layout` field に分離、残り attrs は `AstSection.attrs` に attach、`<section>` の HTML 属性として serialize。
+**`extractLayoutHint` で `AstSection.layout` field に分離される key**(`decompose-pkc.ts:648-683`):
+
+| key(alias 含む)| 値の制約 | `AstLayoutHint` field |
+|------|---------|--------|
+| `columns` / `layout-columns` | integer ≥ 1 | `columns` |
+| `float` / `layout-float` | `left` / `right` / `none` | `float` |
+| `page-break-role` / `layout-page-break-role` | string | `pageBreakRole` |
+| `region` / `layout-region` | string | `region` |
+| `text-align` / `layout-text-align` | `left` / `right` / `center` / `justify` | `textAlign` |
+| `slide-layout` | string | `slideLayout` |
+
+**上記 6 種以外の key**(例:`data-section-num` / `custom-key` / `layout=cover` 等)は `extractLayoutHint` に拾われず、`AstSection.attrs.kvs` に generic attr として残る(レビュー注:`layout=X` 単独 key は generic 扱い、`columns=N` などが本来の layout hint key)。
 
 ### 8.2 conditional block(§3.3.5 #52)
 
