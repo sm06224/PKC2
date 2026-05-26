@@ -77,6 +77,7 @@ import type {
   AstEmphasis,
   AstFigure,
   AstHeading,
+  AstFormatBlock,
   AstIfBlock,
   AstImage,
   AstInline,
@@ -268,6 +269,59 @@ function parseBlockElement(el: HTMLElement): AstBlock | null {
         const format = el.getAttribute('data-pkc-if-format') ?? 'html';
         const children = parseBlockChildren(Array.from(el.childNodes));
         return { kind: 'if-block', format, children } as AstIfBlock;
+      }
+      // v4 §12 stack PR 9:pkc-format-block を AstFormatBlock に逆 parse
+      if (el.classList.contains('pkc-format-block')) {
+        // classes(pkc-format-block を除く ABC sorted)
+        const classes = Array.from(el.classList)
+          .filter((c) => c !== 'pkc-format-block')
+          .sort((a, b) => a.localeCompare(b));
+        // id
+        const blockId = el.id || undefined;
+        // data-pkc-indent
+        const indentRaw = el.getAttribute('data-pkc-indent');
+        const indent = indentRaw ? parseInt(indentRaw, 10) : undefined;
+        // data-pkc-align
+        const alignRaw = el.getAttribute('data-pkc-align');
+        const align: 'left' | 'center' | 'right' | 'justify' | undefined =
+          alignRaw === 'left' || alignRaw === 'center' || alignRaw === 'right' || alignRaw === 'justify'
+            ? alignRaw
+            : undefined;
+        // style 属性 → styles(各 CSS prop:value を抽出)
+        const styleAttr = el.getAttribute('style');
+        let styles: Record<string, string> | undefined;
+        if (styleAttr) {
+          styles = {};
+          for (const decl of styleAttr.split(';')) {
+            const colon = decl.indexOf(':');
+            if (colon < 0) continue;
+            const k = decl.slice(0, colon).trim();
+            const v = decl.slice(colon + 1).trim();
+            if (k && v) styles[k] = v;
+          }
+          if (Object.keys(styles).length === 0) styles = undefined;
+        }
+        // 残り data-pkc-* attrs(format-block / indent / align 除外)を kvs に
+        const kvs: Record<string, string | boolean> = {};
+        for (const a of Array.from(el.attributes)) {
+          if (!a.name.startsWith('data-pkc-')) continue;
+          const key = a.name.slice('data-pkc-'.length);
+          if (key === 'format-block' || key === 'indent' || key === 'align') continue;
+          // boolean attr(値なし)= true、それ以外は string
+          kvs[key] = a.value === '' ? true : a.value;
+        }
+        const children = parseBlockChildren(Array.from(el.childNodes));
+        const node: AstFormatBlock = {
+          kind: 'format-block',
+          classes,
+          children,
+        };
+        if (styles) node.styles = styles;
+        if (blockId) node.blockId = blockId;
+        if (indent !== undefined && Number.isFinite(indent)) node.indent = indent;
+        if (align) node.align = align;
+        if (Object.keys(kvs).length > 0) node.kvs = kvs;
+        return node;
       }
       // Generic div → opaque-block(lossless preserve)
       return {
