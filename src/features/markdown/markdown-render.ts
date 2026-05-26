@@ -35,6 +35,7 @@ import { buildHtmlSandboxIframe } from './html-sandbox';
 import { parsePortablePkcReference } from '../link/permalink';
 import {
   parseBlockDirectiveOpen,
+  parseTier1FormatOpen,
   isBlockDirectiveClose,
   type BlockDirectiveAttrs as _BlockDirectiveAttrs,
 } from './block-directive-attrs';
@@ -2073,8 +2074,18 @@ function processFormatBlocks(source: string, lineMapIn: number[]): {
       i++;
       continue;
     }
-    const open = parseBlockDirectiveOpen(line);
-    if (!open || open.name !== 'format') {
+    // v4 §12 stack PR 4 + 5:formal `:::format{...}` + Tier 1 class chain
+    // `:::.cls.cls(#id)?`(寛容 6 variation)を両方 accept。Tier 1 形は parseTier1FormatOpen
+    // で attrs を抽出、formal と同 registry に登録。
+    let openAttrs: _BlockDirectiveAttrs | null = null;
+    const formal = parseBlockDirectiveOpen(line);
+    if (formal && formal.name === 'format') {
+      openAttrs = formal.attrs;
+    } else {
+      const tier1 = parseTier1FormatOpen(line);
+      if (tier1) openAttrs = tier1;
+    }
+    if (!openAttrs) {
       out.push(line);
       lineMapOut.push(inputIdx);
       i++;
@@ -2082,7 +2093,7 @@ function processFormatBlocks(source: string, lineMapIn: number[]): {
     }
     counter++;
     const id = counter;
-    registry.set(id, { attrs: open.attrs });
+    registry.set(id, { attrs: openAttrs });
     const openInputIdx = inputIdx;
     i++;
     out.push(`${FORMAT_SENTINEL_OPEN}${id}${FORMAT_SENTINEL_SEP}OPEN${FORMAT_SENTINEL_OPEN}`);
