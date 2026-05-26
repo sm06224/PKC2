@@ -319,11 +319,14 @@ PKC2 は同じ markdown を 5 つの surface で描画する:
 | 49 | caption(`:::figure` 内) | `^^^ caption` 行 | `:caption:[T]` | occasional | ✅ |
 | 50 | block math(equation 同義) | `$$T$$` 行単独 | `:::math $$T$$ :::` | occasional | ✅ |
 
-#### 3.3.5 装飾系 directive / コールアウト / コメント(#51-#54)
+#### 3.3.5 装飾系 directive / コールアウト / コメント / セクション wrapper(#51-#54a)
 
 | # | 機能 | simple | formal | 頻度 | status |
 |---|------|--------|--------|------|--------|
-| 51 | semantic callout(8 role) | — | `:::section{role=summary\|info\|note\|tip\|caution\|important\|warning\|danger} :::` | occasional | ✅ formal-only |
+| 51 | `:::section` **semantic callout(8 role)** | — | `:::section{role=summary\|info\|note\|tip\|caution\|important\|warning\|danger} :::` | freq | ✅ |
+| 51a | `:::section` **任意 role 文字列**(generic wrapper、CSS class 自動)| — | `:::section{role=ANY} :::` → `<section class="pkc-section-callout pkc-section-ANY" data-pkc-role="ANY">` | occasional | ✅ |
+| 51b | `:::section` **role 省略 default**(generic `<section>` wrapper)| — | `:::section :::` → `<section data-pkc-role="section">`(role default = `'section'`) | occasional | ✅ |
+| 51c | `:::section` **attrs 付き**(id / class / 任意 key)| — | `:::section{role=X #id .cls layout=cover key=v} :::` → attrs 全保持、`layout=` は layout hint として分離 | occasional | ✅ |
 | 52 | conditional block | — | `:::if{format=html\|markdown\|docx\|pptx\|pdf} :::` | rare | ✅ formal-only |
 | 53 | block comment | `%%%\n…\n%%%` | `:::comment :::` | occasional | ✅ |
 | 54 | **TOC block**(目次自動生成) | — | `:::toc{depth=N}` | occasional | ✅ formal-only(2026-05-12 PR-2V 着地) |
@@ -818,7 +821,13 @@ KaTeX で render。inline math は `$…$`(#12)、block は `$$…$$` 行単独�
 
 ## 8. 装飾系 / コメント / TOC / footnote 詳細(§3.3.5 + §3.3.6 + §3.2.3 footnote 参照経路)
 
-### 8.1 semantic callout(8 role)(§3.3.5 #51)
+### 8.1 `:::section{}` ─ semantic callout / 任意 role / generic wrapper(§3.3.5 #51-#51c)
+
+`:::section{...}` は PKC2 で **最も多用される block-level directive** の 1 つ。以下 3 つの使い方が併存:
+
+#### 8.1.1 8 role semantic callout(#51、頻度 freq)
+
+固定 8 role(summary / info / note / tip / caution / important / warning / danger)は **callout sentinel 処理** で専用 CSS が当たる(色 / アイコン):
 
 ```markdown
 :::section{role=note}
@@ -828,9 +837,14 @@ KaTeX で render。inline math は `$…$`(#12)、block は `$$…$$` 行単独�
 :::section{role=warning}
 これは warning(オレンジ ⚠ アイコン)。
 :::
+
+:::section{role=tip}
+💡 ヒント。
+:::
 ```
 
-**8 role**:
+**8 role table**:
+
 | role | 用途 | アイコン / 色 |
 |------|------|-----------|
 | summary | 要約 | 📋 灰色 |
@@ -842,7 +856,58 @@ KaTeX で render。inline math は `$…$`(#12)、block は `$$…$$` 行単独�
 | warning | 警告 | ⚠️ オレンジ濃 |
 | danger | 危険 | 🚨 赤 |
 
-寛容 alias:`:::note` `:::warning` 等は自動的に `:::section{role=NAME}` に rewrite(#75-#77)。
+寛容 alias:`:::note` `:::warning` 等は自動的に `:::section{role=NAME}` に rewrite(§3.6 #79-#81)。
+
+#### 8.1.2 任意 role 文字列(#51a、頻度 occasional)
+
+8 role 外の任意 role 文字列も accept。専用 CSS は当たらないが、`<section class="pkc-section-callout pkc-section-<role>" data-pkc-role="<role>">` で **CSS class 自動命名**:
+
+```markdown
+:::section{role=intro}
+イントロダクション(custom CSS `.pkc-section-intro` で装飾可能)。
+:::
+
+:::section{role=appendix}
+付録(`.pkc-section-appendix` で style 当て可能)。
+:::
+
+:::section{role=chapter1}
+カスタム role、theme CSS で扱う。
+:::
+```
+
+実装上、role 値は **validation なし**(`decompose-pkc.ts:696` で kvs.role を string として取得、fallback `'section'`)。8 role 外は寛容 parse + CSS class 命名で対応、user 側 CSS で装飾を当てる。
+
+#### 8.1.3 role 省略 default(#51b、頻度 occasional)
+
+`:::section` だけで使うと role default = `'section'`、generic `<section>` wrapper:
+
+```markdown
+:::section
+複数段落をまとめて 1 つの `<section>` でくくりたいとき。
+HTML5 semantic markup として意味のある grouping。
+
+第 2 段落も同 section 内。
+:::
+```
+
+出力:`<section class="pkc-section-callout pkc-section-section" data-pkc-role="section">…</section>`。
+
+#### 8.1.4 attrs 付き(id / class / 任意 key)(#51c、頻度 occasional)
+
+`:::section{...}` の `{...}` には role 以外の attrs も書ける:
+
+```markdown
+:::section{role=note #my-anchor .extra-class}
+id="my-anchor" + 追加 class="extra-class" 付き note。
+:::
+
+:::section{role=cover layout=hero data-section-num=1}
+任意 attrs(layout は layout hint として分離処理、他は data-pkc-* として attach)。
+:::
+```
+
+実装:`extractLayoutHint` で `layout=` を `AstSection.layout` field に分離、残り attrs は `AstSection.attrs` に attach、`<section>` の HTML 属性として serialize。
 
 ### 8.2 conditional block(§3.3.5 #52)
 
