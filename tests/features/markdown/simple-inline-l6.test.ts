@@ -134,7 +134,7 @@ describe('L-6: 簡易 inline `:text:attrs:`', () => {
         { input: ':a:1.5em:', expectMatch: /font-size: 1\.5em/, describe: 'em free value' },
         { input: ':a:12px:', expectMatch: /font-size: 12px/, describe: 'px free value' },
         { input: ':a:0.75rem:', expectMatch: /font-size: 0\.75rem/, describe: 'rem free value' },
-        { input: ':a:lg, red, bold:', expectMatch: /font-size: 1\.25em.*color: red.*font-weight: bold/, describe: 'size + color + bold combo' },
+        { input: ':a:lg, red, bold:', expectMatch: /color: red.*font-size: 1\.25em.*font-weight: bold/, describe: 'size + color + bold combo(ABC sorted、stack PR 6 で inline 統一)' },
         { input: ':a:bold, italic, underline:', expectMatch: /font-weight: bold/, describe: '3 keyword' },
         { input: '12:30:45', expectNoMatch: /pkc-inline-mark/, describe: '時刻無視' },
         { input: ':a:invalidattr:', expectNoMatch: /pkc-inline-mark/, describe: '未知 attr 無効' },

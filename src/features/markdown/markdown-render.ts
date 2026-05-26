@@ -878,9 +878,15 @@ interface ParsedAttrs {
   inlineStyle: string;
 }
 
-function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
-  const tokens = splitAttrs(attrsStr);
-  if (tokens.length === 0) return { valid: false, inlineStyle: '' };
+/**
+ * Vocabulary tokens を style mapping(Record<string, string>)に変換。
+ * 全 token が valid vocabulary なら styles を返す、1 つでも未知なら null。
+ *
+ * v4 §12 stack PR 6:Tier 0 vocabulary form `:::red,bg-yellow,1.2em` でも共有、
+ * inline `:T:vocab,vocab:` と完全対称な vocab → style mapping 経路。
+ */
+function parseVocabularyTokensToStyles(tokens: string[]): Record<string, string> | null {
+  if (tokens.length === 0) return null;
   const styles: Record<string, string> = {};
   for (const t of tokens) {
     if (SIMPLE_INLINE_VOCAB_KEYWORDS.has(t)) {
@@ -902,18 +908,55 @@ function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
       styles['font-size'] = t;
     } else if (t.startsWith('bg-')) {
       const c = t.slice(3);
-      if (!isValidColor(c)) return { valid: false, inlineStyle: '' };
+      if (!isValidColor(c)) return null;
       styles['background-color'] = c;
     } else if (isValidColor(t)) {
       styles['color'] = t;
     } else {
-      return { valid: false, inlineStyle: '' };
+      return null;
     }
   }
+  return styles;
+}
+
+function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
+  const tokens = splitAttrs(attrsStr);
+  const styles = parseVocabularyTokensToStyles(tokens);
+  if (!styles) return { valid: false, inlineStyle: '' };
+  // canonical attrs 順:ABC sorted(v4 §1.4 diff-friendly、stack PR 6 で inline / block 統一)
   const inlineStyle = Object.entries(styles)
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}: ${v}`)
     .join('; ');
   return { valid: true, inlineStyle };
+}
+
+/**
+ * v4 §12 stack PR 6:Tier 0 vocabulary form `:::red,bg-yellow,1.2em` を styles に parse。
+ *
+ * 入力:`:::vocab,vocab,vocab` または `:::vocab vocab vocab`(Q7 separator 寛容)。
+ * 戻り値:`{ styles }` 全 token が valid vocabulary なら / null 未知 token / 形式不一致。
+ *
+ * 注意:vocabulary check は inline `:T:vocab:` と同経路(`parseVocabularyTokensToStyles`)、
+ * 完全対称(Q3 priority、user direction 2026-05-25)。Tier 1 class chain よりも先に試行
+ * (vocabulary を優先)、未知 token 含むなら Tier 1 へ fallthrough。
+ */
+function parseTier0FormatOpen(line: string): { styles: Record<string, string> } | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith(':::')) return null;
+  const rest = trimmed.slice(3).trim();
+  if (rest.length === 0) return null;
+  // brace 形({...})は Tier 1 経路に任せる(Pandoc fenced div、class/id 専用)
+  if (rest.startsWith('{')) return null;
+  // dot 始まり(`.cls`)は Tier 1 class chain
+  if (rest.startsWith('.')) return null;
+  // splitAttrs(Q7 寛容、comma / 空白 両 accept、parens 内 separator は depth 保護)
+  const tokens = splitAttrs(rest);
+  if (tokens.length === 0) return null;
+  // 全 token が vocabulary match なら Tier 0、1 つでも未知なら null(Tier 1 fallthrough)
+  const styles = parseVocabularyTokensToStyles(tokens);
+  if (!styles) return null;
+  return { styles };
 }
 
 md.inline.ruler.after('emphasis', 'pkc_simple_inline', function simpleInlineRule(state, silent) {
@@ -2049,6 +2092,8 @@ const FORMAT_SENTINEL_SEP = '\u{E16F}';
 
 interface FormatBlockEntry {
   attrs: _BlockDirectiveAttrs;
+  /** Tier 0 vocabulary form の style mapping(`color` / `background-color` / `font-size` 等)。 */
+  styles?: Record<string, string>;
 }
 
 function processFormatBlocks(source: string, lineMapIn: number[]): {
@@ -2074,16 +2119,27 @@ function processFormatBlocks(source: string, lineMapIn: number[]): {
       i++;
       continue;
     }
-    // v4 §12 stack PR 4 + 5:formal `:::format{...}` + Tier 1 class chain
-    // `:::.cls.cls(#id)?`(寛容 6 variation)を両方 accept。Tier 1 形は parseTier1FormatOpen
-    // で attrs を抽出、formal と同 registry に登録。
+    // v4 §12 stack PR 4-6:formal `:::format{...}` + Tier 1 class chain
+    // `:::.cls.cls(#id)?` + Tier 0 vocabulary `:::red,bg-yellow,1.2em` を 3 形 accept。
+    //
+    // 優先順序(Q3 vocabulary priority、user direction 2026-05-25):
+    //   1. formal `:::format{...}`(明示)
+    //   2. Tier 0 vocabulary(全 token が valid vocab、inline と完全対称)
+    //   3. Tier 1 class chain(`.cls` / brace / bare class)
     let openAttrs: _BlockDirectiveAttrs | null = null;
+    let openStyles: Record<string, string> | undefined;
     const formal = parseBlockDirectiveOpen(line);
     if (formal && formal.name === 'format') {
       openAttrs = formal.attrs;
     } else {
-      const tier1 = parseTier1FormatOpen(line);
-      if (tier1) openAttrs = tier1;
+      const tier0 = parseTier0FormatOpen(line);
+      if (tier0) {
+        openAttrs = { id: undefined, classes: [], kvs: {} };
+        openStyles = tier0.styles;
+      } else {
+        const tier1 = parseTier1FormatOpen(line);
+        if (tier1) openAttrs = tier1;
+      }
     }
     if (!openAttrs) {
       out.push(line);
@@ -2093,7 +2149,9 @@ function processFormatBlocks(source: string, lineMapIn: number[]): {
     }
     counter++;
     const id = counter;
-    registry.set(id, { attrs: openAttrs });
+    const entry: FormatBlockEntry = { attrs: openAttrs };
+    if (openStyles) entry.styles = openStyles;
+    registry.set(id, entry);
     const openInputIdx = inputIdx;
     i++;
     out.push(`${FORMAT_SENTINEL_OPEN}${id}${FORMAT_SENTINEL_SEP}OPEN${FORMAT_SENTINEL_OPEN}`);
@@ -2144,6 +2202,15 @@ function postProcessFormatBlockSentinels(
       const alignRaw = attrs.kvs.align;
       const align = (alignRaw === 'left' || alignRaw === 'center' || alignRaw === 'right' || alignRaw === 'justify') ? alignRaw : null;
       const alignAttr = align ? ` data-pkc-align="${align}"` : '';
+      // Tier 0 vocabulary styles(ABC sorted、`style="..."` として emit)
+      let styleAttr = '';
+      if (entry.styles) {
+        const styleEntries = Object.entries(entry.styles).sort(([a], [b]) => a.localeCompare(b));
+        if (styleEntries.length > 0) {
+          const styleStr = styleEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
+          styleAttr = ` style="${escapeAttrForHtml(styleStr)}"`;
+        }
+      }
       // その他 kvs、ABC 順、boolean true は値なし
       const otherKvs: Array<[string, string | boolean]> = [];
       for (const [k, v] of Object.entries(attrs.kvs)) {
@@ -2158,7 +2225,7 @@ function postProcessFormatBlockSentinels(
         else if (v === false) continue;
         else kvsStr += ` data-pkc-${k}="${escapeAttrForHtml(String(v))}"`;
       }
-      return `<div class="${classStr}"${idAttr}${markerAttr}${indentAttr}${alignAttr}${kvsStr}${pAttrs}>`;
+      return `<div class="${classStr}"${idAttr}${markerAttr}${styleAttr}${indentAttr}${alignAttr}${kvsStr}${pAttrs}>`;
     },
   );
   // CLOSE sentinel → </div>
