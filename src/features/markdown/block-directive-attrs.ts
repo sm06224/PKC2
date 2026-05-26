@@ -249,6 +249,51 @@ export function parseTier1FormatOpen(line: string): BlockDirectiveAttrs | null {
   return null;
 }
 
+/**
+ * v4 §16 Q8(user direction 2026-05-25):block directive value-only 寛容パース。
+ *
+ * 4 directive 限定で `key=` 省略 + value 直書きを accept、value から key を推論:
+ *
+ *   :::section{intro}        → role=intro(任意 role 文字列)
+ *   :::section{appendix}     → role=appendix
+ *   :::if{html}              → format=html
+ *   :::toc{2}                → depth=2(integer 1-6)
+ *   :::quote{"夏目漱石"}     → author="夏目漱石"(quoted string)
+ *
+ * 戻り値:`{key, value}` 推論成功 / null 推論不能(directive 対象外 or 形式不一致)。
+ * 既存 explicit key=value form は parseBlockDirectiveAttrs で正常 parse される。
+ *
+ * 6 directive(`:::break` / `:::list` / `:::heading` / `:::code` / `:::blank` /
+ * `:::paragraph`)は **対象外**(既存 simple 形 `+++` / `- T` / `## T` / ` ```ts ``` ` /
+ * `_3` / `__T` で覆われ済のため、value-only の追加 utility が薄い)。
+ */
+export function inferQ8ValueOnlyKey(
+  directiveName: string,
+  inner: string,
+): { key: string; value: string } | null {
+  const keyMap: Record<string, string> = {
+    section: 'role',
+    if: 'format',
+    toc: 'depth',
+    quote: 'author',
+  };
+  const key = keyMap[directiveName];
+  if (!key) return null;
+  const trimmed = inner.trim();
+  if (!trimmed) return null;
+  // double-quoted string
+  const dq = /^"([^"]*)"$/.exec(trimmed);
+  if (dq) return { key, value: dq[1]! };
+  // single-quoted string
+  const sq = /^'([^']*)'$/.exec(trimmed);
+  if (sq) return { key, value: sq[1]! };
+  // bare number(integer or float)
+  if (/^[0-9]+(\.[0-9]+)?$/.test(trimmed)) return { key, value: trimmed };
+  // bare keyword(`[A-Za-z_][\w-]*`、空白 / `=` / 特殊 char なし)
+  if (/^[A-Za-z_][\w-]*$/.test(trimmed)) return { key, value: trimmed };
+  return null;
+}
+
 function parsePackedTier1Attrs(rest: string): BlockDirectiveAttrs | null {
   // rest starts with '.' or '#'
   // Format: (.cls)+ (#id)? (順序不問だが id は 1 個まで)

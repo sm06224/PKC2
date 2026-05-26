@@ -34,6 +34,7 @@ import { renderCsvFence } from './csv-table';
 import { buildHtmlSandboxIframe } from './html-sandbox';
 import { parsePortablePkcReference } from '../link/permalink';
 import {
+  inferQ8ValueOnlyKey,
   parseBlockDirectiveOpen,
   parseTier1FormatOpen,
   isBlockDirectiveClose,
@@ -1634,7 +1635,15 @@ function processIfBlocks(source: string, lineMapIn: number[], targetFormat: stri
       continue;
     }
     // match 判定:format kv が target と一致するか、format 省略時は always match
-    const formatVal = open.attrs.kvs.format;
+    // Q8 value-only 寛容パース(v4 §16):`:::if{html}` → format=html
+    let formatVal = open.attrs.kvs.format;
+    if (typeof formatVal !== 'string') {
+      const innerMatch = /\{([^}]*)\}/.exec(line);
+      if (innerMatch) {
+        const inferred = inferQ8ValueOnlyKey('if', innerMatch[1]!);
+        if (inferred && inferred.key === 'format') formatVal = inferred.value;
+      }
+    }
     const match = typeof formatVal === 'string' ? formatVal === targetFormat : true;
 
     // open 行は consume(出力しない)
@@ -1783,6 +1792,13 @@ function processTocDirective(
     if (dm) {
       const n = parseInt(dm[1]!, 10);
       if (Number.isFinite(n) && n >= 1 && n <= 6) depth = n;
+    } else {
+      // Q8 value-only 寛容パース(v4 §16):`:::toc{2}` → depth=2
+      const inferred = inferQ8ValueOnlyKey('toc', attrs);
+      if (inferred && inferred.key === 'depth') {
+        const n = parseInt(inferred.value, 10);
+        if (Number.isFinite(n) && n >= 1 && n <= 6) depth = n;
+      }
     }
     // closing `:::` を探索(content は無視、自動生成のみ)
     let j = i + 1;
@@ -1990,7 +2006,15 @@ function processSectionBlocks(source: string, lineMapIn: number[]): {
       i++;
       continue;
     }
-    const role = typeof open.attrs.kvs.role === 'string' ? open.attrs.kvs.role : 'generic';
+    // Q8 value-only 寛容パース(v4 §16):`:::section{intro}` → role=intro
+    let role = typeof open.attrs.kvs.role === 'string' ? open.attrs.kvs.role : 'generic';
+    if (role === 'generic') {
+      const innerMatch = /\{([^}]*)\}/.exec(line);
+      if (innerMatch) {
+        const inferred = inferQ8ValueOnlyKey('section', innerMatch[1]!);
+        if (inferred && inferred.key === 'role') role = inferred.value;
+      }
+    }
     counter++;
     const id = counter;
     registry.set(id, { role, attrs: open.attrs });
@@ -2031,9 +2055,11 @@ function postProcessSectionSentinels(
       if (!entry) return '';
       const role = entry.role;
       const safeRole = /^[A-Za-z][\w-]*$/.test(role) ? role : 'generic';
-      const knownClass = SECTION_KNOWN_ROLES.has(safeRole)
-        ? ` pkc-section-${safeRole}`
-        : '';
+      // v4 §8.1.2(stack PR 7、Q8 with):8 known role + 任意 role 両方とも
+      // `pkc-section-<role>` を CSS class として自動命名(AST 経路 render-html.ts:265 と
+      // 動作統一、user は任意 role を user-side CSS で装飾可能)。
+      const knownClass = ` pkc-section-${safeRole}`;
+      void SECTION_KNOWN_ROLES; // 8 known set は将来 callout 専用処理識別用に保持
       const attrs = entry.attrs;
       const classes = ['pkc-section-callout' + knownClass, ...attrs.classes].join(' ');
       const idAttr = attrs.id ? ` id="${escapeAttrForHtml(attrs.id)}"` : '';
@@ -2379,9 +2405,23 @@ function processQuoteBlocks(source: string, lineMapIn: number[]): {
       i++;
       continue;
     }
+    // Q8 value-only 寛容パース(v4 §16):`:::quote{"夏目漱石"}` → author=夏目漱石
+    let attrsForQuote = open.attrs;
+    if (typeof attrsForQuote.kvs.author !== 'string') {
+      const innerMatch = /\{([^}]*)\}/.exec(line);
+      if (innerMatch) {
+        const inferred = inferQ8ValueOnlyKey('quote', innerMatch[1]!);
+        if (inferred && inferred.key === 'author') {
+          attrsForQuote = {
+            ...attrsForQuote,
+            kvs: { ...attrsForQuote.kvs, author: inferred.value },
+          };
+        }
+      }
+    }
     counter++;
     const id = counter;
-    registry.set(id, { attrs: open.attrs });
+    registry.set(id, { attrs: attrsForQuote });
     const openInputIdx = inputIdx;
     i++;
     out.push(`${QUOTE_SENTINEL_OPEN}${id}${QUOTE_SENTINEL_SEP}OPEN${QUOTE_SENTINEL_OPEN}`);
