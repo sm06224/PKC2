@@ -842,13 +842,19 @@ const COLOR_VALUE_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s]+\))$/;
 // 先頭は a-z(keyword / 色名)、`#`(hex 色)、または digit(`120%` / `1.5em` 等の size 値、`2xl` の vocab keyword 形)。
 // `:120%:` のような size only attrs を許容するため digit + `%` を class に追加。
 // 時刻 `12:30:45` 等の誤発火は parseSimpleInlineAttrs 側で keyword / color / size value のいずれにも該当しないため reject される(数値だけは valid attr にならない)。
-const ATTRS_INNER_RE = /^[a-zA-Z0-9#][a-zA-Z0-9\-,#()\s.%]*$/;
+// Q7(v4 spec §16、2026-05-25):separator 寛容化に合わせて leading whitespace も accept、
+// `:text: bold red :` 等の padding 形を attrs として valid 化(空白区切り対応)。
+const ATTRS_INNER_RE = /^\s*[a-zA-Z0-9#][a-zA-Z0-9\-,#()\s.%]*$/;
 
 function isValidColor(c: string): boolean {
   return NAMED_COLORS.has(c.toLowerCase()) || COLOR_VALUE_RE.test(c);
 }
 
-// attrs を top-level comma で split(parens 内 comma は保護)
+// attrs を top-level comma または 空白で split(parens 内 separator は保護)。
+// Q7(v4 spec §16、user direction 2026-05-25):inline / block 両 vocabulary 形で
+// comma / 空白 / 混在 全部 accept。`bold red` / `bold,red` / `bold, red` / `bold , red` 等は
+// 全て同 token 列に正規化、対称性原則 §1.1 を inline / block で統一。
+// rgb(255, 0, 0) / rgb( 255 0 0 ) 等の parens 内 separator は depth 保護で 1 token のまま。
 function splitAttrs(s: string): string[] {
   const out: string[] = [];
   let depth = 0;
@@ -857,7 +863,7 @@ function splitAttrs(s: string): string[] {
     const c = s[i];
     if (c === '(') depth++;
     else if (c === ')') depth = Math.max(0, depth - 1);
-    else if (c === ',' && depth === 0) {
+    else if (depth === 0 && (c === ',' || c === ' ' || c === '\t')) {
       out.push(s.slice(start, i).trim());
       start = i + 1;
     }

@@ -17,7 +17,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createInitialState } from '@adapter/state/app-state';
 import { computeRenderScope } from '@adapter/ui/render-scope';
 import { render } from '@adapter/ui/renderer';
@@ -25,7 +24,8 @@ import { createDispatcher } from '@adapter/state/dispatcher';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
+// vitest は project root から起動するので process.cwd() 基準で読む(import.meta.url は
+// happy-dom 環境で file: scheme でないため fileURLToPath が落ちる)。
 
 const TS = '2026-01-01T00:00:00Z';
 
@@ -154,7 +154,7 @@ describe('pgc-208 selection-only render scope', () => {
 
     it('case 12: source — render-scope.ts に "selection-only" enum + selectionChanged check 存在', () => {
       const src = readFileSync(
-        resolve(__dirname, '..', '..', 'src/adapter/ui/render-scope.ts'),
+        resolve(process.cwd(), 'src/adapter/ui/render-scope.ts'),
         'utf8',
       );
       expect(src).toMatch(/'selection-only'/);
@@ -164,7 +164,7 @@ describe('pgc-208 selection-only render scope', () => {
 
     it('case 13: source — renderer.ts に scope==="selection-only" 分岐 + replaceSelectionRegions 存在', () => {
       const src = readFileSync(
-        resolve(__dirname, '..', '..', 'src/adapter/ui/renderer.ts'),
+        resolve(process.cwd(), 'src/adapter/ui/renderer.ts'),
         'utf8',
       );
       expect(src).toMatch(/scope\s*===\s*'selection-only'/);

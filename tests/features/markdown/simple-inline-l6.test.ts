@@ -150,4 +150,64 @@ describe('L-6: 簡易 inline `:text:attrs:`', () => {
       }
     });
   });
+
+  // Q7(v4 spec §16、user direction 2026-05-25):separator policy
+  // inline + block 両方を comma / 空白 / 混在 全部 accept に寛容化。
+  describe('Q7 separator policy(comma / 空白 / 混在 全部 accept)', () => {
+    it('case matrix 14 件:同 vocabulary を異なる separator で書く', () => {
+      // 全 14 ケース、同じ vocabulary set { bold, red } を異なる separator で書いて同 AST
+      const cases: { input: string; sep: string }[] = [
+        { input: ':text:bold,red:', sep: 'comma packed' },
+        { input: ':text:bold, red:', sep: 'comma + space (v3 既存)' },
+        { input: ':text:bold ,red:', sep: 'space + comma' },
+        { input: ':text:bold , red:', sep: 'space + comma + space' },
+        { input: ':text:bold red:', sep: 'space-only(v4 新規寛容化)' },
+        { input: ':text:bold  red:', sep: '2 spaces(連続 separator)' },
+        { input: ':text:bold\tred:', sep: 'tab 区切り' },
+        { input: ':text:red,bold:', sep: '順不同 comma' },
+        { input: ':text:red bold:', sep: '順不同 space' },
+        { input: ':text: bold red :', sep: '前後 padding space' },
+        { input: ':text:bold, , red:', sep: 'empty token in middle (filter)' },
+        { input: ':text:bold,,red:', sep: 'double comma (empty filter)' },
+        { input: ':text:bold red bg-yellow:', sep: '3 attrs space-only' },
+        { input: ':text:bold, red bg-yellow:', sep: '混在 comma + space' },
+      ];
+      for (const c of cases) {
+        const html = renderMarkdown(c.input);
+        // 全 14 ケースで span + bold + red が両方適用される
+        expect(html, `case「${c.sep}」 span 出現`).toMatch(/<span class="pkc-inline-mark"/);
+        expect(html, `case「${c.sep}」 bold 適用`).toMatch(/font-weight: bold/);
+        expect(html, `case「${c.sep}」 red 適用`).toMatch(/color: red/);
+      }
+    });
+
+    it('rgb() / rgba() 関数値 parens 内 separator は depth 保護(1 token のまま)', () => {
+      // rgb(255, 0, 0) は 1 token(comma 内側保護)
+      const html1 = renderMarkdown(':text:rgb(255, 0, 0):');
+      expect(html1).toMatch(/color: rgb\(255, 0, 0\)/);
+      // rgb(255 0 0) も 1 token(space 内側保護)
+      const html2 = renderMarkdown(':text:rgb(255 0 0):');
+      // 注:rgb(空白区切り)は CSS 仕様で valid だが、現 isValidColor の COLOR_VALUE_RE が
+      // [\d.,\s] を許容するので accept される
+      expect(html2).toMatch(/<span class="pkc-inline-mark"/);
+      // rgb(255,0,0) bold(関数値 + keyword 混在)も space split で 2 token に分かれる
+      const html3 = renderMarkdown(':text:rgb(255,0,0) bold:');
+      expect(html3).toMatch(/color: rgb\(255,0,0\)/);
+      expect(html3).toMatch(/font-weight: bold/);
+    });
+
+    it('未知 attr が混じれば全体 invalid(separator 寛容でも vocabulary は厳密)', () => {
+      const html = renderMarkdown(':text:bold red unknownattr:');
+      // separator で split は成功するが、unknownattr が vocabulary match 失敗 → invalid 全体
+      expect(html).not.toMatch(/<span class="pkc-inline-mark"/);
+    });
+
+    it('size + color + weight 3 vocab を space-only で', () => {
+      const html = renderMarkdown(':text:1.2em red bold:');
+      expect(html).toMatch(/<span class="pkc-inline-mark"/);
+      expect(html).toMatch(/font-size: 1\.2em/);
+      expect(html).toMatch(/color: red/);
+      expect(html).toMatch(/font-weight: bold/);
+    });
+  });
 });
