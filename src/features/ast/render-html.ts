@@ -289,6 +289,13 @@ function renderBlock(block: AstBlock, opts: RenderOptions): string {
       // PR-2JJ v2 final(2026-05-13、ChatGPT review 反映):未知構文 preserve。
       if (block.sourceFormat === 'html') return block.original;
       return `<pre class="pkc-opaque-block" data-pkc-source-format="${escapeAttr(block.sourceFormat)}"${lineAttr}>${escapeHtml(block.original)}</pre>`;
+    case 'format-block': {
+      // v4 §12(stack PR 3、types only):real impl は stack PR 4-6 で着地。
+      // 本 case は AstFormatBlock を含む AST が誤って render 経路に来た場合の no-op
+      // fallback。production code は PR 4 で AST 生成 + 本 case を実装で上書き。
+      const inner = block.children.map((c) => renderBlock(c, opts)).join('\n');
+      return `<div class="pkc-format-block"${lineAttr}>${inner}</div>`;
+    }
     default: {
       const unreachable: never = block;
       void unreachable;
