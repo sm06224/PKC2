@@ -448,6 +448,46 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
       const cap = block.caption ? `\n\n*${renderInlines(block.caption, mode)}*` : '';
       return inner + cap;
     }
+    case 'format-block': {
+      // v4 §12 stack PR 8(canonicalize Q6 simple → formal 寄せ):
+      // AstFormatBlock を canonical formal `:::format{.cls .cls #id key=v ...}` で
+      // markdown 出力。Tier 0/1 simple 形は実装側 fixture として保持されるが
+      // canonicalize default(Q6)は formal 寄せ(diff friendly、IR canonical 一意)。
+      if (mode === 'pkc') {
+        const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
+        const attrParts: string[] = [];
+        // classes(ABC sorted、`.cls` 形)
+        for (const cls of block.classes) attrParts.push(`.${cls}`);
+        // id
+        if (block.blockId) attrParts.push(`#${block.blockId}`);
+        // indent / align(特殊解釈 key)
+        if (block.indent !== undefined) attrParts.push(`indent=${block.indent}`);
+        if (block.align) attrParts.push(`align=${block.align}`);
+        // styles を vocabulary form として再復元 → comma 区切り(Q6 で formal 寄せだが
+        // styles は inline style 用のため vocabulary token を attrParts に展開)
+        if (block.styles) {
+          const styleEntries = Object.entries(block.styles).sort(([a], [b]) => a.localeCompare(b));
+          for (const [k, v] of styleEntries) {
+            // style key=value を `data-pkc-style-<key>=<v>` として attach、または
+            // 単純 token vocabulary 形に逆変換(`color=red` 等)
+            // canonical decision:`style="..."` 直書き禁止のため、key=value 形で保持
+            attrParts.push(`${k.replace(/[^A-Za-z0-9_-]/g, '-')}=${JSON.stringify(v)}`);
+          }
+        }
+        // 他 kvs(indent/align 既処理、ABC 順)
+        if (block.kvs) {
+          const kvsEntries = Object.entries(block.kvs).sort(([a], [b]) => a.localeCompare(b));
+          for (const [k, v] of kvsEntries) {
+            if (v === true) attrParts.push(k);
+            else if (v !== false) attrParts.push(`${k}=${JSON.stringify(v)}`);
+          }
+        }
+        return `:::format{${attrParts.join(' ')}}\n\n${inner}\n\n:::`;
+      }
+      // GFM:format-block は class / style 情報を保持しないため、children のみ出力。
+      // user-side CSS は GFM consumer で効かない、装飾は失われる。
+      return block.children.map((b) => renderBlock(b, mode)).join('\n\n');
+    }
     case 'section': {
       if (mode === 'pkc') {
         const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
