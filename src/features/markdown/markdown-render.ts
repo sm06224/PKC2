@@ -2019,6 +2019,148 @@ function postProcessSectionSentinels(
   return html;
 }
 
+// ── v4 §12:`:::format{...}` block 装飾箱 (stack PR 4、Tier 2 formal) ──
+//
+// Q1 で `format` directive 名確定。inline `:T:bold,red:`(catalog #9)の block
+// 対応物として、複段落を任意 class / id / inline style / indent / align でくくる。
+//
+// 入力 sample:
+//   :::format{.highlight .important #note-1 indent=2 align=center custom=value}
+//   段落 1。
+//
+//   段落 2 も同 wrapper 内。
+//   :::
+//
+// 出力(canonical attrs 順、§1.4):
+//   <div class="pkc-format-block highlight important"
+//        id="note-1"
+//        data-pkc-format-block
+//        data-pkc-indent="2"
+//        data-pkc-align="center"
+//        data-pkc-custom="value">
+//     <p>段落 1。</p>
+//     <p>段落 2 も同 wrapper 内。</p>
+//   </div>
+//
+// PUA sentinel:U+E16C / U+E16D(SECTION_SENTINEL_OPEN/SEP の隣)。
+const FORMAT_SENTINEL_OPEN = '\u{E16E}';
+const FORMAT_SENTINEL_SEP = '\u{E16F}';
+
+interface FormatBlockEntry {
+  attrs: _BlockDirectiveAttrs;
+}
+
+function processFormatBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<number, FormatBlockEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<number, FormatBlockEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let counter = 0;
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || open.name !== 'format') {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    counter++;
+    const id = counter;
+    registry.set(id, { attrs: open.attrs });
+    const openInputIdx = inputIdx;
+    i++;
+    out.push(`${FORMAT_SENTINEL_OPEN}${id}${FORMAT_SENTINEL_SEP}OPEN${FORMAT_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      out.push(lines[i]!);
+      lineMapOut.push(lineMapIn[i] ?? i);
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++;
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${FORMAT_SENTINEL_OPEN}${id}${FORMAT_SENTINEL_SEP}CLOSE${FORMAT_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+function postProcessFormatBlockSentinels(
+  html: string,
+  registry: Map<number, FormatBlockEntry>,
+): string {
+  // OPEN sentinel → <div class="pkc-format-block <classes>" id="<id>" data-pkc-format-block ...>
+  html = html.replace(
+    new RegExp(
+      `<p([^>]*)>${FORMAT_SENTINEL_OPEN}(\\d+)${FORMAT_SENTINEL_SEP}OPEN${FORMAT_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, pAttrs: string, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      const attrs = entry.attrs;
+      // classes: pkc-format-block + ABC sorted user classes
+      const sortedClasses = [...attrs.classes].sort((a, b) => a.localeCompare(b));
+      const classStr = ['pkc-format-block', ...sortedClasses].join(' ');
+      const idAttr = attrs.id ? ` id="${escapeAttrForHtml(attrs.id)}"` : '';
+      const markerAttr = ' data-pkc-format-block';
+      // indent / align は特殊解釈 key、data-pkc-indent / data-pkc-align に
+      const indentRaw = attrs.kvs.indent;
+      const indent = typeof indentRaw === 'string'
+        ? Math.max(1, Math.min(10, parseInt(indentRaw, 10) || 0))
+        : null;
+      const indentAttr = indent && indent > 0 ? ` data-pkc-indent="${indent}"` : '';
+      const alignRaw = attrs.kvs.align;
+      const align = (alignRaw === 'left' || alignRaw === 'center' || alignRaw === 'right' || alignRaw === 'justify') ? alignRaw : null;
+      const alignAttr = align ? ` data-pkc-align="${align}"` : '';
+      // その他 kvs、ABC 順、boolean true は値なし
+      const otherKvs: Array<[string, string | boolean]> = [];
+      for (const [k, v] of Object.entries(attrs.kvs)) {
+        if (k === 'indent' || k === 'align') continue;
+        if (!/^[A-Za-z_][\w-]*$/.test(k)) continue;
+        otherKvs.push([k, v]);
+      }
+      otherKvs.sort(([a], [b]) => a.localeCompare(b));
+      let kvsStr = '';
+      for (const [k, v] of otherKvs) {
+        if (v === true) kvsStr += ` data-pkc-${k}`;
+        else if (v === false) continue;
+        else kvsStr += ` data-pkc-${k}="${escapeAttrForHtml(String(v))}"`;
+      }
+      return `<div class="${classStr}"${idAttr}${markerAttr}${indentAttr}${alignAttr}${kvsStr}${pAttrs}>`;
+    },
+  );
+  // CLOSE sentinel → </div>
+  html = html.replace(
+    new RegExp(
+      `<p[^>]*>${FORMAT_SENTINEL_OPEN}\\d+${FORMAT_SENTINEL_SEP}CLOSE${FORMAT_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    '</div>',
+  );
+  return html;
+}
+
 // ── 領域 6:`:::details{summary="…"}` 折りたたみブロック方言 ──
 //
 // 任意位置の content を native <details> / <summary> で畳む方言。
@@ -3640,6 +3782,12 @@ export function renderMarkdown(
   const sectionResult = processSectionBlocks(text, lineMap);
   text = sectionResult.transformed;
   lineMap = sectionResult.lineMap;
+  // v4 §12 stack PR 4:`:::format{...}` block 装飾箱(Tier 2 formal)。
+  // section と orthogonal、user-defined class / id / indent / align / kvs を attach、
+  // <div class="pkc-format-block ..."> に変換。
+  const formatResult = processFormatBlocks(text, lineMap);
+  text = formatResult.transformed;
+  lineMap = formatResult.lineMap;
   // 領域 6:`:::details{summary=…}` 折りたたみブロック(sentinel 化、挿入
   // あり、lineMap 更新)。:::section の後に処理(両者 orthogonal)。
   const detailsResult = processDetailsBlocks(text, lineMap);
@@ -3702,6 +3850,7 @@ export function renderMarkdown(
   // reform-2026-05 PR-D:`:::quote{author=...}` sentinel → <blockquote class="pkc-quote-citation">
   html = postProcessQuoteSentinels(html, quoteResult.registry);
   html = postProcessSectionSentinels(html, sectionResult.registry);
+  html = postProcessFormatBlockSentinels(html, formatResult.registry);
   // 領域 6:`:::details` sentinel → <details class="pkc-details">
   html = postProcessDetailsSentinels(html, detailsResult.registry);
   // PR-2W:`:::frontmatter` / `:::body` sentinel → <aside> / <section>

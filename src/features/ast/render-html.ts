@@ -290,11 +290,41 @@ function renderBlock(block: AstBlock, opts: RenderOptions): string {
       if (block.sourceFormat === 'html') return block.original;
       return `<pre class="pkc-opaque-block" data-pkc-source-format="${escapeAttr(block.sourceFormat)}"${lineAttr}>${escapeHtml(block.original)}</pre>`;
     case 'format-block': {
-      // v4 §12(stack PR 3、types only):real impl は stack PR 4-6 で着地。
-      // 本 case は AstFormatBlock を含む AST が誤って render 経路に来た場合の no-op
-      // fallback。production code は PR 4 で AST 生成 + 本 case を実装で上書き。
+      // v4 §12(stack PR 4、formal `:::format{...}` real impl):
+      // canonical attrs 順(diff friendly、§1.4):
+      //   1. class(pkc-format-block + ABC sorted user classes)
+      //   2. id
+      //   3. data-pkc-format-block(marker)
+      //   4. style(vocabulary 経由の inline style)
+      //   5. data-pkc-indent / data-pkc-align(特殊解釈 key)
+      //   6. data-pkc-*(その他 kvs、key ABC 順)
       const inner = block.children.map((c) => renderBlock(c, opts)).join('\n');
-      return `<div class="pkc-format-block"${lineAttr}>${inner}</div>`;
+      const classList = ['pkc-format-block', ...block.classes];
+      const classAttr = ` class="${escapeAttr(classList.join(' '))}"`;
+      const idAttr = block.blockId ? ` id="${escapeAttr(block.blockId)}"` : '';
+      const markerAttr = ' data-pkc-format-block';
+      // style attribute(vocabulary 経由の inline style)、key ABC 順
+      let styleAttr = '';
+      if (block.styles) {
+        const styleEntries = Object.entries(block.styles).sort(([a], [b]) => a.localeCompare(b));
+        if (styleEntries.length > 0) {
+          const styleStr = styleEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
+          styleAttr = ` style="${escapeAttr(styleStr)}"`;
+        }
+      }
+      const indentAttr = block.indent !== undefined ? ` data-pkc-indent="${block.indent}"` : '';
+      const alignAttr = block.align ? ` data-pkc-align="${escapeAttr(block.align)}"` : '';
+      // kvs(key ABC 順、boolean true は値なし attr、string は data-pkc-<key>="value")
+      let kvsAttr = '';
+      if (block.kvs) {
+        const kvsEntries = Object.entries(block.kvs).sort(([a], [b]) => a.localeCompare(b));
+        for (const [k, v] of kvsEntries) {
+          if (v === true) kvsAttr += ` data-pkc-${escapeAttr(k)}`;
+          else if (v === false) continue; // false は出力しない
+          else kvsAttr += ` data-pkc-${escapeAttr(k)}="${escapeAttr(v)}"`;
+        }
+      }
+      return `<div${classAttr}${idAttr}${markerAttr}${styleAttr}${indentAttr}${alignAttr}${kvsAttr}${lineAttr}${layoutAttr}>${inner}</div>`;
     }
     default: {
       const unreachable: never = block;

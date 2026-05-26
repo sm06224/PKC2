@@ -76,6 +76,7 @@ import type {
   AstEmDot,
   AstEmphasis,
   AstFigure,
+  AstFormatBlock,
   AstIfBlock,
   AstInline,
   AstInlineCode,
@@ -822,6 +823,45 @@ function buildBlockNode(
       const node: AstBreak = roleAttr
         ? { kind: 'break', breakKind, role: roleAttr }
         : { kind: 'break', breakKind };
+      return node;
+    }
+    case 'format': {
+      // v4 §12(stack PR 4):block 装飾箱 formal `:::format{.cls #id key=v indent=N align=X}`。
+      // Q1 で `format` directive 名確定、Q6 simple → formal 寄せ canonical。
+      // Tier 0 vocabulary(`:::red,bg-yellow,1.2em`)+ Tier 1 class chain(`:::.cls.cls`)は
+      // stack PR 5-6 で parser 拡張、本 PR は formal `{...}` のみ。
+      const classes = cleanAttrs ? [...cleanAttrs.classes].sort() : [];
+      const blockId = cleanAttrs?.id;
+      // indent / align は特殊解釈 key、kvs から抽出
+      const indentRaw = cleanAttrs?.kvs.indent;
+      const indent = typeof indentRaw === 'string'
+        ? Math.max(1, Math.min(10, parseInt(indentRaw, 10) || 0)) || undefined
+        : undefined;
+      const alignRaw = cleanAttrs?.kvs.align;
+      const align: 'left' | 'center' | 'right' | 'justify' | undefined =
+        alignRaw === 'left' || alignRaw === 'center' || alignRaw === 'right' || alignRaw === 'justify'
+          ? alignRaw
+          : undefined;
+      // 残り kvs(indent / align 除外)
+      const remainingKvs: Record<string, string | boolean> = {};
+      if (cleanAttrs) {
+        for (const [k, v] of Object.entries(cleanAttrs.kvs)) {
+          if (k === 'indent' || k === 'align') continue;
+          remainingKvs[k] = v;
+        }
+      }
+      const node: AstFormatBlock = {
+        kind: 'format-block',
+        classes,
+        children,
+      };
+      if (blockId) node.blockId = blockId;
+      if (indent !== undefined) node.indent = indent;
+      if (align) node.align = align;
+      if (Object.keys(remainingKvs).length > 0) node.kvs = remainingKvs;
+      if (layout) {
+        (node as AstFormatBlock & { layout?: typeof layout }).layout = layout;
+      }
       return node;
     }
     default: {
