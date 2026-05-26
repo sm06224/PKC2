@@ -456,8 +456,9 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
       if (mode === 'pkc') {
         const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
         const attrParts: string[] = [];
-        // classes(ABC sorted、`.cls` 形)
-        for (const cls of block.classes) attrParts.push(`.${cls}`);
+        // classes(ABC sorted、`.cls` 形、canonical Q6 / diff friendly §1.4)
+        const sortedClasses = [...block.classes].sort((a, b) => a.localeCompare(b));
+        for (const cls of sortedClasses) attrParts.push(`.${cls}`);
         // id
         if (block.blockId) attrParts.push(`#${block.blockId}`);
         // indent / align(特殊解釈 key)
