@@ -239,7 +239,7 @@ PKC2 は同じ markdown を 5 つの surface で描画する:
 | 6 | マーカー(色) | `==[red]T==` | `:mark:[T]{color=red}` | occasional | ✅ |
 | 7 | 圏点 / 傍点 | `^^T^^` | `:emdot:[T]{style=dot\|circle}` | occasional | ✅ |
 | 8 | ルビ | `[[ruby:base\|読み]]`(現)/ `[base\|読み]`(将来) | `:ruby:[base]{rt="読み"}` | occasional | 🔄 |
-| 9 | 色 / 背景 / サイズ簡易 | `:T:red,bg-yellow,1.2em:` | `:span:[T]{color=red bg=yellow size=1.2em}` | occasional | ✅ |
+| 9 | 色 / 背景 / サイズ簡易 | `:T:red,bg-yellow,1.2em:` / `:T:red bg-yellow 1.2em:`(空白区切りも寛容 accept、future) | `:span:[T]{color=red bg=yellow size=1.2em}` | occasional | ✅ (現状 comma のみ、空白対応は §16 Q7)|
 | 10 | 上付き | — | `:sup:[T]` | rare | ✅ formal-only |
 | 11 | 下付き | — | `:sub:[T]` | rare | ✅ formal-only |
 
@@ -520,7 +520,7 @@ CSS:`mark { background: yellow; }`(custom theme で変更可)。
 :重要:red:                       ← 赤文字
 :重要:bg-yellow:                 ← 黄色背景
 :重要:1.2em:                     ← 1.2em
-:重要:red,bg-yellow,1.2em:       ← 複合
+:重要:red,bg-yellow,1.2em:       ← 複合(現状 canonical = comma 区切り)
 :重要:bold,red:                  ← 太字 + 赤
 :span:[重要]{color=red bg=yellow size=1.2em}  ← formal
 ```
@@ -532,6 +532,16 @@ CSS:`mark { background: yellow; }`(custom theme で変更可)。
 - weight: `bold` / `bolder` / `lighter`
 - style: `italic`
 - align: 無し(inline で align は意味なし、block #35-#36 参照)
+
+**区切り policy(現状 + future、§16 Q7)**:
+
+| 形 | accept? | 由来 |
+|----|--------|------|
+| `:T:bold,red:`(comma) | ✅ 現状 | `splitAttrs` comma split(`markdown-render.ts:852-867`) |
+| `:T:bold, red:`(comma + space) | ✅ 現状 | comma split + `.trim()` |
+| `:T:bold red:`(space-only) | ❌ 現状(future ✅)| 1 token として扱われ vocabulary match 失敗。**§16 Q7 で寛容化候補** |
+
+future 寛容化(`splitAttrs` を `/\s*[,\s]\s*/` 系 split に変更)で **「comma / 空白 / 両者混在」 を全部 accept**、block 形(§12)と separator policy 統一予定。
 
 ### 4.10 上付き / 下付き(§3.2.1 #10-#11)
 
@@ -1284,10 +1294,14 @@ GFM 標準 pipe-table(#40 + #41 CSV fence)。
 
 vocabulary 形も同様:
 ```markdown
-:::red,bg-white,1.2em                ← CSV packed
-::: red bg-white 1.2em               ← space 区切り
+:::red,bg-white,1.2em                ← comma 区切り(現 inline と統一)
+:::red, bg-white, 1.2em              ← comma + space 混在(寛容 trim)
+:::red bg-white 1.2em                ← space 区切り(Q7 寛容化、inline と同 policy)
+::: red, bg-white 1.2em              ← comma / space 混在(同上 Q7)
 ::: {red bg-white 1.2em}             ← brace 内
 ```
+
+**注**:vocabulary 形の separator は inline `:T:bold,red:`(catalog #9)と **同一 policy で揃える**(§16 Q7 寛容化 = comma / 空白 / 混在 全部 accept)。block だけ別 policy にすると対称性原則 §1.1 / §11.1 違反。実装は `splitAttrs` 1 関数の改修で inline / block 同時に効く。
 
 ### 12.4 改行 3 行構造(1 行 compact 不採用)
 
@@ -1444,7 +1458,7 @@ canonicalize 設定で `direction: simple-first` にすれば formal → simple 
 | CodeRender | `code-render` | lang, attrs, source |
 | Break | `break` | kind(page\|rule), role? |
 | Blank | `blank` | count |
-| Section | `section` | role(8 種), children |
+| Section | `section` | role(任意 string、8 role は callout 専用処理、他は generic wrapper)、attrs?, layout?, children |
 | Directive(if/comment/figure/table-block) | `directive` | name, attrs, children |
 | FormatBlock(future) | `format-block` | classes, styles, blockId, indent, align, kvs, children |
 | Strong / Emphasis / Strike / InlineCode | (各 kind) | children |
@@ -1518,8 +1532,9 @@ window.PKC.ast.renderMarkdown(ast: AstDocument): string    // canonicalize MD em
 | Q4 | `==highlight==` の block 対応 | (a) vocabulary `:::bg-yellow` で吸収 /(b) `:::mark` semantic 追加 /(c) block `==` 専用 syntax | **(a) vocabulary 吸収**(setext h1 衝突回避、`:::` 統一原則維持、任意色拡張可能、semantic `:::mark` は将来 opt-in) |
 | Q5 | 1 行 compact 形 | (a) 採用しない、改行 3 行 fix /(b) `:::bg-yellow|text|:::` 等 1 行も accept | **(a) 採用しない**(短文 1 行は inline `:text:bg-yellow:` で済む、新 syntax コスト > 利得、attrs / content 境界 ambiguous) |
 | Q6 | canonicalize default | (a) simple → formal 寄せ /(b) formal → simple 寄せ /(c) 入力保持 | **(a) simple → formal 寄せ**(diff friendly、IR canonical 一意、AI emit と整合) |
+| **Q7** | **vocabulary separator policy(inline / block 統一)**(user 2026-05-25 指摘)| (a) inline + block 両方を **comma / 空白 両許容** に寛容パース化(`splitAttrs` を `/[,\s]+/` 系 split に拡張、user 例 `:T:bold red:` も accept)/(b) inline は現状維持(comma のみ)、block も comma に揃える /(c) inline / block を別 separator policy(現状) | **(a) inline + block 両方寛容化**(対称性最優先 §1.1 / §11.1 と整合、user「カンマかスペースでの区切りを許容して寛容パースの仲間ってことです」 を直接反映、実装は `splitAttrs` 1 関数の改修で済む)|
 
-**判断後の流れ**:Q1-Q6 確定 → 本書 v4 を draft → candidate に格上げ → §12 実装 PR(`pkc-block-format-attr-syntax-v1-minimum-scope.md` 経路で `AstFormatBlock` + parser 拡張 + 5 surface CSS + 13 test case + Playwright parity)landing → v4 canonical promote。
+**判断後の流れ**:Q1-Q7 確定 → 本書 v4 を draft → candidate に格上げ → §12 実装 PR(`pkc-block-format-attr-syntax-v1-minimum-scope.md` 経路で `AstFormatBlock` + parser 拡張 + 5 surface CSS + 13 test case + Playwright parity)+ Q7 寛容化(`splitAttrs` 改修 + inline / block 両 case matrix)landing → v4 canonical promote。
 
 ---
 
