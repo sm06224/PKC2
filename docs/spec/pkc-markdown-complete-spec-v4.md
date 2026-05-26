@@ -2,7 +2,7 @@
 
 **Audience**: 人間(開発者 / 設計者 / 末端 user / レビュアー)。**PKC Markdown とは何で、何が書けて、どう挙動するか** を 1 つの doc で把握する単一 entry point。AI 規約 v3 (`markdown-dialect-for-ai-authors-v3.md`) の人間 counterpart。
 **位置付け**: spec 階層の最上位 reference。manual(`docs/manual/12_マークダウン拡張記法.md`)はここから派生 / 抜粋する。設計議論(`docs/development/notation-redesign-2026-05/` 12 章)はここに集約 / 再編される。
-**Status**: 📝 draft(2026-05-25 起草、§10 未決事項 user 判断 + §6 future 実装着地 → canonical promote)
+**Status**: 🟢 **candidate**(2026-05-25 user 判断 Q1-Q8 全件 OK 取得済、本 commit で draft → candidate promote。実装 stack 13 PR landing で canonical promote)
 **Version**: v4(supersedes、設計議論 12 章 + AI 規約書 v3 + block format spec を統合した次世代 single-source reference)
 **起草経緯**: user direction 2026-05-25「マニュアルの前に人間向けにスペックを全部押さえた文書を書いて」── 既存 spec が AI 向け v3 / 設計議論 12 章 / 個別 spec / manual ch12 §12.9 等に散在し、人間が「全体像」 を 1 つの doc で得られない。本書はその空白を埋める。
 
@@ -1520,21 +1520,68 @@ window.PKC.ast.renderMarkdown(ast: AstDocument): string    // canonicalize MD em
 
 ---
 
-## 16. 未決事項(本書 promote 前 user 判断)
+## 16. user 判断確定済 + 着地条件(2026-05-25 user OK 取得済)
 
-§12 future 提案を実装に進める前に、以下 6 点 user 判断:
+§12 future 提案を実装に進めるための 8 個の design question、**全件 user 判断 OK 取得済**(2026-05-25「OK ここまで」):
 
-| # | 質問 | 候補 | Claude 推奨(理由)|
+| # | 質問 | 確定 | 理由 |
 |---|------|------|------|
-| Q1 | formal directive 名(#58)| `format` / `block` / `wrap` / `box` / `div` | **`format`**(「書式適用」 が単語から読み取れる、layout 機能 `group` と非衝突、`block` は markdown 世界で意味曖昧) |
-| Q2 | class chain 形 最短形 | `:::.cls.cls`(3 colon)/ `::.cls.cls`(2 colon)/ `:.cls.cls:`(1 colon、inline 完全 symmetric)| **`:::.cls.cls`**(既存 `:::section` 等と統一、`::` は inline 予約感、`:` は inline `:role:` 予約) |
-| Q3 | vocabulary 形(`:::red,bg-yellow`)の Tier 位置付け | (a) Tier 0 priority /(b) class 形と並列 /(c) formal `{...}` のみ | **(a) Tier 0 priority**(inline `:text:vocab:` と完全対称、頻度高、CSS class 事前定義不要、user「インライン記法に近い」 emphasis) |
-| Q4 | `==highlight==` の block 対応 | (a) vocabulary `:::bg-yellow` で吸収 /(b) `:::mark` semantic 追加 /(c) block `==` 専用 syntax | **(a) vocabulary 吸収**(setext h1 衝突回避、`:::` 統一原則維持、任意色拡張可能、semantic `:::mark` は将来 opt-in) |
-| Q5 | 1 行 compact 形 | (a) 採用しない、改行 3 行 fix /(b) `:::bg-yellow|text|:::` 等 1 行も accept | **(a) 採用しない**(短文 1 行は inline `:text:bg-yellow:` で済む、新 syntax コスト > 利得、attrs / content 境界 ambiguous) |
-| Q6 | canonicalize default | (a) simple → formal 寄せ /(b) formal → simple 寄せ /(c) 入力保持 | **(a) simple → formal 寄せ**(diff friendly、IR canonical 一意、AI emit と整合) |
-| **Q7** | **vocabulary separator policy(inline / block 統一)**(user 2026-05-25 指摘)| (a) inline + block 両方を **comma / 空白 両許容** に寛容パース化(`splitAttrs` を `/[,\s]+/` 系 split に拡張、user 例 `:T:bold red:` も accept)/(b) inline は現状維持(comma のみ)、block も comma に揃える /(c) inline / block を別 separator policy(現状) | **(a) inline + block 両方寛容化**(対称性最優先 §1.1 / §11.1 と整合、user「カンマかスペースでの区切りを許容して寛容パースの仲間ってことです」 を直接反映、実装は `splitAttrs` 1 関数の改修で済む)|
+| Q1 | formal directive 名(#60)| **`format`** ✅ | 「書式適用」 が単語から読み取れる、layout 機能 `group` と非衝突 |
+| Q2 | class chain 形 最短形 | **`:::.cls.cls`**(3 colon)✅ | 既存 `:::section` 等と統一、`::` は inline 予約感、`:` は inline `:role:` 予約 |
+| Q3 | vocabulary 形 Tier 位置付け | **Tier 0 priority** ✅ | inline `:text:vocab:` と完全対称、頻度高、CSS class 事前定義不要 |
+| Q4 | `==highlight==` block 対応 | **vocabulary `:::bg-yellow` で吸収** ✅ | setext h1 衝突回避、`:::` 統一原則維持、任意色拡張可能、`:::mark` semantic は将来 opt-in |
+| Q5 | 1 行 compact 形 | **採用しない、改行 3 行 fix** ✅ | 短文 1 行は inline `:text:bg-yellow:` で済む、新 syntax コスト > 利得 |
+| Q6 | canonicalize default | **simple → formal 寄せ** ✅ | diff friendly、IR canonical 一意、AI emit と整合 |
+| Q7 | vocabulary separator policy | **inline + block 両方を comma / 空白 両許容** ✅ | 対称性原則 §1.1 / §11.1、`splitAttrs` 1 関数改修で両側に効く |
+| Q8 | block directive value-only 寛容パース(key= 省略)| **4 directive 限定**(`:::section{任意 role}` / `:::if{format}` / `:::toc{depth}` / `:::quote{author}`)✅ | 新規 utility あり + ambiguity 低、既存 simple 形(`:::note` alias / `__T` / `\|\|T` 等)と非衝突。`:::break` `:::list` `:::heading` `:::code` `:::blank` `:::paragraph` は既存 simple 形で覆われ済のため対象外 |
 
-**判断後の流れ**:Q1-Q7 確定 → 本書 v4 を draft → candidate に格上げ → §12 実装 PR(`pkc-block-format-attr-syntax-v1-minimum-scope.md` 経路で `AstFormatBlock` + parser 拡張 + 5 surface CSS + 13 test case + Playwright parity)+ Q7 寛容化(`splitAttrs` 改修 + inline / block 両 case matrix)landing → v4 canonical promote。
+### 16.1 Q8 詳細(value-only 寛容パース、4 directive 限定)
+
+```markdown
+:::section{intro}        → role=intro(任意 role 文字列、PKC2009 alias 外)
+:::section{appendix}     → role=appendix
+:::if{html}              → format=html(現状 `:::if{format=html}` 必須を寛容化)
+:::if{markdown}          → format=markdown
+:::toc{2}                → depth=2(現状 `:::toc{depth=2}` 必須を寛容化)
+:::quote{"夏目漱石"}     → author="夏目漱石"(string positional)
+```
+
+**判定基準**(対象 4 directive 採用、6 directive 不採用の根拠):
+
+| directive | 採用? | 理由 |
+|-----------|-------|------|
+| `:::section{X}` | ✅ Q8 採用 | 8 known role は PKC2009 alias、任意 role は新規 utility |
+| `:::if{X}` | ✅ Q8 採用 | formal-only directive、key= が冗長 |
+| `:::toc{N}` | ✅ Q8 採用 | formal-only directive、Phase 3 着地済 |
+| `:::quote{"X"}` | ✅ Q8 採用 | rare、formal-only(`:::quote{author=...}` の冗長解消)|
+| `:::break{page}` | ❌ 不採用 | 既存 simple `+++` / `---` で覆われ済 |
+| `:::list{bullet}` | ❌ 不採用 | 既存 simple `- T` で覆われ済 |
+| `:::heading{2}` | ❌ 不採用 | 既存 simple `## T` で覆われ済 |
+| `:::code{ts}` | ❌ 不採用 | 既存 simple ` ```ts ``` ` で覆われ済 |
+| `:::blank{3}` | ❌ 不採用 | 既存 simple `_3` で覆われ済 |
+| `:::paragraph{2}` | ❌ 不採用 | 既存 simple `__T` `\|\|T` で覆われ済、indent / align の disambiguate も複雑 |
+
+### 16.2 着地条件(本書 v4 promote)
+
+Q1-Q8 確定 → 本書 **draft → candidate に格上げ済**(本 commit、2026-05-25)→ 実装 stack 13 PR landing → v4 **canonical promote** + v3 archive 候補 marker。
+
+実装 stack:
+
+| Stack PR | 内容 | scope |
+|---------|------|------|
+| 1 | spec finalize + manual ch12 §12.11 + INDEX 同期(本 PR) | docs |
+| 2 | Q7 splitAttrs 拡張(comma / 空白 両許容) | src + tests |
+| 3 | `AstFormatBlock` AST type 追加(types only)| src + tests |
+| 4 | `:::format{...}` formal parser + render-html | src + tests |
+| 5 | Tier 1 class chain simple(`:::.cls.cls` 寛容 6 variation)| src + tests |
+| 6 | Tier 0 vocabulary form(`:::red,bg-yellow,1.2em`、Q3 priority)| src + tests |
+| 7 | Q8 value-only inference(section / if / toc / quote 4 directive)| src + tests |
+| 8 | render-markdown 逆経路(canonicalize Q6 simple → formal)| src + tests |
+| 9 | parse-html 逆経路(4 経路 byte-equivalent round-trip)| src + tests |
+| 10 | 5 surface CSS + Viewer popup mirror | src + CSS |
+| 11 | Playwright visual + state parity test | tests |
+| 12 | AI 規約 v4 起草(`markdown-dialect-for-ai-authors-v4.md`)+ v3 Successor marker | docs |
+| 13 | CHANGELOG_v2.4.0.md + bundle build + final ship 監査 | docs + dist |
 
 ---
 
