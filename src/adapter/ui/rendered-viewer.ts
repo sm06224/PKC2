@@ -396,6 +396,24 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered .pkc-section-warning  { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.08); }
     .pkc-md-rendered .pkc-section-caution  { border-left-color: #d97706; background: rgba(217, 119, 6, 0.08); }
     .pkc-md-rendered .pkc-section-danger   { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+    /* v4 §12(stack PR 10):block format wrapper(base.css mirror) */
+    .pkc-md-rendered .pkc-format-block { margin: 0.5rem 0; }
+    .pkc-md-rendered .pkc-format-block > :first-child { margin-top: 0; }
+    .pkc-md-rendered .pkc-format-block > :last-child { margin-bottom: 0; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="1"]  { padding-left: 1em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="2"]  { padding-left: 2em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="3"]  { padding-left: 3em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="4"]  { padding-left: 4em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="5"]  { padding-left: 5em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="6"]  { padding-left: 6em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="7"]  { padding-left: 7em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="8"]  { padding-left: 8em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="9"]  { padding-left: 9em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="10"] { padding-left: 10em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-align="left"]    { text-align: left; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-align="center"]  { text-align: center; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-align="right"]   { text-align: right; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-align="justify"] { text-align: justify; }
     .pkc-md-rendered .pkc-details {
       margin: 0.5rem 0;
       border: 1px solid #d1d5db;
