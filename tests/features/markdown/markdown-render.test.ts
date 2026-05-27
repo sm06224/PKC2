@@ -438,6 +438,40 @@ describe('getMarkdownInstance', () => {
     expect(instance).toBeDefined();
     expect(typeof instance.render).toBe('function');
   });
+
+  // hotfix(user bug 報告 2026-05-27、stack PR v4 wave 後):`:::red\naka\n:::` 等の
+  // Tier 0 vocab / Tier 1 class chain / `:::format{...}` formal / Q8 value-only /
+  // 寛容 alias を hasMarkdownSyntax が false 返却していたため `detail-presenter.ts:153`
+  // の `<pre>` fallback path に落ちて fence の見た目になっていた。 16 case で寛容化を verify。
+  describe('hasMarkdownSyntax: v4 block 装飾箱 + Q8 + 寛容 alias detection(hotfix)', () => {
+    const positiveCases: [string, string][] = [
+      [':::red\nbody\n:::', 'Tier 0 vocab `:::red`'],
+      [':::bg-yellow\nbody\n:::', 'Tier 0 `:::bg-yellow`'],
+      [':::red,bg-yellow,1.2em\nbody\n:::', 'Tier 0 vocab CSV'],
+      [':::.highlight\nbody\n:::', 'Tier 1 class packed'],
+      [':::.highlight.important\nbody\n:::', 'Tier 1 class chain'],
+      [':::.highlight#myid\nbody\n:::', 'Tier 1 class + id'],
+      ['::: .highlight .important\nbody\n:::', 'Tier 1 space-separated'],
+      ['::: {.highlight}\nbody\n:::', 'Tier 1 Pandoc brace'],
+      ['::: highlight\nbody\n:::', 'Tier 1 bare class'],
+      [':::format{.cls #id}\nbody\n:::', 'Tier 2 formal'],
+      [':::section{intro}\nbody\n:::', 'Q8 value-only section'],
+      [':::if{html}\nbody\n:::', 'Q8 value-only if'],
+      [':::toc{2}\n:::', 'Q8 value-only toc'],
+      [':::quote{"夏目漱石"}\nbody\n:::', 'Q8 value-only quote'],
+      [':::note\nbody\n:::', '寛容 alias :::note'],
+      [':::warning\nbody\n:::', '寛容 alias :::warning'],
+    ];
+    for (const [src, label] of positiveCases) {
+      it(`returns true for ${label}`, () => {
+        expect(hasMarkdownSyntax(src)).toBe(true);
+      });
+    }
+
+    it('user reported bug (Case 1, no heading): `:::red\\naka\\n:::\\n\\n:aka:red:` should be detected', () => {
+      expect(hasMarkdownSyntax(':::red\naka\n:::\n\n:aka:red:')).toBe(true);
+    });
+  });
 });
 
 describe('heading id injection (A-3 TOC)', () => {

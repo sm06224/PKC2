@@ -4005,7 +4005,15 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^\+\+\+\s*(?:\{[^}]*\})?\s*$/m.test(text)) return true; // L-1 section break
   if (/==[^=]+==|\[\[(?:ruby|em):/.test(text)) return true;     // L-2 highlight / ruby / em-dot
   if (/^:::(?:figure|table|equation)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure / table / equation block(reform-2026-05 で kv quoted 形も受理)
-  if (/^:::(?:quote|if|section|details)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // :::quote / :::if / :::section / :::details(領域 6。section は既存欠落の同時修正)
+  if (/^:::(?:quote|if|section|details|format|comment|toc|paragraph|break|heading|list|code|figure|table|equation|blank|math)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // :::name{attrs}? formal directive(寛容 alias / Q8 value-only も同 regex で network)
+  // v4 §12 stack PR hotfix:Tier 0 vocabulary `:::red,bg-yellow,1.2em` + Tier 1 class chain
+  // `:::.cls.cls(#id)?` + 寛容 alias `:::note` 等 8 種 + `:::callout{type=X}` /
+  // `:::admonition{type=X}` も markdown 経路へ流す。`hasMarkdownSyntax` が false を返すと
+  // `detail-presenter.ts:153` の `<pre>` plain-text fallback に落ちて fence のような
+  // 見た目になる(user bug 報告 2026-05-27)。
+  if (/^:::(?:\.|[a-z])/m.test(text)) return true;  // :::name(任意 vocab / role / Tier 0/1)
+  if (/^:::\s*\{/m.test(text)) return true;  // ::: {...} Pandoc brace form
+  if (/^:::\s+[\w.#]/m.test(text)) return true;  // ::: <space-separated tokens>(Tier 1 variant 2 / 6)
   if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
   if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
   if (/^\s*_\d*\s*$/m.test(text)) return true;                  // L-8 blank-line marker
