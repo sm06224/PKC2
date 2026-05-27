@@ -2478,31 +2478,6 @@
 .pkc-md-rendered .pkc-format-block[data-pkc-align="center"]  { text-align: center; }
 .pkc-md-rendered .pkc-format-block[data-pkc-align="right"]   { text-align: right; }
 .pkc-md-rendered .pkc-format-block[data-pkc-align="justify"] { text-align: justify; }
-/* PWA <install> 要素(窓の杜 2026-05-26、Chrome 148+ origin trial)。
-   shell.html body 直下に置いた `<install id="pkc-pwa-install">` の styling。
-   対応 browser は <install> を独自 UI に置換するため、本 CSS は **非対応
-   browser での fallback button** 用が主目的。視覚上邪魔にならないよう
-   viewport 右下にコンパクト固定、PKC2 chrome と被らない z-index。 */
-install#pkc-pwa-install {
-  position: fixed;
-  bottom: var(--space-3);
-  right: var(--space-3);
-  z-index: 99999;
-}
-.pkc-pwa-install-fallback {
-  background: var(--c-bg-elevated, rgba(20, 20, 30, 0.85));
-  color: var(--c-fg, #eaeaea);
-  border: 1px solid var(--c-border, rgba(255, 255, 255, 0.15));
-  border-radius: var(--radius, 4px);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  opacity: 0.85;
-  transition: opacity 120ms ease;
-}
-.pkc-pwa-install-fallback:hover { opacity: 1; }
-.pkc-pwa-install-fallback[hidden] { display: none; }
 /* 領域 6:`:::details` 折りたたみブロック。開閉は native <details> が担う。 */
 .pkc-md-rendered .pkc-details {
   margin: var(--space-3) 0;
