@@ -135,6 +135,54 @@ function main(): void {
   }
   const faviconLink = faviconLinks.join('\n  ');
 
+  // PWA manifest(窓の杜 2026-05-26 記事 / Chrome 148+ origin trial `<install>` 要素):
+  // 同一 origin のとき manifest の `id` field のみで browser が trusted install
+  // button を描画。PKC2 は単一 HTML deliverable なので manifest を data URL で
+  // inline、icons は favicon を data URL 経由で再利用。`id` は PKC2 固有の安定
+  // identifier(version 不変、PWA install の一意性に使う)。Single-HTML PWA は
+  // origin が serving context 依存(file:// / localhost / HTTPS)のため origin
+  // trial token は同梱せず、user が Chrome flag `chrome://flags/#install-element`
+  // を enable する想定。
+  let firstFaviconDataUrl: string | null = null;
+  let firstFaviconMime: string | null = null;
+  for (const cand of FAVICON_CANDIDATES) {
+    if (!existsSync(cand.path)) continue;
+    const buf = readFileSync(cand.path);
+    const b64 = buf.toString('base64');
+    firstFaviconDataUrl = `data:${cand.mime};base64,${b64}`;
+    firstFaviconMime = cand.mime;
+    break;
+  }
+  const manifest: Record<string, unknown> = {
+    id: 'pkc2-personal-knowledge-container',
+    name: 'PKC2 — Personal Knowledge Container',
+    short_name: 'PKC2',
+    description: '単一 HTML PWA。Markdown / Todo / Calendar / Kanban / Graph view を統合した personal knowledge container 第 2 世代。',
+    start_url: '.',
+    scope: './',
+    display: 'standalone',
+    orientation: 'any',
+    theme_color: '#0d0f0a',
+    background_color: '#0d0f0a',
+    lang: 'ja',
+    dir: 'ltr',
+    categories: ['productivity', 'utilities'],
+  };
+  if (firstFaviconDataUrl && firstFaviconMime) {
+    manifest.icons = [
+      {
+        src: firstFaviconDataUrl,
+        sizes: 'any',
+        type: firstFaviconMime,
+        purpose: 'any maskable',
+      },
+    ];
+  }
+  const manifestJson = JSON.stringify(manifest);
+  const manifestB64 = Buffer.from(manifestJson, 'utf8').toString('base64');
+  const manifestLink = `<link rel="manifest" href="data:application/manifest+json;base64,${manifestB64}">`;
+  console.log(`  manifest: pkc2 PWA manifest (id=${manifest.id}, ${manifestJson.length} bytes → +${(manifestB64.length / 1024).toFixed(1)} KB inlined)`);
+
   // Read shell template and replace placeholders
   let html = readFileSync(SHELL, 'utf8');
   html = html.replace('{{APP}}', APP_ID);
@@ -143,6 +191,7 @@ function main(): void {
   html = html.replace('{{TIMESTAMP}}', timestamp);
   html = html.replace('{{KIND}}', kind);
   html = html.replace('{{FAVICON_LINK}}', () => faviconLink);
+  html = html.replace('{{MANIFEST_LINK}}', () => manifestLink);
   html = html.replace('{{PKC_DATA}}', () => pkcData);
   html = html.replace('{{STYLES_GZ}}', () => cssGzB64);
   html = html.replace('{{META}}', () => metaJson);

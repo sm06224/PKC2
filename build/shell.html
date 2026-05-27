@@ -10,6 +10,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
   <title>PKC2</title>
   {{FAVICON_LINK}}
+  {{MANIFEST_LINK}}
   <!-- pkc-styles: loader が gzip 展開した CSS を流し込む。空で先置きして
        pkc-theme との適用順(base → theme overrides)を固定する。 -->
   <style id="pkc-styles"></style>
@@ -17,6 +18,19 @@
 </head>
 <body>
   <div id="pkc-root"></div>
+
+  <!-- 窓の杜 2026-05-26 記事:Chrome 148+ origin trial の `<install>` HTML 要素。
+       browser が JavaScript 不要で trusted install button を描画する(同一 origin
+       のとき manifest の id field のみ要求)。Chrome flag は
+       chrome://flags/#install-element(148+)で有効化。非対応 browser は
+       unknown element として fallback 子要素を表示する。 -->
+  <install id="pkc-pwa-install">
+    <button class="pkc-pwa-install-fallback" type="button" hidden
+            data-pkc-action="show-install-help"
+            title="PWA インストール手順">
+      📥 アプリとして導入
+    </button>
+  </install>
 
   <script id="pkc-data" type="application/json">{{PKC_DATA}}</script>
 
@@ -49,6 +63,30 @@
       script.id = 'pkc-core';
       script.textContent = await gunzip('pkc-core-gz');
       document.body.appendChild(script);
+      /* <install> 非対応 browser(Firefox / Safari / Chrome < 148)では
+         unknown element 扱いされ、内部 fallback button が表示される。
+         対応 browser は <install> を独自 UI に置換、fallback button は
+         不要なので hidden を維持。簡易判定:HTMLInstallElement の有無。
+         窓の杜 2026-05-26 記事 / Chrome blog `/blog/install-element-ot`。 */
+      var installEl = document.getElementById('pkc-pwa-install');
+      var fallback = installEl && installEl.querySelector('.pkc-pwa-install-fallback');
+      if (fallback && typeof window.HTMLInstallElement === 'undefined') {
+        fallback.hidden = false;
+        fallback.addEventListener('click', function () {
+          alert(
+            'PKC2 は単一 HTML PWA です。\n\n' +
+            '【Chrome 148+ / Edge 148+】\n' +
+            'chrome://flags/#install-element を Enabled にすると、本ボタンが ' +
+            'browser-native の install 確認ダイアログに置換されます(JavaScript 不要)。\n\n' +
+            '【それ以外の browser】\n' +
+            'アドレスバー右端の「インストール」アイコン、または \n' +
+            'メニュー →「アプリをインストール」 から PWA 化できます。\n\n' +
+            '【localhost / HTTPS で配信時のみ install 可能】\n' +
+            'file:// で開いた PKC2 は origin 制約で install 不可。' +
+            'ローカル http サーバ経由で開いてください。'
+          );
+        });
+      }
     } catch (e) {
       document.getElementById('pkc-root').textContent =
         'PKC2 の読み込みに失敗しました: ' + ((e && e.message) || e);
