@@ -14,8 +14,14 @@
  * - `expandTransclusions` と同じ features 層 DOM 操作。detail-presenter
  *   と rendered-viewer の両方から呼ぶ(CLAUDE.md §9 の 3 surface 規約)。
  *
- * scope:`container` の **直下** 見出しのみ対象。`:::section` 等の中に
- * ネストした見出しは対象外(v1。文書構造上 見出しは通常 top-level)。
+ * scope(v4 §12 stack hotfix 2026-05-27、user 判断 (b)):
+ *   - `container` の **直下** 見出しは対象
+ *   - `<div class="pkc-format-block">`(v4 block 装飾箱)の内側見出しも対象
+ *     (装飾箱は単なる文字色 / 背景 / 任意 class くくり、内側 heading は
+ *      通常の文書構造の延長と見なす)
+ *   - `<section class="pkc-section-callout">` の内側見出しは **対象外**
+ *     (semantic callout 内の擬似ヘッダは collapse 意味薄、callout
+ *      装飾と fold 装飾の DOM 衝突回避)
  */
 
 interface FoldFrame {
@@ -29,14 +35,27 @@ function headingLevel(el: Element): number {
   return m ? Number(m[1]) : 0;
 }
 
+/** 内側 heading を fold 対象として再帰する container か判定。 */
+function isRecursableFoldContainer(el: Element): el is HTMLElement {
+  // v4 §12:`pkc-format-block` 装飾箱は内側も fold 対象に
+  return el.tagName === 'DIV' && el.classList.contains('pkc-format-block');
+}
+
 /**
  * render 済み markdown container の top-level 見出しを native `<details>`
  * へ再構成する。見出しが 1 つも無ければ no-op。
+ *
+ * `<div class="pkc-format-block">` 子要素については **内側にも再帰** で
+ * fold logic を適用(独立 scope、format-block 内の heading は format-block
+ * 内の階層として fold される)。
  */
 export function applyHeadingFold(container: HTMLElement): void {
   const children = Array.from(container.children);
   if (children.length === 0) return;
-  if (!children.some((c) => headingLevel(c) > 0)) return;
+  // 直下 heading が無く、format-block も無いなら no-op
+  const hasTopLevelHeading = children.some((c) => headingLevel(c) > 0);
+  const hasFormatBlock = children.some(isRecursableFoldContainer);
+  if (!hasTopLevelHeading && !hasFormatBlock) return;
 
   const doc = container.ownerDocument;
   // 現在 open な見出し section の stack(浅い→深い)。
@@ -61,6 +80,12 @@ export function applyHeadingFold(container: HTMLElement): void {
     } else {
       // 非見出し content は現在の section(無ければ container 直下)へ。
       const parent = stack.length > 0 ? stack[stack.length - 1]!.details : container;
+      // v4 §12 stack hotfix:`pkc-format-block` なら内側にも再帰適用。
+      // `pkc-section-callout` は意図的に skip(semantic callout 内の擬似ヘッダ
+      // collapse は意味薄、装飾衝突回避)。
+      if (isRecursableFoldContainer(child)) {
+        applyHeadingFold(child);
+      }
       parent.appendChild(child);
     }
   }
