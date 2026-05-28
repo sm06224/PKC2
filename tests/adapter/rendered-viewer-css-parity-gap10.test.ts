@@ -62,8 +62,9 @@ describe('pgc-210 Gap-10 closure: S2 Viewer popup CSS parity(4 selector)', () =>
   });
 
   it('case 6: audit doc に Gap-10 RESOLVED marker が記録されている(pgc-210)', () => {
+    // 2026-05-28 audit doc を `completed/` へ archive 移動済(全 Gap RESOLVED)。
     const auditDoc = readFileSync(
-      resolve(ROOT, 'docs/development/render-surface-parity-audit-2026-05.md'),
+      resolve(ROOT, 'docs/development/completed/render-surface-parity-audit-2026-05.md'),
       'utf8',
     );
     expect(auditDoc).toMatch(/Gap-10[\s\S]{0,200}?RESOLVED.*pgc-210/);

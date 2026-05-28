@@ -33,6 +33,7 @@ function setFlags(values: { keymap?: boolean; inspector?: boolean }): void {
   url.searchParams.delete('pkc-flag');
   const flags: string[] = [];
   if (values.keymap) flags.push('shell.keymap_registry_enabled=1');
+  else flags.push('shell.keymap_registry_enabled=0');
   if (values.inspector) flags.push('shell.meta_pane_inspector_enabled=1');
   for (const f of flags) url.searchParams.append('pkc-flag', f);
   window.history.replaceState({}, '', url.toString());

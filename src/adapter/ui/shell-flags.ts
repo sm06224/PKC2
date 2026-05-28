@@ -75,7 +75,7 @@ export const shellConflictDiffViewEnabled = defineFlag<boolean>(
 // search で全 command 起動)。OFF で従来どおり(完全 no-op、wave-α POC)。
 export const shellCommandPaletteEnabled = defineFlag<boolean>(
   'shell.command_palette_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -89,7 +89,7 @@ export const shellCommandPaletteEnabled = defineFlag<boolean>(
 // 上書き)。`>` prefix で command mode。OFF で従来どおり(完全 no-op)。
 export const shellQuickOpenEnabled = defineFlag<boolean>(
   'shell.quick_open_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -103,7 +103,7 @@ export const shellQuickOpenEnabled = defineFlag<boolean>(
 // OFF で完全 no-op、既存 shortcut のみ。
 export const shellKeymapRegistryEnabled = defineFlag<boolean>(
   'shell.keymap_registry_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -160,7 +160,7 @@ export const shellSplitViewEnabled = defineFlag<boolean>(
 // 等)は全て不変。OFF で従来どおり 5 個ボタンを inline 表示。
 export const shellNewButtonPickerEnabled = defineFlag<boolean>(
   'shell.new_button_picker_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -193,7 +193,7 @@ export const shellDataInShellMenuEnabled = defineFlag<boolean>(
 // 動線が常に維持される)。OFF で従来どおり標準 nav group が上段。
 export const shellBackForwardInBreadcrumbEnabled = defineFlag<boolean>(
   'shell.back_forward_in_breadcrumb_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -230,7 +230,7 @@ export const shellActivityBarEnabled = defineFlag<boolean>(
 // 後続 PR で textarea input event を hook して実装。
 export const shellEditorFooterWordcountEnabled = defineFlag<boolean>(
   'shell.editor_footer_wordcount_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -317,7 +317,7 @@ export const shellTrayBarSlimEnabled = defineFlag<boolean>(
 // 立て、CSS で warning border / `⚠` badge を見せる。OFF で従来挙動。
 export const shellTodoOverdueIndicatorEnabled = defineFlag<boolean>(
   'shell.todo_overdue_indicator_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -336,7 +336,7 @@ export const shellTodoOverdueIndicatorEnabled = defineFlag<boolean>(
 // 完全維持、その手前に showcase が追加されるだけ。OFF で従来挙動。
 export const shellAboutPkcMarkdownShowcaseEnabled = defineFlag<boolean>(
   'shell.about_pkc_markdown_showcase_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -355,7 +355,7 @@ export const shellAboutPkcMarkdownShowcaseEnabled = defineFlag<boolean>(
 // 関連 region attr / 機能は不変、heading 表示のみ調整 ── safe rename。
 export const shellMetaPaneReferencesClarifyEnabled = defineFlag<boolean>(
   'shell.meta_pane_references_clarify_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -395,7 +395,7 @@ export const shellViewModeTabsScopedEnabled = defineFlag<boolean>(
 // (3) selection-floating inline toolbar も別 PR で。
 export const shellFormatPanelDefaultHiddenEnabled = defineFlag<boolean>(
   'shell.format_panel_default_hidden_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -415,7 +415,7 @@ export const shellFormatPanelDefaultHiddenEnabled = defineFlag<boolean>(
 // (Coming soon)。後続 PR で各 tab の中身を肉付け。
 export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
   'shell.meta_pane_inspector_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
@@ -431,7 +431,7 @@ export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
 // URL flag: `?pkc-flag=text.textlog_importance_filter_enabled=1`。
 export const textTextlogImportanceFilterEnabled = defineFlag<boolean>(
   'text.textlog_importance_filter_enabled',
-  false,
+  true,
   {
     category: 'text',
     description:
@@ -447,7 +447,7 @@ export const textTextlogImportanceFilterEnabled = defineFlag<boolean>(
 // URL flag: `?pkc-flag=text.textlog_log_search_enabled=1`。
 export const textTextlogLogSearchEnabled = defineFlag<boolean>(
   'text.textlog_log_search_enabled',
-  false,
+  true,
   {
     category: 'text',
     description:

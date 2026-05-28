@@ -65,6 +65,12 @@ describe('header path trail (pgc-42)', () => {
 
   beforeEach(() => {
     __resetRegistry();
+    // breadcrumb の back/forward 統合(2026-05-28 always-on 化、`shell.back_forward_in_breadcrumb_enabled`)
+    // を本 test では明示 OFF にし、本来の「path trail 単体」 contract を verify する。
+    const url = new URL(window.location.href);
+    url.searchParams.delete('pkc-flag');
+    url.searchParams.set('pkc-flag', 'shell.back_forward_in_breadcrumb_enabled=0');
+    window.history.replaceState({}, '', url.toString());
     __resetUrlCache();
     document.body.innerHTML = '';
     root = document.createElement('div');
@@ -75,6 +81,10 @@ describe('header path trail (pgc-42)', () => {
 
   afterEach(() => {
     if (teardown) { teardown(); teardown = null; }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('pkc-flag');
+    window.history.replaceState({}, '', url.toString());
+    __resetUrlCache();
   });
 
   function boot(

@@ -34,9 +34,8 @@ function setFlag(value: boolean, sidebarMode: 'tree' | 'filer' = 'tree'): void {
   // sidebar.mode default は filer なので tree(legacy <li> 構造を持つ)に
   // 切替えるため必ず flag set(test scope の都合)。
   url.searchParams.append('pkc-flag', `sidebar.mode=${sidebarMode}`);
-  if (value) {
-    url.searchParams.append('pkc-flag', 'shell.todo_overdue_indicator_enabled=1');
-  }
+  // 2026-05-28 todo_overdue_indicator_enabled always-on 化済 ── OFF 確認は明示 =0。
+  url.searchParams.append('pkc-flag', `shell.todo_overdue_indicator_enabled=${value ? '1' : '0'}`);
   window.history.replaceState({}, '', url.toString());
   __resetUrlCache();
 }

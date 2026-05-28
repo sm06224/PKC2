@@ -35,6 +35,7 @@ function setFlags(values: { keymap?: boolean; activityBar?: boolean }): void {
   url.searchParams.delete('pkc-flag');
   const flags: string[] = [];
   if (values.keymap) flags.push('shell.keymap_registry_enabled=1');
+  else flags.push('shell.keymap_registry_enabled=0');
   if (values.activityBar) flags.push('shell.activity_bar_enabled=1');
   for (const f of flags) url.searchParams.append('pkc-flag', f);
   window.history.replaceState({}, '', url.toString());

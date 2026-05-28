@@ -181,6 +181,28 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### Flag always-on batch:13 件を default ON 化(2026-05-28、flag-inventory audit §2 反映)
+
+`flag-inventory-audit-2026-05-24.md` §2 で **always-on 化推奨** とされた 13 件(shell 11 + text 2)を default OFF → ON。各機能は wave-α / wave-γ で着地後、長期間 stable 稼働 + user 体感 positive のため batch 切替:
+
+- `shell.command_palette_enabled`(Ctrl+Shift+P / F1)
+- `shell.quick_open_enabled`(Ctrl+P entry fuzzy launcher)
+- `shell.keymap_registry_enabled`(declarative keymap)
+- `shell.new_button_picker_enabled`(`+ New` 1 button picker)
+- `shell.back_forward_in_breadcrumb_enabled`(breadcrumb の `⇐` `⇒` 統合)
+- `shell.editor_footer_wordcount_enabled`(text/textlog 編集時 wordcount + read time)
+- `shell.todo_overdue_indicator_enabled`(sidebar / filer の todo overdue ⚠ indicator)
+- `shell.about_pkc_markdown_showcase_enabled`(About entry の PKC-Markdown showcase)
+- `shell.meta_pane_references_clarify_enabled`(References tab heading に source suffix)
+- `shell.format_panel_default_hidden_enabled`(format panel default 非表示 + 🎨 toggle)
+- `shell.meta_pane_inspector_enabled`(meta pane Inspector tab strip 5 tab)
+- `text.textlog_log_search_enabled`(textlog keyword search bar)
+- `text.textlog_importance_filter_enabled`(textlog ⭐ importance-only filter toggle)
+
+URL flag `?pkc-flag=<name>=0` で従来 OFF 動線維持(roll-back path 完備)。一定 wave 後の flag 削除 + コード簡素化は別 PR で実施予定。
+
+test:既存 OFF 経路 assertion は `setFlag(false)` 経路で明示 `=0` を渡す pattern に更新(15 test files、合計 ~25 件の assertion)。全 9970 件 pass。
+
 ### Doc lifecycle catch-up(2026-05-28、user 指摘「すでに実装もしてるやつありそう」を受けた一括更新)
 
 - roadmap doc 更新漏れ 5 件を一括反映:

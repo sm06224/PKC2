@@ -15,8 +15,9 @@ import type { TextlogBody, TextlogFlag } from '../../src/features/textlog/textlo
 function setFlags(importance: boolean, search: boolean = false): void {
   const url = new URL(window.location.href);
   url.searchParams.delete('pkc-flag');
-  if (importance) url.searchParams.append('pkc-flag', 'text.textlog_importance_filter_enabled=1');
-  if (search) url.searchParams.append('pkc-flag', 'text.textlog_log_search_enabled=1');
+  // 2026-05-28 両 flag always-on 化済 ── OFF 確認は明示的に =0 を渡す。
+  url.searchParams.append('pkc-flag', `text.textlog_importance_filter_enabled=${importance ? '1' : '0'}`);
+  url.searchParams.append('pkc-flag', `text.textlog_log_search_enabled=${search ? '1' : '0'}`);
   window.history.replaceState({}, '', url.toString());
   __resetUrlCache();
 }

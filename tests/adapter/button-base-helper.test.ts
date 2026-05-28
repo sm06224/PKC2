@@ -36,9 +36,7 @@ describe('pgc-171 button base helper(audit doc step 1-2)', () => {
   function setFlag(breadcrumbForwardInPath: boolean): void {
     const url = new URL(window.location.href);
     url.searchParams.delete('pkc-flag');
-    if (breadcrumbForwardInPath) {
-      url.searchParams.set('pkc-flag', 'shell.back_forward_in_breadcrumb_enabled=1');
-    }
+    url.searchParams.set('pkc-flag', `shell.back_forward_in_breadcrumb_enabled=${breadcrumbForwardInPath ? '1' : '0'}`);
     window.history.replaceState({}, '', url.toString());
     __resetUrlCache();
   }

@@ -13,9 +13,10 @@ import type { TextlogBody } from '../../src/features/textlog/textlog-body';
 function setFlag(value: boolean): void {
   const url = new URL(window.location.href);
   url.searchParams.delete('pkc-flag');
-  if (value) {
-    url.searchParams.set('pkc-flag', 'text.textlog_log_search_enabled=1');
-  }
+  url.searchParams.append('pkc-flag', `text.textlog_log_search_enabled=${value ? '1' : '0'}`);
+  // 2026-05-28 importance_filter も always-on 化済 ── search bar region は
+  // 両 flag の OR で出るので search 単独の OFF を見るには importance も OFF に。
+  url.searchParams.append('pkc-flag', 'text.textlog_importance_filter_enabled=0');
   window.history.replaceState({}, '', url.toString());
   __resetUrlCache();
 }

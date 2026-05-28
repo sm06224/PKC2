@@ -111,7 +111,13 @@ describe('pgc-160 breadcrumb / header nav forward button(user bug fix)', () => {
   it('case 6: button は min-width / min-height で touch target 確保(class 経路 assert)', () => {
     boot();
     const f = fwdBtn();
-    expect(f?.classList.contains('pkc-header-nav-btn')).toBe(true);
+    // 2026-05-28 `shell.back_forward_in_breadcrumb_enabled` always-on 化後は
+    // breadcrumb 統合経路の class(`pkc-header-path-nav-btn`)、未統合経路は
+    // 旧 class(`pkc-header-nav-btn`)── どちらでも touch target は確保される。
+    const hasNavClass =
+      f?.classList.contains('pkc-header-nav-btn') ||
+      f?.classList.contains('pkc-header-path-nav-btn');
+    expect(hasNavClass).toBe(true);
   });
 
   it('case 7: disabled button の cursor は not-allowed(class 経路 assert)', () => {

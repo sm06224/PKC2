@@ -66,11 +66,16 @@
 
 ---
 
-## §2 always-on 化推奨 flag(11 件)
+## §2 always-on 化推奨 flag(11 件) ── ✅ **2026-05-28 batch 着地**(shell 11 + text 2 = 計 13 件 default ON 化)
 
 以下 11 件は **header 削減 / 機能 additive / visual 改善** で副作用が少なく、
 user 体感が positive と想定される。次 wave で別 PR(`pgc-X-flag-always-on-batch-1`
-等)で **default ON 化 + 一定期間後に flag 削除 + コード簡素化** する候補:
+等)で **default ON 化 + 一定期間後に flag 削除 + コード簡素化** する候補。
+
+**Status (2026-05-28)**:本 batch を 1 PR で着地。`src/adapter/ui/shell-flags.ts` で
+下記 13 flag の default を `false → true` に flip。URL flag `?pkc-flag=<name>=0` で
+roll-back path 維持。test side(15 files)で OFF 経路 assertion を明示 `=0` 化。
+一定 wave 後の flag 削除 + コード簡素化は別 PR で実施予定。
 
 1. `shell.command_palette_enabled`(pgc-80)
 2. `shell.quick_open_enabled`(pgc-81)── browser print override は要 user 確認

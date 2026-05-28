@@ -36,9 +36,7 @@ function makeContainer(body: string, archetype: 'text' | 'textlog' | 'todo' = 't
 function setFlag(value: boolean): void {
   const url = new URL(window.location.href);
   url.searchParams.delete('pkc-flag');
-  if (value) {
-    url.searchParams.set('pkc-flag', 'shell.editor_footer_wordcount_enabled=1');
-  }
+  url.searchParams.set('pkc-flag', `shell.editor_footer_wordcount_enabled=${value ? '1' : '0'}`);
   window.history.replaceState({}, '', url.toString());
   __resetUrlCache();
 }

@@ -70,8 +70,9 @@ describe('pgc-211 Gap-9: S4 textlog asset resolution', () => {
   it('case 6: audit doc に Gap-9 RESOLVED marker(pgc-211)が記録される(後続 doc-only commit で更新する placeholder check)', () => {
     // 本 test は doc 更新前に source structural の整合性を guard。doc 更新は
     // 同 PR 内で行う(後段 commit)、本 case の assert は doc 更新後に true 化。
+    // 2026-05-28 audit doc を `completed/` へ archive 移動済(全 Gap RESOLVED)。
     const auditDoc = readFileSync(
-      resolve(ROOT, 'docs/development/render-surface-parity-audit-2026-05.md'),
+      resolve(ROOT, 'docs/development/completed/render-surface-parity-audit-2026-05.md'),
       'utf8',
     );
     expect(auditDoc).toMatch(/Gap-9[\s\S]{0,400}?(RESOLVED|pgc-211)/);

@@ -767,6 +767,14 @@ describe('format-panel — renderer integration (flag-gated)', () => {
 
   beforeEach(() => {
     __resetRegistry();
+    // 2026-05-28 `shell.format_panel_default_hidden_enabled` always-on 化済 ── 本
+    // describe は format panel 表示の content/structure を test するもので、default
+    // hidden 経路は別 describe(`format-panel-default-hidden.test.ts`)で別 verify。
+    // ここでは hidden flag を明示 OFF にして従来 "default visible" 経路を維持。
+    const url = new URL(window.location.href);
+    url.searchParams.delete('pkc-flag');
+    url.searchParams.set('pkc-flag', 'shell.format_panel_default_hidden_enabled=0');
+    window.history.replaceState({}, '', url.toString());
     __resetUrlCache();
     document.body.innerHTML = '';
     root = document.createElement('div');

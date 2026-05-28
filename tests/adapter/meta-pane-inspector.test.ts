@@ -39,9 +39,7 @@ function makeContainer(): Container {
 function setFlag(value: boolean): void {
   const url = new URL(window.location.href);
   url.searchParams.delete('pkc-flag');
-  if (value) {
-    url.searchParams.set('pkc-flag', 'shell.meta_pane_inspector_enabled=1');
-  }
+  url.searchParams.set('pkc-flag', `shell.meta_pane_inspector_enabled=${value ? '1' : '0'}`);
   window.history.replaceState({}, '', url.toString());
   __resetUrlCache();
 }
