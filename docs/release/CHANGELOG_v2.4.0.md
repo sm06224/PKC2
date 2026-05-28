@@ -181,6 +181,23 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### 領域 5 編集 command 拡充:command palette に 19 件追加(user 督促 2026-05-28、roadmap §領域 5 残)
+
+`roadmap §領域 5` の「command 拡充」 残箇所を実装。Command Palette(Ctrl+Shift+P / F1)から編集中 body textarea に対して inline wrap + line-prefix snippet を発火できるようにする。既存 keyboard shortcut(Ctrl+B / I / S / `)と同じ `wrapInline` + `applySnippet` helper を共有、二重実装ゼロ。
+
+追加 command:
+- **inline wrap 5 件**:bold(**)/ italic(*)/ strike(~~)/ inline code(`)/ highlight(==)
+- **line-prefix / block insert 14 件**:code block(``` ```)/ heading 1〜3 / quote(>)/ bullet list(-)/ section break(+++)/ align center(||)/ align right(|>)/ align left(<|)/ ruby([[ruby:...]])/ em-dot([[em:...]])/ comment(%% %%)/ simple inline(:text:attrs:)
+
+仕様:
+- 編集中 body textarea 取得は `activeElement` 優先 → fallback で `textarea[data-pkc-field="body"]` query
+- 編集中の body textarea が無いと silent no-op + warn(palette 操作で「編集中でない」を user に知らせる)
+- bold / italic / strike / code-inline は既存 keyboard shortcut の keybind hint を palette に保持
+
+test:`tests/adapter/command-palette-editor-format.test.ts` 16 件 case matrix(各 wrap / snippet 動作 + activeElement 優先 + fallback query + 不在時 no-op + 全 19 command の registration)。全 pass。
+
+bundle:bundle.js +3 KB(コマンド 19 件の meta + handler 分)。
+
 ### Flag always-on batch:13 件を default ON 化(2026-05-28、flag-inventory audit §2 反映)
 
 `flag-inventory-audit-2026-05-24.md` §2 で **always-on 化推奨** とされた 13 件(shell 11 + text 2)を default OFF → ON。各機能は wave-α / wave-γ で着地後、長期間 stable 稼働 + user 体感 positive のため batch 切替:

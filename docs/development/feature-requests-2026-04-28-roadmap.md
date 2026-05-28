@@ -223,7 +223,7 @@ Desktop では完動するが、**iPhone 実機で `(` 打鍵すると `((`
 | 項目 | Status |
 |---|---|
 | キーボードスクロール bug | ✅ **完了**(PR #476、Phase α #A3、2026-05-19):slash-menu / asset-picker / asset-autocomplete の 3 popover で active item を popover 内部のみ scroll させる正しい挙動に修正 |
-| 編集支援コマンド拡充 | 🔄 **未着手**(別 wave 候補) |
+| 編集支援コマンド拡充 | ✅ **完了**(2026-05-28、user 督促):command palette に 19 件追加(inline wrap 5 + line-prefix / block 14)。`tests/adapter/command-palette-editor-format.test.ts` 16 件 case matrix で動作確認 |
 
 ### 要望
 - 編集支援コマンドの拡充(現在の slash menu / quick action の拡張)

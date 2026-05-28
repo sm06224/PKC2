@@ -33,6 +33,13 @@ import {
   setMetaPaneInspectorActiveTab,
   type InspectorTab,
 } from './meta-pane-inspector';
+// 領域 5 編集 command 拡充(user 督促 2026-05-28、roadmap §領域 5 残)── editing
+// 中の body textarea に対して inline wrap / line prefix snippet を palette から
+// 呼べるようにする。既存 keyboard shortcut(Ctrl+B 等)と同じ helper を共有して
+// 二重実装を避ける。
+import { wrapInline, type Selection } from './format-panel';
+import { applyTransformToTextarea } from './editor-format-shortcuts';
+import { applySnippet, type SnippetKind } from './snippet-toolbar';
 
 /**
  * 既存 `data-pkc-action` button を root から探して click を emit する
@@ -563,4 +570,77 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       }
     },
   );
+
+  // ─── 領域 5 編集 command 拡充(2026-05-28、user 督促)─────────────────
+  // 編集中の body textarea を取得する helper。優先順位:
+  //   (1) `document.activeElement` が body textarea ならそれ(直前まで focus)
+  //   (2) 可視 body textarea(`textarea[data-pkc-field="body"]`)を 1 件 query
+  //   (3) 無ければ no-op + warn(palette 操作で「編集中でない」を user に知らせる)
+  function activeBodyTextarea(): HTMLTextAreaElement | null {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement && active.getAttribute('data-pkc-field') === 'body') {
+      return active;
+    }
+    return document.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+  }
+  function runWithBodyTextarea(label: string, action: (ta: HTMLTextAreaElement) => void): void {
+    const ta = activeBodyTextarea();
+    if (!ta) {
+      if (typeof console !== 'undefined') {
+        console.warn(`[command-palette] ${label}: 編集中の body textarea が無いため no-op`);
+      }
+      return;
+    }
+    action(ta);
+  }
+
+  // inline wrap 系(format-panel の Ctrl+B / I / S / ` / == と同じ marker)
+  const inlineWraps: { id: string; titleJa: string; titleEn: string; marker: string; keybind?: string }[] = [
+    { id: 'editor.format.bold',         titleJa: '太字で囲む(**)',           titleEn: 'Edit: Bold (**)',        marker: '**',  keybind: 'Ctrl+B' },
+    { id: 'editor.format.italic',       titleJa: '斜体で囲む(*)',            titleEn: 'Edit: Italic (*)',       marker: '*',   keybind: 'Ctrl+I' },
+    { id: 'editor.format.strike',       titleJa: '打ち消しで囲む(~~)',       titleEn: 'Edit: Strikethrough (~~)', marker: '~~', keybind: 'Ctrl+Shift+S' },
+    { id: 'editor.format.code-inline',  titleJa: 'inline code で囲む(`)',    titleEn: 'Edit: Inline code (`)',  marker: '`',   keybind: 'Ctrl+`' },
+    { id: 'editor.format.highlight',    titleJa: 'マーカーで囲む(==)',       titleEn: 'Edit: Highlight (==)',   marker: '==' },
+  ];
+  for (const w of inlineWraps) {
+    const meta: CommandMeta = {
+      id: w.id,
+      titleJa: w.titleJa,
+      titleEn: w.titleEn,
+      category: 'Edit',
+      ...(w.keybind ? { keybind: w.keybind } : {}),
+    };
+    registerCommand(meta, () => {
+      runWithBodyTextarea(w.id, (ta) => {
+        applyTransformToTextarea(ta, (s: Selection) => wrapInline(s, w.marker));
+      });
+    });
+  }
+
+  // snippet 系(line-prefix / block insert)── snippet-toolbar の applySnippet 経路を共有
+  const snippets: { id: string; titleJa: string; titleEn: string; kind: SnippetKind }[] = [
+    { id: 'editor.insert.code-block',     titleJa: 'コードブロック(``` ```)挿入',    titleEn: 'Edit: Insert code block (``` ```)',  kind: 'fence' },
+    { id: 'editor.insert.heading1',       titleJa: '見出し 1(#)に',                  titleEn: 'Edit: Heading 1 (#)',                kind: 'heading' },
+    { id: 'editor.insert.heading2',       titleJa: '見出し 2(##)に',                 titleEn: 'Edit: Heading 2 (##)',               kind: 'heading2' },
+    { id: 'editor.insert.heading3',       titleJa: '見出し 3(###)に',                titleEn: 'Edit: Heading 3 (###)',              kind: 'heading3' },
+    { id: 'editor.insert.quote',          titleJa: '引用(>)に',                      titleEn: 'Edit: Quote (>)',                    kind: 'quote' },
+    { id: 'editor.insert.list-bullet',    titleJa: '箇条書き(-)に',                  titleEn: 'Edit: Bullet list (-)',              kind: 'dash' },
+    { id: 'editor.insert.section-break',  titleJa: 'セクション区切り(+++)を挿入',    titleEn: 'Edit: Insert section break (+++)',   kind: 'section-break' },
+    { id: 'editor.insert.align-center',   titleJa: '行を中央寄せ(||)',                titleEn: 'Edit: Align center (||)',            kind: 'align-center' },
+    { id: 'editor.insert.align-right',    titleJa: '行を右寄せ(|>)',                  titleEn: 'Edit: Align right (|>)',             kind: 'align-right' },
+    { id: 'editor.insert.align-left',     titleJa: '行を左寄せ(<|)',                  titleEn: 'Edit: Align left (<|)',              kind: 'align-left' },
+    { id: 'editor.insert.ruby',           titleJa: 'ルビ([[ruby:...]])を挿入',       titleEn: 'Edit: Insert ruby ([[ruby:...]])',   kind: 'ruby' },
+    { id: 'editor.insert.em-dot',         titleJa: '強調点([[em:...]])を挿入',       titleEn: 'Edit: Insert em-dot ([[em:...]])',   kind: 'em-dot' },
+    { id: 'editor.insert.comment',        titleJa: 'コメント(%% ... %%)を挿入',      titleEn: 'Edit: Insert comment (%% ... %%)',   kind: 'comment-inline' },
+    { id: 'editor.insert.simple-inline',  titleJa: 'simple inline(:text:attrs:)を挿入', titleEn: 'Edit: Insert simple inline',     kind: 'simple-inline' },
+  ];
+  for (const s of snippets) {
+    registerCommand(
+      { id: s.id, titleJa: s.titleJa, titleEn: s.titleEn, category: 'Edit' },
+      () => {
+        runWithBodyTextarea(s.id, (ta) => applySnippet(ta, s.kind));
+      },
+    );
+  }
 }
