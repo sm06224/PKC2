@@ -129,6 +129,8 @@ import {
   updateTextlogConversionProgress,
   closeTextlogConversionProgress,
 } from './textlog-conversion-progress';
+// user direction 2026-05-28:blob URL を含む markdown text の paste で asset 化 + rewrite。
+import { rewriteBlobUrlsToAssets, hasBlobUrlImageMarkdown } from './paste-blob-url-rewrite';
 import {
   getTextToTextlogCommitData,
   isTextToTextlogModalOpen,
@@ -7697,6 +7699,81 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     return handled;
   }
 
+  /**
+   * user direction 2026-05-28:`![alt](blob:...)` を含む markdown text の paste 時、
+   * blob URL を fetch して asset 化 + markdown を `asset:<key>` に rewrite した上で
+   * textarea に挿入する。
+   *
+   * - text/plain に blob URL image syntax が無ければ false(別 handler に fallthrough)
+   * - 1 つでもあれば preventDefault + async 処理に入る、true 返却
+   * - fetch 失敗(cross-document blob 等)は URL を残置、warning toast
+   */
+  function maybeHandleBlobUrlPaste(e: ClipboardEvent): boolean {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return false;
+    const field = target.getAttribute('data-pkc-field');
+    if (!field || !PASTE_LINK_ALLOWED_FIELDS.has(field)) return false;
+
+    const raw = e.clipboardData?.getData('text/plain') ?? '';
+    if (raw === '' || !hasBlobUrlImageMarkdown(raw)) return false;
+
+    const state = dispatcher.getState();
+    if (!state.container) return false;
+    const contextLid = state.editingLid ?? state.selectedLid;
+    if (!contextLid) return false;
+
+    e.preventDefault();
+
+    const textarea = target;
+    const cursorPos = textarea.selectionStart ?? textarea.value.length;
+    const cursorEnd = textarea.selectionEnd ?? cursorPos;
+    const currentValue = textarea.value;
+    const fieldAttr = field;
+    const logId = textarea.getAttribute('data-pkc-log-id');
+
+    void (async () => {
+      try {
+        const result = await rewriteBlobUrlsToAssets(raw, { contextLid, dispatcher });
+        // 挿入用 text:rewrittenText を textarea の cursor 位置に splice
+        const before = currentValue.slice(0, cursorPos);
+        const after = currentValue.slice(cursorEnd);
+        const merged = before + result.rewrittenText + after;
+
+        // re-render 後の textarea を再取得(PASTE_ATTACHMENT で center pane が再構築)
+        const freshSelector = logId
+          ? `textarea[data-pkc-field="${fieldAttr}"][data-pkc-log-id="${CSS.escape(logId)}"]`
+          : `textarea[data-pkc-field="${fieldAttr}"]`;
+        const freshTextarea = root.querySelector<HTMLTextAreaElement>(freshSelector);
+        const ta = freshTextarea ?? textarea;
+        ta.value = merged;
+        const newCursor = cursorPos + result.rewrittenText.length;
+        ta.selectionStart = newCursor;
+        ta.selectionEnd = newCursor;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+
+        if (result.processedCount > 0) {
+          showToast({
+            message: `Blob URL ${result.processedCount} 件を asset として保存しました${result.failedCount > 0 ? `(${result.failedCount} 件は fetch 失敗で元 URL を維持)` : ''}`,
+            kind: result.failedCount > 0 ? 'warn' : 'info',
+          });
+        } else if (result.failedCount > 0) {
+          showToast({
+            message: `Blob URL ${result.failedCount} 件の fetch に失敗、元 URL のまま貼付しました(cross-document blob は再現不可)`,
+            kind: 'warn',
+          });
+        }
+      } catch (err) {
+        console.warn('[PKC2] blob URL rewrite failed:', err);
+        showToast({
+          message: `Blob URL の asset 化に失敗:${(err as Error).message ?? 'unknown error'}`,
+          kind: 'error',
+        });
+      }
+    })();
+
+    return true;
+  }
+
   function maybeHandleHtmlLinkPaste(e: ClipboardEvent): void {
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
@@ -7757,6 +7834,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // default paste. Cross-container / malformed / non-PKC URLs
       // return false here and fall through to the existing paths.
       if (maybeHandlePkcPermalinkPaste(e)) return;
+
+      // ── blob URL → asset rewrite(user direction 2026-05-28)──
+      //
+      // text/plain に `![alt](blob:...)` markdown image syntax があれば、
+      // blob を fetch → base64 → PASTE_ATTACHMENT で asset 化 →
+      // markdown 内の blob URL を `asset:<key>` に rewrite してから textarea に
+      // 挿入する。`fetch(blobUrl)` は同 document 由来の blob のみ resolved。
+      // cross-document blob は network error → fallback で原 markdown 維持。
+      if (maybeHandleBlobUrlPaste(e)) return;
 
       // ── HTML → Markdown link normalization (S-25 / 2026-04-16) ──
       //
