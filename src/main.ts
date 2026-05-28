@@ -21,6 +21,8 @@ import {
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
 import { exposeAstApi } from './adapter/public-ast-api';
+// user bug 2026-05-28:MW(entry-window)からの screenshot paste も asset 埋め込み化。
+import { exposePasteApi } from './adapter/ui/expose-paste-api';
 import {
   installBootReadySignal,
   signalBootReady,
@@ -499,6 +501,9 @@ async function boot(): Promise<void> {
   // に設置。他の AI(DevTools console / iframe / postMessage caller)から
   // markdown text を AST / Pandoc JSON に変換できる経路を提供。
   exposeAstApi();
+  // user bug 2026-05-28:entry-window から `window.opener.PKC.pasteAttachment` で
+  // parent dispatcher に paste 動線を通すための API。MW screenshot paste fix。
+  exposePasteApi(dispatcher);
 
   // 編集モード固定 format ribbon(Group C、Phase γ-C)は renderer.ts の
   // renderEditor() が描画する。旧 floating panel の global mount は scrap 済。

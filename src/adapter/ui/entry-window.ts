@@ -3049,6 +3049,66 @@ if (useSplitEditor) {
     }, 100);
   });
 
+  /* user bug 報告 2026-05-28: MW screenshot paste fix.
+   * entry-window は独立 document のため main window の paste listener は到達しない。
+   * child 内で paste catch → window.opener.PKC.pasteAttachment(payload) 経由で
+   * parent dispatcher に PASTE_ATTACHMENT を投げる。asset 化 + textarea への
+   * ![name](asset:KEY) marker 挿入で main window と同じ UX を提供する。 */
+  document.getElementById('body-edit').addEventListener('paste', function(e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    var imageItem = null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && items[i].type.indexOf('image/') === 0) {
+        imageItem = items[i];
+        break;
+      }
+    }
+    if (!imageItem) return; /* 非 image は default 動作(text/plain 等)に任せる */
+    var file = imageItem.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    var reader = new FileReader();
+    reader.onload = function() {
+      var dataUrl = reader.result;
+      if (typeof dataUrl !== 'string') return;
+      var commaIdx = dataUrl.indexOf(',');
+      var base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : '';
+      var ext = (file.type.split('/')[1] || 'png').split(';')[0];
+      var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      var name = 'screenshot-' + ts + '.' + ext;
+      var assetKey = 'att-mw-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      if (window.opener && window.opener.PKC && typeof window.opener.PKC.pasteAttachment === 'function') {
+        try {
+          window.opener.PKC.pasteAttachment({
+            name: name,
+            mime: file.type,
+            size: file.size,
+            assetKey: assetKey,
+            assetData: base64,
+            contextLid: lid
+          });
+        } catch (err) {
+          console.warn('[PKC2] MW paste forward failed:', err);
+        }
+      } else {
+        console.warn('[PKC2] window.opener.PKC.pasteAttachment unavailable, MW paste skipped');
+        return;
+      }
+      /* 挿入は paste 経路と同じ: cursor 位置に ![name](asset:KEY) を splice */
+      var ta = document.getElementById('body-edit');
+      var ref = '![' + name + '](asset:' + assetKey + ')';
+      var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+      var end = ta.selectionEnd != null ? ta.selectionEnd : start;
+      ta.value = ta.value.slice(0, start) + ref + ta.value.slice(end);
+      var newCursor = start + ref.length;
+      ta.selectionStart = newCursor;
+      ta.selectionEnd = newCursor;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    reader.readAsDataURL(file);
+  });
+
   /* ─────────────────────────────────────────────────────────────
    * PR-CC (2026-05-06):entry-window split sync.
    *

@@ -154,6 +154,35 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 
 ---
 
+## Post-release follow-ups(v2.4.0 stack 13 後の hotfix / 機能追補)
+
+### markdown render の v4 寛容パターン強化(hotfix bug report 2026-05-27)
+
+- `hasMarkdownSyntax` を v4 block 装飾箱(formal / Tier 0 vocab / Tier 1 class)+ Q8 4 directive value-only + Pandoc brace + space-separated vocabulary に対応(commit `2272223`)
+- heading-fold を `pkc-format-block` の内側にも再帰適用(option b)(commit `b8b1b18`)
+
+### PWA `<install>` 撤回(user feedback 2026-05-27)
+
+- 窓の杜 2026-05-26 記事に倣って常駐 `<install>` 要素を追加(commit `b0b0cba`)後、user feedback「右下にホバーしてるアプリとして導入ボタンは邪魔」を受け常駐 install button + fallback を撤去(commit `d4fd70b`)、manifest 埋め込みのみ残置
+
+### textlog 重い問題の二段解消(user bug 2026-05-27「遂行は絶対」)
+
+- selection mode toggle で center pane 全体 re-render を回避する narrow render path 追加 + checkbox 常駐 + `[data-pkc-textlog-selecting]` CSS gate(commit `0694122`)
+- TEXTLOG → TEXT 変換を Web Worker + chunk 進捗 + AbortController(50KB 閾値で sync / worker 分岐)(commit `d9103fa`)
+- Playwright smoke で textlog log selection 開始の回帰防止(commit `6453ef5`)
+
+### blob URL 含む markdown text の貼付で asset 化(user direction 2026-05-28)
+
+- `rewriteBlobUrlsToAssets` 追加、貼付テキストの `![](blob:...)` を fetch + base64 + `PASTE_ATTACHMENT` dispatch + `asset:KEY` rewrite。同 URL 複数 occurrence dedup / fetch 失敗 fallback / 部分 success / alt text 保持を test 10 件 + smoke で確認(commit `fba4938`、PR #748)
+
+### MW screenshot 貼付の asset 埋め込み bug fix(user bug 2026-05-28)
+
+- entry-window(child window)の `<textarea>` で画像 paste しても main window と同じ asset 埋め込み(`![name](asset:KEY)`)にならない問題を解消
+- `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
+- idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
+
+---
+
 ## Bundle / test
 
 - **bundle.js**: 5,231-5,232 KB(v2.3.0 比 +4 KB、format-block parser + render + Q7/Q8 helper 分)
