@@ -144,15 +144,14 @@ function injectFeaturesDomOps(
         entries: container.entries,
         currentContainerId: containerId,
       });
-      // pgc-203 wave-α' polish #24:built-in mermaid hydration(S4 entry-window)。
-      // S1 detail-presenter + S2 rendered-viewer と 3 surface parity 規約に
-      // 従い、S4 でも mermaid SVG を hydrate。fire-and-forget で render 完了は
-      // 次 frame 以降、tmp はその後 innerHTML として entry-window 子 window に
-      // serialize される ── HTML string 化 時点で svg 未完了の場合は
-      // placeholder のまま受け渡される(再 mount 時に同 hydrator が再 hydrate
-      // すべきだが、entry-window は子 window の document に直接書くため
-      // 別経路 ── known limitation、後続 PR で post-mount hydrate 経路を整備)。
-      void hydrateMermaidPlaceholders(tmp);
+      // user direction 2026-05-28「プレビューにおいて負荷を増幅させずに HTML レンダー
+      // と mermaid レンダーを有効化」── pgc-203 wave-α' polish #24 の known
+      // limitation を解消。parent の detached tmp div で hydrate しても async SVG
+      // 完了前に serialize されて child window に渡らないため、parent 側は呼ばず、
+      // child 側で `window.opener.pkcHydratePreviewMermaid(element)` を innerHTML
+      // 設定後に呼ぶ動線に変更(L75 / L270 と同じ exposed function pattern)。
+      // mermaid renderer 内の cross-document compat(ph.ownerDocument 経由)+
+      // source→svg cache(同 source なら mermaid.render skip)で負荷増幅を抑制。
       // pgc-97(audit pgc-77 Gap-14):S1 / S2 と同様に native <details> で
       // top-level 見出しを折りたためるように。pure DOM 操作なので entries 有無
       // に依らず無条件で適用(detail-presenter.ts:139 と同 contract)。
@@ -268,6 +267,34 @@ function renderEntryPreview(
   return injectFeaturesDomOps(html, lid, currentContainerRef, raw);
 }
 (window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
+
+/**
+ * user direction 2026-05-28「プレビューにおいて負荷を増幅させずに HTML レンダーと
+ * mermaid レンダーを有効化」── child window の inline script から
+ * `window.opener.pkcHydratePreviewMermaid(element)` で呼び、child の DOM 要素
+ * 内の `.pkc-mermaid-placeholder` を SVG 化する。
+ *
+ * 設計:
+ * - mermaid renderer の `hydrateMermaidPlaceholders` は `ph.ownerDocument`
+ *   経由で cross-document に対応済(L131 mermaid-renderer.ts)。child element
+ *   を渡せば child document 内に SVG を inject する。
+ * - source → SVG cache は parent module-local。child preview の連続更新で
+ *   同 source が何度も placeholder として現れても 2 回目以降は cache hit で
+ *   mermaid.render を skip(負荷を増幅させない)。
+ * - fire-and-forget(child は SVG 完了を待たず次の input を処理可能)。
+ *
+ * 呼出側(child inline script):
+ *   var preview = document.getElementById('body-preview');
+ *   preview.innerHTML = renderMd(src);
+ *   if (window.opener && window.opener.pkcHydratePreviewMermaid) {
+ *     window.opener.pkcHydratePreviewMermaid(preview);
+ *   }
+ */
+function pkcHydratePreviewMermaid(el: unknown): void {
+  if (!el || typeof (el as HTMLElement).querySelectorAll !== 'function') return;
+  void hydrateMermaidPlaceholders(el as HTMLElement);
+}
+(window as unknown as Record<string, unknown>).pkcHydratePreviewMermaid = pkcHydratePreviewMermaid;
 
 /** Track open child windows to prevent duplicates. */
 const openWindows = new Map<string, Window>();
@@ -3044,7 +3071,7 @@ if (useSplitEditor) {
     if (pkcSplitPreviewTimer) clearTimeout(pkcSplitPreviewTimer);
     pkcSplitPreviewTimer = setTimeout(function() {
       var src = document.getElementById('body-edit').value;
-      document.getElementById('body-preview').innerHTML = renderMd(src);
+      renderMdInto(document.getElementById('body-preview'), src);
       pkcRefreshSyncMarker();
     }, 100);
   });
@@ -4024,7 +4051,7 @@ function enterEdit() {
    * while the user was still in view mode. */
   if (useSplitEditor) {
     var src = document.getElementById('body-edit').value;
-    document.getElementById('body-preview').innerHTML = renderMd(src);
+    renderMdInto(document.getElementById('body-preview'), src);
   } else if (!useStructuredEditor) {
     showTab('source');
   }
@@ -4065,7 +4092,7 @@ function showTab(tab) {
   } else {
     /* Re-render markdown from the CURRENT textarea value */
     var src = document.getElementById('body-edit').value;
-    document.getElementById('body-preview').innerHTML = renderMd(src);
+    renderMdInto(document.getElementById('body-preview'), src);
     document.getElementById('body-edit').style.display = 'none';
     document.getElementById('body-preview').style.display = '';
     document.getElementById('tab-preview').setAttribute('data-pkc-active', 'true');
@@ -4104,6 +4131,19 @@ function renderMd(text) {
   /* Fallback: plain text with HTML escaping */
   var escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return '<pre>' + escaped + '</pre>';
+}
+
+/* user direction 2026-05-28: プレビューにおいて負荷を増幅させずに mermaid
+ * レンダーを有効化。child の preview element に innerHTML を流し込んだ後、
+ * parent の pkcHydratePreviewMermaid(element) を呼んで cross-document に
+ * SVG hydrate を走らせる。fire-and-forget(SVG 完了は次 frame 以降)+
+ * parent 側 source→svg cache で連続更新時の負荷増幅を抑制。
+ * HTML render iframe は HTML 文字列に含まれて自己完結するため別途 hydrate 不要。 */
+function renderMdInto(el, text) {
+  el.innerHTML = renderMd(text);
+  if (window.opener && typeof window.opener.pkcHydratePreviewMermaid === 'function') {
+    try { window.opener.pkcHydratePreviewMermaid(el); } catch (_e) { /* parent closed / xorigin */ }
+  }
 }
 
 function saveEntry() {
@@ -4169,7 +4209,7 @@ window.addEventListener('message', function(e) {
        * scratch div) is updated.
        */
       var src = document.getElementById('body-edit').value;
-      document.getElementById('body-preview').innerHTML = renderMd(src);
+      renderMdInto(document.getElementById('body-preview'), src);
     }
   }
   if (e.data && e.data.type === 'pkc-entry-update-view-body') {

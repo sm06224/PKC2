@@ -162,6 +162,15 @@ import { toggleFormatPanelVisible } from './format-panel-visibility';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+// user direction 2026-05-28「プレビューにおいて負荷を増幅させずに HTML レンダーと
+// mermaid レンダーを有効化」── Split View edit preview の post-markdown hydration。
+// detail-presenter L122-145 と同じ pattern で transclusion / card / mermaid / heading-fold
+// を呼び、500ms debounce が既存負荷ガード、mermaid renderer 内 source-string cache が
+// 同一 source の再 render を skip。
+import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
+import { hydrateMermaidPlaceholders } from './mermaid-renderer';
+import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
 import { parsePortablePkcReference } from '../../features/link/permalink';
 import { dateKey } from '../../features/calendar/calendar-data';
@@ -8440,6 +8449,38 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         headingNumber: extractHeadingNumberConfig(src),
         currentContainerId: liveContainerId,
       });
+      // user direction 2026-05-28「プレビューにおいて負荷を増幅させずに HTML レンダー
+      // と mermaid レンダーを有効化」── post-markdown hydration を Split View edit
+      // preview 経路にも展開。detail-presenter(S1)/ rendered-viewer(S2)/ entry-window
+      // (S4)と同 3 surface parity 規約。
+      // 負荷ガード:
+      //   - 既存 500ms input debounce(L8482-8486)が呼出頻度を抑制
+      //   - mermaid renderer 内に source → svg cache(本 PR 追加)で同一 source の
+      //     再 render を即座 reuse
+      //   - placeholder 0 件で全 hydrate が早期 return(no-op)
+      //   - HTML render iframe は HTML 文字列に含まれ自己完結(別途 hydrate 不要)
+      try {
+        const state = dispatcher.getState();
+        const container = state.container;
+        if (container) {
+          expandTransclusions(preview, {
+            entries: container.entries,
+            assets: container.assets,
+            mimeByKey: buildAssetMimeMap(container),
+            nameByKey: buildAssetNameMap(container),
+            hostLid: state.editingLid ?? state.selectedLid ?? '',
+          });
+          hydrateCardPlaceholders(preview, {
+            entries: container.entries,
+            currentContainerId: liveContainerId,
+          });
+        }
+        applyHeadingFold(preview);
+        void hydrateMermaidPlaceholders(preview);
+      } catch (err) {
+        // hydrate 失敗は preview 表示を壊さず warn のみ(markdown render は既に完了)
+        console.warn('[PKC2] live preview hydrate failed:', err);
+      }
     } else {
       preview.innerHTML = '';
       const pre = document.createElement('pre');

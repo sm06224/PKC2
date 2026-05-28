@@ -181,6 +181,16 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### Edit-mode preview の post-markdown hydration 拡充(user direction 2026-05-28)
+
+> プレビューにおいて負荷を増幅させずに HTML レンダーと mermaid レンダーを有効化できるなら実装して欲しい
+> 現状はメインウィンドウの保存完了後のレンダリング表示とがでしか表示できないため、編集体験が悪い
+
+- Split View edit preview(`updateTextEditPreview` in `action-binder.ts`)で `preview.innerHTML = renderMarkdown(...)` 後に `expandTransclusions` / `hydrateCardPlaceholders` / `applyHeadingFold` / `hydrateMermaidPlaceholders` を call。detail-presenter(S1)/ rendered-viewer(S2)/ entry-window(S4)と 3 surface parity 規約に揃える
+- entry-window(MW)preview は `pkgcHydratePreviewMermaid(element)` を parent に exposed、child inline script の `renderMdInto(el, text)` helper が `innerHTML` 設定後に呼び cross-document mermaid hydrate を発火(pgc-203 wave-α' polish #24 の known limitation を解消)
+- 負荷増幅対策:`mermaid-renderer.ts` 内に `(theme, source) → svg` cache(max 64 entries、LRU eviction、theme 切替で clear)。500ms / 100ms debounce 経由で同 source の placeholder が再 emit されても `mermaid.render` を skip して即 SVG inject
+- HTML render iframe(` ```html-render`)は HTML 文字列に含まれて自己完結、別途 hydrate 不要
+
 ---
 
 ## Bundle / test
