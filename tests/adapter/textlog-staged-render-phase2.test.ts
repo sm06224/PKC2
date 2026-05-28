@@ -255,13 +255,21 @@ describe('FI-03 Phase 2 — selection checkbox on placeholder (audit O2)', () =>
     }
   });
 
-  it('placeholder does NOT render selection checkbox when not in selection mode', () => {
+  it('placeholder renders selection checkbox markup always(perf hotfix 2026-05-27)', () => {
+    // user bug 2026-05-27 perf hotfix:checkbox markup を **always** placeholder
+    // に出力、visibility は CSS の `[data-pkc-textlog-selecting]` attribute selector
+    // で制御。本 test は markup の常時存在を verify(従来は selection mode 時のみ
+    // 出力していた、selection mode toggle で full re-render が必要だった点を解消)。
     const body: TextlogBody = { entries: generateLogs(12) };
     const el = textlogPresenter.renderBody(makeEntry(body));
 
     const placeholders = el.querySelectorAll<HTMLElement>('[data-pkc-hydrated="false"]');
+    expect(placeholders.length).toBeGreaterThan(0);
     for (const ph of placeholders) {
-      expect(ph.querySelector('input[data-pkc-field="textlog-select"]')).toBeNull();
+      expect(ph.querySelector('input[data-pkc-field="textlog-select"]')).not.toBeNull();
+      // checked 状態は selecting=false なので false
+      const cb = ph.querySelector<HTMLInputElement>('input[data-pkc-field="textlog-select"]');
+      expect(cb!.checked).toBe(false);
     }
   });
 });

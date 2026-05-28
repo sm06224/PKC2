@@ -22,6 +22,9 @@ import { diffRows } from '../../features/diff/line-diff';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
+// user bug 2026-05-27 perf hotfix:textlog selection toggle の narrow update で
+// toolbar 差し替え用に export 経由で再利用(renderBody 経路を bypass)。
+import { renderSelectionToolbar as rebuildSelectionToolbar } from './textlog-presenter';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildInspectorStyleSection } from './inspector-style-tab';
 import { buildInspectorAiSection } from './inspector-ai-tab';
@@ -421,6 +424,19 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
     // 連動部分は次 full render で同期(視覚的に古いまま残ることはほぼ無い、
     // navigation history は selectedLid と同時 mutate なので)。bench で
     // SELECT_ENTRY 52ms → ~20-25ms 短縮見込み(60FPS 16.7ms 予算近接)。
+    //
+    // user 報告 2026-05-27「textlog 大量 log で選択モード開始が凄まじく重い」:
+    // selection-only の中でも特に **textlog-selection-toggle-only**(textlogSelection
+    // のみ変化、他は不変)は center pane の placeholder 数千件 rebuild を avoid
+    // できる。textlog の checkbox markup を CSS 制御(常時 DOM + visibility 切替)
+    // にしたうえで、本 narrow path で `data-pkc-textlog-selecting` attribute と
+    // 選択 toolbar の差し替えのみ実施。
+    if (prev && isTextlogSelectionToggleOnly(state, prev)) {
+      const endProfile = profileStart('render:scope=textlog-selection-toggle');
+      applyTextlogSelectionNarrowUpdate(state, prev, root);
+      endProfile();
+      return;
+    }
     const endProfile = profileStart('render:scope=selection-only');
     replaceSelectionRegions(state, root);
     endProfile();
@@ -888,6 +904,93 @@ function replaceSelectionRegions(state: AppState, root: HTMLElement): void {
         newEntryList.scrollTop = entryListScrollTop;
       }
     });
+  }
+}
+
+/**
+ * textlog の selection mode toggle のみが起きた場合の narrow path 判定。
+ * user 報告 2026-05-27「textlog 大量 log で選択モード開始が凄まじく重い」 hotfix。
+ *
+ * 条件:
+ *   - state.textlogSelection !== prev.textlogSelection(begin / cancel / log toggle)
+ *   - state.selectedLid 不変(別 entry 遷移ではない)
+ *   - state.container 不変(body 編集ではない)
+ *   - その他 selection 軸も不変(multi-select / nav history / textToTextlogModal)
+ *
+ * これらすべて満たすとき、center pane 全体 rebuild を skip し、textlog container
+ * の `data-pkc-textlog-selecting` attribute toggle + selection toolbar の差し替え
+ * + 個別 log の `data-pkc-log-selected` attribute 更新のみで対応する。
+ *
+ * 数千 log の placeholder DOM を再構築せずに済むため、selection mode 突入 / 終了 /
+ * 個別 toggle が viewport size に依存せず const-time 化(toolbar + N logs の checked
+ * 更新は O(N) だが、placeholder DOM 創造比で 10x 以上速い)。
+ */
+function isTextlogSelectionToggleOnly(state: AppState, prev: AppState): boolean {
+  if (state.textlogSelection === prev.textlogSelection) return false;
+  if (state.selectedLid !== prev.selectedLid) return false;
+  if (state.container !== prev.container) return false;
+  if (state.multiSelectedLids !== prev.multiSelectedLids) return false;
+  if (state.navHistory !== prev.navHistory) return false;
+  if (state.navIndex !== prev.navIndex) return false;
+  if (state.textToTextlogModal !== prev.textToTextlogModal) return false;
+  if (state.viewMode !== prev.viewMode) return false;
+  if (state.editingLid !== prev.editingLid) return false;
+  return true;
+}
+
+/**
+ * textlog selection toggle の narrow DOM 更新。
+ *
+ *   1. textlog container の `data-pkc-textlog-selecting` attribute を set/remove
+ *   2. selection toolbar(Begin / Cancel / Convert / count)を新規 build で差し替え
+ *   3. 個別 log の `data-pkc-log-selected` attribute と checkbox.checked を update
+ *
+ * placeholder + article の checkbox markup は **常時 DOM に存在**(CSS で visibility
+ * 制御)ので、本 path で再構築は一切不要。
+ */
+function applyTextlogSelectionNarrowUpdate(
+  state: AppState,
+  prev: AppState,
+  root: HTMLElement,
+): void {
+  void prev;
+  const centerRegion = root.querySelector<HTMLElement>('[data-pkc-region="center"]');
+  if (!centerRegion) return;
+  const textlogView = centerRegion.querySelector<HTMLElement>('.pkc-textlog-view');
+  if (!textlogView) return;
+
+  // 1. data-attribute toggle(CSS で checkbox visibility / log highlight が連動)
+  if (state.textlogSelection) {
+    textlogView.setAttribute('data-pkc-textlog-selecting', 'true');
+  } else {
+    textlogView.removeAttribute('data-pkc-textlog-selecting');
+  }
+
+  // 2. toolbar 差し替え(Begin → Cancel + count + Convert の遷移)
+  const oldToolbar = textlogView.querySelector<HTMLElement>(
+    '[data-pkc-region="textlog-select-toolbar"]',
+  );
+  if (oldToolbar && state.selectedLid) {
+    const newToolbar = rebuildSelectionToolbar(state.selectedLid, !!state.textlogSelection);
+    oldToolbar.replaceWith(newToolbar);
+  }
+
+  // 3. 個別 log の selected 状態更新(checkbox checked + data-attr)
+  const selectedIds = new Set(state.textlogSelection?.selectedLogIds ?? []);
+  const logs = textlogView.querySelectorAll<HTMLElement>('.pkc-textlog-log[data-pkc-log-id]');
+  for (const logEl of logs) {
+    const logId = logEl.getAttribute('data-pkc-log-id');
+    if (!logId) continue;
+    const isSelected = selectedIds.has(logId);
+    if (isSelected) {
+      logEl.setAttribute('data-pkc-log-selected', 'true');
+    } else {
+      logEl.removeAttribute('data-pkc-log-selected');
+    }
+    const cb = logEl.querySelector<HTMLInputElement>(
+      'input.pkc-textlog-select-check[data-pkc-field="textlog-select"]',
+    );
+    if (cb) cb.checked = isSelected;
   }
 }
 

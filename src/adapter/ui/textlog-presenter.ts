@@ -499,23 +499,24 @@ function renderLogArticle(
   const header = document.createElement('header');
   header.className = 'pkc-textlog-log-header';
 
-  // Slice 4: checkbox shown only while selection mode is active for
-  // this TEXTLOG. Pre-checked when the module-local selection set
-  // already contains this id (restores state across re-renders).
+  // user bug 2026-05-27 perf hotfix:checkbox markup を **always** 出力、
+  // visibility は CSS の `[data-pkc-textlog-selecting]` attribute で制御。
+  // 大量 log textlog で selection mode toggle 時の re-render 回避が目的。
+  // `selecting` は initial checked 状態のためのみ使用、markup 自体は常出力。
+  const selectLabel = document.createElement('label');
+  selectLabel.className = 'pkc-textlog-select-label';
+  selectLabel.setAttribute('title', 'Include this log in the TEXT extract');
+  const selectCheck = document.createElement('input');
+  selectCheck.type = 'checkbox';
+  selectCheck.className = 'pkc-textlog-select-check';
+  selectCheck.setAttribute('data-pkc-field', 'textlog-select');
+  selectCheck.setAttribute('data-pkc-lid', lid);
+  selectCheck.setAttribute('data-pkc-log-id', log.id);
   if (selecting) {
-    const selectLabel = document.createElement('label');
-    selectLabel.className = 'pkc-textlog-select-label';
-    selectLabel.setAttribute('title', 'Include this log in the TEXT extract');
-    const selectCheck = document.createElement('input');
-    selectCheck.type = 'checkbox';
-    selectCheck.className = 'pkc-textlog-select-check';
-    selectCheck.setAttribute('data-pkc-field', 'textlog-select');
-    selectCheck.setAttribute('data-pkc-lid', lid);
-    selectCheck.setAttribute('data-pkc-log-id', log.id);
     selectCheck.checked = isLogSelected(log.id);
-    selectLabel.appendChild(selectCheck);
-    header.appendChild(selectLabel);
   }
+  selectLabel.appendChild(selectCheck);
+  header.appendChild(selectLabel);
 
   const flagBtn = document.createElement('button');
   flagBtn.className = 'pkc-textlog-flag-btn';
@@ -624,7 +625,7 @@ function renderLogArticle(
  * of the TEXTLOG view on every dispatch; state continuity is kept by
  * reading from `textlog-selection` at render time.
  */
-function renderSelectionToolbar(lid: string, selecting: boolean): HTMLElement {
+export function renderSelectionToolbar(lid: string, selecting: boolean): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'pkc-textlog-select-toolbar';
   bar.setAttribute('data-pkc-region', 'textlog-select-toolbar');

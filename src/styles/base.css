@@ -9665,6 +9665,15 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   cursor: pointer;
 }
 
+/* user bug 2026-05-27 perf hotfix:checkbox markup を always 出力、
+   visibility は selection mode 親 container の data-attribute で制御。
+   `.pkc-textlog-select-label` default hidden → BEGIN_TEXTLOG_SELECTION 時
+   に textlog container に `data-pkc-textlog-selecting="true"` を set すると
+   一斉に visible。大量 log textlog で selection mode toggle の re-render を
+   skip するための前提条件。 */
+.pkc-textlog-select-label { display: none; }
+[data-pkc-textlog-selecting="true"] .pkc-textlog-select-label { display: inline-flex; align-items: center; }
+
 [data-pkc-textlog-selecting="true"] .pkc-textlog-log[data-pkc-log-selected="true"] {
   background: color-mix(in srgb, var(--c-accent) 12%, transparent);
   border-radius: var(--radius);
