@@ -248,7 +248,7 @@ user direction(2026-05-24):
 - [`pkc2-vision-modern-emacs-2026-05.md`](./pkc2-vision-modern-emacs-2026-05.md):long-term vision、本書 G3/G5/G6 が具体化
 - [`feature-requests-2026-04-28-roadmap.md`](./feature-requests-2026-04-28-roadmap.md):領域 1〜10 棚卸し、本書 §1 で要約
 - [`../planning/USER_REQUEST_LEDGER.md`](../planning/USER_REQUEST_LEDGER.md) §3:deferred 28 件、本書 §2 で group 配置
-- [`render-surface-parity-audit-2026-05.md`](./render-surface-parity-audit-2026-05.md):5 surface Gap-1〜15、G7 で解消
+- [`completed/render-surface-parity-audit-2026-05.md`](./completed/render-surface-parity-audit-2026-05.md):5 surface Gap-1〜15、**全件 RESOLVED**(pgc-78〜211、2026-05-28 archive)
 - [`multi-window-vscode-extension-spec-2026-05.md`](./multi-window-vscode-extension-spec-2026-05.md):G7 と統合
 - [`fragment-reference-ir-spec-2026-05.md`](./fragment-reference-ir-spec-2026-05.md):G4 と統合
 - [`markdown-dialect-extensions-spec-2026-05.md`](./markdown-dialect-extensions-spec-2026-05.md):G5 と統合

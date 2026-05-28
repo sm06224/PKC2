@@ -1,9 +1,11 @@
 # Inspector AI tab(🧠)roadmap
 
 **作成日**: 2026-05-24
-**status**: 計画段階(placeholder のまま)
+**status (2026-05-28 audit)**: **Phase 1 ✅ + Phase 2 ✅ 全 8 機能着地済**(pgc-147〜165 wave-γ)/ Phase 3 / 4 は 🔄 未着手
 **parent**: `vscode-grade-overhaul-2026-05/MASTER.md` §6.3
 **契機**: user 質問(2026-05-24)「右paneの脳みそはいつ稼働するんだろ？」
+
+**Phase 1+2 実装**: A 群 local-only inspector 8 機能(A1 frontmatter suggestion / A2 duplicate detection / A3 broken link summary / A4 abandoned warning / A5 circular reference / A6 outline lint / A7 tag imbalance / A8 archetype mismatch)を `src/adapter/ui/inspector-ai-tab.ts` + `src/features/ai/{frontmatter-suggester,duplicate-detector,broken-link-summary,abandoned-warning,circular-reference,outline-lint,tag-imbalance,archetype-mismatch}.ts`(pure features layer)で実装。Tier 0 flag `shell.inspector_ai_local_enabled` で gate(default OFF)、ON で Inspector AI tab content が 8 種 inspector を render。LLM 接続なし、pure JS 計算 ── privacy / cost ゼロ。
 
 ---
 
@@ -96,7 +98,7 @@ HTML product」は外部 dep を拒否するため、最初は local-only が自
 
 ## §3 段階的 roadmap(Claude が提示する案、user direction 待ち)
 
-### Phase 1(scope 小、Tier 0 flag opt-in):local-only inspector
+### Phase 1(scope 小、Tier 0 flag opt-in):local-only inspector ── ✅ **完了**(3/3 機能着地、pgc-147〜149)
 
 - **pgc-147 着地** ✅:A 群 1 = `frontmatter suggestion`(本文 H1 → title /
   本文 `#tag` literal → frontmatter tags の差分提案、apply / dismiss button

@@ -1,6 +1,8 @@
 # 描画 surface parity audit(2026-05-22)
 
-**Status**:audit doc(docs-only、後続実装 PR の入口)
+**Status (2026-05-28 audit)**:✅ **全 Gap RESOLVED** ── 本 doc で inventory した Gap-1〜Gap-15 は pgc-78〜pgc-211 の連続 stack で全件着地済。`src/adapter/ui/entry-window.ts` に pgc-91 / 93 / 94 / 95 / 96 / 97 / 98 / 211 の cross-reference comment が thread 済、5 surface(center / Viewer popup / Split View / entry-window child / monitor)で `renderMarkdown` opts(currentContainerId / vars / sourceLineAnchors / headingNumber)+ preprocess(parseFrontmatter / extractVars / extractDocumentGlobals / resolveAssetReferences)+ features 層 DOM op(expandTransclusions / hydrateCardPlaceholders / applyHeadingFold / hydrateMermaidPlaceholders)+ critical PKC dialect CSS が parity 達成。本 audit doc は 2026-05-28 archive(`docs/development/completed/`)へ移動。
+
+**Status (2026-05-22 起こし時点、参考)**:audit doc(docs-only、後続実装 PR の入口)
 **Trigger**:user direction(2026-05-22)「マルチウィンドウの表示内容と Split
 View の、メインウィンドウとの実装仕様差を解消する」。γ-A5(`multi-window-
 vscode-extension-spec-2026-05.md`)で 4・5 番目の surface(entry-window viewer

@@ -181,6 +181,18 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### Doc lifecycle catch-up(2026-05-28、user 指摘「すでに実装もしてるやつありそう」を受けた一括更新)
+
+- roadmap doc 更新漏れ 5 件を一括反映:
+  - 領域 1 履歴ナビゲーション → 完了マーク追加(PR #197 + pgc-54/55 で実装、`src/adapter/ui/nav-history.ts`)
+  - 領域 3 .md/.txt 解決提案 → 完了マーク追加(`isTextConvertibleAttachment` + `convertAttachmentEntryToText` 着地済)
+  - 領域 6 markdown 方言の現状一覧を reform-2026-05 着地反映表に更新(14 機能 / 全件 ✅)
+  - 領域 10-3 内部中間表現(IR)導入 → 大半着地済反映(AST 13 ファイル + Word docx / PPT pptx export 直接出力)
+- INDEX.md 更新:
+  - `render-surface-parity-audit-2026-05.md` を `completed/` へ archive(Gap-1〜15 全件 RESOLVED、pgc-78〜211 で着地)
+  - `inspector-ai-tab-roadmap-2026-05.md` の Status を「Phase 1 + Phase 2 全 8 機能着地済」に更新(A1-A8 = frontmatter / duplicate / broken link / abandoned / circular / outline lint / tag imbalance / archetype mismatch 全件 src/features/ai/ に implementation)
+- `v3-unification-master-2026-05-24.md` の dead link を archive path に修正
+
 ### Edit-mode preview の post-markdown hydration 拡充(user direction 2026-05-28)
 
 > プレビューにおいて負荷を増幅させずに HTML レンダーと mermaid レンダーを有効化できるなら実装して欲しい
