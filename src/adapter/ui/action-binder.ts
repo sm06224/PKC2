@@ -120,6 +120,15 @@ import {
   isTextlogPreviewModalOpen,
 } from './textlog-preview-modal';
 import { textlogToText } from '../../features/textlog/textlog-to-text';
+// user bug 2026-05-27 hotfix:大量 log textlog の変換は Web Worker + chunk 進捗 +
+// abort 対応(`textlog-to-text-worker-client.ts`)。小サイズは sync、大きいときは
+// worker boot。
+import { convertTextlogToTextAsync } from './textlog-to-text-worker-client';
+import {
+  openTextlogConversionProgress,
+  updateTextlogConversionProgress,
+  closeTextlogConversionProgress,
+} from './textlog-conversion-progress';
 import {
   getTextToTextlogCommitData,
   isTextToTextlogModalOpen,
@@ -2640,13 +2649,64 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!isTextlogSelectionModeActive(lid)) break;
         const selection = getSelectedTextlogLogIds();
         if (selection.size === 0) break;
-        const result = textlogToText(ent, selection);
-        openTextlogPreviewModal(root, {
-          title: result.title,
-          body: result.body,
-          emittedCount: result.emittedCount,
-          skippedEmptyCount: result.skippedEmptyCount,
-          sourceLid: ent.lid,
+        // user bug 2026-05-27「凄まじく重い…遂行は絶対」hotfix:大量 log textlog
+        // を Web Worker でオフロード + chunk 進捗 + abort 対応。
+        // 閾値判定:body size が SYNC_THRESHOLD_BODY_BYTES(50KB)未満なら sync
+        // で即実行(test 経路 + 進捗 modal 表示不要 + worker boot コスト回避)。
+        // 超えるなら worker boot + 進捗 modal + abort 対応。
+        const SYNC_THRESHOLD_BODY_BYTES = 50_000;
+        const lidCaptured = ent.lid;
+        const bodyBytes = (ent.body ?? '').length;
+        if (bodyBytes < SYNC_THRESHOLD_BODY_BYTES) {
+          // sync 経路(従来動作 + test 経路維持)
+          const result = textlogToText(ent, selection);
+          openTextlogPreviewModal(root, {
+            title: result.title,
+            body: result.body,
+            emittedCount: result.emittedCount,
+            skippedEmptyCount: result.skippedEmptyCount,
+            sourceLid: lidCaptured,
+          });
+          break;
+        }
+        // async 経路(worker + chunk 進捗 + cancel)
+        const sourceTitle = ent.title;
+        const abortController = new AbortController();
+        openTextlogConversionProgress(root, {
+          sourceTitle,
+          onCancel: () => abortController.abort(),
+        });
+        convertTextlogToTextAsync(ent, selection, {
+          onProgress: (v) => updateTextlogConversionProgress(v),
+          signal: abortController.signal,
+        }).then((result) => {
+          closeTextlogConversionProgress();
+          openTextlogPreviewModal(root, {
+            title: result.title,
+            body: result.body,
+            emittedCount: result.emittedCount,
+            skippedEmptyCount: result.skippedEmptyCount,
+            sourceLid: lidCaptured,
+          });
+        }).catch((err) => {
+          closeTextlogConversionProgress();
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            // user cancel:silently、selection mode は維持
+            return;
+          }
+          console.warn('[PKC2] textlog-to-text async failed, sync fallback:', err);
+          try {
+            const fallback = textlogToText(ent, selection);
+            openTextlogPreviewModal(root, {
+              title: fallback.title,
+              body: fallback.body,
+              emittedCount: fallback.emittedCount,
+              skippedEmptyCount: fallback.skippedEmptyCount,
+              sourceLid: lidCaptured,
+            });
+          } catch (fallbackErr) {
+            console.error('[PKC2] sync fallback also failed:', fallbackErr);
+          }
         });
         break;
       }
