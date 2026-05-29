@@ -419,14 +419,20 @@ function walkBlocks(tokens: readonly Token[]): AstBlock[] {
     } else if (type === 'inline') {
       // bare inline(paragraph_open に挟まれていない場合):text として保持
       const children = walkInline(tok.children ?? []);
-      result.push({ kind: 'paragraph', children });
+      const pos = tokenPos(tok);
+      const node: AstParagraph = { kind: 'paragraph', children };
+      if (pos) node.pos = pos;
+      result.push(node);
       i++;
     } else if (type === 'html_block') {
       // raw HTML block — paragraph として text 保持
-      result.push({
+      const pos = tokenPos(tok);
+      const node: AstParagraph = {
         kind: 'paragraph',
         children: [{ kind: 'text', value: tok.content }],
-      });
+      };
+      if (pos) node.pos = pos;
+      result.push(node);
       i++;
     } else {
       // 未対応 token は skip(loss を許容、IR は core node のみ完全 cover)

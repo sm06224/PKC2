@@ -181,6 +181,20 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### 領域 10-3 IR 残:行レベル source-line を AST 経路に thread(user direction 2026-05-28 #3)
+
+audit doc(`completed/render-surface-parity-audit-2026-05.md`)で残課題と marked されていた「IR(AST)経路にも markdown-it 経路と同じ精度で `data-pkc-source-line` を emit」を実装。AST 経路 render(`renderAstToHtml` + 4 経路 byte-equivalent round-trip + Word docx / PPT pptx export)が markdown-it 経路と同じ source-line anchor 精度になり、source-preview-sync が AST 経路でも機能する基盤が整備。
+
+修正経路:
+- `src/features/ast/parse.ts`:walkBlocks の `html_block` / 'inline'(bare inline)case で `tokenPos` を呼んで `pos` を stamp(従来は paragraph として push するも pos 無し)
+- `src/features/ast/decompose-pkc.ts`:`buildBlockNode` に `pos?: AstPosition` 引数追加、`:::section` / `:::comment` / `:::figure` / `:::if` / `:::quote` / `:::paragraph` / `:::break` / `:::format` / default(unknown role)の 9 ブランチで `if (pos) node.pos = pos` を統一実装。call site 3 箇所(line 478 / 486 / 624)で opener paragraph の `block.pos` を thread。
+- `:::format` 経路は cleanAttrs / layout / vocab / Tier 0 / Tier 1 のいずれの形でも pos 維持
+- multi-line `%%%` open / close marker(L 448)+ single-line collapsed `%%% ... %%%` paragraph(L 578)の AstCommentBlock 構築でも opener pos 転記
+
+test:`tests/features/ast/source-line-threading.test.ts` 12 件 case matrix。`:::section` / `:::figure` / `:::if` / `:::quote` / `:::format` / `%%%` の各 directive で pos が opener 行に転記 + render-html が `data-pkc-source-line="<line-1>"` を emit + sourceLineAnchors: false なら出ない opt-in 規約 + single-line collapsed 形 + 通常 paragraph/heading/list の pos 維持 + html_block の pos stamp。全 9997 件 pass。
+
+bundle:bundle.js +0.3 KB(pos thread 経路のみ)。
+
 ### 領域 5 編集 command 拡充:command palette に 19 件追加(user 督促 2026-05-28、roadmap §領域 5 残)
 
 `roadmap §領域 5` の「command 拡充」 残箇所を実装。Command Palette(Ctrl+Shift+P / F1)から編集中 body textarea に対して inline wrap + line-prefix snippet を発火できるようにする。既存 keyboard shortcut(Ctrl+B / I / S / `)と同じ `wrapInline` + `applySnippet` helper を共有、二重実装ゼロ。
