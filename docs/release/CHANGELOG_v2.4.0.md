@@ -181,6 +181,31 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### 領域 10-4 spreadsheet archetype Phase 1(user direction 2026-05-28 #4)
+
+新 archetype `'spreadsheet'` を導入。`{ rows: string[][] }` JSON body + TSV(tab-separated)textarea editor + read-only HTML table view の MVP scope。
+
+実装:
+- `src/core/model/record.ts`:`ArchetypeId` union に `'spreadsheet'` 追加
+- `src/core/operations/container-ops.ts`:`KNOWN_ARCHETYPES` set に追加
+- `src/features/spreadsheet/spreadsheet-body.ts`(新規):pure helpers ── `parseSpreadsheetBody` / `serializeSpreadsheetBody`(JSON I/O、不正値寛容 fallback、cell coerce)/ `parseTsvToBody` / `serializeBodyToTsv`(TSV ⇔ body round-trip、CRLF 正規化、trailing 空行 trim)/ `getColumnCount` / `getRowCount`
+- `src/adapter/ui/spreadsheet-presenter.ts`(新規):`DetailPresenter` 実装
+  - `renderBody`:read-only `<table class="pkc-spreadsheet">`、1 行目 `<thead>` + 残 `<tbody>`、ragged row は padding、空 body は placeholder caption、textContent 経由で XSS safe
+  - `renderEditorBody`:TSV `<textarea data-pkc-field="body">` + 編集 hint `<p>`
+  - `collectBody`:textarea TSV → JSON body round-trip
+- `src/main.ts`:boot で `registerPresenter('spreadsheet', spreadsheetPresenter)`
+- `src/adapter/ui/{card-hydrator,renderer}.ts`:ArchetypeId Record の completeness 維持(icon 🧮、label "Sheet")
+- `src/styles/base.css`:`.pkc-spreadsheet-*` の最小 CSS(border / striping / TSV textarea monospace + tab-size 12)
+
+Phase 2 以降の予定(未着手):cell-by-cell grid editor / column resize / row insert / CSV import / xlsx I/O / formula sub-set。
+
+test:
+- `tests/features/spreadsheet/spreadsheet-body.test.ts`(20 件):parse/serialize/TSV round-trip/edge case(空 / 不正 JSON / ragged / null cell / 数値 coerce / CRLF / trailing 空行 trim)
+- `tests/adapter/spreadsheet-presenter.test.ts`(14 件):renderBody / renderEditorBody / collectBody の各 contract + XSS safe + ragged row padding + region attr + 編集 round-trip
+- 全 10031 件 pass、1 skipped(既存)
+
+bundle:bundle.js +3 KB、bundle.css +1 KB(presenter + body helpers + 最小 CSS)。
+
 ### 領域 10-3 IR 残:行レベル source-line を AST 経路に thread(user direction 2026-05-28 #3)
 
 audit doc(`completed/render-surface-parity-audit-2026-05.md`)で残課題と marked されていた「IR(AST)経路にも markdown-it 経路と同じ精度で `data-pkc-source-line` を emit」を実装。AST 経路 render(`renderAstToHtml` + 4 経路 byte-equivalent round-trip + Word docx / PPT pptx export)が markdown-it 経路と同じ source-line anchor 精度になり、source-preview-sync が AST 経路でも機能する基盤が整備。

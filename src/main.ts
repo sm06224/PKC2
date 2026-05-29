@@ -107,6 +107,8 @@ import { formPresenter } from './adapter/ui/form-presenter';
 import { attachmentPresenter } from './adapter/ui/attachment-presenter';
 import { folderPresenter } from './adapter/ui/folder-presenter';
 import { textlogPresenter } from './adapter/ui/textlog-presenter';
+// 領域 10-4 spreadsheet archetype Phase 1(2026-05-28、user direction #4)
+import { spreadsheetPresenter } from './adapter/ui/spreadsheet-presenter';
 import { applyExternalPermalinkOnBoot } from './adapter/ui/external-permalink-receive';
 import { setLinkMigrationDialogDispatcher } from './adapter/ui/link-migration-dialog';
 import type { Dispatcher } from './adapter/state/dispatcher';
@@ -161,6 +163,8 @@ async function boot(): Promise<void> {
   registerPresenter('attachment', attachmentPresenter);
   registerPresenter('folder', folderPresenter);
   registerPresenter('textlog', textlogPresenter);
+  // 領域 10-4 spreadsheet archetype Phase 1(2026-05-28、user direction #4)
+  registerPresenter('spreadsheet', spreadsheetPresenter);
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();

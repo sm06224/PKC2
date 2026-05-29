@@ -12257,3 +12257,60 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   background: var(--c-bg);
   color: var(--c-fg);
 }
+
+/* ── 領域 10-4 spreadsheet archetype Phase 1 (2026-05-28、user direction #4) ── */
+.pkc-spreadsheet-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.pkc-spreadsheet {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 100%;
+}
+.pkc-spreadsheet thead th {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  padding: 0.25rem 0.55rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: pre-wrap;
+}
+.pkc-spreadsheet tbody td {
+  border: 1px solid var(--c-border);
+  padding: 0.2rem 0.55rem;
+  white-space: pre-wrap;
+  vertical-align: top;
+}
+.pkc-spreadsheet tbody tr:nth-child(even) td {
+  background: rgba(127, 127, 127, 0.04);
+}
+.pkc-spreadsheet-empty {
+  color: var(--c-muted);
+  font-style: italic;
+  padding: 0.5rem;
+  text-align: left;
+  caption-side: top;
+}
+.pkc-spreadsheet-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.pkc-spreadsheet-edit-hint {
+  color: var(--c-muted);
+  font-size: 0.8rem;
+  margin: 0;
+}
+.pkc-spreadsheet-tsv {
+  width: 100%;
+  min-height: 12rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  resize: vertical;
+  tab-size: 12;
+}

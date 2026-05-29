@@ -503,6 +503,7 @@ const KNOWN_ARCHETYPES: ReadonlySet<ArchetypeId> = new Set<ArchetypeId>([
   'folder',
   'generic',
   'opaque',
+  'spreadsheet', // 領域 10-4 Phase 1(2026-05-28)
 ]);
 
 function isKnownArchetype(value: unknown): value is ArchetypeId {

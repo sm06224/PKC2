@@ -652,11 +652,16 @@ audit draft 起こし済み(`docs/development/intermediate-representation-audit.
 - (d) word / ppt renderer を IR から起こす(extension 経由、後述 10-5)→ **2026-05-28:`render-docx.ts` + `render-pptx.ts` で AST → docx/pptx 直接 export 着地済**
 - (e) 領域 10-1 を IR 上で再構築(Phase 4)— 行レベル sync を諦めずに済むかの再評価 → **未着手**(残)
 
-### 10-4: スプレッドシートエントリ(新 archetype)
+### 10-4: スプレッドシートエントリ(新 archetype) 🔄 **Phase 1 着地済**(2026-05-28、user direction #4)
 
-新 archetype `spreadsheet`(または類似名)。Container schema に追加、body は表形式 JSON。renderer 専用 presenter で grid UI。CSV / xlsx import / export を含むかは別議論。
+新 archetype `spreadsheet`。Container schema に追加、body は `{ rows: string[][] }` JSON。renderer 専用 presenter で grid UI。CSV / xlsx import / export を含むかは別議論。
 
-サイズ: 大(spec → reducer → renderer → editor → import/export、~5+ PR)。前提: archetype 拡張の影響(import / export / textlog 等から参照する場合の link 経路)。
+**Status(2026-05-28)**:
+- Phase 1 ✅ 完了:archetype 追加 + MVP body schema(`SpreadsheetBody`) + read-only HTML table view + TSV(tab-separated)textarea editor + JSON ⇔ TSV round-trip。`src/features/spreadsheet/spreadsheet-body.ts` + `src/adapter/ui/spreadsheet-presenter.ts` + main.ts wire + ArchetypeId Record completeness。34 件 test pass。
+- Phase 2 🔄 未着手:cell-by-cell grid editor / column resize / row insert / single-cell focus / paste from clipboard。
+- Phase 3 🔄 未着手:CSV import / xlsx I/O / formula sub-set(SUM / AVG 等)。
+
+サイズ: 大(~5+ PR)→ **Phase 1 完了、Phase 2/3 残**。前提: archetype 拡張の影響(import / export / textlog 等から参照する場合の link 経路)── Phase 1 では additive のみ、既存経路は不変。
 
 ### 10-5: PKC-Message 拡張 + IR を PKC-extension に渡す機構
 
