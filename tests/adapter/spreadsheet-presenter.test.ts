@@ -97,19 +97,20 @@ describe('spreadsheetPresenter.renderEditorBody', () => {
     expect(ta!.value).toBe('a\tb\n1\t2');
   });
 
-  it('case 2: 編集 hint <p> が表示される', () => {
+  it('case 2: Phase 2 grid editor の toolbar が表示される(編集 hint <p> は Phase 2 で toolbar に置換)', () => {
     const entry = mkEntry('');
     const el = spreadsheetPresenter.renderEditorBody(entry);
-    const hint = el.querySelector('.pkc-spreadsheet-edit-hint');
-    expect(hint).not.toBeNull();
-    expect(hint?.textContent).toContain('TSV');
+    const toolbar = el.querySelector('.pkc-spreadsheet-toolbar');
+    expect(toolbar).not.toBeNull();
+    expect(el.querySelector('[data-pkc-action="spreadsheet-toggle-tsv"]')).not.toBeNull();
   });
 
-  it('case 3: 空 body は空 textarea', () => {
+  it('case 3: 空 body は Phase 2 で seed として 2 空 cell(1 行 × 2 列)を提示', () => {
     const entry = mkEntry('');
     const el = spreadsheetPresenter.renderEditorBody(entry);
     const ta = el.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
-    expect(ta?.value).toBe('');
+    // 2 cell seed → TSV `\t`(空文字列 × 2 を tab で join)
+    expect(ta?.value).toBe('\t');
   });
 });
 

@@ -181,6 +181,36 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### 領域 10-4 spreadsheet archetype Phase 2 ── grid editor(user direction 2026-05-29「1 と 2 両方」)
+
+Phase 1 の TSV textarea を cell-by-cell grid editor に拡張。`renderEditorBody` を grid 中心の UI に置換、TSV mode は toggle で残置(fallback)。
+
+実装:
+- `src/adapter/ui/spreadsheet-presenter.ts` リライト:
+  - **toolbar**(`+ 行` / `+ 列` / `TSV ⇄ Grid` toggle、3 button)
+  - **grid table**(`<table class="pkc-spreadsheet-grid">`、各 cell は `contenteditable` + `data-row` / `data-col`、空 body は seed として 1 行 × 2 列を提示)
+  - **hidden textarea**(`<textarea data-pkc-field="body">`、grid → TSV の sync 先 + TSV mode で visible)
+  - **mode toggle**:`data-pkc-spreadsheet-mode="grid|tsv"` で grid と textarea を CSS で mutually-exclusive 表示
+- `wireGridEvents(wrapper)`:wrapper element に event listener を attach(presenter self-contained):
+  - cell `input` → `syncGridToTextarea` → hidden textarea に TSV 書き込み + `input` event 発火(dirty / preview / commit 経路と統合)
+  - Tab / Shift+Tab で水平 cell 移動(末尾超過で新 row 自動追加)
+  - Enter / Shift+Enter で垂直 cell 移動(末尾超過で新 row 自動追加)
+  - ArrowDown / ArrowUp で同列上下 cell 移動(複数行 cell では default に任せる)
+  - `+ 行` button → 末尾に空 row 追加 + 先頭 cell focus
+  - `+ 列` button → 全行に空 cell 追加
+  - `TSV ⇄ Grid` toggle:goingToTsv 時は grid → textarea sync、goingToGrid 時は textarea → grid 再 build(双方向 single source of truth 切替)
+- `collectBody` 拡張:grid mode 時は table DOM から直接 body を build、TSV mode 時は従来通り textarea から
+- CSS:`.pkc-spreadsheet-toolbar` + cell `:focus` ハイライト + mode toggle 表示制御
+
+test:
+- `tests/adapter/spreadsheet-presenter-phase2-grid.test.ts`(23 件):markup / cell input sync / Tab+Enter navigation / 末尾超過時の自動 row 追加 / toolbar button(+ 行 / + 列 / TSV toggle)/ TSV ⇄ Grid 双方向 sync / collectBody round-trip / XSS safe
+- `tests/adapter/spreadsheet-presenter.test.ts` Phase 1 tests 2 件を Phase 2 markup に合わせ更新(編集 hint → toolbar、空 body → 2 cell seed)
+- 全 pass
+
+Phase 3 以降:CSV / TSV paste import、xlsx I/O、formula sub-set。
+
+bundle:bundle.js +5 KB(grid editor + event handler + helpers)、bundle.css +0.7 KB。
+
 ### タブ中クリックで閉じる(user 要望 2026-05-29)
 
 > タブを中クリックで閉じたいとのこと

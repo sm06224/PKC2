@@ -656,10 +656,11 @@ audit draft 起こし済み(`docs/development/intermediate-representation-audit.
 
 新 archetype `spreadsheet`。Container schema に追加、body は `{ rows: string[][] }` JSON。renderer 専用 presenter で grid UI。CSV / xlsx import / export を含むかは別議論。
 
-**Status(2026-05-28)**:
-- Phase 1 ✅ 完了:archetype 追加 + MVP body schema(`SpreadsheetBody`) + read-only HTML table view + TSV(tab-separated)textarea editor + JSON ⇔ TSV round-trip。`src/features/spreadsheet/spreadsheet-body.ts` + `src/adapter/ui/spreadsheet-presenter.ts` + main.ts wire + ArchetypeId Record completeness。34 件 test pass。
-- Phase 2 🔄 未着手:cell-by-cell grid editor / column resize / row insert / single-cell focus / paste from clipboard。
-- Phase 3 🔄 未着手:CSV import / xlsx I/O / formula sub-set(SUM / AVG 等)。
+**Status(2026-05-29)**:
+- Phase 1 ✅ 完了(2026-05-28):archetype 追加 + MVP body schema(`SpreadsheetBody`) + read-only HTML table view + TSV(tab-separated)textarea editor + JSON ⇔ TSV round-trip。`src/features/spreadsheet/spreadsheet-body.ts` + `src/adapter/ui/spreadsheet-presenter.ts` + main.ts wire + ArchetypeId Record completeness。
+- Phase 2 ✅ 完了(2026-05-29):cell-by-cell grid editor / Tab+Enter cell navigation / `+ 行` `+ 列` toolbar button / TSV ⇄ Grid 双方向 toggle。23 件 case matrix。
+- Phase 3 🔄 未着手:CSV / TSV paste import / xlsx I/O / formula sub-set(SUM / AVG 等)。
+- 残課題(未着手、Phase 2 でも対応せず):column resize / row delete / multi-cell selection / single-cell focus 高度化 / paste from clipboard(Excel から copy → 流し込み)。
 
 サイズ: 大(~5+ PR)→ **Phase 1 完了、Phase 2/3 残**。前提: archetype 拡張の影響(import / export / textlog 等から参照する場合の link 経路)── Phase 1 では additive のみ、既存経路は不変。
 
