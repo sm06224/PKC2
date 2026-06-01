@@ -181,6 +181,26 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### 領域 10-4 spreadsheet archetype Phase 3 ── CSV / TSV paste import(user direction 2026-05-29「1 と 2 両方」)
+
+Phase 2 grid editor の cell に対する paste event を hook、clipboard text が CSV / TSV / 改行のみ などの「複数 cell 形」 だったら focus cell から grid に流し込む。Excel / Google Sheet からの copy-paste 経路を確立。
+
+実装:
+- `src/features/spreadsheet/spreadsheet-body.ts` 拡張(pure):
+  - `parseCsvToBody(csv)` ── RFC 4180 サブセット(quote 内 `,` / 改行 / `""` escape を保持)
+  - `serializeBodyToCsv(body)` ── round-trip 完備
+  - `detectPasteAsSpreadsheet(text)` ── paste テキストを TSV(tab 区切り)/ CSV(comma + 改行)/ 1 列複数行 / 単一値の 4 通りで auto-detect、null なら default paste 経路
+- `src/adapter/ui/spreadsheet-presenter.ts`:
+  - `wireGridEvents` に `paste` listener 追加 ── `detectPasteAsSpreadsheet` で複数 cell 形を検出時のみ `e.preventDefault()` して `applyPasteAtCell(wrapper, startRow, startCol, pasted)` で grid を上書き
+  - `applyPasteAtCell` helper:focus cell 位置から流し込み + 範囲を超える分は row / col 自動拡張 + 流し込み外の cell は維持 + 流し込み右下 cell に focus
+
+test:
+- `tests/features/spreadsheet/spreadsheet-csv.test.ts`(21 件):CSV parse(quote 内 comma / 改行 / `""` escape / CRLF / 空 / 末尾空 row trim)+ CSV serialize round-trip + `detectPasteAsSpreadsheet`(TSV / CSV / 改行のみ / 単一値 / tab+comma 混在 / CRLF / 単一行 comma は null)
+- `tests/adapter/spreadsheet-presenter-phase3-paste.test.ts`(10 件):TSV / CSV 貼付で grid auto-fill / focus 位置から流し込み / 範囲超過時 row 拡張 / 単一値は default paste / 改行のみ縦流し / quote 内 comma 保持 / collectBody sync / focus 右下 cell 移動 / applyPasteAtCell 直 call
+- 全 10093 件 pass(+31、1 skipped 既存)
+
+bundle:bundle.js +2 KB、bundle.css 不変。
+
 ### 領域 10-4 spreadsheet archetype Phase 2 ── grid editor(user direction 2026-05-29「1 と 2 両方」)
 
 Phase 1 の TSV textarea を cell-by-cell grid editor に拡張。`renderEditorBody` を grid 中心の UI に置換、TSV mode は toggle で残置(fallback)。

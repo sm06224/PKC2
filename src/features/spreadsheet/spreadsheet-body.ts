@@ -97,3 +97,125 @@ export function getColumnCount(body: SpreadsheetBody): number {
 export function getRowCount(body: SpreadsheetBody): number {
   return body.rows.length;
 }
+
+// ── Phase 3 CSV / TSV import helpers(user direction 2026-05-29) ──
+
+/**
+ * CSV 1 行を field 配列に parse(RFC 4180 サブセット):
+ *   - `,` 区切り
+ *   - `"..."` で囲まれた field は内部 `,` / 改行 / `""` (エスケープ済 `"`)を許容
+ *   - 囲み無しの field は trim せず literal
+ *
+ * 引数 `line` は 1 logical row 全体(quote 内改行が含まれる場合あり)。
+ */
+function parseCsvLineFields(line: string): string[] {
+  const fields: string[] = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (inQuote) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuote = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === ',') {
+        fields.push(cur);
+        cur = '';
+      } else if (ch === '"' && cur === '') {
+        inQuote = true;
+      } else {
+        cur += ch;
+      }
+    }
+  }
+  fields.push(cur);
+  return fields;
+}
+
+/**
+ * CSV text を SpreadsheetBody に変換する(RFC 4180 サブセット)。
+ * - CRLF / LF / CR を LF に正規化
+ * - `"..."` で囲まれた field 内の改行を保持(1 cell 内複数行)
+ * - 空文字列 → 空 body
+ */
+export function parseCsvToBody(csv: string): SpreadsheetBody {
+  const text = csv.replace(/\r\n?/g, '\n');
+  if (text === '') return { rows: [] };
+  // logical row への分割:quote 中の改行は join、quote 外の改行は row 切替
+  const rows: string[][] = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (ch === '"') {
+      if (inQuote && text[i + 1] === '"') {
+        cur += '""';
+        i++;
+        continue;
+      }
+      inQuote = !inQuote;
+      cur += ch;
+    } else if (ch === '\n' && !inQuote) {
+      rows.push(parseCsvLineFields(cur));
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur !== '' || rows.length === 0) {
+    rows.push(parseCsvLineFields(cur));
+  }
+  // 末尾の空 row 1 件だけ trim(改行終端の標準形)
+  while (rows.length > 0 && rows[rows.length - 1]!.length === 1 && rows[rows.length - 1]![0] === '') {
+    rows.pop();
+  }
+  return { rows };
+}
+
+/** SpreadsheetBody を CSV 文字列に変換(RFC 4180 サブセット、cell 内 `,` / 改行 / `"` を quote)。 */
+export function serializeBodyToCsv(body: SpreadsheetBody): string {
+  return body.rows
+    .map((r) => r.map((c) => csvEscapeField(c)).join(','))
+    .join('\n');
+}
+
+function csvEscapeField(field: string): string {
+  if (field === '') return '';
+  // `,` `"` `\n` `\r` を含む field は quote + 内 `"` を `""` にエスケープ
+  if (/[",\n\r]/.test(field)) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
+}
+
+/**
+ * 「貼付テキスト」から spreadsheet 内容を auto-detect:
+ *   - 改行を含み tab を含む → TSV
+ *   - 改行を含み comma を含む → CSV
+ *   - 改行のみ → 1 列の複数行
+ *   - 単一 cell(改行 / tab / comma なし)→ null(default paste 経路へ)
+ *
+ * 結果 SpreadsheetBody は呼出側が focus cell 位置から流し込む。
+ */
+export function detectPasteAsSpreadsheet(text: string): SpreadsheetBody | null {
+  if (!text) return null;
+  const normalized = text.replace(/\r\n?/g, '\n');
+  const hasNewline = normalized.includes('\n');
+  const hasTab = normalized.includes('\t');
+  const hasComma = normalized.includes(',');
+  if (!hasNewline && !hasTab) return null; // 単一値はそのまま貼付
+  if (hasTab) return parseTsvToBody(normalized);
+  if (hasComma) return parseCsvToBody(normalized);
+  // 改行のみ → 1 列の複数行
+  const lines = normalized.split('\n');
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return { rows: lines.map((l) => [l]) };
+}

@@ -24,6 +24,7 @@ import {
   parseTsvToBody,
   serializeBodyToTsv,
   getColumnCount,
+  detectPasteAsSpreadsheet,
   type SpreadsheetBody,
 } from '@features/spreadsheet/spreadsheet-body';
 
@@ -251,7 +252,25 @@ function wireGridEvents(wrapper: HTMLElement): void {
     }
   });
 
-  // 3) toolbar buttons(+ Row / + Column / TSV toggle)
+  // 3) Phase 3: CSV / TSV paste auto-import。focus cell に貼付された clipboard
+  //    text が複数 cell 形だったら spreadsheet 流し込み。単一 cell は default。
+  wrapper.addEventListener('paste', (e: ClipboardEvent) => {
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (!t.hasAttribute('contenteditable')) return;
+    const rowAttr = t.getAttribute('data-row');
+    const colAttr = t.getAttribute('data-col');
+    if (rowAttr === null || colAttr === null) return;
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    const pasted = detectPasteAsSpreadsheet(text);
+    if (!pasted) return; // 単一値は default paste(browser native)
+    e.preventDefault();
+    const startRow = parseInt(rowAttr, 10);
+    const startCol = parseInt(colAttr, 10);
+    applyPasteAtCell(wrapper, startRow, startCol, pasted);
+  });
+
+  // 4) toolbar buttons(+ Row / + Column / TSV toggle)
   wrapper.addEventListener('click', (e: MouseEvent) => {
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
@@ -267,6 +286,50 @@ function wireGridEvents(wrapper: HTMLElement): void {
       toggleTsvView(wrapper);
     }
   });
+}
+
+/**
+ * Phase 3 paste import:focus cell 位置から既存 grid に貼付 body を流し込む。
+ * 不足する row / column は自動的に拡張、既存 cell は上書き、貼付外は維持。
+ */
+function applyPasteAtCell(
+  wrapper: HTMLElement,
+  startRow: number,
+  startCol: number,
+  pasted: SpreadsheetBody,
+): void {
+  const table = wrapper.querySelector<HTMLTableElement>('table.pkc-spreadsheet-grid');
+  if (!table) return;
+  const current = readBodyFromGrid(table);
+  const pastedRows = pasted.rows;
+  const maxCols = Math.max(
+    getColumnCount(current),
+    startCol + Math.max(...pastedRows.map((r) => r.length)),
+  );
+  const targetRowEnd = startRow + pastedRows.length;
+  // 既存 row を必要分まで padding
+  while (current.rows.length < targetRowEnd) {
+    current.rows.push(new Array(maxCols).fill(''));
+  }
+  // 全 row の cols を maxCols 揃え
+  for (const r of current.rows) {
+    while (r.length < maxCols) r.push('');
+  }
+  // 貼付 cell を上書き
+  for (let pr = 0; pr < pastedRows.length; pr++) {
+    const targetRow = current.rows[startRow + pr]!;
+    const srcRow = pastedRows[pr]!;
+    for (let pc = 0; pc < srcRow.length; pc++) {
+      targetRow[startCol + pc] = srcRow[pc]!;
+    }
+  }
+  // 末尾 focus(貼付 範囲の右下 cell)
+  const focusAt = {
+    row: startRow + pastedRows.length - 1,
+    col: startCol + Math.max(...pastedRows.map((r) => r.length)) - 1,
+  };
+  rebuildGrid(wrapper, current, focusAt);
+  syncGridToTextarea(wrapper);
 }
 
 function addRow(wrapper: HTMLElement): void {
@@ -398,4 +461,5 @@ export const __testHelpers = {
   addColumn,
   toggleTsvView,
   focusCell,
+  applyPasteAtCell,
 };
