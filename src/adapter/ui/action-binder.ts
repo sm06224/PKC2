@@ -8716,6 +8716,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('scroll', handleEditorScroll, true);
 
   root.addEventListener('click', handleClick);
+  // user 要望(2026-05-29):タブを中クリックで閉じる。`.pkc-tab` 内の中クリック
+  // (button=1)で内側の `[data-pkc-action="close-tab"]` button をプログラム的
+  // click → 既存 close 経路を通す。pinned tab は close button を持たないので
+  // 自動的に no-op。`mousedown` で preventDefault してブラウザ標準の autoscroll
+  // を抑止し、`auxclick` で実 action を発火(autoscroll が出る環境への保険)。
+  const handleTabAuxClick = (e: MouseEvent): void => {
+    if (e.button !== 1) return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    const tab = target.closest<HTMLElement>('.pkc-tab');
+    if (!tab) return;
+    if (tab.classList.contains('pkc-tab-pinned')) return; // pinned tab は閉じない
+    const closeBtn = tab.querySelector<HTMLElement>('[data-pkc-action="close-tab"]');
+    if (!closeBtn) return;
+    e.preventDefault();
+    closeBtn.click();
+  };
+  const handleTabMiddleMouseDown = (e: MouseEvent): void => {
+    if (e.button !== 1) return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (!target.closest('.pkc-tab')) return;
+    // autoscroll 抑止
+    e.preventDefault();
+  };
+  root.addEventListener('auxclick', handleTabAuxClick);
+  root.addEventListener('mousedown', handleTabMiddleMouseDown);
   // Press-drag-release UX for the color picker palette (2026-04-26
   // user request). Limited to popover-style "palette" controls
   // anchored to a trigger button; the shell menu is intentionally

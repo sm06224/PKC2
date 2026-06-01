@@ -181,6 +181,20 @@ parity test 15 件(`tests/features/ast/format-block-roundtrip-parity.test.ts`)�
 - `exposePasteApi(dispatcher)` で `window.PKC.pasteAttachment(payload)` を main window namespace に設置、entry-window 側の inline paste handler が `window.opener.PKC.pasteAttachment(...)` で parent dispatcher に `PASTE_ATTACHMENT` を投げる動線を確立
 - idempotent(再呼出しでも既存 function を保持)+ 既存 `window.PKC.ast` namespace 非破壊
 
+### タブ中クリックで閉じる(user 要望 2026-05-29)
+
+> タブを中クリックで閉じたいとのこと
+
+`tab-strip.ts` のコメントには「middle-click → close」と書かれていたが実装が抜けていたため補完。`action-binder.ts` に `auxclick`(button=1)+ `mousedown`(autoscroll 抑止)の handler を追加。
+
+- `.pkc-tab` 内で中クリック → 内側の `[data-pkc-action="close-tab"]` button を プログラム的 click → 既存 close 経路(`recordTabClose` + persistTabState + dispatcher.dispatch)を通す
+- pinned tab は close button を持たないので自動的に no-op(pin 解除を強制しない)
+- mousedown(button=1)で `preventDefault()` してブラウザの autoscroll を抑止
+
+test:`tests/adapter/tab-middle-click-close.test.ts` 8 件 case matrix(通常 close / pinned no-op / 左右クリック無関係 / autoscroll preventDefault / 左ボタンは preventDefault しない / tab 外無関係 / 子 element 内中クリックも tab に届く)。
+
+bundle:bundle.js +0.4 KB(handler 2 件のみ)。
+
 ### 領域 10-4 spreadsheet archetype Phase 1(user direction 2026-05-28 #4)
 
 新 archetype `'spreadsheet'` を導入。`{ rows: string[][] }` JSON body + TSV(tab-separated)textarea editor + read-only HTML table view の MVP scope。
