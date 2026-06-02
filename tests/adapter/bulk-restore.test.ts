@@ -303,7 +303,7 @@ describe('action-binder — restore-bulk handler', () => {
   }
 
   it('dispatches RESTORE_ENTRY for every revision in the bulk group after confirm', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.stubGlobal('confirm', vi.fn(() => true));
     bootstrap(containerWithBulkStatusHistory(), 't1');
     // Trigger click on the Revert bulk button
     const btn = root.querySelector(
@@ -320,7 +320,7 @@ describe('action-binder — restore-bulk handler', () => {
   });
 
   it('dispatches nothing when the user cancels the confirmation', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    vi.stubGlobal('confirm', vi.fn(() => false));
     bootstrap(containerWithBulkStatusHistory(), 't1');
     const btn = root.querySelector(
       '[data-pkc-region="revision-info"] [data-pkc-action="restore-bulk"]',
@@ -358,7 +358,7 @@ describe('integration — bulk restore reverts all entries', () => {
   });
 
   it('BULK_SET_STATUS → Revert bulk → all entries return to pre-bulk status', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.stubGlobal('confirm', vi.fn(() => true));
     const dispatcher = createDispatcher();
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerWithBulkStatusHistory() });
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
@@ -388,7 +388,7 @@ describe('integration — bulk restore reverts all entries', () => {
   });
 
   it('BULK_DELETE → Restore bulk → all entries re-created', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.stubGlobal('confirm', vi.fn(() => true));
     const dispatcher = createDispatcher();
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerWithBulkDeleteHistory() });
     dispatcher.onState((s) => render(s, root));
@@ -412,7 +412,7 @@ describe('integration — bulk restore reverts all entries', () => {
   });
 
   it('partial-success: stale revision in the bulk group is silently skipped', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.stubGlobal('confirm', vi.fn(() => true));
     const c = containerWithBulkStatusHistory();
     // Mangle one revision so parseRevisionSnapshot rejects it —
     // RESTORE_ENTRY will silently no-op for that lid.
