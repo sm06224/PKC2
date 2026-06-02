@@ -55,10 +55,10 @@ describe('spreadsheet Phase 2 grid editor', () => {
       expect(el.getAttribute('data-pkc-spreadsheet-mode')).toBe('grid');
     });
 
-    it('case 2: toolbar に Phase 4 で 9 button(行 / 列 / ヘッダー / グラフ / フォーム / 埋込 / CSV / ODF / TSV)', () => {
+    it('case 2: toolbar に Phase 4 で 10 button(行 / 列 / ヘッダー / グラフ / フォーム / 埋込 / CSV / ODF / XLSX / TSV)', () => {
       const el = mountEditor('');
       const buttons = el.querySelectorAll<HTMLButtonElement>('.pkc-spreadsheet-toolbar button[data-pkc-action]');
-      expect(buttons.length).toBe(9);
+      expect(buttons.length).toBe(10);
       const actions = Array.from(buttons).map((b) => b.getAttribute('data-pkc-action'));
       expect(actions).toContain('spreadsheet-add-row');
       expect(actions).toContain('spreadsheet-add-column');
@@ -68,6 +68,7 @@ describe('spreadsheet Phase 2 grid editor', () => {
       expect(actions).toContain('spreadsheet-copy-embed');
       expect(actions).toContain('spreadsheet-export-csv');
       expect(actions).toContain('spreadsheet-export-fods');
+      expect(actions).toContain('spreadsheet-export-xlsx');
       expect(actions).toContain('spreadsheet-toggle-tsv');
     });
 

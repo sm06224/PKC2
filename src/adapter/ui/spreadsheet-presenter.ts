@@ -24,6 +24,7 @@ import {
   serializeBodyToTsv,
   serializeBodyToCsv,
   serializeBodyToFods,
+  buildXlsxFiles,
   getColumnCount,
   detectPasteAsSpreadsheet,
   evaluateBody,
@@ -33,6 +34,7 @@ import {
   type SpreadsheetBody,
   type ChartConfig,
 } from '@features/spreadsheet/spreadsheet-body';
+import { createZipBlob } from '../platform/zip-package';
 
 const DEFAULT_VIEW_ROWS = 6;
 const DEFAULT_VIEW_COLS = 5;
@@ -622,6 +624,9 @@ function wireGridEvents(wrapper: HTMLElement): void {
       case 'spreadsheet-export-fods':
         downloadFile(wrapper, 'fods');
         break;
+      case 'spreadsheet-export-xlsx':
+        downloadFile(wrapper, 'xlsx');
+        break;
       case 'spreadsheet-copy-embed':
         copyEmbedLink(wrapper);
         break;
@@ -814,40 +819,199 @@ function addChart(wrapper: HTMLElement): void {
   const body = readBodyState(wrapper);
   const cols = getColumnCount(body);
   if (cols < 2) {
-    // 必要 column 不足
     alert('グラフ作成には最低 2 列必要です。');
     return;
   }
-  // 簡易 picker:列 index 0 を X 軸、1 を Y 軸の bar chart
-  const kind = (prompt('グラフ種別 bar / line / pie:', 'bar') ?? 'bar').toLowerCase() as ChartConfig['kind'];
-  if (kind !== 'bar' && kind !== 'line' && kind !== 'pie') {
-    alert('bar / line / pie のいずれかを指定してください。');
-    return;
+  openChartModal(wrapper, body, cols);
+}
+
+/**
+ * Chart 作成 modal(prompt() を置き換え、user direction「サボらないで」)。
+ * X 軸列 / Y 軸列(複数 checkbox)/ kind(bar/line/pie radio)/ title /
+ * startRow / endRow(任意)を 1 panel で指定。
+ */
+function openChartModal(wrapper: HTMLElement, body: SpreadsheetBody, cols: number): void {
+  // header があれば label として、無ければ A B C
+  const headers: string[] = [];
+  for (let c = 0; c < cols; c++) {
+    if (!body.noHeader && body.rows[0]?.[c]) {
+      headers.push(body.rows[0][c]!);
+    } else {
+      headers.push(colIndexToLetter(c));
+    }
   }
-  const xColStr = prompt('X 軸の列 index(0 起点):', '0');
-  if (xColStr === null) return;
-  const yColsStr = prompt('Y 軸の列 index(複数なら , 区切り):', '1');
-  if (yColsStr === null) return;
-  const xCol = Math.max(0, parseInt(xColStr, 10) || 0);
-  const yCols = yColsStr.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !Number.isNaN(n));
-  if (yCols.length === 0) return;
-  const title = prompt('グラフタイトル:', '') ?? '';
-  const chart: ChartConfig = {
-    id: `c${Date.now().toString(36)}`,
-    kind,
-    title,
-    xCol,
-    yCols,
-    startRow: body.noHeader ? 0 : 1,
-  };
-  const next: SpreadsheetBody = { ...body, charts: [...(body.charts ?? []), chart] };
-  writeBodyState(wrapper, next);
-  rebuildChartsArea(wrapper, next);
-  const ta = wrapper.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
-  if (ta) {
-    ta.value = serializeSpreadsheetBody(next);
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  const overlay = document.createElement('div');
+  overlay.className = 'pkc-spreadsheet-form-overlay';
+  overlay.setAttribute('data-pkc-region', 'spreadsheet-chart-modal');
+  const modal = document.createElement('div');
+  modal.className = 'pkc-spreadsheet-form-modal pkc-spreadsheet-chart-modal';
+  modal.innerHTML = `<h3>📊 グラフ作成</h3>`;
+
+  // kind radio
+  const kindWrap = document.createElement('div');
+  kindWrap.className = 'pkc-spreadsheet-form-row';
+  const kindLabel = document.createElement('span');
+  kindLabel.textContent = '種別';
+  kindWrap.appendChild(kindLabel);
+  const kindOptions = document.createElement('div');
+  for (const k of ['bar', 'line', 'pie'] as const) {
+    const l = document.createElement('label');
+    l.style.marginRight = '0.6rem';
+    const r = document.createElement('input');
+    r.type = 'radio';
+    r.name = 'pkc-chart-kind';
+    r.value = k;
+    r.setAttribute('data-pkc-chart-kind-input', k);
+    if (k === 'bar') r.checked = true;
+    l.appendChild(r);
+    l.appendChild(document.createTextNode(' ' + k));
+    kindOptions.appendChild(l);
   }
+  kindWrap.appendChild(kindOptions);
+  modal.appendChild(kindWrap);
+
+  // title input
+  const titleWrap = document.createElement('label');
+  titleWrap.className = 'pkc-spreadsheet-form-row';
+  const titleLabel = document.createElement('span');
+  titleLabel.textContent = 'タイトル';
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.setAttribute('data-pkc-chart-title-input', '');
+  titleWrap.appendChild(titleLabel);
+  titleWrap.appendChild(titleInput);
+  modal.appendChild(titleWrap);
+
+  // X 軸列 select
+  const xWrap = document.createElement('label');
+  xWrap.className = 'pkc-spreadsheet-form-row';
+  const xLabel = document.createElement('span');
+  xLabel.textContent = 'X 軸列';
+  const xSel = document.createElement('select');
+  xSel.setAttribute('data-pkc-chart-xcol-input', '');
+  for (let c = 0; c < cols; c++) {
+    const opt = document.createElement('option');
+    opt.value = String(c);
+    opt.textContent = `${colIndexToLetter(c)} (${headers[c]})`;
+    xSel.appendChild(opt);
+  }
+  xWrap.appendChild(xLabel);
+  xWrap.appendChild(xSel);
+  modal.appendChild(xWrap);
+
+  // Y 軸列 checkbox 群
+  const yWrap = document.createElement('div');
+  yWrap.className = 'pkc-spreadsheet-form-row';
+  const yLabel = document.createElement('span');
+  yLabel.textContent = 'Y 軸列';
+  yWrap.appendChild(yLabel);
+  const yOptions = document.createElement('div');
+  yOptions.style.display = 'flex';
+  yOptions.style.flexWrap = 'wrap';
+  yOptions.style.gap = '0.4rem';
+  for (let c = 0; c < cols; c++) {
+    const l = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = String(c);
+    cb.setAttribute('data-pkc-chart-ycol-input', String(c));
+    if (c === 1) cb.checked = true;
+    l.appendChild(cb);
+    l.appendChild(document.createTextNode(' ' + colIndexToLetter(c)));
+    yOptions.appendChild(l);
+  }
+  yWrap.appendChild(yOptions);
+  modal.appendChild(yWrap);
+
+  // startRow / endRow
+  const rangeWrap = document.createElement('div');
+  rangeWrap.className = 'pkc-spreadsheet-form-row';
+  const rangeLabel = document.createElement('span');
+  rangeLabel.textContent = 'データ範囲';
+  rangeWrap.appendChild(rangeLabel);
+  const startInput = document.createElement('input');
+  startInput.type = 'number';
+  startInput.min = '0';
+  startInput.value = String(body.noHeader ? 0 : 1);
+  startInput.style.width = '4rem';
+  startInput.setAttribute('data-pkc-chart-startrow-input', '');
+  const endInput = document.createElement('input');
+  endInput.type = 'number';
+  endInput.min = '0';
+  endInput.placeholder = '末尾';
+  endInput.style.width = '4rem';
+  endInput.setAttribute('data-pkc-chart-endrow-input', '');
+  const rangeBox = document.createElement('div');
+  rangeBox.appendChild(document.createTextNode('行 '));
+  rangeBox.appendChild(startInput);
+  rangeBox.appendChild(document.createTextNode(' 〜 '));
+  rangeBox.appendChild(endInput);
+  rangeWrap.appendChild(rangeBox);
+  modal.appendChild(rangeWrap);
+
+  // actions
+  const actions = document.createElement('div');
+  actions.className = 'pkc-spreadsheet-form-actions';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'pkc-btn';
+  save.textContent = '作成';
+  save.setAttribute('data-pkc-chart-create-action', '');
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'pkc-btn';
+  cancel.textContent = 'キャンセル';
+  actions.appendChild(save);
+  actions.appendChild(cancel);
+  modal.appendChild(actions);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  titleInput.focus();
+
+  cancel.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') overlay.remove();
+  });
+  save.addEventListener('click', () => {
+    const kindEl = modal.querySelector<HTMLInputElement>('input[name="pkc-chart-kind"]:checked');
+    const kind = (kindEl?.value ?? 'bar') as ChartConfig['kind'];
+    const title = titleInput.value;
+    const xCol = parseInt(xSel.value, 10);
+    const yCols: number[] = [];
+    modal.querySelectorAll<HTMLInputElement>('input[data-pkc-chart-ycol-input]:checked').forEach((cb) => {
+      yCols.push(parseInt(cb.value, 10));
+    });
+    if (yCols.length === 0) {
+      alert('Y 軸列を 1 つ以上選択してください。');
+      return;
+    }
+    const startRow = Math.max(0, parseInt(startInput.value, 10) || 0);
+    const endRowRaw = endInput.value.trim();
+    const endRow = endRowRaw === '' ? undefined : parseInt(endRowRaw, 10);
+    const chart: ChartConfig = {
+      id: `c${Date.now().toString(36)}`,
+      kind,
+      title,
+      xCol,
+      yCols,
+      startRow,
+      ...(endRow !== undefined ? { endRow } : {}),
+    };
+    const b = readBodyState(wrapper);
+    const next: SpreadsheetBody = { ...b, charts: [...(b.charts ?? []), chart] };
+    writeBodyState(wrapper, next);
+    rebuildChartsArea(wrapper, next);
+    const ta = wrapper.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+    if (ta) {
+      ta.value = serializeSpreadsheetBody(next);
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    overlay.remove();
+  });
 }
 
 function removeChart(wrapper: HTMLElement, id: string): void {
@@ -941,7 +1105,7 @@ function openRecordForm(wrapper: HTMLElement): void {
 
 // ── Export ─────────────────────────────────────────────
 
-function downloadFile(wrapper: HTMLElement, format: 'csv' | 'fods'): void {
+function downloadFile(wrapper: HTMLElement, format: 'csv' | 'fods' | 'xlsx'): void {
   const body = readBodyState(wrapper);
   const evaluated = evaluateBody(body);
   const evalBody: SpreadsheetBody = { ...body, rows: evaluated };
@@ -950,11 +1114,20 @@ function downloadFile(wrapper: HTMLElement, format: 'csv' | 'fods'): void {
   if (format === 'csv') {
     blob = new Blob([serializeBodyToCsv(evalBody)], { type: 'text/csv;charset=utf-8' });
     filename = `sheet-${Date.now()}.csv`;
-  } else {
+  } else if (format === 'fods') {
     blob = new Blob([serializeBodyToFods(evalBody)], {
       type: 'application/vnd.oasis.opendocument.spreadsheet-flat-xml',
     });
     filename = `sheet-${Date.now()}.fods`;
+  } else {
+    // xlsx: zip 内 OOXML 構造
+    const enc = new TextEncoder();
+    const files = buildXlsxFiles(evalBody);
+    const entries = files.map((f) => ({ name: f.name, data: enc.encode(f.content) }));
+    blob = createZipBlob(entries);
+    // mime を xlsx 専用に上書き(createZipBlob は generic zip mime)
+    blob = new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    filename = `sheet-${Date.now()}.xlsx`;
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1049,6 +1222,7 @@ export const spreadsheetPresenter: DetailPresenter = {
     toolbar.appendChild(mkBtn('🔗 埋込', 'spreadsheet-copy-embed', '![[entry:lid]] 埋め込み記法を clipboard へ'));
     toolbar.appendChild(mkBtn('💾 CSV', 'spreadsheet-export-csv', 'CSV ファイルとしてダウンロード'));
     toolbar.appendChild(mkBtn('💾 ODF', 'spreadsheet-export-fods', 'ODF Flat XML (.fods) としてダウンロード(LibreOffice 互換)'));
+    toolbar.appendChild(mkBtn('💾 XLSX', 'spreadsheet-export-xlsx', 'Excel xlsx としてダウンロード(Office Open XML / OOXML)'));
     toolbar.appendChild(mkBtn('TSV ⇄ Grid', 'spreadsheet-toggle-tsv', 'TSV 編集モードと Grid 編集モードを切替'));
     wrapper.appendChild(toolbar);
 

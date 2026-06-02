@@ -256,6 +256,24 @@ export function detectPasteAsSpreadsheet(text: string): SpreadsheetBody | null {
 // ── Phase 4: Cell reference / formula evaluator ─────────
 
 /**
+ * Formula 評価コンテキスト。1 回の `evaluateBody` 呼出で memo / visiting
+ * を共有し、cell 間の重複評価を排除する(performance 対策、user direction
+ * 2026-06-02「パフォーマンスに不安があるなら解決して!」)。
+ *
+ * memo:`row,col` → 評価値。同一 cell が複数 formula から参照されても 1 回。
+ * visiting:現在評価中の cell。循環参照 detection。
+ */
+interface FormulaCtx {
+  memo: Map<string, FormulaValue>;
+  visiting: Set<string>;
+  depth: number;
+}
+
+function newCtx(): FormulaCtx {
+  return { memo: new Map(), visiting: new Set(), depth: 0 };
+}
+
+/**
  * Column letter(`A`, `B`, ... `Z`, `AA`, `AB`, ...)を 0-indexed column に変換。
  * 不正入力は -1。
  */
@@ -298,20 +316,22 @@ export function isFormula(cell: string): boolean {
 /**
  * formula を評価。body 全体を渡し、cell 参照 / range / 関数 / 算術を eval。
  * 循環参照は短絡(深さ制限)、エラーは `#ERR!` 文字列を返す。
+ *
+ * `ctx` を渡さない呼出は per-call の新 ctx を作る(test / 単発 helper 用)。
+ * `evaluateBody` 経由なら body 全体で 1 ctx を共有 = memo 効く。
  */
 export function evaluateFormula(
   formula: string,
   body: SpreadsheetBody,
-  visiting: Set<string> = new Set(),
-  depth: number = 0,
+  ctx: FormulaCtx = newCtx(),
 ): string {
-  if (depth > 32) return '#CYCLE!';
+  if (ctx.depth > 64) return '#CYCLE!';
   const src = formula.startsWith('=') ? formula.slice(1) : formula;
   try {
     const tokens = tokenize(src);
     const parser = new Parser(tokens);
     const ast = parser.parseExpr();
-    const v = evalNode(ast, body, visiting, depth);
+    const v = evalNode(ast, body, ctx);
     return formatValue(v);
   } catch {
     return '#ERR!';
@@ -574,33 +594,27 @@ class Parser {
   }
 }
 
-function evalNode(
-  node: Node,
-  body: SpreadsheetBody,
-  visiting: Set<string>,
-  depth: number,
-): FormulaValue {
+function evalNode(node: Node, body: SpreadsheetBody, ctx: FormulaCtx): FormulaValue {
   switch (node.kind) {
     case 'num': return node.num!;
     case 'str': return node.str!;
     case 'ref': {
       const { row, col } = node.ref!;
-      return readCellValue(row, col, body, visiting, depth);
+      return readCellValue(row, col, body, ctx);
     }
     case 'range': {
-      // range をそのまま値として扱うのは関数呼び出し時のみ。値文脈では
-      // 左上 cell の値で代用(Excel と同じ implicit intersection 簡略版)。
+      // 値文脈での range は左上 cell の値で代用(Excel implicit intersection 簡略)。
       const r = node.range!;
-      return readCellValue(r.row1, r.col1, body, visiting, depth);
+      return readCellValue(r.row1, r.col1, body, ctx);
     }
     case 'unary': {
-      const v = evalNode(node.operand!, body, visiting, depth);
+      const v = evalNode(node.operand!, body, ctx);
       const n = toNum(v);
       return node.op === '-' ? -n : n;
     }
     case 'bin': {
-      const l = evalNode(node.left!, body, visiting, depth);
-      const r = evalNode(node.right!, body, visiting, depth);
+      const l = evalNode(node.left!, body, ctx);
+      const r = evalNode(node.right!, body, ctx);
       switch (node.op) {
         case '+': return toNum(l) + toNum(r);
         case '-': return toNum(l) - toNum(r);
@@ -621,67 +635,56 @@ function evalNode(
       throw new Error('bad op');
     }
     case 'call': {
-      return evalCall(node.fn!, node.args!, body, visiting, depth);
+      return evalCall(node.fn!, node.args!, body, ctx);
     }
   }
 }
 
-function readCellValue(
-  row: number,
-  col: number,
-  body: SpreadsheetBody,
-  visiting: Set<string>,
-  depth: number,
-): FormulaValue {
+function readCellValue(row: number, col: number, body: SpreadsheetBody, ctx: FormulaCtx): FormulaValue {
   const key = `${row},${col}`;
-  if (visiting.has(key)) throw new Error('cycle');
+  if (ctx.memo.has(key)) return ctx.memo.get(key)!;
+  if (ctx.visiting.has(key)) throw new Error('cycle');
   const raw = body.rows[row]?.[col] ?? '';
-  // 空 cell は空文字列で表現(数値文脈では toNum で 0 化、COUNT 等の
-  // 数値判定では「数値でない」 として扱う ── Excel 流儀)。
-  if (raw === '') return '';
-  if (isFormula(raw)) {
-    visiting.add(key);
-    const result = evaluateFormula(raw, body, visiting, depth + 1);
-    visiting.delete(key);
-    const asNum = parseFloat(result);
-    if (!Number.isNaN(asNum) && /^-?[0-9.]+$/.test(result)) return asNum;
-    return result;
+  if (raw === '') {
+    ctx.memo.set(key, '');
+    return '';
   }
-  const n = parseFloat(raw);
-  if (!Number.isNaN(n) && /^-?[0-9.]+$/.test(raw.trim())) return n;
-  return raw;
+  let result: FormulaValue;
+  if (isFormula(raw)) {
+    ctx.visiting.add(key);
+    ctx.depth++;
+    const resStr = evaluateFormula(raw, body, ctx);
+    ctx.depth--;
+    ctx.visiting.delete(key);
+    const asNum = parseFloat(resStr);
+    result = (!Number.isNaN(asNum) && /^-?[0-9.]+$/.test(resStr)) ? asNum : resStr;
+  } else {
+    const n = parseFloat(raw);
+    result = (!Number.isNaN(n) && /^-?[0-9.]+$/.test(raw.trim())) ? n : raw;
+  }
+  ctx.memo.set(key, result);
+  return result;
 }
 
-function expandRangeValues(
-  arg: Node,
-  body: SpreadsheetBody,
-  visiting: Set<string>,
-  depth: number,
-): FormulaValue[] {
+function expandRangeValues(arg: Node, body: SpreadsheetBody, ctx: FormulaCtx): FormulaValue[] {
   if (arg.kind === 'range') {
     const r = arg.range!;
     const out: FormulaValue[] = [];
     for (let row = r.row1; row <= r.row2; row++) {
       for (let col = r.col1; col <= r.col2; col++) {
-        out.push(readCellValue(row, col, body, visiting, depth));
+        out.push(readCellValue(row, col, body, ctx));
       }
     }
     return out;
   }
-  return [evalNode(arg, body, visiting, depth)];
+  return [evalNode(arg, body, ctx)];
 }
 
-function evalCall(
-  fn: string,
-  args: Node[],
-  body: SpreadsheetBody,
-  visiting: Set<string>,
-  depth: number,
-): FormulaValue {
+function evalCall(fn: string, args: Node[], body: SpreadsheetBody, ctx: FormulaCtx): FormulaValue {
   const collect = (): FormulaValue[] => {
     const vals: FormulaValue[] = [];
     for (const a of args) {
-      vals.push(...expandRangeValues(a, body, visiting, depth));
+      vals.push(...expandRangeValues(a, body, ctx));
     }
     return vals;
   };
@@ -717,15 +720,15 @@ function evalCall(
       return c;
     }
     case 'IF': {
-      const cond = toNum(evalNode(args[0]!, body, visiting, depth));
+      const cond = toNum(evalNode(args[0]!, body, ctx));
       return cond !== 0
-        ? evalNode(args[1]!, body, visiting, depth)
-        : (args[2] ? evalNode(args[2], body, visiting, depth) : 0);
+        ? evalNode(args[1]!, body, ctx)
+        : (args[2] ? evalNode(args[2], body, ctx) : 0);
     }
-    case 'ABS': return Math.abs(toNum(evalNode(args[0]!, body, visiting, depth)));
+    case 'ABS': return Math.abs(toNum(evalNode(args[0]!, body, ctx)));
     case 'ROUND': {
-      const v = toNum(evalNode(args[0]!, body, visiting, depth));
-      const d = args[1] ? toNum(evalNode(args[1], body, visiting, depth)) : 0;
+      const v = toNum(evalNode(args[0]!, body, ctx));
+      const d = args[1] ? toNum(evalNode(args[1], body, ctx)) : 0;
       const m = Math.pow(10, d);
       return Math.round(v * m) / m;
     }
@@ -736,7 +739,7 @@ function evalCall(
       return s;
     }
     case 'LEN':
-      return String(evalNode(args[0]!, body, visiting, depth)).length;
+      return String(evalNode(args[0]!, body, ctx)).length;
   }
   throw new Error('unknown function ' + fn);
 }
@@ -758,19 +761,134 @@ function formatValue(v: FormulaValue): string {
   return String(v);
 }
 
-/** 全 cell を評価して 2D 値 grid を返す(view mode 用)。formula は評価値、それ以外は raw。 */
+/**
+ * 全 cell を評価して 2D 値 grid を返す(view mode 用)。formula は評価値、
+ * それ以外は raw。**単一 ctx を共有して memo 効かせる**(一度評価した
+ * cell は全 cell 走査内で再計算しない、N×M で N+M+formula 数オーダー)。
+ */
 export function evaluateBody(body: SpreadsheetBody): string[][] {
+  const ctx = newCtx();
   const out: string[][] = [];
   for (let r = 0; r < body.rows.length; r++) {
     const row: string[] = [];
     const src = body.rows[r]!;
     for (let c = 0; c < src.length; c++) {
       const raw = src[c]!;
-      row.push(isFormula(raw) ? evaluateFormula(raw, body) : raw);
+      if (!isFormula(raw)) {
+        row.push(raw);
+        continue;
+      }
+      // memo 経由で既評価なら format-only
+      const key = `${r},${c}`;
+      const cached = ctx.memo.get(key);
+      if (cached !== undefined) {
+        row.push(formatValue(cached));
+        continue;
+      }
+      const evaluated = evaluateFormula(raw, body, ctx);
+      // 評価結果を memo に逆 propagate(以後の cell が参照したら hit)
+      const asNum = parseFloat(evaluated);
+      if (!Number.isNaN(asNum) && /^-?[0-9.]+$/.test(evaluated)) {
+        ctx.memo.set(key, asNum);
+      } else {
+        ctx.memo.set(key, evaluated);
+      }
+      row.push(evaluated);
     }
     out.push(row);
   }
   return out;
+}
+
+// ── xlsx export(Office Open XML、最小 zip 構造)─────────
+
+/** xlsx ファイル内に格納する file entry(name + content)。 */
+export interface XlsxFile {
+  name: string;
+  content: string;
+}
+
+/**
+ * SpreadsheetBody から xlsx zip のためのファイル群を build する。
+ * 呼出側で `createZipBytes` / `createZipBlob` に渡して xlsx ファイルを生成。
+ *
+ * 最小構成(Excel が開ける範囲):
+ *   - [Content_Types].xml
+ *   - _rels/.rels
+ *   - xl/workbook.xml
+ *   - xl/_rels/workbook.xml.rels
+ *   - xl/worksheets/sheet1.xml
+ *
+ * sharedStrings / styles は省略(inline string で済む、Excel が default style 適用)。
+ * formula は評価値を出力(user direction「見たままを csv で落としたい」 と同方針、
+ * formula 自体は <f> tag で添えるオプションを今後追加可能)。
+ */
+export function buildXlsxFiles(body: SpreadsheetBody, sheetName: string = 'Sheet1'): XlsxFile[] {
+  const xmlEscape = (s: string): string =>
+    s.replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  const evaluated = evaluateBody(body);
+  const cols = getColumnCount(body);
+
+  // sheet rows
+  const sheetRows: string[] = [];
+  for (let r = 0; r < evaluated.length; r++) {
+    const cells: string[] = [];
+    for (let c = 0; c < cols; c++) {
+      const v = evaluated[r]?.[c] ?? '';
+      if (v === '') continue;
+      const ref = `${colIndexToLetter(c)}${r + 1}`;
+      const isNum = /^-?[0-9.]+$/.test(v.trim()) && v.trim() !== '';
+      if (isNum) {
+        cells.push(`<c r="${ref}"><v>${xmlEscape(v.trim())}</v></c>`);
+      } else {
+        // inline string(`t="inlineStr"` + <is><t>...</t></is>)
+        cells.push(`<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(v)}</t></is></c>`);
+      }
+    }
+    sheetRows.push(`<row r="${r + 1}">${cells.join('')}</row>`);
+  }
+
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+
+  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+
+  const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>
+${sheetRows.join('\n')}
+</sheetData>
+</worksheet>`;
+
+  return [
+    { name: '[Content_Types].xml', content: contentTypes },
+    { name: '_rels/.rels', content: rootRels },
+    { name: 'xl/workbook.xml', content: workbook },
+    { name: 'xl/_rels/workbook.xml.rels', content: workbookRels },
+    { name: 'xl/worksheets/sheet1.xml', content: sheet },
+  ];
 }
 
 // ── ODF .fods export(flat XML、zip 不要) ────────────────
