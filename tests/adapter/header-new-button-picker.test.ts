@@ -80,17 +80,17 @@ describe('pgc-99 header `+ New` button picker', () => {
     return root.querySelector('[data-pkc-region="new-picker-popover"]');
   }
 
-  it('flag OFF:従来通り 5 個 archetype button、`+ New` button は出ない', () => {
+  it('flag OFF:従来通り 6 個 archetype button(spreadsheet 追加 2026-06-02)、`+ New` button は出ない', () => {
     setFlag(false);
     boot(emptyContainer());
     expect(newPickerBtn()).toBeNull();
     const btns = createButtons();
-    expect(btns.length).toBe(5);
+    expect(btns.length).toBe(6);
     const archs = btns.map((b) => b.getAttribute('data-pkc-archetype'));
-    expect(archs).toEqual(['text', 'textlog', 'todo', 'attachment', 'folder']);
+    expect(archs).toEqual(['text', 'textlog', 'todo', 'spreadsheet', 'attachment', 'folder']);
   });
 
-  it('flag ON:5 個 button が消えて `+ New` 1 個 + popover(5 row、default 閉)', () => {
+  it('flag ON:6 個 button が消えて `+ New` 1 個 + popover(6 row、default 閉)', () => {
     setFlag(true);
     boot(emptyContainer());
     expect(newPickerBtn()).not.toBeNull();
@@ -99,11 +99,11 @@ describe('pgc-99 header `+ New` button picker', () => {
     const pop = popover();
     expect(pop).not.toBeNull();
     expect(pop?.getAttribute('data-pkc-open')).toBe('false');
-    // popover 内 5 row、それぞれ create-entry handler / archetype attr 透過
+    // popover 内 6 row、それぞれ create-entry handler / archetype attr 透過
     const rows = pop!.querySelectorAll<HTMLElement>('.pkc-new-picker-row');
-    expect(rows.length).toBe(5);
+    expect(rows.length).toBe(6);
     const archs = Array.from(rows).map((r) => r.getAttribute('data-pkc-archetype'));
-    expect(archs).toEqual(['text', 'textlog', 'todo', 'attachment', 'folder']);
+    expect(archs).toEqual(['text', 'textlog', 'todo', 'spreadsheet', 'attachment', 'folder']);
     for (const r of Array.from(rows)) {
       expect(r.getAttribute('data-pkc-action')).toBe('create-entry');
     }

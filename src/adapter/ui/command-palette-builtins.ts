@@ -88,11 +88,12 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
 
   // ─── Entry create ───────────────────────────
   const archetypes: { id: ArchetypeId; ja: string; en: string }[] = [
-    { id: 'text',       ja: '新規 TEXT エントリ',     en: 'New TEXT entry' },
-    { id: 'textlog',    ja: '新規 TEXTLOG エントリ',  en: 'New TEXTLOG entry' },
-    { id: 'todo',       ja: '新規 TODO エントリ',     en: 'New TODO entry' },
-    { id: 'attachment', ja: '新規 添付ファイル',       en: 'New attachment' },
-    { id: 'folder',     ja: '新規 フォルダ',           en: 'New folder' },
+    { id: 'text',        ja: '新規 TEXT エントリ',        en: 'New TEXT entry' },
+    { id: 'textlog',     ja: '新規 TEXTLOG エントリ',     en: 'New TEXTLOG entry' },
+    { id: 'todo',        ja: '新規 TODO エントリ',        en: 'New TODO entry' },
+    { id: 'spreadsheet', ja: '新規 SPREADSHEET エントリ', en: 'New SPREADSHEET entry' },
+    { id: 'attachment',  ja: '新規 添付ファイル',         en: 'New attachment' },
+    { id: 'folder',      ja: '新規 フォルダ',             en: 'New folder' },
   ];
   for (const a of archetypes) {
     const meta: CommandMeta = {

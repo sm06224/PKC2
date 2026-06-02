@@ -1496,6 +1496,7 @@ function renderHeader(state: AppState): HTMLElement {
       { arch: 'text', label: `${archetypeIcon('text')} Text`, tip: 'Create a new text entry' },
       { arch: 'textlog', label: `${archetypeIcon('textlog')} Log`, tip: 'Create a new textlog entry' },
       { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry' },
+      { arch: 'spreadsheet', label: `${archetypeIcon('spreadsheet')} Sheet`, tip: 'Create a new spreadsheet entry' },
       { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment entry' },
       { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder' },
     ];
@@ -6144,6 +6145,7 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
       { arch: 'text', label: `${archetypeIcon('text')} Text`, tip: 'Create a new text entry here' },
       { arch: 'textlog', label: `${archetypeIcon('textlog')} Log`, tip: 'Create a new textlog entry here' },
       { arch: 'todo', label: `${archetypeIcon('todo')} Todo`, tip: 'Create a new todo entry here' },
+      { arch: 'spreadsheet', label: `${archetypeIcon('spreadsheet')} Sheet`, tip: 'Create a new spreadsheet entry here' },
       { arch: 'attachment', label: `${archetypeIcon('attachment')} File`, tip: 'Create a new file attachment here' },
     ];
     for (const { arch, label, tip } of archetypeButtons) {
