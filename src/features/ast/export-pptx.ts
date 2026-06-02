@@ -552,6 +552,16 @@ function blockToSlideLines(
     }
     case 'opaque-block':
       return [{ text: block.original, indent }];
+    case 'format-block': {
+      // v4 §12(stack PR 3、types only):children を flatten、装飾は pptx native 未対応
+      // (vocabulary → text formatting は別 wave)。
+      const lines: SlideLine[] = [];
+      for (const child of block.children) {
+        const childLines = blockToSlideLines(child, indent, ctx);
+        for (const ln of childLines) lines.push(ln);
+      }
+      return lines;
+    }
     default: {
       const _exhaustive: never = block;
       void _exhaustive;

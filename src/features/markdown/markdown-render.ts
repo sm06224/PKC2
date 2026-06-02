@@ -34,7 +34,9 @@ import { renderCsvFence } from './csv-table';
 import { buildHtmlSandboxIframe } from './html-sandbox';
 import { parsePortablePkcReference } from '../link/permalink';
 import {
+  inferQ8ValueOnlyKey,
   parseBlockDirectiveOpen,
+  parseTier1FormatOpen,
   isBlockDirectiveClose,
   type BlockDirectiveAttrs as _BlockDirectiveAttrs,
 } from './block-directive-attrs';
@@ -156,6 +158,20 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   const info = (token.info ?? '').trim();
   if (/^html-render(\s|$)/.test(info)) {
     return buildHtmlSandboxIframe(token.content, sourceLineAttrs);
+  }
+  // pgc-203 wave-α' polish #24(built-in mermaid):` ```mermaid` fence を
+  // placeholder div として出す。実 SVG render は adapter 層の
+  // `hydrateMermaidPlaceholders` が **lazy import('mermaid')** で行う
+  // ── core / features 層が browser API(mermaid.js)に直接依存しないよう、
+  // ここでは text content を `data-pkc-mermaid-src` に保持する placeholder
+  // のみ emit(I4 invariant:features 層 pure を維持)。
+  if (/^mermaid(\s|$)/.test(info)) {
+    // source を attribute に保存(HTML entity escape 必須)。escapeHtml は
+    // 既に markdown-it に内蔵。
+    const src = (token.content ?? '');
+    // attribute encode(quotes / lt / gt / amp 等)── md.utils.escapeHtml 使用。
+    const escaped = md.utils.escapeHtml(src);
+    return `<div class="pkc-mermaid-placeholder" data-pkc-mermaid-src="${escaped}"${sourceLineAttrs} data-pkc-md-block-kind="mermaid"><pre class="pkc-mermaid-source"><code class="language-mermaid">${escaped}</code></pre></div>`;
   }
   // Pass inline renderer so CSV cells can carry markdown inline markup
   // (`**bold**` / `==highlight==` / `:text:attrs:` L-6 simple-inline 等)。
@@ -828,13 +844,19 @@ const COLOR_VALUE_RE = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s]+\))$/;
 // 先頭は a-z(keyword / 色名)、`#`(hex 色)、または digit(`120%` / `1.5em` 等の size 値、`2xl` の vocab keyword 形)。
 // `:120%:` のような size only attrs を許容するため digit + `%` を class に追加。
 // 時刻 `12:30:45` 等の誤発火は parseSimpleInlineAttrs 側で keyword / color / size value のいずれにも該当しないため reject される(数値だけは valid attr にならない)。
-const ATTRS_INNER_RE = /^[a-zA-Z0-9#][a-zA-Z0-9\-,#()\s.%]*$/;
+// Q7(v4 spec §16、2026-05-25):separator 寛容化に合わせて leading whitespace も accept、
+// `:text: bold red :` 等の padding 形を attrs として valid 化(空白区切り対応)。
+const ATTRS_INNER_RE = /^\s*[a-zA-Z0-9#][a-zA-Z0-9\-,#()\s.%]*$/;
 
 function isValidColor(c: string): boolean {
   return NAMED_COLORS.has(c.toLowerCase()) || COLOR_VALUE_RE.test(c);
 }
 
-// attrs を top-level comma で split(parens 内 comma は保護)
+// attrs を top-level comma または 空白で split(parens 内 separator は保護)。
+// Q7(v4 spec §16、user direction 2026-05-25):inline / block 両 vocabulary 形で
+// comma / 空白 / 混在 全部 accept。`bold red` / `bold,red` / `bold, red` / `bold , red` 等は
+// 全て同 token 列に正規化、対称性原則 §1.1 を inline / block で統一。
+// rgb(255, 0, 0) / rgb( 255 0 0 ) 等の parens 内 separator は depth 保護で 1 token のまま。
 function splitAttrs(s: string): string[] {
   const out: string[] = [];
   let depth = 0;
@@ -843,7 +865,7 @@ function splitAttrs(s: string): string[] {
     const c = s[i];
     if (c === '(') depth++;
     else if (c === ')') depth = Math.max(0, depth - 1);
-    else if (c === ',' && depth === 0) {
+    else if (depth === 0 && (c === ',' || c === ' ' || c === '\t')) {
       out.push(s.slice(start, i).trim());
       start = i + 1;
     }
@@ -857,9 +879,15 @@ interface ParsedAttrs {
   inlineStyle: string;
 }
 
-function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
-  const tokens = splitAttrs(attrsStr);
-  if (tokens.length === 0) return { valid: false, inlineStyle: '' };
+/**
+ * Vocabulary tokens を style mapping(Record<string, string>)に変換。
+ * 全 token が valid vocabulary なら styles を返す、1 つでも未知なら null。
+ *
+ * v4 §12 stack PR 6:Tier 0 vocabulary form `:::red,bg-yellow,1.2em` でも共有、
+ * inline `:T:vocab,vocab:` と完全対称な vocab → style mapping 経路。
+ */
+function parseVocabularyTokensToStyles(tokens: string[]): Record<string, string> | null {
+  if (tokens.length === 0) return null;
   const styles: Record<string, string> = {};
   for (const t of tokens) {
     if (SIMPLE_INLINE_VOCAB_KEYWORDS.has(t)) {
@@ -881,18 +909,55 @@ function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
       styles['font-size'] = t;
     } else if (t.startsWith('bg-')) {
       const c = t.slice(3);
-      if (!isValidColor(c)) return { valid: false, inlineStyle: '' };
+      if (!isValidColor(c)) return null;
       styles['background-color'] = c;
     } else if (isValidColor(t)) {
       styles['color'] = t;
     } else {
-      return { valid: false, inlineStyle: '' };
+      return null;
     }
   }
+  return styles;
+}
+
+function parseSimpleInlineAttrs(attrsStr: string): ParsedAttrs {
+  const tokens = splitAttrs(attrsStr);
+  const styles = parseVocabularyTokensToStyles(tokens);
+  if (!styles) return { valid: false, inlineStyle: '' };
+  // canonical attrs 順:ABC sorted(v4 §1.4 diff-friendly、stack PR 6 で inline / block 統一)
   const inlineStyle = Object.entries(styles)
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}: ${v}`)
     .join('; ');
   return { valid: true, inlineStyle };
+}
+
+/**
+ * v4 §12 stack PR 6:Tier 0 vocabulary form `:::red,bg-yellow,1.2em` を styles に parse。
+ *
+ * 入力:`:::vocab,vocab,vocab` または `:::vocab vocab vocab`(Q7 separator 寛容)。
+ * 戻り値:`{ styles }` 全 token が valid vocabulary なら / null 未知 token / 形式不一致。
+ *
+ * 注意:vocabulary check は inline `:T:vocab:` と同経路(`parseVocabularyTokensToStyles`)、
+ * 完全対称(Q3 priority、user direction 2026-05-25)。Tier 1 class chain よりも先に試行
+ * (vocabulary を優先)、未知 token 含むなら Tier 1 へ fallthrough。
+ */
+function parseTier0FormatOpen(line: string): { styles: Record<string, string> } | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith(':::')) return null;
+  const rest = trimmed.slice(3).trim();
+  if (rest.length === 0) return null;
+  // brace 形({...})は Tier 1 経路に任せる(Pandoc fenced div、class/id 専用)
+  if (rest.startsWith('{')) return null;
+  // dot 始まり(`.cls`)は Tier 1 class chain
+  if (rest.startsWith('.')) return null;
+  // splitAttrs(Q7 寛容、comma / 空白 両 accept、parens 内 separator は depth 保護)
+  const tokens = splitAttrs(rest);
+  if (tokens.length === 0) return null;
+  // 全 token が vocabulary match なら Tier 0、1 つでも未知なら null(Tier 1 fallthrough)
+  const styles = parseVocabularyTokensToStyles(tokens);
+  if (!styles) return null;
+  return { styles };
 }
 
 md.inline.ruler.after('emphasis', 'pkc_simple_inline', function simpleInlineRule(state, silent) {
@@ -1217,6 +1282,13 @@ export interface RenderMarkdownOptions {
    * へ流す(AI test runner / Playwright `page.on('console', …)` が拾える)。
    */
   readonly silentHallucinationWarnings?: boolean;
+  /**
+   * 領域 8 Layer 3:見出しアウトライン番号(opt-in)。指定時、レンダラが
+   * `#` / `##` / `###` に `start.` / `start.M` / `start.M.L` を前置する
+   * (`####` 以降は無番号)。frontmatter `heading-number` から caller が
+   * 抽出して渡す。
+   */
+  readonly headingNumber?: { start: number } | null;
 }
 
 /**
@@ -1563,7 +1635,15 @@ function processIfBlocks(source: string, lineMapIn: number[], targetFormat: stri
       continue;
     }
     // match 判定:format kv が target と一致するか、format 省略時は always match
-    const formatVal = open.attrs.kvs.format;
+    // Q8 value-only 寛容パース(v4 §16):`:::if{html}` → format=html
+    let formatVal = open.attrs.kvs.format;
+    if (typeof formatVal !== 'string') {
+      const innerMatch = /\{([^}]*)\}/.exec(line);
+      if (innerMatch) {
+        const inferred = inferQ8ValueOnlyKey('if', innerMatch[1]!);
+        if (inferred && inferred.key === 'format') formatVal = inferred.value;
+      }
+    }
     const match = typeof formatVal === 'string' ? formatVal === targetFormat : true;
 
     // open 行は consume(出力しない)
@@ -1712,6 +1792,13 @@ function processTocDirective(
     if (dm) {
       const n = parseInt(dm[1]!, 10);
       if (Number.isFinite(n) && n >= 1 && n <= 6) depth = n;
+    } else {
+      // Q8 value-only 寛容パース(v4 §16):`:::toc{2}` → depth=2
+      const inferred = inferQ8ValueOnlyKey('toc', attrs);
+      if (inferred && inferred.key === 'depth') {
+        const n = parseInt(inferred.value, 10);
+        if (Number.isFinite(n) && n >= 1 && n <= 6) depth = n;
+      }
     }
     // closing `:::` を探索(content は無視、自動生成のみ)
     let j = i + 1;
@@ -1919,7 +2006,15 @@ function processSectionBlocks(source: string, lineMapIn: number[]): {
       i++;
       continue;
     }
-    const role = typeof open.attrs.kvs.role === 'string' ? open.attrs.kvs.role : 'generic';
+    // Q8 value-only 寛容パース(v4 §16):`:::section{intro}` → role=intro
+    let role = typeof open.attrs.kvs.role === 'string' ? open.attrs.kvs.role : 'generic';
+    if (role === 'generic') {
+      const innerMatch = /\{([^}]*)\}/.exec(line);
+      if (innerMatch) {
+        const inferred = inferQ8ValueOnlyKey('section', innerMatch[1]!);
+        if (inferred && inferred.key === 'role') role = inferred.value;
+      }
+    }
     counter++;
     const id = counter;
     registry.set(id, { role, attrs: open.attrs });
@@ -1960,9 +2055,11 @@ function postProcessSectionSentinels(
       if (!entry) return '';
       const role = entry.role;
       const safeRole = /^[A-Za-z][\w-]*$/.test(role) ? role : 'generic';
-      const knownClass = SECTION_KNOWN_ROLES.has(safeRole)
-        ? ` pkc-section-${safeRole}`
-        : '';
+      // v4 §8.1.2(stack PR 7、Q8 with):8 known role + 任意 role 両方とも
+      // `pkc-section-<role>` を CSS class として自動命名(AST 経路 render-html.ts:265 と
+      // 動作統一、user は任意 role を user-side CSS で装飾可能)。
+      const knownClass = ` pkc-section-${safeRole}`;
+      void SECTION_KNOWN_ROLES; // 8 known set は将来 callout 専用処理識別用に保持
       const attrs = entry.attrs;
       const classes = ['pkc-section-callout' + knownClass, ...attrs.classes].join(' ');
       const idAttr = attrs.id ? ` id="${escapeAttrForHtml(attrs.id)}"` : '';
@@ -1988,6 +2085,292 @@ function postProcessSectionSentinels(
       'g',
     ),
     '</section>',
+  );
+  return html;
+}
+
+// ── v4 §12:`:::format{...}` block 装飾箱 (stack PR 4、Tier 2 formal) ──
+//
+// Q1 で `format` directive 名確定。inline `:T:bold,red:`(catalog #9)の block
+// 対応物として、複段落を任意 class / id / inline style / indent / align でくくる。
+//
+// 入力 sample:
+//   :::format{.highlight .important #note-1 indent=2 align=center custom=value}
+//   段落 1。
+//
+//   段落 2 も同 wrapper 内。
+//   :::
+//
+// 出力(canonical attrs 順、§1.4):
+//   <div class="pkc-format-block highlight important"
+//        id="note-1"
+//        data-pkc-format-block
+//        data-pkc-indent="2"
+//        data-pkc-align="center"
+//        data-pkc-custom="value">
+//     <p>段落 1。</p>
+//     <p>段落 2 も同 wrapper 内。</p>
+//   </div>
+//
+// PUA sentinel:U+E16C / U+E16D(SECTION_SENTINEL_OPEN/SEP の隣)。
+const FORMAT_SENTINEL_OPEN = '\u{E16E}';
+const FORMAT_SENTINEL_SEP = '\u{E16F}';
+
+interface FormatBlockEntry {
+  attrs: _BlockDirectiveAttrs;
+  /** Tier 0 vocabulary form の style mapping(`color` / `background-color` / `font-size` 等)。 */
+  styles?: Record<string, string>;
+}
+
+function processFormatBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<number, FormatBlockEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<number, FormatBlockEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let counter = 0;
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    // v4 §12 stack PR 4-6:formal `:::format{...}` + Tier 1 class chain
+    // `:::.cls.cls(#id)?` + Tier 0 vocabulary `:::red,bg-yellow,1.2em` を 3 形 accept。
+    //
+    // 優先順序(Q3 vocabulary priority、user direction 2026-05-25):
+    //   1. formal `:::format{...}`(明示)
+    //   2. Tier 0 vocabulary(全 token が valid vocab、inline と完全対称)
+    //   3. Tier 1 class chain(`.cls` / brace / bare class)
+    let openAttrs: _BlockDirectiveAttrs | null = null;
+    let openStyles: Record<string, string> | undefined;
+    const formal = parseBlockDirectiveOpen(line);
+    if (formal && formal.name === 'format') {
+      openAttrs = formal.attrs;
+    } else {
+      const tier0 = parseTier0FormatOpen(line);
+      if (tier0) {
+        openAttrs = { id: undefined, classes: [], kvs: {} };
+        openStyles = tier0.styles;
+      } else {
+        const tier1 = parseTier1FormatOpen(line);
+        if (tier1) openAttrs = tier1;
+      }
+    }
+    if (!openAttrs) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    counter++;
+    const id = counter;
+    const entry: FormatBlockEntry = { attrs: openAttrs };
+    if (openStyles) entry.styles = openStyles;
+    registry.set(id, entry);
+    const openInputIdx = inputIdx;
+    i++;
+    out.push(`${FORMAT_SENTINEL_OPEN}${id}${FORMAT_SENTINEL_SEP}OPEN${FORMAT_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      out.push(lines[i]!);
+      lineMapOut.push(lineMapIn[i] ?? i);
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++;
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${FORMAT_SENTINEL_OPEN}${id}${FORMAT_SENTINEL_SEP}CLOSE${FORMAT_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+function postProcessFormatBlockSentinels(
+  html: string,
+  registry: Map<number, FormatBlockEntry>,
+): string {
+  // OPEN sentinel → <div class="pkc-format-block <classes>" id="<id>" data-pkc-format-block ...>
+  html = html.replace(
+    new RegExp(
+      `<p([^>]*)>${FORMAT_SENTINEL_OPEN}(\\d+)${FORMAT_SENTINEL_SEP}OPEN${FORMAT_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, pAttrs: string, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      const attrs = entry.attrs;
+      // classes: pkc-format-block + ABC sorted user classes
+      const sortedClasses = [...attrs.classes].sort((a, b) => a.localeCompare(b));
+      const classStr = ['pkc-format-block', ...sortedClasses].join(' ');
+      const idAttr = attrs.id ? ` id="${escapeAttrForHtml(attrs.id)}"` : '';
+      const markerAttr = ' data-pkc-format-block';
+      // indent / align は特殊解釈 key、data-pkc-indent / data-pkc-align に
+      const indentRaw = attrs.kvs.indent;
+      const indent = typeof indentRaw === 'string'
+        ? Math.max(1, Math.min(10, parseInt(indentRaw, 10) || 0))
+        : null;
+      const indentAttr = indent && indent > 0 ? ` data-pkc-indent="${indent}"` : '';
+      const alignRaw = attrs.kvs.align;
+      const align = (alignRaw === 'left' || alignRaw === 'center' || alignRaw === 'right' || alignRaw === 'justify') ? alignRaw : null;
+      const alignAttr = align ? ` data-pkc-align="${align}"` : '';
+      // Tier 0 vocabulary styles(ABC sorted、`style="..."` として emit)
+      let styleAttr = '';
+      if (entry.styles) {
+        const styleEntries = Object.entries(entry.styles).sort(([a], [b]) => a.localeCompare(b));
+        if (styleEntries.length > 0) {
+          const styleStr = styleEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
+          styleAttr = ` style="${escapeAttrForHtml(styleStr)}"`;
+        }
+      }
+      // その他 kvs、ABC 順、boolean true は値なし
+      const otherKvs: Array<[string, string | boolean]> = [];
+      for (const [k, v] of Object.entries(attrs.kvs)) {
+        if (k === 'indent' || k === 'align') continue;
+        if (!/^[A-Za-z_][\w-]*$/.test(k)) continue;
+        otherKvs.push([k, v]);
+      }
+      otherKvs.sort(([a], [b]) => a.localeCompare(b));
+      let kvsStr = '';
+      for (const [k, v] of otherKvs) {
+        if (v === true) kvsStr += ` data-pkc-${k}`;
+        else if (v === false) continue;
+        else kvsStr += ` data-pkc-${k}="${escapeAttrForHtml(String(v))}"`;
+      }
+      return `<div class="${classStr}"${idAttr}${markerAttr}${styleAttr}${indentAttr}${alignAttr}${kvsStr}${pAttrs}>`;
+    },
+  );
+  // CLOSE sentinel → </div>
+  html = html.replace(
+    new RegExp(
+      `<p[^>]*>${FORMAT_SENTINEL_OPEN}\\d+${FORMAT_SENTINEL_SEP}CLOSE${FORMAT_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    '</div>',
+  );
+  return html;
+}
+
+// ── 領域 6:`:::details{summary="…"}` 折りたたみブロック方言 ──
+//
+// 任意位置の content を native <details> / <summary> で畳む方言。
+//   :::details{summary="クリックで開く見出し"}
+//   折りたたまれる本文。**markdown** 可。
+//   :::
+//
+// HTML 出力(レンダラ生成 — ユーザーは生 HTML を書かない):
+//   <details class="pkc-details"><summary class="pkc-details-summary">…
+//     </summary>…content…</details>
+// 既定は畳んだ状態(native <details> 準拠)、`{open}` で既定展開。
+// summary 省略時は「詳細」。:::section と同じ PUA sentinel pattern で
+// markdown-it `html: false` 制約を回避する。
+const DETAILS_SENTINEL_OPEN = '\u{E16C}';
+const DETAILS_SENTINEL_SEP = '\u{E16D}';
+
+interface DetailsEntry {
+  summary: string;
+  open: boolean;
+}
+
+function processDetailsBlocks(source: string, lineMapIn: number[]): {
+  transformed: string;
+  registry: Map<number, DetailsEntry>;
+  lineMap: number[];
+} {
+  const registry = new Map<number, DetailsEntry>();
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const lineMapOut: number[] = [];
+  let counter = 0;
+  let fence: FenceState = { inFence: false, marker: '' };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const inputIdx = lineMapIn[i] ?? i;
+    const t = fenceTransition(line, fence);
+    fence = t.state;
+    if (fence.inFence || t.isBoundary) {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const open = parseBlockDirectiveOpen(line);
+    if (!open || open.name !== 'details') {
+      out.push(line);
+      lineMapOut.push(inputIdx);
+      i++;
+      continue;
+    }
+    const rawSummary = open.attrs.kvs.summary;
+    const summary = typeof rawSummary === 'string' && rawSummary.length > 0
+      ? rawSummary
+      : '詳細';
+    const openDefault = open.attrs.kvs.open === true;
+    counter++;
+    const id = counter;
+    registry.set(id, { summary, open: openDefault });
+    const openInputIdx = inputIdx;
+    i++;
+    out.push(`${DETAILS_SENTINEL_OPEN}${id}${DETAILS_SENTINEL_SEP}OPEN${DETAILS_SENTINEL_OPEN}`);
+    lineMapOut.push(openInputIdx);
+    out.push('');
+    lineMapOut.push(openInputIdx);
+    while (i < lines.length && !isBlockDirectiveClose(lines[i]!)) {
+      out.push(lines[i]!);
+      lineMapOut.push(lineMapIn[i] ?? i);
+      i++;
+    }
+    const closeInputIdx = i < lines.length ? (lineMapIn[i] ?? i) : openInputIdx;
+    if (i < lines.length) i++;
+    out.push('');
+    lineMapOut.push(closeInputIdx);
+    out.push(`${DETAILS_SENTINEL_OPEN}${id}${DETAILS_SENTINEL_SEP}CLOSE${DETAILS_SENTINEL_OPEN}`);
+    lineMapOut.push(closeInputIdx);
+  }
+  return { transformed: out.join('\n'), registry, lineMap: lineMapOut };
+}
+
+function postProcessDetailsSentinels(
+  html: string,
+  registry: Map<number, DetailsEntry>,
+): string {
+  // OPEN sentinel → <details class="pkc-details" [open]><summary>…</summary>
+  html = html.replace(
+    new RegExp(
+      `<p([^>]*)>${DETAILS_SENTINEL_OPEN}(\\d+)${DETAILS_SENTINEL_SEP}OPEN${DETAILS_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    (_match, pAttrs: string, idStr: string) => {
+      const id = parseInt(idStr, 10);
+      const entry = registry.get(id);
+      if (!entry) return '';
+      const openAttr = entry.open ? ' open' : '';
+      return `<details class="pkc-details"${openAttr}${pAttrs}>`
+        + `<summary class="pkc-details-summary">${escapeAttrForHtml(entry.summary)}</summary>`;
+    },
+  );
+  // CLOSE sentinel → </details>
+  html = html.replace(
+    new RegExp(
+      `<p[^>]*>${DETAILS_SENTINEL_OPEN}\\d+${DETAILS_SENTINEL_SEP}CLOSE${DETAILS_SENTINEL_OPEN}</p>`,
+      'g',
+    ),
+    '</details>',
   );
   return html;
 }
@@ -2022,9 +2405,23 @@ function processQuoteBlocks(source: string, lineMapIn: number[]): {
       i++;
       continue;
     }
+    // Q8 value-only 寛容パース(v4 §16):`:::quote{"夏目漱石"}` → author=夏目漱石
+    let attrsForQuote = open.attrs;
+    if (typeof attrsForQuote.kvs.author !== 'string') {
+      const innerMatch = /\{([^}]*)\}/.exec(line);
+      if (innerMatch) {
+        const inferred = inferQ8ValueOnlyKey('quote', innerMatch[1]!);
+        if (inferred && inferred.key === 'author') {
+          attrsForQuote = {
+            ...attrsForQuote,
+            kvs: { ...attrsForQuote.kvs, author: inferred.value },
+          };
+        }
+      }
+    }
     counter++;
     const id = counter;
-    registry.set(id, { attrs: open.attrs });
+    registry.set(id, { attrs: attrsForQuote });
     const openInputIdx = inputIdx;
     i++;
     out.push(`${QUOTE_SENTINEL_OPEN}${id}${QUOTE_SENTINEL_SEP}OPEN${QUOTE_SENTINEL_OPEN}`);
@@ -2377,13 +2774,16 @@ function applyAlignAttrs(
 ): void {
   if (alignMap.size === 0 && indentMap.size === 0) return;
   for (const tok of tokens) {
-    if (tok.type === 'paragraph_open' && tok.map) {
+    // align(L-5 行頭 prefix `||` / `|>` / `<|`)は段落 + 見出し両方に
+    // 適用する(`||## 見出し` 等)。indent(L-9 字下げ `__`)は段落専用
+    // ── 見出しの 1 字下げは意味を成さないため除外する。
+    if ((tok.type === 'paragraph_open' || tok.type === 'heading_open') && tok.map) {
       const startLine = tok.map[0];
       const align = alignMap.get(startLine);
       if (align) {
         tok.attrSet('data-pkc-align', align);
       }
-      if (indentMap.get(startLine)) {
+      if (tok.type === 'paragraph_open' && indentMap.get(startLine)) {
         tok.attrSet('data-pkc-indent', '1');
       }
     }
@@ -3290,6 +3690,66 @@ function postProcessBlankLineMarkers(html: string): string {
  * HTML tags in source are escaped (not rendered) for XSS safety.
  * Returns safe HTML suitable for innerHTML assignment.
  */
+
+/**
+ * 領域 8 Layer 3:見出しアウトライン番号(案 C)。opt-in 時、`#` / `##` /
+ * `###` の行頭に `N.` / `N.M` / `N.M.L` を前置する(`####` 以降は無番号)。
+ *
+ * - `start` は L1 の開始値。
+ * - 見出しテキストが既に手書き番号(`3. ` 等)で始まる行は尊重し前置しない
+ *   (案 C「手書きも許容」)。カウンタは位置基準で全見出しを数えるため、
+ *   auto / 手書き 混在でも順序が整合する。
+ * - fenced code(``` / ~~~)内の `#` 行は見出し扱いしない。
+ * - 行の挿入 / 削除はせず content を前置するのみ(lineMap 不変)。
+ */
+function preprocessHeadingNumbers(text: string, start: number): string {
+  const lines = text.split('\n');
+  const out: string[] = [];
+  const counters = [0, 0, 0];
+  let fenceChar = '';
+  for (const line of lines) {
+    const fenceM = /^\s*([`~]{3,})/.exec(line);
+    if (fenceChar !== '') {
+      out.push(line);
+      if (fenceM && fenceM[1]![0] === fenceChar && /^\s*[`~]{3,}\s*$/.test(line)) {
+        fenceChar = '';
+      }
+      continue;
+    }
+    if (fenceM) {
+      fenceChar = fenceM[1]![0]!;
+      out.push(line);
+      continue;
+    }
+    const hM = /^(#{1,6})[ \t]+(.*)$/.exec(line);
+    if (!hM) {
+      out.push(line);
+      continue;
+    }
+    const level = hM[1]!.length;
+    if (level > 3) {
+      out.push(line);
+      continue;
+    }
+    // counter 更新(位置基準 ── 手書き / auto 問わず数える)。
+    counters[level - 1]!++;
+    for (let l = level; l < 3; l++) counters[l] = 0;
+    const content = hM[2]!;
+    // 手書き番号で始まる見出しは尊重(前置しない)。
+    if (/^\d+(?:\.\d+)*\.?[ \t]+/.test(content)) {
+      out.push(line);
+      continue;
+    }
+    const parts: number[] = [];
+    for (let l = 0; l < level; l++) {
+      parts.push(l === 0 ? counters[0]! + start - 1 : counters[l]!);
+    }
+    const num = parts.join('.') + (level === 1 ? '.' : '');
+    out.push(`${hM[1]} ${num} ${content}`);
+  }
+  return out.join('\n');
+}
+
 export function renderMarkdown(
   text: string,
   opts: RenderMarkdownOptions = {},
@@ -3440,6 +3900,17 @@ export function renderMarkdown(
   const sectionResult = processSectionBlocks(text, lineMap);
   text = sectionResult.transformed;
   lineMap = sectionResult.lineMap;
+  // v4 §12 stack PR 4:`:::format{...}` block 装飾箱(Tier 2 formal)。
+  // section と orthogonal、user-defined class / id / indent / align / kvs を attach、
+  // <div class="pkc-format-block ..."> に変換。
+  const formatResult = processFormatBlocks(text, lineMap);
+  text = formatResult.transformed;
+  lineMap = formatResult.lineMap;
+  // 領域 6:`:::details{summary=…}` 折りたたみブロック(sentinel 化、挿入
+  // あり、lineMap 更新)。:::section の後に処理(両者 orthogonal)。
+  const detailsResult = processDetailsBlocks(text, lineMap);
+  text = detailsResult.transformed;
+  lineMap = detailsResult.lineMap;
   // reform-2026-05 Phase 3 PR-2W:`:::frontmatter` / `:::body` region marker
   // を sentinel 化、postProcessRegionSentinels で <aside> / <section> に展開。
   // section と orthogonal、後段 align や figure とも干渉しない passthrough。
@@ -3458,7 +3929,12 @@ export function renderMarkdown(
   };
   // L-5 align prefix + L-9 indent prefix を pre-process で strip(挿入あり)。
   const alignResult = preprocessAlignPrefix(text, lineMap);
-  const stripped = alignResult.stripped;
+  let stripped = alignResult.stripped;
+  // 領域 8 Layer 3:見出しアウトライン番号(opt-in)。align prefix strip 後の
+  // 行に番号を前置する(行の挿入なし → lineMap / alignMap は不変)。
+  if (opts.headingNumber) {
+    stripped = preprocessHeadingNumbers(stripped, opts.headingNumber.start);
+  }
   // PR-2E paragraph directive で register された align も merge
   // (preprocessAlignPrefix で同 line に行頭 prefix もあれば後者が上書き)
   const alignMap = new Map<number, AlignKind>([
@@ -3492,6 +3968,9 @@ export function renderMarkdown(
   // reform-2026-05 PR-D:`:::quote{author=...}` sentinel → <blockquote class="pkc-quote-citation">
   html = postProcessQuoteSentinels(html, quoteResult.registry);
   html = postProcessSectionSentinels(html, sectionResult.registry);
+  html = postProcessFormatBlockSentinels(html, formatResult.registry);
+  // 領域 6:`:::details` sentinel → <details class="pkc-details">
+  html = postProcessDetailsSentinels(html, detailsResult.registry);
   // PR-2W:`:::frontmatter` / `:::body` sentinel → <aside> / <section>
   html = postProcessRegionSentinels(html, regionResult.registry);
   // L-1:section break sentinel → <hr>
@@ -3526,7 +4005,15 @@ export function hasMarkdownSyntax(text: string): boolean {
   if (/^\+\+\+\s*(?:\{[^}]*\})?\s*$/m.test(text)) return true; // L-1 section break
   if (/==[^=]+==|\[\[(?:ruby|em):/.test(text)) return true;     // L-2 highlight / ruby / em-dot
   if (/^:::(?:figure|table|equation)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // L-3 figure / table / equation block(reform-2026-05 で kv quoted 形も受理)
-  if (/^:::(?:quote|if)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // reform-2026-05 PR-D/F :::quote / :::if
+  if (/^:::(?:quote|if|section|details|format|comment|toc|paragraph|break|heading|list|code|figure|table|equation|blank|math)(?:\{[^}]*\})?\s*$/m.test(text)) return true;  // :::name{attrs}? formal directive(寛容 alias / Q8 value-only も同 regex で network)
+  // v4 §12 stack PR hotfix:Tier 0 vocabulary `:::red,bg-yellow,1.2em` + Tier 1 class chain
+  // `:::.cls.cls(#id)?` + 寛容 alias `:::note` 等 8 種 + `:::callout{type=X}` /
+  // `:::admonition{type=X}` も markdown 経路へ流す。`hasMarkdownSyntax` が false を返すと
+  // `detail-presenter.ts:153` の `<pre>` plain-text fallback に落ちて fence のような
+  // 見た目になる(user bug 報告 2026-05-27)。
+  if (/^:::(?:\.|[a-z])/m.test(text)) return true;  // :::name(任意 vocab / role / Tier 0/1)
+  if (/^:::\s*\{/m.test(text)) return true;  // ::: {...} Pandoc brace form
+  if (/^:::\s+[\w.#]/m.test(text)) return true;  // ::: <space-separated tokens>(Tier 1 variant 2 / 6)
   if (/%%[^\n]*?%%|%%%[\s\S]*?%%%/.test(text)) return true;     // L-4 comments
   if (/\[@[a-zA-Z0-9_-]+\]/.test(text)) return true;            // L-7 figure ref
   if (/^\s*_\d*\s*$/m.test(text)) return true;                  // L-8 blank-line marker

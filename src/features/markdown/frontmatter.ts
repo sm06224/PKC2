@@ -249,6 +249,16 @@ function parseScalar(raw: string): string | number | boolean | null {
 }
 
 /**
+ * Public helper: 単一の scalar 文字列(graphical editor の input value 等)を
+ * frontmatter 値型に解釈する。`parseFlatYaml` 内の scalar 解釈と同一規則。
+ */
+export function parseFrontmatterScalar(
+  raw: string,
+): string | number | boolean | null {
+  return parseScalar(raw.trim());
+}
+
+/**
  * Public helper: returns the `kind` discriminator if present and valid.
  * Filer subset profiles look this up to decide which entries belong
  * to the `book-base` / `youtube-base` / etc. query.
@@ -347,4 +357,73 @@ function parseVarValue(raw: string): string {
   }
   // trailing # comment を strip(YAML 慣例)
   return raw.replace(/\s+#.*$/u, '').trim();
+}
+
+// ── serialize(parseFrontmatter の逆変換、Phase γ-B1)──
+//
+// graphical frontmatter editor が編集結果を entry.body に書き戻すための pure
+// 関数。flat YAML のみ(spec §3.6、nested 非対応)。serialize → parseFrontmatter
+// が round-trip するよう、scalar は parseScalar が別型に解釈し得る場合に quote。
+
+// raw 文字列が parseScalar で string 以外 / 構造文字で壊れる場合に quote が要る。
+function scalarNeedsQuote(s: string): boolean {
+  if (s === '') return true;
+  if (s !== s.trim()) return true;
+  if (/^(~|null|Null|NULL|true|True|TRUE|false|False|FALSE)$/u.test(s)) return true;
+  if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(s)) return true;
+  if (/[:#"'[\]]/u.test(s)) return true;
+  if (s.startsWith('-')) return true;
+  if (/[\n\r]/u.test(s)) return true;
+  return false;
+}
+
+function quoteScalar(s: string): string {
+  const escaped = s
+    .replace(/\\/gu, '\\\\')
+    .replace(/"/gu, '\\"')
+    .replace(/\n/gu, '\\n')
+    .replace(/\t/gu, '\\t');
+  return `"${escaped}"`;
+}
+
+function serializeScalar(v: string | number | boolean | null): string {
+  // null は明示的に `null` と書く。空値 `key:` は parseFlatYaml が block-style
+  // 空配列 [] に解釈してしまい round-trip が壊れるため。
+  if (v === null) return 'null';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'number') return String(v);
+  return scalarNeedsQuote(v) ? quoteScalar(v) : v;
+}
+
+/**
+ * key/value pairs を `---` で挟んだ frontmatter block 文字列に serialize する。
+ * 空 meta でも `---\n---` を返す(空 block の判定は呼び出し側 `setFrontmatter`)。
+ */
+export function serializeFrontmatter(
+  meta: Record<string, FrontmatterValue>,
+): string {
+  const lines: string[] = ['---'];
+  for (const [key, value] of Object.entries(meta)) {
+    if (Array.isArray(value)) {
+      lines.push(`${key}: [${value.map(serializeScalar).join(', ')}]`);
+    } else {
+      lines.push(`${key}: ${serializeScalar(value)}`);
+    }
+  }
+  lines.push('---');
+  return lines.join('\n');
+}
+
+/**
+ * body の frontmatter block を `meta` で置き換える(無ければ prepend)。
+ * meta が空なら frontmatter を除去した本文のみを返す。
+ */
+export function setFrontmatter(
+  body: string,
+  meta: Record<string, FrontmatterValue>,
+): string {
+  const { body: rest } = parseFrontmatter(body);
+  if (Object.keys(meta).length === 0) return rest;
+  const fm = serializeFrontmatter(meta);
+  return rest === '' ? fm : `${fm}\n${rest}`;
 }

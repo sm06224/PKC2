@@ -33,7 +33,11 @@ import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { extractVars, parseFrontmatter } from '../../features/markdown/frontmatter';
-import { extractDocumentGlobals, globalsToDataAttrs } from '../../features/markdown/document-globals';
+import {
+  extractDocumentGlobals,
+  globalsToDataAttrs,
+  extractHeadingNumberConfig,
+} from '../../features/markdown/document-globals';
 import {
   extractTocFromEntry,
   renderStaticTocHtml,
@@ -46,6 +50,9 @@ import { parseAttachmentBody } from './attachment-presenter';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
+import { hydrateMermaidPlaceholders } from './mermaid-renderer';
+import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { buildAssetMimeMap, buildAssetNameMap } from './renderer';
 
 /**
@@ -358,11 +365,11 @@ export function buildRenderedViewerHtml(
        色は theme var ではなく hard code(export HTML は runtime theme を持た
        ないため、base.css と同じ fallback 値を採用)。 */
     /* L-5 行頭 align prefix */
-    .pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
-    .pkc-md-rendered p[data-pkc-align="end"]    { text-align: end;    }
-    .pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
-    .pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
-    .pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+    .pkc-md-rendered [data-pkc-align="center"] { text-align: center; }
+    .pkc-md-rendered [data-pkc-align="end"]    { text-align: end;    }
+    .pkc-md-rendered [data-pkc-align="start"]  { text-align: start;  }
+    .pkc-md-rendered [data-pkc-align="right"]  { text-align: right;  }
+    .pkc-md-rendered [data-pkc-align="left"]   { text-align: left;   }
     /* reform-2026-05 PR-D: :::quote block citation */
     .pkc-md-rendered blockquote.pkc-quote-citation {
       background: rgba(0, 0, 0, 0.03);
@@ -389,6 +396,45 @@ export function buildRenderedViewerHtml(
     .pkc-md-rendered .pkc-section-warning  { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.08); }
     .pkc-md-rendered .pkc-section-caution  { border-left-color: #d97706; background: rgba(217, 119, 6, 0.08); }
     .pkc-md-rendered .pkc-section-danger   { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+    /* v4 §12(stack PR 10):block format wrapper(base.css mirror) */
+    .pkc-md-rendered .pkc-format-block { margin: 0.5rem 0; }
+    .pkc-md-rendered .pkc-format-block > :first-child { margin-top: 0; }
+    .pkc-md-rendered .pkc-format-block > :last-child { margin-bottom: 0; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="1"]  { padding-left: 1em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="2"]  { padding-left: 2em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="3"]  { padding-left: 3em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="4"]  { padding-left: 4em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="5"]  { padding-left: 5em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="6"]  { padding-left: 6em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="7"]  { padding-left: 7em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="8"]  { padding-left: 8em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="9"]  { padding-left: 9em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-indent="10"] { padding-left: 10em; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-align="left"]    { text-align: left; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-align="center"]  { text-align: center; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-align="right"]   { text-align: right; }
+    .pkc-md-rendered .pkc-format-block[data-pkc-align="justify"] { text-align: justify; }
+    .pkc-md-rendered .pkc-details {
+      margin: 0.5rem 0;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      padding: 0 0.75rem;
+      background: rgba(0, 0, 0, 0.015);
+    }
+    .pkc-md-rendered .pkc-details > .pkc-details-summary {
+      cursor: pointer;
+      font-weight: 600;
+      padding: 0.375rem 0.75rem;
+      margin: 0 -0.75rem;
+    }
+    .pkc-md-rendered .pkc-details[open] > .pkc-details-summary {
+      border-bottom: 1px solid #d1d5db;
+      margin-bottom: 0.375rem;
+    }
+    .pkc-md-rendered .pkc-details > :last-child { margin-bottom: 0.375rem; }
+    .pkc-md-rendered .pkc-heading-fold { margin: 0.5rem 0 0; }
+    .pkc-md-rendered .pkc-heading-fold-summary { cursor: pointer; }
+    .pkc-md-rendered .pkc-heading-fold-summary > :first-child { display: inline; margin: 0; }
     .pkc-md-rendered blockquote.pkc-quote-citation::after {
       content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
       display: block;
@@ -590,6 +636,68 @@ export function buildRenderedViewerHtml(
     }
     .pkc-md-rendered .pkc-fig-ref:hover {
       text-decoration: underline;
+    }
+    /* pgc-92(audit pgc-77 Gap-10 + Gap-12):S2 Viewer popup の chrome
+       4 件 mirror。base.css の対応 rule を popup standalone HTML 用に
+       hardcode 色で再現(popup は runtime theme var を持たないため)。
+       footnote / task-badge / TOC current / transclusion 関連 4 件。 */
+    /* footnote(PR-V2 / wave-Z markdown-it-footnote)*/
+    .pkc-md-rendered .pkc-footnote-ref {
+      font-size: 0.75em;
+      vertical-align: super;
+      line-height: 0;
+    }
+    .pkc-md-rendered .pkc-footnote-ref a {
+      color: #2563eb;
+      text-decoration: none;
+      padding: 0 0.15em;
+    }
+    .pkc-md-rendered .pkc-footnote-ref a::before { content: "["; }
+    .pkc-md-rendered .pkc-footnote-ref a::after { content: "]"; }
+    .pkc-md-rendered .pkc-footnote-ref a:hover { text-decoration: underline; }
+    /* task badge(完了率 N/M、center pane chrome の mirror)*/
+    .pkc-md-rendered .pkc-task-badge {
+      font-size: 0.78em;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+    .pkc-md-rendered [data-pkc-task-complete="true"] .pkc-task-badge,
+    .pkc-md-rendered .pkc-task-badge[data-pkc-task-complete="true"] {
+      color: #1a6b35;
+    }
+    /* TOC current marker(IntersectionObserver で data-pkc-toc-current
+       attached、popup でも一応 spec として持つ)*/
+    .pkc-toc-link[data-pkc-toc-current="true"] {
+      background: #ece6d5;
+      color: #1a6b35;
+      font-weight: 600;
+      box-shadow: inset 2px 0 0 #1a6b35;
+    }
+    /* transclusion broken(target 不在 fallback marker)*/
+    .pkc-md-rendered .pkc-transclusion-broken {
+      color: #b91c1c;
+      background: rgba(220, 38, 38, 0.06);
+      padding: 0 0.3em;
+      border-radius: 3px;
+      font-style: italic;
+    }
+    /* transclusion-document(textlog 等の document 経由 embed)*/
+    .pkc-md-rendered .pkc-transclusion-document {
+      border: 1px solid #d8d2c2;
+      border-radius: 4px;
+      background: #fbf9f1;
+      padding: 0.35rem 0.6rem;
+      margin: 0.5rem 0;
+    }
+    /* transclusion-fallback-link(fallback link 装飾)*/
+    .pkc-md-rendered .pkc-transclusion-fallback-link {
+      color: #4a90e2;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.9em;
+    }
+    /* transclusion-log(個別 log 行内 timestamp)*/
+    .pkc-md-rendered .pkc-transclusion-log .pkc-textlog-timestamp {
+      color: #6b7280;
     }
     /* L-1 section break — role 別装飾 */
     .pkc-md-rendered .pkc-section-break {
@@ -947,6 +1055,18 @@ export function openRenderedViewer(
   win.document.open();
   win.document.write(html);
   win.document.close();
+  // pgc-203 wave-α' polish #24:built-in mermaid hydration(S2 Viewer popup)。
+  // popup の document.body に対して main window context の mermaid module
+  // から SVG render を実行。fire-and-forget(非同期、render 完了は次 frame
+  // 以降)── win.document が closed なら no-op。
+  try {
+    const popupBody = win.document.body;
+    if (popupBody) {
+      void hydrateMermaidPlaceholders(popupBody);
+    }
+  } catch {
+    // popup access denied(cross-origin etc.)で fail silently
+  }
   if (opts.autoPrint) {
     // PR-V20 hotfix(2026-05-14、user audit「PDF 出力できない」):
     // PDF action は viewer 開きっぱなしで Print 手動操作だったが、ブラウザの
@@ -985,7 +1105,16 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
   const vars = extractVars(rawBody);
   const stripped = parseFrontmatter(rawBody).body;
   const resolved = resolveAssetSource(stripped, container);
-  const html = renderMarkdown(resolved, { vars });
+  // pgc-90(audit pgc-77 Gap-1):currentContainerId を thread して同一
+  // container 内 `pkc://` permalink を internal 扱いにする(従来は
+  // external chip 化していた、user 体感で center pane と乖離)+
+  // hydrateCardPlaceholders の入口にも必要。
+  const currentContainerId = container?.meta?.container_id ?? '';
+  const html = renderMarkdown(resolved, {
+    vars,
+    currentContainerId,
+    headingNumber: extractHeadingNumberConfig(rawBody),
+  });
   // 2026-05-08 user 報告:`![label](entry:LID)` の transclusion が center
   // pane(detail-presenter)では expand されるが Viewer popup では placeholder
   // のまま表示されない。Viewer は detail-presenter と同じ expandTransclusions
@@ -1003,6 +1132,24 @@ function buildBodyHtml(entry: Entry, container: Container | null): string {
     nameByKey: buildAssetNameMap(container),
     hostLid: entry.lid,
   });
+  // pgc-90(audit pgc-77 Gap-2):card-link placeholder を hydrate。center
+  // pane(detail-presenter:122-135)と同 contract を Viewer popup に。
+  // 旧来は呼ばれていなかったため card が plain link / placeholder で出ていた。
+  hydrateCardPlaceholders(tmp, {
+    entries: container.entries,
+    currentContainerId,
+  });
+  // pgc-203 wave-α' polish #24:built-in mermaid hydration(S2 Viewer popup)。
+  // S1 detail-presenter と 3 surface parity 規約に従い、Viewer popup でも
+  // mermaid SVG を hydrate。Viewer popup は別 document(`window.open()`)
+  // 経由なので、本関数の戻り値 `tmp.innerHTML` を Viewer 側で再 mount した
+  // 後に hydrateMermaidPlaceholders を呼ぶ必要がある ── ここでは tmp の
+  // innerHTML として placeholder のまま返す(Viewer 側で post-mount hydrate)。
+  // 注:Viewer popup の post-mount hydrate は `mountRenderedViewer` 側で
+  // 別 path を用意する(本関数は HTML builder で同期完結)。
+  // 領域 6:detail-presenter と同様、見出しを native <details> で畳める
+  // よう再構成(CLAUDE.md §9 の 3 surface 一致)。
+  applyHeadingFold(tmp);
   return tmp.innerHTML;
 }
 

@@ -86,6 +86,10 @@ function setup() {
 
   // Initialize
   dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+  // pgc-207:shell menu contents(CLEAR button / Maintenance section /
+  // Storage Profile launch button 等)は menuOpen=true 時のみ build される
+  // (lazy build)。CLEAR button test 等が機能するよう menu を open する。
+  dispatcher.dispatch({ type: 'TOGGLE_MENU' });
   render(dispatcher.getState(), root);
   cleanup = bindActions(root, dispatcher);
 
@@ -164,6 +168,9 @@ describe('ActionBinder', () => {
 
   it('Escape during editing dispatches CANCEL_EDIT', () => {
     const { dispatcher, events } = setup();
+    // pgc-207:setup default で menu open。Escape は menu-close priority のため
+    // 先に CLOSE_MENU して Edit cancel Escape を test する。
+    dispatcher.dispatch({ type: 'CLOSE_MENU' });
 
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
     dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: 'e1' });
@@ -175,6 +182,9 @@ describe('ActionBinder', () => {
 
   it('Escape during ready with selection dispatches DESELECT_ENTRY', () => {
     const { dispatcher, events } = setup();
+    // pgc-207:setup default で menu open。Escape は menu-close priority のため
+    // 先に CLOSE_MENU して DESELECT Escape を test する。
+    dispatcher.dispatch({ type: 'CLOSE_MENU' });
 
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
 
@@ -880,6 +890,9 @@ describe('ActionBinder — orphan asset cleanup (manual UI)', () => {
     dispatcher.onEvent((e) => events.push(e));
     dispatcher.onState((state) => render(state, root));
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: initial });
+    // pgc-207:orphan asset cleanup button は shell menu Maintenance section
+    // 内で lazy build される(menuOpen=false 時は build されない)。
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     render(dispatcher.getState(), root);
     cleanup = bindActions(root, dispatcher);
     return { dispatcher, events };

@@ -29,7 +29,10 @@ const mockContainer: Container = {
 };
 
 function readyState(overrides: Partial<AppState> = {}): AppState {
-  return { ...createInitialState(), phase: 'ready', container: mockContainer, ...overrides };
+  // pgc-207:shell menu の contents(scanline / accent buttons 含む)は
+  // menuOpen=true 時のみ build される(lazy build)。本 file の test 群
+  // は ほぼ全て shell menu 内 controls を query するため default ON。
+  return { ...createInitialState(), phase: 'ready', container: mockContainer, menuOpen: true, ...overrides };
 }
 
 function editingState(overrides: Partial<AppState> = {}): AppState {

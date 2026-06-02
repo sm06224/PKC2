@@ -164,6 +164,22 @@ export const graphZoomWheelSensitivity = defineFlag<number>(
 );
 
 /**
+ * Phase γ-B2:graph view の relation wire editor(edit mode)を有効化する。
+ * ON で graph toolbar に View / Edit toggle が出て、edit mode では node 間
+ * を drag して relation を作成できる。default OFF(従来の閲覧専用)。
+ */
+export const graphEditModeEnabled = defineFlag<boolean>(
+  'graph.edit_mode_enabled',
+  false,
+  {
+    category: FLAG_CATEGORY,
+    description:
+      'graph view の relation wire editor(node 間 drag で relation 作成)を有効化。OFF で従来の閲覧専用',
+    tier: 0,
+  },
+);
+
+/**
  * Snapshot of all graph force params at the moment of the call.
  * Pass as `params` to `runSimulation` / `stepSimulation` so the
  * simulation runs with consistent values throughout an iteration.

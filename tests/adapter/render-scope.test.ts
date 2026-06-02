@@ -75,9 +75,40 @@ describe('computeRenderScope', () => {
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
-  it('returns "full" when selectedLid changes', () => {
+  it('returns "selection-only" when selectedLid changes(pgc-208)', () => {
+    // pgc-208(user 報告「100エントリ程度で凄まじく動作が重い」):
+    // SELECT_ENTRY のみで full rebuild してた pattern を sidebar + center +
+    // meta 3 region 差し替えに narrow 化。selectedLid 単独変化で
+    // 'selection-only' を返す(以前は 'full')。
     const prev = createInitialState();
     const next = withChange(prev, (s) => ({ ...s, selectedLid: 'e1' }));
+    expect(computeRenderScope(next, prev)).toBe('selection-only');
+  });
+
+  // pgc-45:Phase γ stack で追加された AppState field が full-trigger に
+  // 未登録だと、当該 field のみ変わる dispatch が 'none' に落ちて再描画
+  // されない(編集モード picker 無反応バグの root-cause)。回帰防止。
+  it('returns "full" when editMode changes (γ-A2 編集モード picker)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, editMode: 'window' as const }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when childWindowLids changes (γ-A3 マルチウィンドウ)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, childWindowLids: ['e1'] }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when sidebarFilerQuery changes (γ-A1 filer 絞り込み検索)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, sidebarFilerQuery: 'foo' }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when metaPaneMode changes (γ-B3 meta pane mode tab)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, metaPaneMode: 'properties' as const }));
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
@@ -156,12 +187,15 @@ describe('computeRenderScope', () => {
     expect(computeRenderScope(prev, prev)).toBe('none');
   });
 
-  it('returns "full" when textlogSelection identity changes', () => {
+  it('returns "selection-only" when textlogSelection identity changes(pgc-208)', () => {
+    // pgc-208:textlogSelection は SELECT_ENTRY と同 set で mutate される
+    // (per-entry transient UI clear-rules、P1-1)。selection-only path
+    // で扱う(以前は full)。
     const prev = createInitialState();
     const next = withChange(prev, (s) => ({
       ...s,
       textlogSelection: { activeLid: 'tl', selectedLogIds: [] },
     }));
-    expect(computeRenderScope(next, prev)).toBe('full');
+    expect(computeRenderScope(next, prev)).toBe('selection-only');
   });
 });

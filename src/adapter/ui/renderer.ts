@@ -12,6 +12,29 @@ import {
 import { resolveFlagsPayload } from '../../core/model/system-flags-payload';
 import { renderFloatingTrigger, renderFloatingPopup } from './snippet-toolbar';
 import { renderMediaViewer } from './media-viewer';
+import { renderFormatPanel, formatPanelEnabled } from './format-panel';
+import {
+  metaPaneYamlGraphicalEnabled,
+  metaPaneModeTabsEnabled,
+} from './meta-pane-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled } from './shell-flags';
+import { diffRows } from '../../features/diff/line-diff';
+import { buildEditorFooterWordcount } from './editor-footer-wordcount';
+import { buildAboutShowcaseElement } from './about-showcase';
+import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
+// user bug 2026-05-27 perf hotfix:textlog selection toggle の narrow update で
+// toolbar 差し替え用に export 経由で再利用(renderBody 経路を bypass)。
+import { renderSelectionToolbar as rebuildSelectionToolbar } from './textlog-presenter';
+import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
+import { buildInspectorStyleSection } from './inspector-style-tab';
+import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab, getActivityBarSide } from './activity-bar';
+import { buildOutlineTab } from './activity-outline-tab';
+import { buildRecentTab } from './activity-recent-tab';
+import { buildPinnedTab } from './activity-pinned-tab';
+import { buildSearchTab } from './activity-search-tab';
+import { buildRelationsTab } from './activity-relations-tab';
+import { buildTabStripElement } from './tab-strip';
+import { isSplitViewOpen, buildSplitViewElement } from './split-view';
 import { renderImagePreviewModal } from './image-preview';
 import {
   bindGraphCanvas,
@@ -19,14 +42,15 @@ import {
   buildTimeAxisHint,
   archetypeEmoji,
   relationColor,
+  getGraphEditMode,
   type GraphCanvasPayload,
 } from './graph-canvas';
+import { graphEditModeEnabled } from '../../features/graph/flags';
 import { autoDetectFilerProfile } from '../../features/filer/auto-display-profile';
 import { isExplicitAlbum } from '../../features/album/album-metadata';
 import { sidebarMode, folderDetailAsFiler } from './sidebar-flags';
 import { getFilerThumbPx } from './filer-flags';
 import type { Container } from '../../core/model/container';
-import { getUserEntries } from '../../core/model/container';
 import type { Revision } from '../../core/model/container';
 import { resolveAboutPayload } from '../../core/model/about-payload';
 import { SETTINGS_DEFAULTS, type SystemSettingsPayload } from '../../core/model/system-settings-payload';
@@ -53,13 +77,12 @@ import { findSubLocationHits } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { buildConnectedLidSet, buildInboundCountMap, getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { buildConnectednessSets, type ConnectednessSets } from '../../features/connectedness';
-import { getTagsForEntry, getAvailableTagTargets } from '../../features/relation/tag-selector';
+import { getTagsForEntry } from '../../features/relation/tag-selector';
 import { filterByTag } from '../../features/relation/tag-filter';
 import {
   buildTree,
   sortTreeNodes,
   getBreadcrumb,
-  getAvailableFolders,
   getStructuralParent,
   collectDescendantLids,
   getStructuralChildren,
@@ -79,8 +102,37 @@ import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
 import { syncLinkMigrationDialogFromState } from './link-migration-dialog';
 import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
-import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
+import { parseTodoBody as parseTodoBodyRaw, formatTodoDate, isTodoPastDue } from './todo-presenter';
+import type { TodoBody } from '../../features/todo/todo-body';
+
+// pgc-241:`parseTodoBody` は JSON.parse を含む O(L) cost。sidebar render で
+// 全 todo entry に対して archived check + status badge build などで 3-5 site
+// から呼ばれる。entry ref で memoize し container 跨ぎは WeakMap で自動 GC。
+const todoBodyMemo = new WeakMap<import('../../core/model/record').Entry, TodoBody>();
+function parseTodoBody(body: string, entry?: import('../../core/model/record').Entry): TodoBody {
+  if (!entry) return parseTodoBodyRaw(body);
+  const cached = todoBodyMemo.get(entry);
+  if (cached) return cached;
+  const parsed = parseTodoBodyRaw(body);
+  todoBodyMemo.set(entry, parsed);
+  return parsed;
+}
+import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
+import type { AttachmentBody } from './attachment-presenter';
+
+// pgc-242:`parseAttachmentBody` も pgc-241 と同 doctrine の JSON.parse memoize。
+// `buildAssetMimeMap` / `buildAssetNameMap` / `hydrateAppIconAssetOptions` /
+// 各種 attachment-specific 経路で per-attachment に parse されるため、render
+// 跨ぎ + 同 render 内の重複 parse を WeakMap で削減。
+const attachmentBodyMemo = new WeakMap<import('../../core/model/record').Entry, AttachmentBody>();
+function parseAttachmentBody(body: string, entry?: import('../../core/model/record').Entry): AttachmentBody {
+  if (!entry) return parseAttachmentBodyRaw(body);
+  const cached = attachmentBodyMemo.get(entry);
+  if (cached) return cached;
+  const parsed = parseAttachmentBodyRaw(body);
+  attachmentBodyMemo.set(entry, parsed);
+  return parsed;
+}
 import { deriveDisplayFilename } from './image-optimize/paste-optimization';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { pad2 } from '../../features/datetime/datetime-format';
@@ -141,6 +193,7 @@ const ARCHETYPE_LABELS: Record<ArchetypeId, string> = {
   folder: 'Folder',
   generic: 'Generic',
   opaque: 'Opaque',
+  spreadsheet: 'Sheet',
   'system-about': 'About',
   'system-settings': 'Settings',
   'system-flags': 'Flags',
@@ -156,6 +209,7 @@ const ARCHETYPE_ICONS: Record<ArchetypeId, string> = {
   folder: '📁',
   generic: '📄',
   opaque: '🔒',
+  spreadsheet: '🧮',
   'system-about': 'ℹ️',
   'system-settings': '⚙️',
   'system-flags': '⚑',
@@ -359,6 +413,33 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   if (scope === 'sidebar-only') {
     const endProfile = profileStart('render:scope=sidebar-only');
     replaceSidebarRegion(state, root);
+    endProfile();
+    return;
+  }
+  if (scope === 'selection-only') {
+    // pgc-208(user 報告 2026-05-25「100エントリ程度で凄まじく動作が重い」):
+    // SELECT_ENTRY-only 場合は header / shell-menu / activity-bar / tray-bar
+    // の rebuild を skip し、sidebar(行 highlight 更新)+ center pane
+    // (新 entry の content)+ meta pane(新 entry の metadata)の 3 region
+    // 差し替えに限定。breadcrumb の back/forward 状態など header の selection
+    // 連動部分は次 full render で同期(視覚的に古いまま残ることはほぼ無い、
+    // navigation history は selectedLid と同時 mutate なので)。bench で
+    // SELECT_ENTRY 52ms → ~20-25ms 短縮見込み(60FPS 16.7ms 予算近接)。
+    //
+    // user 報告 2026-05-27「textlog 大量 log で選択モード開始が凄まじく重い」:
+    // selection-only の中でも特に **textlog-selection-toggle-only**(textlogSelection
+    // のみ変化、他は不変)は center pane の placeholder 数千件 rebuild を avoid
+    // できる。textlog の checkbox markup を CSS 制御(常時 DOM + visibility 切替)
+    // にしたうえで、本 narrow path で `data-pkc-textlog-selecting` attribute と
+    // 選択 toolbar の差し替えのみ実施。
+    if (prev && isTextlogSelectionToggleOnly(state, prev)) {
+      const endProfile = profileStart('render:scope=textlog-selection-toggle');
+      applyTextlogSelectionNarrowUpdate(state, prev, root);
+      endProfile();
+      return;
+    }
+    const endProfile = profileStart('render:scope=selection-only');
+    replaceSelectionRegions(state, root);
     endProfile();
     return;
   }
@@ -666,9 +747,18 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
   const entryListScrollTop = oldEntryList?.scrollTop ?? 0;
   const wasCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
 
-  const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
-  const newSidebar = renderSidebar(state, linkIndex);
-  if (wasCollapsed) newSidebar.setAttribute('data-pkc-collapsed', 'true');
+  // pgc-225(pgc-224 と同 doctrine):collapsed の時は placeholder で build skip。
+  // 展開時(toggle-sidebar → full render)で完全 sidebar が build される。
+  let newSidebar: HTMLElement;
+  if (wasCollapsed) {
+    newSidebar = createElement('aside', 'pkc-sidebar');
+    newSidebar.setAttribute('data-pkc-region', 'sidebar');
+    newSidebar.setAttribute('data-pkc-collapsed', 'true');
+    newSidebar.setAttribute('data-pkc-lazy-sidebar', 'true');
+  } else {
+    const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
+    newSidebar = renderSidebar(state, linkIndex);
+  }
 
   oldSidebar.replaceWith(newSidebar);
   newSidebar.scrollTop = scrollTop;
@@ -691,6 +781,262 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
   }
 }
 
+/**
+ * pgc-208(user 報告 2026-05-25「100エントリ程度で凄まじく動作が重い」):
+ * SELECT_ENTRY のみが起きた場合の narrow render path。
+ *
+ * Replace 3 region in-place:
+ *  - sidebar(`[data-pkc-region="sidebar"]`)── row highlight 更新、
+ *    scroll 位置 preserve
+ *  - center pane(`[data-pkc-region="center"]`)── 新 entry の detail/
+ *    body content
+ *  - meta pane(`[data-pkc-region="meta-pane"]`)── 新 entry の metadata /
+ *    references / inspector
+ *
+ * 据え置き(rebuild skip):
+ *  - header(breadcrumb は次 full render で同期、現在の SELECT_ENTRY 動線で
+ *    視覚的に古いまま残る局面は限定的)
+ *  - shell menu(menuOpen 不変なら lazy build 経路、開いていても他 user 操作で
+ *    再 trigger される)
+ *  - activity bar(badge は ~次 render で同期、Recent badge の遅延は許容)
+ *  - tray bar / floating UI / media viewer(selection 非依存)
+ *
+ * Region selector が見つからない場合は full render に fallback(boot 初期や
+ * viewMode 切替直後など)。
+ */
+function replaceSelectionRegions(state: AppState, root: HTMLElement): void {
+  const sidebarSel = '[data-pkc-region="sidebar"]';
+  const centerSel = '[data-pkc-region="center"]';
+  const metaSel = '[data-pkc-region="meta"]';
+
+  const oldSidebar = root.querySelector<HTMLElement>(sidebarSel);
+  const oldCenter = root.querySelector<HTMLElement>(centerSel);
+  const oldMeta = root.querySelector<HTMLElement>(metaSel);
+
+  // sidebar / center が不在(boot 直後 / viewMode 切替直後)は full に fallback
+  if (!oldSidebar || !oldCenter) {
+    fullShellRender(state, root);
+    return;
+  }
+
+  // sidebar:scroll 位置 preserve しつつ in-place replace
+  const sidebarScrollTop = oldSidebar.scrollTop;
+  const oldEntryList = oldSidebar.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+  const entryListScrollTop = oldEntryList?.scrollTop ?? 0;
+  const wasSidebarCollapsed = oldSidebar.getAttribute('data-pkc-collapsed') === 'true';
+  const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
+  // pgc-225(renderShell と同 doctrine):collapsed の時は placeholder で
+  // build skip。展開時は full render で完全 sidebar が build される。
+  let newSidebar: HTMLElement;
+  if (wasSidebarCollapsed) {
+    newSidebar = createElement('aside', 'pkc-sidebar');
+    newSidebar.setAttribute('data-pkc-region', 'sidebar');
+    newSidebar.setAttribute('data-pkc-collapsed', 'true');
+    newSidebar.setAttribute('data-pkc-lazy-sidebar', 'true');
+  } else {
+    newSidebar = renderSidebar(state, linkIndex);
+  }
+  oldSidebar.replaceWith(newSidebar);
+  newSidebar.scrollTop = sidebarScrollTop;
+  const newEntryList = newSidebar.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+  if (newEntryList) newEntryList.scrollTop = entryListScrollTop;
+
+  // center pane:replace
+  const newCenter = renderCenter(state);
+  oldCenter.replaceWith(newCenter);
+
+  // meta pane:viewMode='filer' のときの scope folder 切替も同期
+  // (renderShell と同 logic)。selected が system-about なら meta pane
+  // 非表示 → meta pane の有無が変化する場合(visibility transition)は
+  // resize handle 含めた layout 再構成が必要 → full に fallback。
+  // meta pane が継続的に visible / 継続的に invisible の case は in-place
+  // replace で済む。
+  let metaTarget = findSelectedEntry(state);
+  if (state.viewMode === 'filer' && state.container) {
+    const scope = resolveFilerScope(state);
+    if (scope) metaTarget = scope;
+  }
+  const hasMetaPane = !!metaTarget && metaTarget.archetype !== 'system-about';
+  const hadMetaPane = oldMeta !== null;
+  if (hasMetaPane !== hadMetaPane) {
+    // visibility transition:resize handle layout も変わるので full に fall back
+    fullShellRender(state, root);
+    return;
+  }
+  if (hasMetaPane && oldMeta) {
+    const wasMetaCollapsed = oldMeta.getAttribute('data-pkc-collapsed') === 'true';
+    // pgc-224(renderShell と同 doctrine):collapsed の時は placeholder で
+    // build skip。展開時(toggle-meta → full render)で完全 meta が build される。
+    let newMeta: HTMLElement;
+    if (wasMetaCollapsed) {
+      newMeta = createElement('aside', 'pkc-meta-pane');
+      newMeta.setAttribute('data-pkc-region', 'meta');
+      newMeta.setAttribute('data-pkc-collapsed', 'true');
+      newMeta.setAttribute('data-pkc-lazy-meta', 'true');
+    } else {
+      const canEdit = state.phase === 'ready' && !state.readonly;
+      newMeta = renderMetaPane(
+        metaTarget!,
+        canEdit,
+        state.container,
+        linkIndex,
+        state.tagFilter,
+        state.metaPaneMode ?? 'all',
+      );
+    }
+    oldMeta.replaceWith(newMeta);
+  }
+
+  // root attribute も sync(data-pkc-has-selection の class が selection-only
+  // render path 内でも正しく反映される)
+  root.setAttribute(
+    'data-pkc-has-selection',
+    state.selectedLid ? 'true' : 'false',
+  );
+
+  // rAF-deferred sidebar scroll re-apply(layout が settle した後の clamp 対策)
+  const raf = root.ownerDocument?.defaultView?.requestAnimationFrame;
+  if (raf) {
+    raf(() => {
+      if (newSidebar.isConnected && newSidebar.scrollTop !== sidebarScrollTop) {
+        newSidebar.scrollTop = sidebarScrollTop;
+      }
+      if (newEntryList && newEntryList.isConnected && newEntryList.scrollTop !== entryListScrollTop) {
+        newEntryList.scrollTop = entryListScrollTop;
+      }
+    });
+  }
+}
+
+/**
+ * textlog の selection mode toggle のみが起きた場合の narrow path 判定。
+ * user 報告 2026-05-27「textlog 大量 log で選択モード開始が凄まじく重い」 hotfix。
+ *
+ * 条件:
+ *   - state.textlogSelection !== prev.textlogSelection(begin / cancel / log toggle)
+ *   - state.selectedLid 不変(別 entry 遷移ではない)
+ *   - state.container 不変(body 編集ではない)
+ *   - その他 selection 軸も不変(multi-select / nav history / textToTextlogModal)
+ *
+ * これらすべて満たすとき、center pane 全体 rebuild を skip し、textlog container
+ * の `data-pkc-textlog-selecting` attribute toggle + selection toolbar の差し替え
+ * + 個別 log の `data-pkc-log-selected` attribute 更新のみで対応する。
+ *
+ * 数千 log の placeholder DOM を再構築せずに済むため、selection mode 突入 / 終了 /
+ * 個別 toggle が viewport size に依存せず const-time 化(toolbar + N logs の checked
+ * 更新は O(N) だが、placeholder DOM 創造比で 10x 以上速い)。
+ */
+function isTextlogSelectionToggleOnly(state: AppState, prev: AppState): boolean {
+  if (state.textlogSelection === prev.textlogSelection) return false;
+  if (state.selectedLid !== prev.selectedLid) return false;
+  if (state.container !== prev.container) return false;
+  if (state.multiSelectedLids !== prev.multiSelectedLids) return false;
+  if (state.navHistory !== prev.navHistory) return false;
+  if (state.navIndex !== prev.navIndex) return false;
+  if (state.textToTextlogModal !== prev.textToTextlogModal) return false;
+  if (state.viewMode !== prev.viewMode) return false;
+  if (state.editingLid !== prev.editingLid) return false;
+  return true;
+}
+
+/**
+ * textlog selection toggle の narrow DOM 更新。
+ *
+ *   1. textlog container の `data-pkc-textlog-selecting` attribute を set/remove
+ *   2. selection toolbar(Begin / Cancel / Convert / count)を新規 build で差し替え
+ *   3. 個別 log の `data-pkc-log-selected` attribute と checkbox.checked を update
+ *
+ * placeholder + article の checkbox markup は **常時 DOM に存在**(CSS で visibility
+ * 制御)ので、本 path で再構築は一切不要。
+ */
+function applyTextlogSelectionNarrowUpdate(
+  state: AppState,
+  prev: AppState,
+  root: HTMLElement,
+): void {
+  void prev;
+  const centerRegion = root.querySelector<HTMLElement>('[data-pkc-region="center"]');
+  if (!centerRegion) return;
+  const textlogView = centerRegion.querySelector<HTMLElement>('.pkc-textlog-view');
+  if (!textlogView) return;
+
+  // 1. data-attribute toggle(CSS で checkbox visibility / log highlight が連動)
+  if (state.textlogSelection) {
+    textlogView.setAttribute('data-pkc-textlog-selecting', 'true');
+  } else {
+    textlogView.removeAttribute('data-pkc-textlog-selecting');
+  }
+
+  // 2. toolbar 差し替え(Begin → Cancel + count + Convert の遷移)
+  const oldToolbar = textlogView.querySelector<HTMLElement>(
+    '[data-pkc-region="textlog-select-toolbar"]',
+  );
+  if (oldToolbar && state.selectedLid) {
+    const newToolbar = rebuildSelectionToolbar(state.selectedLid, !!state.textlogSelection);
+    oldToolbar.replaceWith(newToolbar);
+  }
+
+  // 3. 個別 log の selected 状態更新(checkbox checked + data-attr)
+  const selectedIds = new Set(state.textlogSelection?.selectedLogIds ?? []);
+  const logs = textlogView.querySelectorAll<HTMLElement>('.pkc-textlog-log[data-pkc-log-id]');
+  for (const logEl of logs) {
+    const logId = logEl.getAttribute('data-pkc-log-id');
+    if (!logId) continue;
+    const isSelected = selectedIds.has(logId);
+    if (isSelected) {
+      logEl.setAttribute('data-pkc-log-selected', 'true');
+    } else {
+      logEl.removeAttribute('data-pkc-log-selected');
+    }
+    const cb = logEl.querySelector<HTMLInputElement>(
+      'input.pkc-textlog-select-check[data-pkc-field="textlog-select"]',
+    );
+    if (cb) cb.checked = isSelected;
+  }
+}
+
+/**
+ * Fallback path:selection-only が region 検出に失敗した場合用に full shell
+ * render を直接 trigger する。`render()` の本体 fall-through を再利用すると
+ * scope 計算ループになるため、独立 helper として切り出し。
+ */
+function fullShellRender(state: AppState, root: HTMLElement): void {
+  // Save scroll positions before clearing
+  const prevSidebarScroll =
+    root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]')?.scrollTop ?? null;
+  const prevEntryListScroll =
+    root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]')?.scrollTop ?? null;
+  const prevCenterScroll =
+    root.querySelector<HTMLElement>('.pkc-center-content')?.scrollTop ?? null;
+  root.innerHTML = '';
+  root.setAttribute('data-pkc-phase', state.phase);
+  root.setAttribute('data-pkc-embedded', String(state.embedded));
+  root.setAttribute('data-pkc-readonly', String(state.readonly));
+  root.setAttribute(
+    'data-pkc-has-selection',
+    state.selectedLid ? 'true' : 'false',
+  );
+  applySystemSettings(root, state.settings, state);
+  switch (state.phase) {
+    case 'initializing':
+      root.appendChild(renderInitializing());
+      break;
+    case 'error':
+      root.appendChild(renderError(state.error));
+      break;
+    case 'ready':
+    case 'editing':
+    case 'exporting':
+      root.appendChild(renderShell(state));
+      break;
+  }
+  // scroll restore omitted in this fallback path — full render() pass below
+  // (next dispatch) will restore via its own block.
+  void prevSidebarScroll;
+  void prevEntryListScroll;
+  void prevCenterScroll;
+}
+
 function renderInitializing(): HTMLElement {
   const el = createElement('div', 'pkc-loading');
   el.textContent = 'PKC2 initializing…';
@@ -705,6 +1051,13 @@ function renderError(error: string | null): HTMLElement {
 
 function renderShell(state: AppState): HTMLElement {
   const shell = createElement('div', 'pkc-shell');
+  // pgc-139 wave-δ #13(user bug report 2026-05-24):上部 4 段(header /
+  // breadcrumb / tab strip / view-mode bar)の縦 padding を圧縮する
+  // compact mode。CSS が `data-pkc-compact-header="true"` を見て padding /
+  // font-size を削減する。
+  if (shellHeaderCompactEnabled()) {
+    shell.setAttribute('data-pkc-compact-header', 'true');
+  }
 
   // Desktop header — appended FIRST so the legacy chrome stays
   // first in DOM order. Existing tests + the smoke suite call
@@ -770,10 +1123,14 @@ function renderShell(state: AppState): HTMLElement {
   const panePrefs = loadPanePrefs();
 
   // Left tray bar (shown when sidebar is collapsed)
+  // pgc-138 wave-δ #12:flag ON で tray bar の text を空にして slim 化
+  // (CSS が `data-pkc-slim` で chrome 削減)。OFF で従来の "SIDEBAR" 表記。
   const leftTray = createElement('div', 'pkc-tray-bar');
   leftTray.setAttribute('data-pkc-action', 'toggle-sidebar');
   leftTray.setAttribute('title', 'Click to expand sidebar');
-  leftTray.textContent = 'SIDEBAR';
+  const slimTray = shellTrayBarSlimEnabled();
+  leftTray.textContent = slimTray ? '' : 'SIDEBAR';
+  if (slimTray) leftTray.setAttribute('data-pkc-slim', 'true');
   leftTray.style.display = panePrefs.sidebar ? '' : 'none';
   leftTray.setAttribute('data-pkc-region', 'tray-left');
   main.appendChild(leftTray);
@@ -787,9 +1144,59 @@ function renderShell(state: AppState): HTMLElement {
   // body scan.
   const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
 
+  // pgc-102 wave-γ #4(MASTER.md §6.2):flag ON 時に Activity Bar(VSCode
+  // 流の縦 strip)を sidebar の左に prepend。pgc-116 wave-γ #16:
+  // `getActivityBarSide()` が 'left' なら従来どおり main 先頭、'right' なら
+  // 全 pane が append された後に末尾(meta pane の更に右)に置く。後者は
+  // 下の "After all panes" 直前で append される。
+  const activityBarSide = shellActivityBarEnabled() ? getActivityBarSide() : null;
+  if (activityBarSide === 'left') {
+    main.appendChild(buildActivityBarElement(state));
+  }
+
   // Left pane: entry list / tree / search / filters
-  const sidebar = renderSidebar(state, linkIndex);
-  if (panePrefs.sidebar) sidebar.setAttribute('data-pkc-collapsed', 'true');
+  // pgc-102 wave-γ #4:Activity Bar flag ON + 非 explorer tab 時は
+  // tab 別 builder へ振り分け。pgc-103 で outline tab を実装、未実装の
+  // tab は placeholder("Coming soon")で fallback。
+  let sidebar: HTMLElement;
+  // pgc-225(pgc-224 と同 doctrine):sidebar が collapsed(panePrefs.sidebar
+  // =true)の時は full DOM(filer ~100 row tree / outline / recent / etc.)を
+  // build せず placeholder のみ append。展開時(toggle-sidebar dispatch)で
+  // 完全 sidebar が build される。c-100+ で tree-loop / flat-loop / etc.の
+  // 数 ms cost を完全 skip。
+  if (panePrefs.sidebar) {
+    sidebar = createElement('aside', 'pkc-sidebar');
+    sidebar.setAttribute('data-pkc-region', 'sidebar');
+    sidebar.setAttribute('data-pkc-collapsed', 'true');
+    sidebar.setAttribute('data-pkc-lazy-sidebar', 'true');
+  } else if (shellActivityBarEnabled()) {
+    const tab = getActivityBarActiveTab();
+    switch (tab) {
+      case 'explorer':
+        sidebar = renderSidebar(state, linkIndex);
+        break;
+      case 'outline':
+        sidebar = buildOutlineTab(state);
+        break;
+      case 'recent':
+        sidebar = buildRecentTab(state);
+        break;
+      case 'pinned':
+        sidebar = buildPinnedTab(state);
+        break;
+      case 'search':
+        sidebar = buildSearchTab(state);
+        break;
+      case 'relations':
+        sidebar = buildRelationsTab(state);
+        break;
+      default:
+        sidebar = buildActivityTabPlaceholder(tab);
+        break;
+    }
+  } else {
+    sidebar = renderSidebar(state, linkIndex);
+  }
   main.appendChild(sidebar);
 
   // Resize handle: sidebar ↔ center
@@ -823,21 +1230,43 @@ function renderShell(state: AppState): HTMLElement {
     if (panePrefs.meta) rightHandle.setAttribute('data-pkc-collapsed', 'true');
     main.appendChild(rightHandle);
 
-    const canEdit = state.phase === 'ready' && !state.readonly;
-    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter);
-    if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
+    // pgc-224(pgc-207 shell menu lazy build と同 doctrine):meta pane が
+    // collapsed(panePrefs.meta=true)の時は full meta DOM を build せず、
+    // placeholder のみ append。展開時(toggle-meta dispatch)は render 走り
+    // panePrefs.meta=false で完全 meta が build される。
+    // render:meta 17.5-23ms@c-1000+ を collapsed user で完全 skip。
+    let metaPane: HTMLElement;
+    if (panePrefs.meta) {
+      // collapsed placeholder。region attribute は維持(action-binder の
+      // event delegation が meta region を query するため)。
+      metaPane = createElement('aside', 'pkc-meta-pane');
+      metaPane.setAttribute('data-pkc-region', 'meta');
+      metaPane.setAttribute('data-pkc-collapsed', 'true');
+      metaPane.setAttribute('data-pkc-lazy-meta', 'true');
+    } else {
+      const canEdit = state.phase === 'ready' && !state.readonly;
+      metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter, state.metaPaneMode ?? 'all');
+    }
     main.appendChild(metaPane);
   }
 
   // Right tray bar (shown when meta pane is collapsed)
+  // pgc-138 wave-δ #12:同 flag で slim 化(text 空 + data-pkc-slim attr)。
   const rightTray = createElement('div', 'pkc-tray-bar pkc-tray-bar-right');
   rightTray.setAttribute('data-pkc-action', 'toggle-meta');
   rightTray.setAttribute('title', 'Click to expand meta pane');
-  rightTray.textContent = 'META';
+  rightTray.textContent = slimTray ? '' : 'META';
+  if (slimTray) rightTray.setAttribute('data-pkc-slim', 'true');
   // The right tray is only meaningful when a meta pane exists.
   rightTray.style.display = panePrefs.meta && hasMetaPane ? '' : 'none';
   rightTray.setAttribute('data-pkc-region', 'tray-right');
   main.appendChild(rightTray);
+
+  // pgc-116 wave-γ #16:Activity Bar が 'right' 側設定なら ここで append。
+  // すべての pane(sidebar / center / meta / right tray)の右隣に置かれる。
+  if (activityBarSide === 'right') {
+    main.appendChild(buildActivityBarElement(state));
+  }
 
   shell.appendChild(main);
 
@@ -921,8 +1350,10 @@ function renderMobileHeader(state: AppState): HTMLElement {
     backBtn.textContent = '‹ List';
     bar.appendChild(backBtn);
 
-    const selectedTitle =
-      state.container?.entries.find((e) => e.lid === state.selectedLid)?.title ?? '';
+    // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
+    const selectedTitle = state.container && state.selectedLid
+      ? (getFilterIndexes(state.container).entryByLid.get(state.selectedLid)?.title ?? '')
+      : '';
     const titleEl = createElement('span', 'pkc-mobile-header-title');
     titleEl.textContent = truncate(selectedTitle || '(untitled)', 28);
     bar.appendChild(titleEl);
@@ -986,6 +1417,9 @@ function renderMobileHeader(state: AppState): HTMLElement {
 
 function renderHeader(state: AppState): HTMLElement {
   const header = createElement('header', 'pkc-header');
+  // pgc-83(MASTER.md §4.7):universal context menu の region 検出に使う。
+  // 既存 selector に影響しない additive な data attribute。
+  header.setAttribute('data-pkc-region', 'header');
 
   // 2026-04-26 mobile master-detail: a back arrow button that
   // deselects the current entry, used by the touch-coarse phone
@@ -1000,6 +1434,38 @@ function renderHeader(state: AppState): HTMLElement {
     backBtn.setAttribute('aria-label', '一覧に戻る');
     backBtn.textContent = '←';
     header.appendChild(backBtn);
+  }
+
+  // 領域 1: entry navigation history の戻る / 進む。常に描画し、stack の
+  // 端では `disabled`(disabled button は click event を出さないため
+  // action-binder の event delegation に乗らず自然に inert になる)。
+  // pgc-101 wave-γ #3(MASTER.md §6.1 phase 3):flag ON 時は標準 nav
+  // group を skip し、breadcrumb 内 `⇐` `⇒` icon に集約(`renderHeader-
+  // PathTrail` 側で実装)。OFF で従来挙動を完全維持。
+  if (!shellBackForwardInBreadcrumbEnabled()) {
+    // pgc-160 user bug fix:標準 header nav も disabled 時 tooltip 改善。
+    const navGroup = createElement('div', 'pkc-header-nav');
+    const histBackBtn = createElement('button', 'pkc-button-base pkc-button-size-icon pkc-header-nav-btn');
+    histBackBtn.setAttribute('data-pkc-action', 'go-back');
+    const stdBackDisabled = state.navIndex <= 0;
+    histBackBtn.setAttribute('title', stdBackDisabled
+      ? '戻る履歴がありません(エントリを移動すると履歴が記録されます)'
+      : '前のエントリへ戻る (Alt+←)');
+    histBackBtn.setAttribute('aria-label', stdBackDisabled ? '戻る(履歴なし)' : '戻る');
+    histBackBtn.textContent = '◀';
+    if (stdBackDisabled) histBackBtn.setAttribute('disabled', '');
+    navGroup.appendChild(histBackBtn);
+    const histFwdBtn = createElement('button', 'pkc-button-base pkc-button-size-icon pkc-header-nav-btn');
+    histFwdBtn.setAttribute('data-pkc-action', 'go-forward');
+    const stdFwdDisabled = state.navIndex >= state.navHistory.length - 1;
+    histFwdBtn.setAttribute('title', stdFwdDisabled
+      ? '進む履歴がありません(一度戻ると進む先が生まれます)'
+      : '次のエントリへ進む (Alt+→)');
+    histFwdBtn.setAttribute('aria-label', stdFwdDisabled ? '進む(履歴なし)' : '進む');
+    histFwdBtn.textContent = '▶';
+    if (stdFwdDisabled) histFwdBtn.setAttribute('disabled', '');
+    navGroup.appendChild(histFwdBtn);
+    header.appendChild(navGroup);
   }
 
   const title = createElement('span', 'pkc-header-title');
@@ -1034,28 +1500,104 @@ function renderHeader(state: AppState): HTMLElement {
       { arch: 'folder', label: `${archetypeIcon('folder')} Folder`, tip: 'Create a new folder' },
     ];
 
-    for (const { arch, label, tip } of archetypeButtons) {
-      const btn = createElement('button', 'pkc-btn pkc-btn-create');
-      btn.setAttribute('data-pkc-action', 'create-entry');
-      btn.setAttribute('data-pkc-archetype', arch);
-      btn.setAttribute('title', tip);
-      if (contextFolder) {
-        btn.setAttribute('data-pkc-context-folder', contextFolder.lid);
+    if (shellNewButtonPickerEnabled()) {
+      // pgc-99 wave-γ #1(MASTER.md §6.1):5 個 archetype create button を
+      // 1 個の `+ New` button + popover picker に集約。click で popover を
+      // toggle(action-binder の `toggle-new-picker` handler)、popover 内に
+      // 5 件 row(同じ `data-pkc-action="create-entry"` を持つので既存 handler
+      // から透明)。region は `new-picker-wrapper` で囲み、CSS で button と
+      // popover の絶対位置 anchor を取る。Light mode disable / context-folder
+      // 追従はそのまま継承。
+      const wrap = createElement('div', 'pkc-new-picker-wrap');
+      wrap.setAttribute('data-pkc-region', 'new-picker-wrap');
+
+      const newBtn = createElement('button', 'pkc-btn pkc-btn-create pkc-btn-new');
+      newBtn.setAttribute('data-pkc-action', 'toggle-new-picker');
+      newBtn.setAttribute('title', 'Create a new entry (T)ext / (L)og / Todo / File / Folder');
+      newBtn.setAttribute('aria-haspopup', 'menu');
+      newBtn.setAttribute('aria-expanded', 'false');
+      newBtn.textContent = '+ New';
+      wrap.appendChild(newBtn);
+
+      const popover = createElement('div', 'pkc-new-picker-popover');
+      popover.setAttribute('data-pkc-region', 'new-picker-popover');
+      popover.setAttribute('role', 'menu');
+      popover.setAttribute('aria-label', 'Create entry by archetype');
+      // default 非表示(`toggle-new-picker` handler が `data-pkc-open` を
+      // 立てて display を変える)。
+      popover.setAttribute('data-pkc-open', 'false');
+      for (const { arch, label, tip } of archetypeButtons) {
+        const row = createElement('button', 'pkc-new-picker-row');
+        row.setAttribute('data-pkc-action', 'create-entry');
+        row.setAttribute('data-pkc-archetype', arch);
+        row.setAttribute('title', tip);
+        row.setAttribute('role', 'menuitem');
+        if (contextFolder) {
+          row.setAttribute('data-pkc-context-folder', contextFolder.lid);
+        }
+        if (arch === 'attachment' && state.lightSource) {
+          (row as HTMLButtonElement).disabled = true;
+          row.setAttribute('title', 'File attachments cannot be created in Light mode');
+          row.setAttribute('data-pkc-light-disabled', 'true');
+        }
+        row.textContent = label;
+        popover.appendChild(row);
       }
-      // Disable attachment creation in Light mode (no asset storage)
-      if (arch === 'attachment' && state.lightSource) {
-        (btn as HTMLButtonElement).disabled = true;
-        btn.setAttribute('title', 'File attachments cannot be created in Light mode');
-        btn.setAttribute('data-pkc-light-disabled', 'true');
+      wrap.appendChild(popover);
+      createGroup.appendChild(wrap);
+    } else {
+      for (const { arch, label, tip } of archetypeButtons) {
+        const btn = createElement('button', 'pkc-btn pkc-btn-create');
+        btn.setAttribute('data-pkc-action', 'create-entry');
+        btn.setAttribute('data-pkc-archetype', arch);
+        btn.setAttribute('title', tip);
+        if (contextFolder) {
+          btn.setAttribute('data-pkc-context-folder', contextFolder.lid);
+        }
+        // Disable attachment creation in Light mode (no asset storage)
+        if (arch === 'attachment' && state.lightSource) {
+          (btn as HTMLButtonElement).disabled = true;
+          btn.setAttribute('title', 'File attachments cannot be created in Light mode');
+          btn.setAttribute('data-pkc-light-disabled', 'true');
+        }
+        btn.textContent = label;
+        createGroup.appendChild(btn);
       }
-      btn.textContent = label;
-      createGroup.appendChild(btn);
     }
 
     header.appendChild(createGroup);
 
     // Export / Import inline buttons
-    header.appendChild(renderExportImportInline(state));
+    // pgc-100 wave-γ #2(MASTER.md §6.1 phase 2):flag ON 時は header から外し、
+    // Shell Menu の "Data" section へ集約(`renderShellMenu` 側で同 element
+    // を append する)。OFF で従来 header inline 表示。
+    //
+    // pgc-135 hotfix(user bug report 2026-05-23、全 flag ON で export 動線
+    // が見えなくなる issue):flag ON 時でも **小さな `📤 Export…` fallback
+    // button** を header に 1 個残す。
+    //
+    // pgc-162 hotfix(user bug report 2026-05-24「Export ボタンを押すと
+    // シェルメニューが開く」):**fallback button の action が
+    // toggle-shell-menu だった** ため、user が「Export ボタン」 と思って
+    // 押すと shell menu open のみ(2 段階)で意図と乖離。**直接 `begin-export`
+    // dispatch に切替**(default `mode='full'`、mutability='editable')。
+    // Full mode 以外を選びたい user は shell menu の Data section から、
+    // という案内を title / aria-label に明記。
+    if (!shellDataInShellMenuEnabled()) {
+      header.appendChild(renderExportImportInline(state));
+    } else {
+      const exportFallback = createElement('button', 'pkc-btn pkc-btn-create pkc-header-export-fallback');
+      exportFallback.setAttribute('data-pkc-action', 'begin-export');
+      exportFallback.setAttribute('data-pkc-export-mode', 'full');
+      exportFallback.setAttribute('data-pkc-export-mutability', 'editable');
+      exportFallback.setAttribute(
+        'title',
+        'Export HTML(Full、editable)── 別 mode は Shell Menu → Data section から',
+      );
+      exportFallback.setAttribute('aria-label', 'Export HTML (Full, editable)');
+      exportFallback.textContent = '📤 Export';
+      header.appendChild(exportFallback);
+    }
   }
 
   // Readonly mode: show readonly badge and rehydrate button
@@ -1171,7 +1713,126 @@ function renderHeader(state: AppState): HTMLElement {
 
   header.appendChild(toggles);
 
+  // Top-header 階層パス(Explorer 風 path trail、pgc-42 / user direction
+  // 2026-05-20)。header 最下段に full-width 1 行で出す。
+  const pathTrail = renderHeaderPathTrail(state);
+  if (pathTrail) header.appendChild(pathTrail);
+
   return header;
+}
+
+// pgc-101 wave-γ #3 helper:breadcrumb 先頭に `⇐` `⇒` icon を prepend。
+// navIndex / navHistory.length で各 button の disabled 状態を決める
+// (標準 nav group と同条件、`go-back` / `go-forward` action を dispatch)。
+function appendBackForwardIcons(nav: HTMLElement, state: AppState): void {
+  // pgc-160 user bug fix(2026-05-24):disabled 時の tooltip で「履歴
+  // なし」 を明示 ── user 体感「押せない」 を「履歴が無いから押せない」
+  // に翻訳。aria-label も更新で screen reader にも伝わる。
+  const back = createElement('button', 'pkc-button-base pkc-button-size-icon pkc-header-path-nav-btn pkc-header-path-nav-back');
+  back.setAttribute('data-pkc-action', 'go-back');
+  const backDisabled = state.navIndex <= 0;
+  back.setAttribute('title', backDisabled
+    ? '戻る履歴がありません(エントリを移動すると履歴が記録されます)'
+    : '前のエントリへ戻る (Alt+←)');
+  back.setAttribute('aria-label', backDisabled ? '戻る(履歴なし)' : '戻る');
+  back.textContent = '⇐';
+  if (backDisabled) back.setAttribute('disabled', '');
+  nav.appendChild(back);
+  const fwd = createElement('button', 'pkc-button-base pkc-button-size-icon pkc-header-path-nav-btn pkc-header-path-nav-fwd');
+  fwd.setAttribute('data-pkc-action', 'go-forward');
+  const fwdDisabled = state.navIndex >= state.navHistory.length - 1;
+  fwd.setAttribute('title', fwdDisabled
+    ? '進む履歴がありません(一度戻ると進む先が生まれます)'
+    : '次のエントリへ進む (Alt+→)');
+  fwd.setAttribute('aria-label', fwdDisabled ? '進む(履歴なし)' : '進む');
+  fwd.textContent = '⇒';
+  if (fwdDisabled) fwd.setAttribute('disabled', '');
+  nav.appendChild(fwd);
+}
+
+// Top-header の階層パス(Explorer 風 path trail)。user direction
+// (2026-05-20「トップレベルの最上部のヘッダにファイラの階層パスを
+// エクスプローラみたいに表示・jump できるように」)。選択中 entry の
+// 祖先 folder を辿り、各 segment を click で SELECT_ENTRY(= jump)。
+// center pane の breadcrumb(renderView 内)と data 経路(`getBreadcrumb`)を
+// 共有する別 surface で、常時可視。選択が無ければ null(描画しない)。
+//
+// pgc-101 wave-γ #3(MASTER.md §6.1 phase 3):
+// `shellBackForwardInBreadcrumbEnabled()` ON 時、本 nav の **先頭** に
+// `⇐` `⇒` icon button を prepend する(`go-back` / `go-forward` action、
+// disabled handling は標準 nav group と同条件)。選択無しで pathTrail が
+// 通常 null になる case でも、本 flag ON 時は icon だけの minimal nav を
+// 返して navigation 動線を保つ。
+function renderHeaderPathTrail(state: AppState): HTMLElement | null {
+  const container = state.container;
+  const lid = state.selectedLid;
+  const integratedBackForward = shellBackForwardInBreadcrumbEnabled();
+
+  // 通常 path:選択あり + entry 存在 → 階層パス描画。
+  // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
+  const entry = lid && container
+    ? getFilterIndexes(container).entryByLid.get(lid)
+    : undefined;
+  if (!container || !lid || !entry) {
+    if (!integratedBackForward) return null;
+    // flag ON で選択無し:icon だけの minimal nav。
+    const minimal = createElement('nav', 'pkc-header-path');
+    minimal.setAttribute('data-pkc-region', 'header-path');
+    minimal.setAttribute('aria-label', '階層パス');
+    appendBackForwardIcons(minimal, state);
+    return minimal;
+  }
+
+  const nav = createElement('nav', 'pkc-header-path');
+  nav.setAttribute('data-pkc-region', 'header-path');
+  nav.setAttribute('aria-label', '階層パス');
+
+  // pgc-101:flag ON 時、`⇐` `⇒` icon を nav 先頭に prepend。
+  if (integratedBackForward) appendBackForwardIcons(nav, state);
+
+  const appendSep = (): void => {
+    const sep = createElement('span', 'pkc-header-path-sep');
+    sep.textContent = '›';
+    nav.appendChild(sep);
+  };
+
+  // Root marker(非 clickable)。
+  const root = createElement('span', 'pkc-header-path-root');
+  root.textContent = 'Root';
+  nav.appendChild(root);
+
+  const ancestors = getBreadcrumb(container.relations, container.entries, lid);
+
+  // 祖先が getBreadcrumb の maxDepth cap で truncate されていれば … を挟む。
+  if (
+    ancestors.length > 0 &&
+    getStructuralParent(container.relations, container.entries, ancestors[0]!.lid) !== null
+  ) {
+    appendSep();
+    const trunc = createElement('span', 'pkc-header-path-truncated');
+    trunc.setAttribute('title', '…(省略された祖先あり)');
+    trunc.textContent = '…';
+    nav.appendChild(trunc);
+  }
+
+  // 祖先 folder — click で jump(SELECT_ENTRY、action-binder の汎用 handler)。
+  for (const a of ancestors) {
+    appendSep();
+    const seg = createElement('span', 'pkc-header-path-segment');
+    seg.setAttribute('data-pkc-action', 'select-entry');
+    seg.setAttribute('data-pkc-lid', a.lid);
+    seg.setAttribute('title', a.title || '(untitled)');
+    seg.textContent = a.title || '(untitled)';
+    nav.appendChild(seg);
+  }
+
+  // 現在 entry(非 clickable — 既にそこに居る)。
+  appendSep();
+  const current = createElement('span', 'pkc-header-path-current');
+  current.textContent = entry.title || '(untitled)';
+  nav.appendChild(current);
+
+  return nav;
 }
 
 /**
@@ -1196,7 +1857,21 @@ function renderShellMenu(
   // never gets pushed below the right pane or clipped by the event log.
   const overlay = createElement('div', 'pkc-shell-menu-overlay');
   overlay.setAttribute('data-pkc-region', 'shell-menu');
-  overlay.style.display = state.menuOpen ? '' : 'none';
+  // pgc-207 (user 報告 2026-05-24「100エントリ程度で凄まじく動作が重い」):
+  // shell menu は ~850 行の builder で Theme / Scanline / Accent / Settings /
+  // Data section / Maintenance / Quick Help / Tools / Debug 等 ~200+ DOM
+  // node を生成する。従来は menuOpen=false でも全 DOM を build して
+  // `display:none` で隠していたため、毎 render の wasted work 大。本 PR で
+  // menuOpen=false 時は overlay placeholder のみ返す early return に最適化。
+  // menuOpen → true 遷移時は render-scope='full'(`menuOpen` is in full-trigger
+  // 一覧)で full re-render が triggers され、その render で menu DOM が
+  // build される。閉じた時も同様。後方互換完全(action-binder の menu DOM
+  // query は event delegation 経由で missing DOM へは event が届かない)。
+  if (!state.menuOpen) {
+    overlay.style.display = 'none';
+    return overlay;
+  }
+  overlay.style.display = '';
 
   const card = createElement('div', 'pkc-shell-menu-card');
 
@@ -1508,6 +2183,31 @@ function renderShellMenu(
   // This section is intentionally passive until the user clicks:
   // the orphan count is just a read-only scan of the current
   // container, the cleanup button disables itself when there is
+  // pgc-100 wave-γ #2(MASTER.md §6.1 phase 2):flag ON 時に Data… inline
+  // panel を header から外して Shell Menu の section として集約。同じ
+  // `renderExportImportInline(state)` を call するので機能差ゼロ、視覚的
+  // 位置だけが header → shell-menu に移る。OFF で本 section 非表示
+  // (従来 header inline)。`!readonly` 限定(header inline と同条件)。
+  // pgc-209(pgc-205 probe finding):従来 `phase === 'ready'` で gating
+  // していたため、export 中(phase='exporting')に Data section が消えて
+  // しまい、再描画 race で「rapid double-click → 2 downloads」 が起き得た。
+  // export 中も Data section を visible のままにし、Export ボタンを disable
+  // する(視覚 feedback「Exporting…」+ click 防御)。
+  if (
+    shellDataInShellMenuEnabled() &&
+    state.container &&
+    !state.readonly &&
+    (state.phase === 'ready' || state.phase === 'exporting')
+  ) {
+    const dataSection = createElement('div', 'pkc-shell-menu-section');
+    dataSection.setAttribute('data-pkc-region', 'shell-menu-data');
+    const dataLabel = createElement('span', 'pkc-shell-menu-label');
+    dataLabel.textContent = state.phase === 'exporting' ? 'Data (Exporting…)' : 'Data';
+    dataSection.appendChild(dataLabel);
+    dataSection.appendChild(renderExportImportInline(state, { autoOpen: true, exporting: state.phase === 'exporting' }));
+    card.appendChild(dataSection);
+  }
+
   // nothing to do, and the whole surface is hidden in readonly /
   // container-absent modes where mutation is not allowed.
   //
@@ -2442,7 +3142,7 @@ function renderStorageProfileRows(profile: StorageProfile): HTMLElement {
   return section;
 }
 
-function renderExportImportInline(state: AppState): HTMLElement {
+function renderExportImportInline(state: AppState, options?: { autoOpen?: boolean; exporting?: boolean }): HTMLElement {
   const group = createElement('div', 'pkc-eip-inline');
   group.setAttribute('data-pkc-region', 'export-import-panel');
 
@@ -2451,9 +3151,25 @@ function renderExportImportInline(state: AppState): HTMLElement {
   // full panel is hidden until the user explicitly opens it.
   const details = document.createElement('details');
   details.className = 'pkc-eip-details';
+  // pgc-205 (user 報告 2026-05-24「エクスポート導線が壊れたままだ」):
+  // shell menu Data section から呼ばれた時(`autoOpen: true`)は **既に
+  // shell menu overlay が open** で「Data…」 を二段クリックさせるのは
+  // 冗長(以前は header inline の collapse 1 段だけ、shell menu 移植時に
+  // 同 component を流用したため二重 collapse 化)。`autoOpen` で初期から
+  // 開いた状態にして 1 click 短縮、user の「Export 押せない」 体感を解消。
+  // header inline 経路(`autoOpen: false` / default)は従来通り collapse。
+  if (options?.autoOpen) {
+    details.open = true;
+  }
+  // pgc-209:`exporting=true` のとき details `data-pkc-exporting` attribute
+  // を付与(CSS 側で visual feedback の余地 + post-pass で button disable)。
+  const isExporting = options?.exporting === true;
+  if (isExporting) {
+    details.setAttribute('data-pkc-exporting', 'true');
+  }
   const summary = document.createElement('summary');
   summary.className = 'pkc-btn pkc-btn-create pkc-eip-summary';
-  summary.setAttribute('title', 'エクスポート・インポート操作');
+  summary.setAttribute('title', isExporting ? 'エクスポート実行中…' : 'エクスポート・インポート操作');
   // 2026-04-26 user audit: opt this details into the press-drag-
   // release UX (`handleDetailsMenuMouseDown`) so the panel follows
   // the macOS native menu idiom. mousedown opens the panel, drag
@@ -2489,8 +3205,9 @@ function renderExportImportInline(state: AppState): HTMLElement {
   // .textlog.zip, batch bundle = .texts.zip / .textlogs.zip /
   // .mixed.zip / .folder-export.zip).
 
-  const selectedEntry = state.selectedLid
-    ? state.container?.entries.find((e) => e.lid === state.selectedLid)
+  // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
+  const selectedEntry = state.selectedLid && state.container
+    ? getFilterIndexes(state.container).entryByLid.get(state.selectedLid)
     : undefined;
 
   // --- Group 1: Share (standalone HTML, openable without PKC2) ---
@@ -2819,6 +3536,25 @@ function renderExportImportInline(state: AppState): HTMLElement {
   details.appendChild(content);
   group.appendChild(details);
 
+  // pgc-209(pgc-205 probe finding「rapid double-click → 2 downloads」 対策):
+  // export 中は全 action button(begin-export / export-* / import-* / new pkc)
+  // を disable。reducer 側で BEGIN_EXPORT が phase='exporting' 中は blocked
+  // (state===prev で render listener 非発火、parallel call は防止済)だが、
+  // **button が DOM に visible のまま rapid click が貯まる** ケース(50-100ms
+  // 間の SYS_FINISH_EXPORT → phase='ready' → re-mount → 次 click 受理)で
+  // sequential 多重 export が起き得るため、export 中は visual feedback +
+  // browser-level click 抑止の両方を入れる。
+  if (isExporting) {
+    const actionButtons = group.querySelectorAll<HTMLButtonElement>(
+      'button[data-pkc-action]',
+    );
+    for (const btn of Array.from(actionButtons)) {
+      btn.disabled = true;
+      btn.setAttribute('data-pkc-disabled-reason', 'exporting');
+      btn.setAttribute('aria-disabled', 'true');
+    }
+  }
+
   return group;
 }
 
@@ -2982,13 +3718,37 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     // 領域 10-6 ζ'' Phase 4 follow-up: `sidebar.mode = 'filer'` で
     // 左ペインを compact filer-explorer に差し替え。tree (default) は
     // 既存実装を流用。
-    if (sidebarMode() === 'filer') {
-      return renderSidebarAsFiler(state);
-    }
-    return renderSidebarImpl(state, sharedLinkIndex);
+    const sidebar = sidebarMode() === 'filer'
+      ? renderSidebarAsFiler(state)
+      : renderSidebarImpl(state, sharedLinkIndex);
+    markChildWindowItems(sidebar, state.childWindowLids);
+    return sidebar;
   } finally {
     endProfile();
   }
+}
+
+/**
+ * Phase γ-A3:child entry-window で編集中の entry の sidebar 行に
+ * `data-pkc-in-window="true"` を付け、「別ウィンドウで編集中」marker を
+ * 出す。tree 行は memoize されるため、render 後の sidebar subtree 全体に
+ * 対し `data-pkc-lid` を持つ要素を走査して一括適用する(memo を貫通する
+ * state → DOM の decoration pass)。tree / filer どちらの sidebar 行も
+ * `data-pkc-lid` を持つため両 mode で機能する。
+ */
+function markChildWindowItems(
+  sidebar: HTMLElement,
+  lids: readonly string[] | undefined,
+): void {
+  if (!lids || lids.length === 0) return;
+  const inWindow = new Set(lids);
+  sidebar.querySelectorAll<HTMLElement>('[data-pkc-lid]').forEach((el) => {
+    const lid = el.getAttribute('data-pkc-lid');
+    if (lid && inWindow.has(lid)) {
+      el.setAttribute('data-pkc-in-window', 'true');
+      el.setAttribute('title', '別ウィンドウで編集中');
+    }
+  });
 }
 
 /**
@@ -2998,48 +3758,386 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
  * archetype icon column, no breadcrumb header (it's pinned to the
  * current folder via selectedLid).
  */
+/**
+ * pgc-49:tree sidebar(renderSidebarImpl)と filer sidebar
+ * (renderSidebarAsFiler)で共有する ⚙ Filters disclosure。color strip +
+ * showArchived / treeHideBuckets / searchHideBuckets / unreferenced の
+ * 4 toggle を 1 つの `<details>` に折りたたみ収納する(2026-04-27 user
+ * direction「トグル自体を折りたたんで隠したうえで」)。
+ *
+ * 各 toggle の有無は container の中身で出し分ける。toggle が 1 つも無ければ
+ * `null` を返す。disclosure の open/close は `state.advancedFiltersOpen` で
+ * 次 dispatch の full re-render を跨いで維持される。helper 化により tree と
+ * filer の検索オプションが構造的に分岐し得なくなる(user 指摘「機能ダウン
+ * しすぎ」への恒久対策)。
+ *
+ * @param userEntries  precondition 判定に使う user entry 配列(system-*
+ *                     archetype は除外済を渡すこと)。
+ * @param filterActive search 軸 filter(query / archetype / tag / color /
+ *                     categoricalPeer)が立っているか。`search-hide-buckets`
+ *                     toggle の表示 gate(検索中のみ意味を持つ)。
+ */
+function renderAdvancedFiltersPanel(
+  state: AppState,
+  userEntries: Entry[],
+  filterActive: boolean,
+): HTMLElement | null {
+  const hasArchivedTodo = userEntries.some(
+    (e) => e.archetype === 'todo' && parseTodoBody(e.body, e).archived,
+  );
+  const hasAttachment = userEntries.some((e) => e.archetype === 'attachment');
+  const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
+  const hasBucketFolder = !!state.container
+    && state.container.entries.some(
+      (e) => e.archetype === 'folder' && bucketTitles.has(e.title),
+    );
+  // pgc-231:従来は filterActive のとき userEntries 全件に対し
+  // `getStructuralParent`(O(R) walk)を回し O(N×R) になっていた。
+  // `getFilterIndexes(container).bucketChildLids` は同 semantic の
+  // memoized Set(filter-cache.ts L85-96)── O(N) Set.has check に
+  // 置換、c-5000 + 検索 active で keystroke ごとに走っていた
+  // **O(N×R) を O(N) に圧縮**。
+  const hasBucketedEntryInResults =
+    filterActive
+    && !!state.container
+    && (() => {
+      const { bucketChildLids } = getFilterIndexes(state.container!);
+      if (bucketChildLids.size === 0) return false;
+      return userEntries.some((e) => bucketChildLids.has(e.lid));
+    })();
+  // pgc-232:colorTagsInUse は filter-cache.ts で memoize 済(container
+  // ref で keystroke / re-render 跨ぎ cache hit)。1 度だけ entries walk、
+  // 各 keystroke で再計算しない。
+  const memoizedColorsInUse = state.container
+    ? getFilterIndexes(state.container).colorTagsInUse
+    : undefined;
+  const colorStrip = renderColorFilterStrip(userEntries, state.colorTagFilter ?? new Set(), memoizedColorsInUse);
+  const hasColorsInUse = colorStrip !== null;
+  const hasAnyToggle =
+    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults || hasColorsInUse;
+  if (!hasAnyToggle) return null;
+
+  const details = document.createElement('details');
+  details.className = 'pkc-advanced-filters';
+  details.setAttribute('data-pkc-region', 'advanced-filters');
+  if (state.advancedFiltersOpen ?? false) {
+    details.setAttribute('open', '');
+  }
+  const summary = document.createElement('summary');
+  summary.className = 'pkc-advanced-filters-summary';
+  summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
+  summary.textContent = '⚙ Filters';
+  details.appendChild(summary);
+
+  if (colorStrip) {
+    // Color tag chip strip — first child so the visual filter axis
+    // is at the top of the disclosure, ahead of the toggle list.
+    details.appendChild(colorStrip);
+  }
+
+  if (hasArchivedTodo) {
+    const toggle = createElement('label', 'pkc-show-archived-toggle');
+    toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = state.showArchived;
+    check.setAttribute('data-pkc-action', 'toggle-show-archived');
+    toggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show archived';
+    toggle.appendChild(labelText);
+    details.appendChild(toggle);
+  }
+
+  if (hasBucketFolder) {
+    // Inverted UX: checked = "show ASSETS / TODOS folders in tree".
+    const toggle = createElement('label', 'pkc-show-archived-toggle');
+    toggle.setAttribute('data-pkc-region', 'tree-hide-buckets-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = !(state.treeHideBuckets ?? true);
+    check.setAttribute('data-pkc-action', 'toggle-tree-hide-buckets');
+    toggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show ASSETS / TODOS folders';
+    toggle.appendChild(labelText);
+    details.appendChild(toggle);
+  }
+
+  if (hasBucketedEntryInResults) {
+    // Inverted UX: checked = "show ASSETS / TODOS contents in
+    // search results". Distinct from the tree-folder toggle —
+    // user may want folder visibility OFF but search-result
+    // visibility ON, or vice versa.
+    const toggle = createElement('label', 'pkc-show-archived-toggle');
+    toggle.setAttribute('data-pkc-region', 'search-hide-buckets-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = !(state.searchHideBuckets ?? true);
+    check.setAttribute('data-pkc-action', 'toggle-search-hide-buckets');
+    toggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show ASSETS / TODOS in search results';
+    toggle.appendChild(labelText);
+    details.appendChild(toggle);
+  }
+
+  if (hasAttachment) {
+    const unrefToggle = createElement('label', 'pkc-show-archived-toggle');
+    unrefToggle.setAttribute('data-pkc-region', 'unreferenced-attachments-toggle');
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = state.unreferencedAttachmentsOnly ?? false;
+    check.setAttribute('data-pkc-action', 'toggle-unreferenced-attachments');
+    unrefToggle.appendChild(check);
+    const labelText = createElement('span', '');
+    labelText.textContent = 'Show only unused attachments';
+    unrefToggle.appendChild(labelText);
+    if (state.container && (state.unreferencedAttachmentsOnly ?? false)) {
+      const count = collectUnreferencedAttachmentLids(state.container).size;
+      const badge = createElement('span', 'pkc-unref-count');
+      badge.textContent = ` (${count})`;
+      unrefToggle.appendChild(badge);
+    }
+    details.appendChild(unrefToggle);
+  }
+
+  return details;
+}
+
 function renderSidebarAsFiler(state: AppState): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar pkc-sidebar-filer-mode');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
   sidebar.setAttribute('data-pkc-sidebar-mode', 'filer');
 
   const scope = resolveFilerScope(state);
-  const header = createElement('div', 'pkc-sidebar-filer-header');
-  const label = createElement('span', 'pkc-sidebar-filer-label');
-  label.textContent = scope ? (scope.title || scope.lid) : 'Root';
-  header.appendChild(label);
-  sidebar.appendChild(header);
-
   const children = scope
     ? getStructuralChildren(state.container?.relations ?? [], state.container?.entries ?? [], scope.lid)
     : getRootEntries(state.container?.relations ?? [], state.container?.entries ?? []);
   const visibleChildren = children.filter((e) => !isSystemArchetype(e.archetype));
 
+  // pgc-46/47:query または archetype/tag/color filter が立っていれば
+  // container 全体を検索する。検索は tree sidebar と同じ `applyFilters`
+  // pipeline を再利用 — full-text(title + body)+ `tag:` / `color:`
+  // query token + archetype / tag / color filter set。これで filer が
+  // tree sidebar 同等の検索オプションを獲得する(user 指摘「ツリー表示の
+  // 検索オプションが無くなっている」への対応)。どの filter 軸も立って
+  // いなければ従来どおり現スコープの folder navigation を表示。
+  // pgc-237:userEntries は filter-cache で memoize 済 ── inline filter walk
+  // を skip。applyFilters が mutable Entry[] を要求するため shallow spread copy。
+  const userEntries: Entry[] = state.container
+    ? [...getFilterIndexes(state.container).userEntries]
+    : [];
+  const rawQuery = state.sidebarFilerQuery ?? '';
+  // searchAxisActive:`applyFilters` が駆動する軸(query / archetype / tag /
+  // color)。`filtering` はそれに加え unreferenced lens も含む ─ pgc-49 で
+  // unreferenced lens を ON にすると現フォルダでなく container 全体から未参照
+  // 添付を拾う必要があるため、flat global list へ切り替える(添付は ASSETS
+  // bucket に auto-route されるので現スコープ局所では空になる)。
+  const searchAxisActive =
+    rawQuery.trim().length > 0 ||
+    state.archetypeFilter.size > 0 ||
+    (state.tagFilter?.size ?? 0) > 0 ||
+    (state.colorTagFilter?.size ?? 0) > 0;
+  const filtering = searchAxisActive || (state.unreferencedAttachmentsOnly ?? false);
+  let matched = filtering
+    ? applyFilters(
+        userEntries,
+        rawQuery,
+        state.archetypeFilter,
+        state.tagFilter,
+        state.colorTagFilter,
+      )
+    : visibleChildren;
+
+  // pgc-49:tree sidebar(renderSidebarImpl)の post-applyFilters chain を
+  // matched に適用する。showArchived / searchHideBuckets / treeHideBuckets /
+  // unreferencedAttachmentsOnly の 4 toggle を tree と同一 semantics で再現
+  // (toggle UI は後段の ⚙ Filters disclosure)。
+  // ① showArchived:OFF なら archived todo を全 mode で除外。
+  if (!state.showArchived) {
+    matched = matched.filter((e) => {
+      if (e.archetype !== 'todo') return true;
+      return !parseTodoBody(e.body, e).archived;
+    });
+  }
+  // ② searchHideBuckets:検索軸が立っているときのみ ASSETS / TODOS bucket
+  // 直下 entry を検索結果から除外。unreferenced lens 単独では bypass する
+  // ─ 未参照添付は ASSETS bucket 内に住むため、ここで hide すると lens が
+  // 常に空になってしまう(tree の filterIsActive と同じ gate)。
+  if (searchAxisActive && (state.searchHideBuckets ?? true) && state.container) {
+    const { bucketChildLids } = getFilterIndexes(state.container);
+    if (bucketChildLids.size > 0) {
+      matched = matched.filter((e) => !bucketChildLids.has(e.lid));
+    }
+  }
+  // ③ treeHideBuckets:bucket folder + 子孫を hide。unreferenced lens 中は
+  // bypass(tree と同一)。現スコープ自体が bucket 配下なら hide を skip ─
+  // filer は folder navigation を持つので、bucket folder へ navigate-in した
+  // 状態で全件 hide されると view が空になり戻れなくなる。
+  if (
+    (state.treeHideBuckets ?? true) &&
+    !(state.unreferencedAttachmentsOnly ?? false) &&
+    state.container
+  ) {
+    const { hiddenBucketLids } = getFilterIndexes(state.container);
+    const scopeInBucket = !!scope && hiddenBucketLids.has(scope.lid);
+    if (hiddenBucketLids.size > 0 && !scopeInBucket) {
+      matched = matched.filter((e) => !hiddenBucketLids.has(e.lid));
+    }
+  }
+  // ④ unreferencedAttachmentsOnly:何からも参照されない attachment のみに
+  // 絞る cleanup lens(destructive workflow 用、明示 ON 時のみ作動)。
+  if ((state.unreferencedAttachmentsOnly ?? false) && state.container) {
+    const { unreferencedAttachmentLids } = getFilterIndexes(state.container);
+    matched = matched.filter((e) => unreferencedAttachmentLids.has(e.lid));
+  }
+
+  const header = createElement('div', 'pkc-sidebar-filer-header');
+  const label = createElement('span', 'pkc-sidebar-filer-label');
+  // pgc-46:検索中は scope 名でなく「検索結果」であることを示す。
+  label.textContent = filtering
+    ? '🔍 検索結果'
+    : scope ? (scope.title || scope.lid) : 'Root';
+  header.appendChild(label);
+  // Phase γ-A1:現スコープの(絞り込み後の)item 数を表示。
+  const count = createElement('span', 'pkc-sidebar-filer-count');
+  count.setAttribute('data-pkc-region', 'filer-sidebar-count');
+  count.textContent = String(matched.length);
+  header.appendChild(count);
+  sidebar.appendChild(header);
+
+  // Phase γ-A1(pgc-36):multi-select 中は一括操作バーを出す。multi-select
+  // の state(Ctrl/Shift+click)は select-entry handler が汎用処理済。
+  // bar は center filer / graph と同じ buildFilerMultiActionBar を再利用。
+  if (state.multiSelectedLids.length > 0) {
+    sidebar.appendChild(buildFilerMultiActionBar(state, 'sidebar'));
+  }
+
+  // pgc-46:global search 窓。container に entry があれば常時表示する
+  // (空 folder からでも全体検索できるよう、pgc-35 の「現 folder に item が
+  // あるときだけ」gate を撤廃)。data-pkc-field は render-continuity helper
+  // が focus + caret を full re-render 跨ぎで復元するキー(IME が壊れない)。
+  const hasAnyEntry = userEntries.length > 0;
+  if (hasAnyEntry) {
+    // pgc-51:検索窓 + ★ quick-save を 1 行に並べる(tree sidebar と同じ
+    // `.pkc-search-row` を再利用)。★ は現在の検索条件を saved search と
+    // して保存する(`quick-save-search` → SAVE_SEARCH、自動命名)。
+    const searchRow = createElement('div', 'pkc-search-row');
+    const searchInput = document.createElement('input');
+    searchInput.type = 'search';
+    searchInput.className = 'pkc-sidebar-filer-search';
+    searchInput.setAttribute('data-pkc-action', 'set-sidebar-filer-query');
+    searchInput.setAttribute('data-pkc-field', 'sidebar-filer-search');
+    searchInput.setAttribute('placeholder', '🔍 全エントリを検索');
+    searchInput.value = state.sidebarFilerQuery ?? '';
+    searchRow.appendChild(searchInput);
+    if (!state.readonly && !state.importPreview) {
+      const saveBtn = createElement('button', 'pkc-btn-small pkc-btn-quick-save');
+      saveBtn.setAttribute('data-pkc-action', 'quick-save-search');
+      saveBtn.setAttribute('title', '現在の検索条件を保存（自動命名）');
+      saveBtn.textContent = '★';
+      searchRow.appendChild(saveBtn);
+    }
+    sidebar.appendChild(searchRow);
+    // pgc-47:archetype filter rail。tree sidebar と同じ `renderArchetypeFilter`
+    // を再利用し、検索結果を type で絞れるようにする。button は
+    // `set-archetype-filter` を dispatch、`applyFilters` 経由で matched に反映。
+    sidebar.appendChild(renderArchetypeFilter(state.archetypeFilter));
+    // pgc-51:Saved Searches Pane。tree sidebar と同一の
+    // `renderSavedSearchesPane` を再利用。APPLY_SAVED_SEARCH は pgc-51 で
+    // `sidebarFilerQuery` も復元するため、filer から saved search を apply
+    // すれば query + archetype / tag / color filter が連動する。
+    {
+      const savedPane = renderSavedSearchesPane(state);
+      if (savedPane) sidebar.appendChild(savedPane);
+    }
+    // pgc-50:Recent Entries Pane。tree sidebar と同一の
+    // `renderRecentEntriesPane` を再利用 — `updated_at` desc の派生ビューを
+    // default 折りたたみ `<details>` で出す。query coupling なし(derived-
+    // only、`select-recent-entry` で選択するだけ)なので filer でもそのまま
+    // 機能する。tree と同じく archetype filter 直下に配置。
+    {
+      const recentPane = renderRecentEntriesPane(
+        userEntries,
+        state.selectedLid,
+        state.recentPaneCollapsed ?? true,
+      );
+      if (recentPane) sidebar.appendChild(recentPane);
+    }
+    // pgc-48/49:⚙ Filters disclosure。tree sidebar(renderSidebarImpl)と
+    // 共有する `renderAdvancedFiltersPanel` で color strip + showArchived /
+    // treeHideBuckets / searchHideBuckets / unreferenced の 4 toggle を
+    // 折りたたみ収納する。helper 共有で tree と検索オプションが構造的に
+    // 乖離しないことを保証(user 指摘「ツリー表示の検索オプションが
+    // 無くなっている / 機能ダウンしすぎ」への対応)。
+    const advanced = renderAdvancedFiltersPanel(state, userEntries, searchAxisActive);
+    if (advanced) sidebar.appendChild(advanced);
+  }
+
   const nav = resolveFilerNavigation(state);
   const list = createElement('ul', 'pkc-sidebar-filer-list');
-  if (nav.parent) {
+  // pgc-46:検索中は folder navigation でなく flat な検索結果なので nav-up
+  // を出さない(filter を解除すると folder view へ戻る)。
+  if (nav.parent && !filtering) {
     const li = createElement('li', 'pkc-sidebar-filer-item pkc-sidebar-filer-nav-up');
     li.setAttribute('data-pkc-action', 'select-entry');
     li.setAttribute('data-pkc-lid', nav.parent.lid);
     li.setAttribute('data-pkc-archetype', 'folder');
+    // Phase γ-A1:nav-up を drop target に。entry を drop すると上階層へ
+    // 移動する。root sentinel への drop は root level 直下へ(structural
+    // relation 削除)、実 folder への drop はその folder へ移動。
+    li.setAttribute(
+      'data-pkc-drop-target',
+      nav.parentIsRootSentinel ? 'root' : 'true',
+    );
     li.textContent = `📁 ..  (${nav.parent.title || nav.parent.lid})`;
     list.appendChild(li);
   }
-  for (const child of visibleChildren) {
+  for (const child of matched) {
     const li = createElement('li', 'pkc-sidebar-filer-item');
     li.setAttribute('data-pkc-action', 'select-entry');
     li.setAttribute('data-pkc-lid', child.lid);
     li.setAttribute('data-pkc-archetype', child.archetype);
+    // Phase γ-A1:filer item を draggable に(entry の folder 間移動)。
+    // DnD 機構は action-binder の handleDragStart / handleDrop が
+    // `data-pkc-draggable` / `data-pkc-drop-target` で汎用処理する。
+    li.setAttribute('draggable', 'true');
+    li.setAttribute('data-pkc-draggable', 'true');
+    // folder は drop target を兼ねる(entry を中へ移動)。
+    if (child.archetype === 'folder') {
+      li.setAttribute('data-pkc-drop-target', 'true');
+    }
     if (child.lid === state.selectedLid) li.setAttribute('data-pkc-active', 'true');
+    // Phase γ-A1(pgc-36):multi-select 中の item を視覚マーク。
+    // `[data-pkc-multi-selected]` は global CSS rule が自動適用。
+    if (state.multiSelectedLids.includes(child.lid)) {
+      li.setAttribute('data-pkc-multi-selected', 'true');
+    }
     li.textContent = `${archetypeIcon(child.archetype)} ${child.title || child.lid}`;
     list.appendChild(li);
   }
-  if (visibleChildren.length === 0 && !nav.parent) {
+  sidebar.appendChild(list);
+
+  if (filtering && matched.length === 0) {
+    // pgc-46/47:検索 / filter 条件に一致なし。
+    const noMatch = createElement('div', 'pkc-sidebar-filer-empty');
+    noMatch.setAttribute('data-pkc-region', 'filer-sidebar-no-match');
+    noMatch.textContent = rawQuery.trim().length > 0
+      ? `「${rawQuery}」に一致なし`
+      : '絞り込み条件に一致なし';
+    sidebar.appendChild(noMatch);
+  } else if (!filtering && visibleChildren.length === 0) {
+    // Phase γ-A1:空スコープの案内。scoped 時は nav-up が戻る導線。
     const empty = createElement('div', 'pkc-sidebar-filer-empty');
-    empty.textContent = '(empty)';
+    empty.textContent = scope ? 'このフォルダは空です' : '項目がありません';
     sidebar.appendChild(empty);
-  } else {
-    sidebar.appendChild(list);
+  } else if (!filtering) {
+    // Phase γ-A1:操作ヒント(pgc-33 の DnD 着地で「ドラッグで移動」が有効)。
+    const hint = createElement('div', 'pkc-sidebar-filer-hint');
+    hint.setAttribute('data-pkc-region', 'filer-sidebar-hint');
+    hint.textContent = 'ドラッグで移動 · ダブルクリックで別窓';
+    sidebar.appendChild(hint);
   }
 
   return sidebar;
@@ -3049,7 +4147,13 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
 
-  const allEntries = getUserEntries(state.container?.entries ?? []);
+  // pgc-237:userEntries は filter-cache で memoize 済 ── container ref で
+  // re-render 跨ぎ cache hit、O(N) walk を skip。downstream の `applyFilters`
+  // が mutable Entry[] を要求するため spread copy(memoize cache 自体は
+  // readonly preserve、shallow copy のみ ── 中の Entry object refs は共有)。
+  const allEntries: Entry[] = state.container
+    ? [...getFilterIndexes(state.container).userEntries]
+    : [];
 
   // Search input (always shown when entries exist)
   if (allEntries.length > 0) {
@@ -3120,122 +4224,18 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   // so the typical browse view stays clean. The section persists
   // its open/closed state via `state.advancedFiltersOpen` so it
   // survives the next dispatch's full-shell rebuild.
-  const hasArchivedTodo = allEntries.some(
-    (e) => e.archetype === 'todo' && parseTodoBody(e.body).archived,
-  );
-  const hasAttachment = allEntries.some((e) => e.archetype === 'attachment');
-  const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
-  const hasBucketFolder = !!state.container
-    && state.container.entries.some(
-      (e) => e.archetype === 'folder' && bucketTitles.has(e.title),
-    );
-  const filterIsActiveForToggle =
-    state.searchQuery !== '' ||
-    state.archetypeFilter.size > 0 ||
-    (state.tagFilter?.size ?? 0) > 0 ||
-    (state.colorTagFilter?.size ?? 0) > 0 ||
-    state.categoricalPeerFilter !== null;
-  const hasBucketedEntryInResults =
-    filterIsActiveForToggle
-    && !!state.container
-    && (() => {
-      const containerRef = state.container!;
-      return allEntries.some((e) => {
-        const parent = getStructuralParent(containerRef.relations, containerRef.entries, e.lid);
-        return !!parent && parent.archetype === 'folder' && bucketTitles.has(parent.title);
-      });
-    })();
-  const colorStrip = renderColorFilterStrip(allEntries, state.colorTagFilter ?? new Set());
-  const hasColorsInUse = colorStrip !== null;
-  const hasAnyToggle =
-    hasArchivedTodo || hasAttachment || hasBucketFolder || hasBucketedEntryInResults || hasColorsInUse;
-  if (hasAnyToggle) {
-    const details = document.createElement('details');
-    details.className = 'pkc-advanced-filters';
-    details.setAttribute('data-pkc-region', 'advanced-filters');
-    if (state.advancedFiltersOpen ?? false) {
-      details.setAttribute('open', '');
-    }
-    const summary = document.createElement('summary');
-    summary.className = 'pkc-advanced-filters-summary';
-    summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
-    summary.textContent = '⚙ Filters';
-    details.appendChild(summary);
-
-    if (colorStrip) {
-      // Color tag chip strip — first child so the visual filter axis
-      // is at the top of the disclosure, ahead of the toggle list.
-      details.appendChild(colorStrip);
-    }
-
-    if (hasArchivedTodo) {
-      const toggle = createElement('label', 'pkc-show-archived-toggle');
-      toggle.setAttribute('data-pkc-region', 'show-archived-toggle');
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = state.showArchived;
-      check.setAttribute('data-pkc-action', 'toggle-show-archived');
-      toggle.appendChild(check);
-      const labelText = createElement('span', '');
-      labelText.textContent = 'Show archived';
-      toggle.appendChild(labelText);
-      details.appendChild(toggle);
-    }
-
-    if (hasBucketFolder) {
-      // Inverted UX: checked = "show ASSETS / TODOS folders in tree".
-      const toggle = createElement('label', 'pkc-show-archived-toggle');
-      toggle.setAttribute('data-pkc-region', 'tree-hide-buckets-toggle');
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = !(state.treeHideBuckets ?? true);
-      check.setAttribute('data-pkc-action', 'toggle-tree-hide-buckets');
-      toggle.appendChild(check);
-      const labelText = createElement('span', '');
-      labelText.textContent = 'Show ASSETS / TODOS folders';
-      toggle.appendChild(labelText);
-      details.appendChild(toggle);
-    }
-
-    if (hasBucketedEntryInResults) {
-      // Inverted UX: checked = "show ASSETS / TODOS contents in
-      // search results". Distinct from the tree-folder toggle —
-      // user may want folder visibility OFF but search-result
-      // visibility ON, or vice versa.
-      const toggle = createElement('label', 'pkc-show-archived-toggle');
-      toggle.setAttribute('data-pkc-region', 'search-hide-buckets-toggle');
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = !(state.searchHideBuckets ?? true);
-      check.setAttribute('data-pkc-action', 'toggle-search-hide-buckets');
-      toggle.appendChild(check);
-      const labelText = createElement('span', '');
-      labelText.textContent = 'Show ASSETS / TODOS in search results';
-      toggle.appendChild(labelText);
-      details.appendChild(toggle);
-    }
-
-    if (hasAttachment) {
-      const unrefToggle = createElement('label', 'pkc-show-archived-toggle');
-      unrefToggle.setAttribute('data-pkc-region', 'unreferenced-attachments-toggle');
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.checked = state.unreferencedAttachmentsOnly ?? false;
-      check.setAttribute('data-pkc-action', 'toggle-unreferenced-attachments');
-      unrefToggle.appendChild(check);
-      const labelText = createElement('span', '');
-      labelText.textContent = 'Show only unused attachments';
-      unrefToggle.appendChild(labelText);
-      if (state.container && (state.unreferencedAttachmentsOnly ?? false)) {
-        const count = collectUnreferencedAttachmentLids(state.container).size;
-        const badge = createElement('span', 'pkc-unref-count');
-        badge.textContent = ` (${count})`;
-        unrefToggle.appendChild(badge);
-      }
-      details.appendChild(unrefToggle);
-    }
-
-    sidebar.appendChild(details);
+  // pgc-49:disclosure 構築は `renderAdvancedFiltersPanel` に集約し、filer
+  // sidebar(renderSidebarAsFiler)と共有する。tree と filer で検索オプション
+  // が構造的に乖離しないことを helper 共有で保証。
+  {
+    const filterIsActiveForToggle =
+      state.searchQuery !== '' ||
+      state.archetypeFilter.size > 0 ||
+      (state.tagFilter?.size ?? 0) > 0 ||
+      (state.colorTagFilter?.size ?? 0) > 0 ||
+      state.categoricalPeerFilter !== null;
+    const advanced = renderAdvancedFiltersPanel(state, allEntries, filterIsActiveForToggle);
+    if (advanced) sidebar.appendChild(advanced);
   }
 
   // Active tag filter indicator (categorical relation peer).
@@ -3384,7 +4384,7 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   if (!state.showArchived) {
     filtered = filtered.filter((e) => {
       if (e.archetype !== 'todo') return true;
-      return !parseTodoBody(e.body).archived;
+      return !parseTodoBody(e.body, e).archived;
     });
   }
   // Hide entries inside auto-bucket folders (ASSETS / TODOS) from
@@ -4164,7 +5164,7 @@ function renderEntryItem(
 
   // Todo status indicator
   if (entry.archetype === 'todo') {
-    const todo = parseTodoBody(entry.body);
+    const todo = parseTodoBody(entry.body, entry);
     const statusBadge = createElement('span', 'pkc-todo-status-badge');
     statusBadge.setAttribute('data-pkc-todo-status', todo.status);
     statusBadge.textContent = todo.status === 'done' ? '[x]' : '[ ]';
@@ -4174,6 +5174,17 @@ function renderEntryItem(
       const archivedBadge = createElement('span', 'pkc-todo-archived-sidebar');
       archivedBadge.textContent = 'Archived';
       li.appendChild(archivedBadge);
+    }
+    // pgc-134 wave-δ #9(MASTER.md §7 todo):flag ON 時に overdue 視覚
+    // indicator を sidebar 行に追加。kanban / calendar と同じ
+    // `data-pkc-todo-overdue="true"` attr で CSS 統一、加えて `⚠` badge
+    // を行末に append(色覚弱者対応)。
+    if (shellTodoOverdueIndicatorEnabled() && isTodoPastDue(todo)) {
+      li.setAttribute('data-pkc-todo-overdue', 'true');
+      const overdueBadge = createElement('span', 'pkc-todo-overdue-badge');
+      overdueBadge.setAttribute('title', 'Overdue');
+      overdueBadge.textContent = '⚠';
+      li.appendChild(overdueBadge);
     }
   }
 
@@ -4348,7 +5359,15 @@ function renderSubLocationItem(hit: SubLocationHit): HTMLElement {
 function renderCenter(state: AppState): HTMLElement {
   const endProfile = profileStart('render:center');
   try {
-    return renderCenterImpl(state);
+    const center = renderCenterImpl(state);
+    // pgc-89:Split View — renderCenterImpl が view mode 別の早期 return を
+    // 多数持つので、全 return path に対して append する wrapper layer。
+    if (shellSplitViewEnabled() && isSplitViewOpen()) {
+      const splitPane = buildSplitViewElement(state);
+      center.appendChild(splitPane);
+      center.classList.add('pkc-center-split');
+    }
+    return center;
   } finally {
     endProfile();
   }
@@ -4358,11 +5377,24 @@ function renderCenterImpl(state: AppState): HTMLElement {
   const center = createElement('section', 'pkc-center');
   center.setAttribute('data-pkc-region', 'center');
 
-  const userEntries = getUserEntries(state.container?.entries ?? []);
+  // pgc-237:userEntries は filter-cache で memoize 済 ── container ref で
+  // re-render 跨ぎ cache hit、O(N) walk を skip。fallback として state.container
+  // が undefined の場合は empty array。
+  const userEntries = state.container
+    ? getFilterIndexes(state.container).userEntries
+    : [];
+
+  // pgc-85 / pgc-87(MASTER.md §4.3):Tab strip(複数 entry 同時 open +
+  // workspace-level view tab)。flag ON で常時描画(open tabs が無くても
+  // placeholder を出す)── view tab だけ open のケース(entry 無し)を
+  // 拾うため、`userEntries.length > 0` の condition を撤廃。
+  if (shellTabsEnabled()) {
+    center.appendChild(buildTabStripElement(state));
+  }
 
   // View mode toggle (always visible when container has user entries)
   if (userEntries.length > 0) {
-    center.appendChild(renderViewModeToggle(state.viewMode));
+    center.appendChild(renderViewModeToggle(state.viewMode, state.selectedLid != null));
   }
 
   // Calendar view
@@ -4420,7 +5452,10 @@ function renderCenterImpl(state: AppState): HTMLElement {
   const canEdit = state.phase === 'ready' && !state.readonly;
 
   // Show About when: explicitly selected OR no user entries exist
-  const aboutEntry = state.container?.entries.find((e) => e.lid === ABOUT_LID);
+  // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
+  const aboutEntry = state.container
+    ? getFilterIndexes(state.container).entryByLid.get(ABOUT_LID)
+    : undefined;
   const showAbout = selected?.archetype === 'system-about'
     || (userEntries.length === 0 && !selected && aboutEntry);
   if (showAbout) {
@@ -4476,7 +5511,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
     }
     content.appendChild(renderEditor(selected, state.container));
   } else {
-    content.appendChild(renderView(selected, canEdit, state.container, state.searchQuery));
+    content.appendChild(renderView(selected, canEdit, state.container, state.searchQuery, state.childWindowLids ?? []));
   }
 
   // Compact drop zone strip when viewing an entry (not editing)
@@ -4487,29 +5522,61 @@ function renderCenterImpl(state: AppState): HTMLElement {
   center.appendChild(content);
 
   // Fixed action bar at bottom
-  center.appendChild(renderActionBar(selected, state.phase, canEdit, state.container));
+  center.appendChild(
+    renderActionBar(selected, state.phase, canEdit, state.container, state.editMode ?? 'inline'),
+  );
 
   return center;
 }
 
-function renderViewModeToggle(viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher'): HTMLElement {
+function renderViewModeToggle(
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher',
+  hasSelection: boolean,
+): HTMLElement {
   const bar = createElement('div', 'pkc-view-mode-bar');
   bar.setAttribute('data-pkc-region', 'view-mode-bar');
 
-  const modes: { key: typeof viewMode; label: string }[] = [
-    { key: 'detail', label: 'Detail' },
-    { key: 'calendar', label: 'Calendar' },
-    { key: 'kanban', label: 'Kanban' },
-    { key: 'filer', label: 'Filer' },
-    { key: 'graph', label: 'Graph' },
-    { key: 'launcher', label: 'Launcher' },
+  // pgc-111 wave-γ #12(MASTER.md §6.5):flag ON 時に scope mark + 視覚
+  // separator + 選択無時の Detail tab disabled 化を追加。OFF で従来挙動。
+  const scoped = shellViewModeTabsScopedEnabled();
+  if (scoped) {
+    bar.setAttribute('data-pkc-scoped', 'true');
+  }
+
+  const modes: { key: typeof viewMode; label: string; scope: 'entry' | 'workspace' }[] = [
+    { key: 'detail',   label: 'Detail',   scope: 'entry' },
+    { key: 'calendar', label: 'Calendar', scope: 'workspace' },
+    { key: 'kanban',   label: 'Kanban',   scope: 'workspace' },
+    { key: 'filer',    label: 'Filer',    scope: 'workspace' },
+    { key: 'graph',    label: 'Graph',    scope: 'workspace' },
+    { key: 'launcher', label: 'Launcher', scope: 'workspace' },
   ];
 
-  for (const { key, label } of modes) {
-    const btn = createElement('button', 'pkc-view-mode-btn');
+  let prevScope: 'entry' | 'workspace' | null = null;
+  for (const { key, label, scope } of modes) {
+    // 視覚 separator:entry → workspace の遷移点で `|` を挿入(scoped flag ON 時のみ)。
+    if (scoped && prevScope === 'entry' && scope === 'workspace') {
+      const sep = createElement('span', 'pkc-view-mode-sep');
+      sep.setAttribute('aria-hidden', 'true');
+      sep.textContent = '|';
+      bar.appendChild(sep);
+    }
+    prevScope = scope;
+
+    const btn = createElement('button', 'pkc-button-base pkc-button-size-tab pkc-view-mode-btn');
     btn.setAttribute('data-pkc-action', 'set-view-mode');
     btn.setAttribute('data-pkc-view-mode', key);
     btn.textContent = label;
+    if (scoped) {
+      btn.setAttribute('data-pkc-tab-scope', scope);
+    }
+    // pgc-111:scoped + entry-level tab + 選択無し → disabled。
+    // entry を選ばないと Detail view は意味ないため、視覚 + 機能で抑制。
+    if (scoped && scope === 'entry' && !hasSelection) {
+      (btn as HTMLButtonElement).disabled = true;
+      btn.setAttribute('data-pkc-disabled-reason', 'no-selection');
+      btn.setAttribute('title', 'Select an entry to view its detail');
+    }
     if (key === viewMode) {
       btn.setAttribute('data-pkc-active', 'true');
     } else {
@@ -4691,7 +5758,10 @@ function renderCalendarView(state: AppState): HTMLElement {
  * 描画。コードは sidebar 版をミラー(reducer は同一 dispatch を受ける)、
  * 重複は意図的(sidebar/filer の独立性確保)。
  */
-function buildFilerMultiActionBar(state: AppState, viewCtx: 'filer' | 'graph' = 'filer'): HTMLElement {
+function buildFilerMultiActionBar(
+  state: AppState,
+  viewCtx: 'filer' | 'graph' | 'sidebar' = 'filer',
+): HTMLElement {
   const bar = createElement('div', `pkc-multi-action-bar pkc-${viewCtx}-multi-action-bar`);
   bar.setAttribute('data-pkc-region', 'multi-action-bar');
   bar.setAttribute('data-pkc-view-ctx', viewCtx);
@@ -5009,12 +6079,14 @@ function renderFilerTrashTable(state: AppState): HTMLElement {
 function resolveFilerScope(state: AppState): Entry | null {
   const lid = state.selectedLid;
   if (!lid || !state.container) return null;
-  const entry = state.container.entries.find((e) => e.lid === lid);
+  // pgc-239:filter-cache の entryByLid Map で 2 つの lookup を O(1) に。
+  const byLid = getFilterIndexes(state.container).entryByLid;
+  const entry = byLid.get(lid);
   if (!entry) return null;
   if (entry.archetype === 'folder') return entry;
   const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, lid);
   if (ancestors.length === 0) return null;
-  return state.container.entries.find((e) => e.lid === ancestors[0]) ?? null;
+  return byLid.get(ancestors[0]!) ?? null;
 }
 
 /**
@@ -5103,9 +6175,11 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
   ];
   if (scope && state.container) {
     const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, scope.lid);
+    // pgc-239:filter-cache の entryByLid Map で loop 内 lookup を O(1) に。
+    const byLid = getFilterIndexes(state.container).entryByLid;
     // ancestors are nearest-first; reverse to get root-to-current order.
     for (const aLid of ancestors.slice().reverse()) {
-      const a = state.container.entries.find((e) => e.lid === aLid);
+      const a = byLid.get(aLid);
       if (a) trail.push({ label: a.title || a.lid, lid: a.lid });
     }
     trail.push({ label: scope.title || scope.lid, lid: scope.lid, isCurrent: true });
@@ -5395,6 +6469,15 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     }
     if (multiSet.has(child.lid)) {
       tr.setAttribute('data-pkc-multi-selected', 'true');
+    }
+    // pgc-134 wave-δ #9(MASTER.md §7 todo):flag ON 時に filer row でも
+    // overdue indicator。sidebar と同 attr / CSS で統一。
+    if (
+      shellTodoOverdueIndicatorEnabled() &&
+      child.archetype === 'todo' &&
+      isTodoPastDue(parseTodoBody(child.body, child))
+    ) {
+      tr.setAttribute('data-pkc-todo-overdue', 'true');
     }
 
     // PR-Δ3 multi-select checkbox cell(先頭に挿入)。
@@ -6097,6 +7180,40 @@ function renderCenterGraphView(state: AppState): HTMLElement {
   select.setAttribute('data-pkc-graph-mode', mode);
   toolbar.appendChild(select);
 
+  // Phase γ-B2:relation wire editor の View / Edit toggle(flag gate)。
+  if (graphEditModeEnabled()) {
+    const editToggle = createElement('div', 'pkc-graph-edit-toggle');
+    editToggle.setAttribute('data-pkc-region', 'graph-edit-toggle');
+    const current = getGraphEditMode();
+    for (const m of [
+      { v: 'view', label: '👁 View' },
+      { v: 'edit', label: '✎ Edit' },
+    ]) {
+      const btn = createElement('button', 'pkc-graph-edit-toggle-btn');
+      btn.setAttribute('data-pkc-action', 'set-graph-edit-mode');
+      btn.setAttribute('data-pkc-graph-edit-mode', m.v);
+      if (m.v === current) btn.classList.add('pkc-graph-edit-toggle-active');
+      btn.textContent = m.label;
+      editToggle.appendChild(btn);
+    }
+    toolbar.appendChild(editToggle);
+  }
+
+  // Phase γ-B2-6:edit mode で 2+ node を multi-select 中なら一括 relate
+  // button。先頭 node を hub に放射状(hub → 各 node)で relate する。
+  if (
+    graphEditModeEnabled() &&
+    getGraphEditMode() === 'edit' &&
+    state.multiSelectedLids.length >= 2
+  ) {
+    const bulkBtn = createElement('button', 'pkc-btn-small');
+    bulkBtn.setAttribute('data-pkc-action', 'bulk-relate-selected');
+    bulkBtn.setAttribute('data-pkc-region', 'graph-bulk-relate');
+    bulkBtn.textContent = `🔗 ${state.multiSelectedLids.length} 件を一括 relate`;
+    bulkBtn.title = '選択した node を先頭 node を hub に放射状で一括 relate';
+    toolbar.appendChild(bulkBtn);
+  }
+
   if (state.graphFocusLid && state.container) {
     const focus = state.container.entries.find((e) => e.lid === state.graphFocusLid);
     const label = createElement('span', 'pkc-graph-focus-label');
@@ -6433,7 +7550,7 @@ function hydrateAppIconAssetOptions(view: HTMLElement, container: Container): vo
   const imageAttachments: { assetKey: string; label: string }[] = [];
   for (const e of container.entries) {
     if (e.archetype !== 'attachment') continue;
-    const ea = parseAttachmentBody(e.body);
+    const ea = parseAttachmentBody(e.body, e);
     if (!ea.asset_key) continue;
     if (!ea.mime?.startsWith('image/')) continue;
     if (container.assets[ea.asset_key] == null) continue;
@@ -6495,7 +7612,7 @@ function renderLauncherView(state: AppState): HTMLElement {
     // asset_key を持つ image attachment の MIME を逆引き
     for (const e of state.container?.entries ?? []) {
       if (e.archetype !== 'attachment') continue;
-      const ea = parseAttachmentBody(e.body);
+      const ea = parseAttachmentBody(e.body, e);
       if (ea.asset_key === assetKey && ea.mime?.startsWith('image/')) {
         return `data:${ea.mime};base64,${base64}`;
       }
@@ -6505,7 +7622,7 @@ function renderLauncherView(state: AppState): HTMLElement {
   const registered: { lid: string; name: string; iconText: string; iconImageUrl: string | null }[] = [];
   for (const entry of state.container?.entries ?? []) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.registered_as_app !== true) continue;
     if (classifyPreviewType(att.mime) !== 'html') continue;
     const iconImageUrl = att.app_icon_asset_key
@@ -7040,8 +8157,36 @@ function renderKanbanView(state: AppState): HTMLElement {
   return kanban;
 }
 
+// Phase γ-A2:編集モード picker(spec §2.5)。flag `shell.edit_mode_enabled`
+// が ON のとき action bar に表示。inline / window を選ぶと SET_EDIT_MODE が
+// dispatch され、以後あらゆる編集トリガ(✏️ Edit / Ctrl+E / Enter)がその
+// surface に分岐する。
+function renderEditModePicker(editMode: 'inline' | 'window'): HTMLElement {
+  const picker = createElement('div', 'pkc-edit-mode-picker');
+  picker.setAttribute('data-pkc-region', 'edit-mode-picker');
+  for (const m of [
+    { v: 'inline' as const, label: 'Inline', tip: '中央ペイン内で編集(従来)' },
+    { v: 'window' as const, label: 'Window', tip: '専用ウィンドウで編集' },
+  ]) {
+    const btn = createElement('button', 'pkc-edit-mode-btn');
+    btn.setAttribute('data-pkc-action', 'set-edit-mode');
+    btn.setAttribute('data-pkc-edit-mode', m.v);
+    btn.setAttribute('title', m.tip);
+    if (m.v === editMode) btn.classList.add('pkc-edit-mode-active');
+    btn.textContent = m.label;
+    picker.appendChild(btn);
+  }
+  return picker;
+}
+
 /** Fixed action bar at bottom of center pane. Shows contextual actions. */
-function renderActionBar(entry: Entry, phase: string, canEdit: boolean, container?: Container | null): HTMLElement {
+function renderActionBar(
+  entry: Entry,
+  phase: string,
+  canEdit: boolean,
+  container?: Container | null,
+  editMode: 'inline' | 'window' = 'inline',
+): HTMLElement {
   const bar = createElement('div', 'pkc-action-bar');
   bar.setAttribute('data-pkc-region', 'action-bar');
 
@@ -7085,6 +8230,10 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
       editBtn.setAttribute('title', 'Edit this entry');
       editBtn.textContent = '✏️ Edit';
       bar.appendChild(editBtn);
+
+      if (shellEditModeEnabled()) {
+        bar.appendChild(renderEditModePicker(editMode));
+      }
 
       const deleteBtn = createElement('button', 'pkc-btn pkc-btn-danger');
       deleteBtn.setAttribute('data-pkc-action', 'delete-entry');
@@ -7243,7 +8392,13 @@ function renderActionBar(entry: Entry, phase: string, canEdit: boolean, containe
   return bar;
 }
 
-function renderView(entry: Entry, _canEdit: boolean, container: Container | null, searchQuery: string = ''): HTMLElement {
+function renderView(
+  entry: Entry,
+  _canEdit: boolean,
+  container: Container | null,
+  searchQuery: string = '',
+  childWindowLids: readonly string[] = [],
+): HTMLElement {
   const view = createElement('div', 'pkc-view');
   view.setAttribute('data-pkc-mode', 'view');
   view.setAttribute('data-pkc-archetype', entry.archetype);
@@ -7299,6 +8454,16 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
   }
 
   view.appendChild(titleRow);
+
+  // Phase γ-A3:この entry が child window で編集中なら、その旨を view
+  // 上部に明示する。BEGIN_EDIT は childWindowLids guard で inline 編集を
+  // 弾くため、user に「編集は別ウィンドウ側」という導線を見せる。
+  if (childWindowLids.includes(entry.lid)) {
+    const winHint = createElement('div', 'pkc-view-window-hint');
+    winHint.setAttribute('data-pkc-region', 'entry-in-window-hint');
+    winHint.textContent = '⧉ この entry は別ウィンドウで開いています。編集はそのウィンドウで続けてください。';
+    view.appendChild(winHint);
+  }
 
   // Breadcrumb: always show path trail (root marker, ancestors, current).
   // Spec: docs/development/breadcrumb-path-trail-v1.md
@@ -7387,8 +8552,15 @@ function renderView(entry: Entry, _canEdit: boolean, container: Container | null
     // できないため、ここで補完する。
     hydrateAppIconAssetOptions(view, container);
   } else if (container?.assets) {
-    const mimeByKey = buildAssetMimeMap(container);
-    const nameByKey = buildAssetNameMap(container);
+    // pgc-229:`buildAssetMimeMap` / `buildAssetNameMap` は container.entries
+    // 全件を walk して attachment archetype entry を filter。c-5000 で
+    // 2 walk 合計 ~1-2ms 累積。container.assets が空(asset data 無し)なら
+    // map は必ず空、walk 自体無意味 ── early skip で empty map を pass。
+    // body が asset: ref を持たない場合の cost は presenter 側 `hasAssetReferences`
+    // gate で既に短絡されているが、map build 自体の cost は本 PR で除去。
+    const hasAnyAsset = Object.keys(container.assets).length > 0;
+    const mimeByKey = hasAnyAsset ? buildAssetMimeMap(container) : {};
+    const nameByKey = hasAnyAsset ? buildAssetNameMap(container) : {};
     // `container.entries` is passed so text-like presenters can expand
     // `![](entry:...)` transclusions (P1 Slice 5-B). Non-text presenters
     // (attachment / folder / todo / form) ignore this 5th argument.
@@ -7447,12 +8619,60 @@ function renderMetaPane(
    * every caller that pre-dates the Tag filter axis.
    */
   activeTagFilter: ReadonlySet<string> | undefined = undefined,
+  metaPaneMode: 'all' | 'properties' | 'references' = 'all',
 ): HTMLElement {
   const endProfile = profileStart('render:meta');
   try {
-    return renderMetaPaneImpl(entry, canEdit, container, sharedLinkIndex, activeTagFilter);
+    return renderMetaPaneImpl(
+      entry,
+      canEdit,
+      container,
+      sharedLinkIndex,
+      activeTagFilter,
+      metaPaneMode,
+    );
   } finally {
     endProfile();
+  }
+}
+
+// Phase γ-B3:meta pane mode bar(spec §4)。
+function renderMetaPaneModeBar(mode: string): HTMLElement {
+  const bar = createElement('div', 'pkc-meta-pane-mode-bar');
+  bar.setAttribute('data-pkc-region', 'meta-pane-mode-bar');
+  for (const m of [
+    { v: 'all', label: 'すべて' },
+    { v: 'properties', label: 'Properties' },
+    { v: 'references', label: '関連' },
+  ]) {
+    const btn = createElement('button', 'pkc-meta-pane-mode-btn');
+    btn.setAttribute('data-pkc-action', 'set-meta-pane-mode');
+    btn.setAttribute('data-pkc-meta-pane-mode', m.v);
+    if (m.v === mode) btn.classList.add('pkc-meta-pane-mode-active');
+    btn.textContent = m.label;
+    bar.appendChild(btn);
+  }
+  return bar;
+}
+
+// mode に応じて meta pane の section 表示を絞る。all は全表示。region 無し
+// (header / timestamps)と mode bar は常時表示。
+const META_PANE_MODE_VISIBLE: Readonly<
+  Record<string, readonly string[] | null>
+> = {
+  all: null,
+  properties: ['frontmatter'],
+  references: ['references', 'tags', 'entry-tags', 'relation-create'],
+};
+function applyMetaPaneModeFilter(pane: HTMLElement, mode: string): void {
+  const visible = META_PANE_MODE_VISIBLE[mode];
+  if (!visible) return;
+  for (const child of Array.from(pane.children)) {
+    const region = child.getAttribute('data-pkc-region');
+    if (!region || region === 'meta-pane-mode-bar') continue;
+    if (!visible.includes(region)) {
+      (child as HTMLElement).style.display = 'none';
+    }
   }
 }
 
@@ -7462,7 +8682,13 @@ function renderMetaPaneImpl(
   container: Container | null,
   sharedLinkIndex: LinkIndex | null = null,
   activeTagFilter: ReadonlySet<string> | undefined = undefined,
+  metaPaneMode: 'all' | 'properties' | 'references' = 'all',
 ): HTMLElement {
+  // pgc-219:bench で render:meta 開始から最初の sub-profile (meta:frontmatter)
+  // 開始まで 20ms 程度のギャップが c-1000 で観測された(pgc-216 sub-profile
+  // 群の "unmeasured" 部分の一部)。header / Copy link button / timestamps の
+  // build 区間を `meta:startup` sub-profile で覆い、startup overhead を identify。
+  const endProfStartup = profileStart('meta:startup');
   const meta = createElement('aside', 'pkc-meta-pane');
   meta.setAttribute('data-pkc-region', 'meta');
 
@@ -7486,6 +8712,11 @@ function renderMetaPaneImpl(
 
   meta.appendChild(infoHeader);
 
+  // Phase γ-B3:flag ON で meta pane mode bar(すべて / Properties / 関連)。
+  if (metaPaneModeTabsEnabled()) {
+    meta.appendChild(renderMetaPaneModeBar(metaPaneMode));
+  }
+
   // Created / Updated timestamps
   const timestamps = createElement('div', 'pkc-meta-timestamps');
   const created = createElement('div', 'pkc-meta-ts');
@@ -7495,18 +8726,25 @@ function renderMetaPaneImpl(
   updated.textContent = `Updated: ${formatTimestamp(entry.updated_at)}`;
   timestamps.appendChild(updated);
   meta.appendChild(timestamps);
+  endProfStartup();
 
   // Table of Contents (TEXT / TEXTLOG with h1–h3 headings).
   // 領域 10-6 ζ'' Phase 2a — Frontmatter property table.
   // Body-leading `---\n…\n---\n` YAML produces a small key/value list
   // here so book / youtube / paper / film / album metadata is visible
   // in the meta pane without rendering it inside the markdown.
-  const frontmatterSection = renderFrontmatterSection(entry);
+  // pgc-216:frontmatter parsing(YAML mini parser)+ TOC enumeration
+  // (markdown body から h1-h3 抽出)の cost を sub-profile で識別。
+  const endProfFrontmatter = profileStart('meta:frontmatter');
+  const frontmatterSection = renderFrontmatterSection(entry, canEdit);
   if (frontmatterSection) meta.appendChild(frontmatterSection);
+  endProfFrontmatter();
 
   // Hidden entirely when the body produces zero headings, per spec §4.
+  const endProfToc = profileStart('meta:toc');
   const tocSection = renderTocSection(entry);
   if (tocSection) meta.appendChild(tocSection);
+  endProfToc();
 
   if (!container) return meta;
 
@@ -7515,6 +8753,13 @@ function renderMetaPaneImpl(
   // lightweight per-entry Tag attribute appears first in the meta
   // pane's visual order (W1 Slice A §5.2 visual hierarchy: Tag chip
   // row sits ahead of Relation lists).
+  // pgc-216:entry-tags + categorical + tag section + move + description +
+  // profile を 1 sub-profile で覆う(各 section ~1-2ms で合計 6-10ms 想定)。
+  // pgc-221:meta:middle-sections 9.6ms@1000 を 5 section sub-profile に
+  // split、最重 section を identify。entryTags / categorical+tag /
+  // move-to-folder / description / profile の 5 グループ。
+  const endProfMiddleSections = profileStart('meta:middle-sections');
+  const endProfEntryTags = profileStart('meta:section-entry-tags');
   const entryTagSection = createElement('div', 'pkc-entry-tags');
   entryTagSection.setAttribute('data-pkc-region', 'entry-tags');
   entryTagSection.setAttribute('data-pkc-lid', entry.lid);
@@ -7586,6 +8831,8 @@ function renderMetaPaneImpl(
   }
 
   meta.appendChild(entryTagSection);
+  endProfEntryTags();
+  const endProfCategoricalTag = profileStart('meta:section-categorical-tag');
 
   // Tags section (categorical relation — Slice A §2 "Categorical").
   // The DOM region / class / action names stay stable so existing
@@ -7623,46 +8870,53 @@ function renderMetaPaneImpl(
     tagSection.appendChild(chip);
   }
 
-  if (canEdit) {
-    const available = getAvailableTagTargets(container.relations, getUserEntries(container.entries), entry.lid);
-    if (available.length > 0) {
-      const addForm = createElement('span', 'pkc-tag-add');
-      addForm.setAttribute('data-pkc-region', 'tag-add');
-      addForm.setAttribute('data-pkc-from', entry.lid);
+  // pgc-226(pgc-222 lazy options の deeper attack):pgc-222 で options 構築
+  // は lazy 化したが、visibility 判定の `getAvailableTagTargets(...).length > 0`
+  // 自体が container.relations + entries を walk する N+M cost で
+  // c-5000 で ~5ms 残存。**visibility check も lazy 化**:cheap な
+  // `container.entries.length > 1` で「他に entry がある」 だけ確認、actual
+  // available は user mousedown 時に handler が compute する。`available=0`
+  // のときに select が表示される問題は handler 側で空 options + placeholder
+  // 「(候補無し)」 表示で対処(後方互換維持)。
+  if (canEdit && container.entries.length > 1) {
+    const addForm = createElement('span', 'pkc-tag-add');
+    addForm.setAttribute('data-pkc-region', 'tag-add');
+    addForm.setAttribute('data-pkc-from', entry.lid);
 
-      const select = document.createElement('select');
-      select.setAttribute('data-pkc-field', 'tag-target');
-      select.className = 'pkc-tag-select';
-      const defaultOpt = document.createElement('option');
-      defaultOpt.value = '';
-      defaultOpt.textContent = '+ Tag';
-      select.appendChild(defaultOpt);
-      for (const e of available) {
-        const opt = document.createElement('option');
-        opt.value = e.lid;
-        // Truncate so the dropdown panel stays inside the meta
-        // pane on long titles (see relation-target select).
-        opt.textContent = truncate(e.title || `(${e.lid})`, 32);
-        opt.title = e.title || `(${e.lid})`;
-        select.appendChild(opt);
-      }
-      addForm.appendChild(select);
+    const select = document.createElement('select');
+    select.setAttribute('data-pkc-field', 'tag-target');
+    select.className = 'pkc-tag-select';
+    select.setAttribute('data-pkc-lazy-options', 'tag-target');
+    select.setAttribute('data-pkc-from-lid', entry.lid);
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = '+ Tag (クリックで読込)';
+    select.appendChild(defaultOpt);
+    addForm.appendChild(select);
 
-      const addBtn = createElement('button', 'pkc-btn-small');
-      addBtn.setAttribute('data-pkc-action', 'add-tag');
-      addBtn.setAttribute('title', 'Add a tag to this entry');
-      addBtn.textContent = 'Add';
-      addForm.appendChild(addBtn);
+    const addBtn = createElement('button', 'pkc-btn-small');
+    addBtn.setAttribute('data-pkc-action', 'add-tag');
+    addBtn.setAttribute('title', 'Add a tag to this entry');
+    addBtn.textContent = 'Add';
+    addForm.appendChild(addBtn);
 
-      tagSection.appendChild(addForm);
-    }
+    tagSection.appendChild(addForm);
   }
 
   meta.appendChild(tagSection);
+  endProfCategoricalTag();
+  const endProfMove = profileStart('meta:section-move');
 
   // Move to Folder
+  // pgc-227(pgc-222 lazy options doctrine の move-target 適用):従来は
+  // render-time に `getAvailableFolders` で descendant walk(O(R))+ folder
+  // filter(O(N))していたが、c-5000 で `meta:section-move` 2.5ms 累積。
+  // **options を lazy-build 化** ── render-time は placeholder のみ append、
+  // user の select mousedown 時に handler(`handleLazyTagTargetPopulate`
+  // 拡張)が full folders を populate。`getStructuralParent` は「in: X」
+  // label / placeholder text / selected option mark のため render-time に
+  // 残す(structural relation 1 件目で短絡で安価)。
   if (canEdit) {
-    const folders = getAvailableFolders(container.entries, container.relations, entry.lid);
     const moveSection = createElement('div', 'pkc-move-to-folder');
     moveSection.setAttribute('data-pkc-region', 'move-to-folder');
     moveSection.setAttribute('data-pkc-lid', entry.lid);
@@ -7682,23 +8936,20 @@ function renderMetaPaneImpl(
     const select = document.createElement('select');
     select.setAttribute('data-pkc-field', 'move-target');
     select.className = 'pkc-move-select';
+    select.setAttribute('data-pkc-lazy-options', 'move-target');
+    select.setAttribute('data-pkc-from-lid', entry.lid);
+    if (currentParent) {
+      select.setAttribute('data-pkc-current-parent-lid', currentParent.lid);
+    }
 
+    // Placeholder option:render-time に 1 つだけ append。user mousedown 時に
+    // handler が full folders を populate し、current parent option を select する。
     const noneOpt = document.createElement('option');
     noneOpt.value = '';
     noneOpt.textContent = currentParent ? '↑ Root level' : '(root)';
     if (!currentParent) noneOpt.selected = true;
     select.appendChild(noneOpt);
 
-    for (const f of folders) {
-      const opt = document.createElement('option');
-      opt.value = f.lid;
-      // Truncate to keep the dropdown panel inside the meta pane
-      // (see relation-target select for the same rationale).
-      opt.textContent = truncate(f.title || `(${f.lid})`, 32);
-      opt.title = f.title || `(${f.lid})`;
-      if (currentParent && currentParent.lid === f.lid) opt.selected = true;
-      select.appendChild(opt);
-    }
     moveSection.appendChild(select);
 
     const moveBtn = createElement('button', 'pkc-btn-small');
@@ -7709,6 +8960,8 @@ function renderMetaPaneImpl(
 
     meta.appendChild(moveSection);
   }
+  endProfMove();
+  const endProfDescProfile = profileStart('meta:section-desc-profile');
 
   // Filer display profile (folder archetype only) —領域 10-6 ζ'' Phase 1.
   // Phase 1 only ships `'explorer'`; Phase 2b/3a will add `'graph'` /
@@ -7815,8 +9068,14 @@ function renderMetaPaneImpl(
 
     meta.appendChild(profileSection);
   }
+  endProfDescProfile();
+  endProfMiddleSections();
 
   // History section
+  // pgc-215:revisions / history / branches を 1 sub-profile で括る
+  // (pgc-181 revision diff viewer flag が ON だと per-revision diff
+  // compute が重くなる)。
+  const endProfHistory = profileStart('meta:history');
   const revCount = getRevisionCount(container, entry.lid);
   if (revCount > 0) {
     const latest = getLatestRevision(container, entry.lid);
@@ -7937,6 +9196,18 @@ function renderMetaPaneImpl(
         row.appendChild(actions);
       }
 
+      // pgc-181 wave-α' #4(v3 統合 master G6、handoff §3.5):「Show diff
+      // vs current」 inline diff viewer。`shell.revision_diff_viewer_enabled`
+      // ON + parseRevisionSnapshot success + 現 entry.body との差分計算
+      // (features/diff/line-diff の pure function を再利用)。
+      // `<details>` で lazy には開かない構造(初回 render 時に diff も作る)
+      // が、`diffRows` の LCS_LINE_BUDGET safety net(6000 行超で degraded)
+      // で大規模 entry にも対応。
+      if (parsed && shellRevisionDiffViewerEnabled()) {
+        const diff = renderRevisionDiff(parsed.body ?? '', entry.body ?? '');
+        if (diff) row.appendChild(diff);
+      }
+
       picker.appendChild(row);
     });
 
@@ -8054,6 +9325,7 @@ function renderMetaPaneImpl(
     renderBranchSubtree(tree, branches, 0);
     meta.appendChild(branches);
   }
+  endProfHistory();
 
   // Unified References umbrella (v1, Option E) — groups the two distinct
   // reference systems under one heading so the meta pane stops having
@@ -8063,6 +9335,10 @@ function renderMetaPaneImpl(
   // Existing data-pkc-region ids of each sub-panel are preserved so per-
   // panel tests, the sidebar badge scroll target, and the delete flow
   // continue to work. See docs/development/unified-backlinks-v1.md.
+  // pgc-216:relations resolution + Outgoing / Backlinks group build を
+  // 1 sub-profile で計測(container.relations 全 walk + lid 解決 + 2 group
+  // 描画、container 内 relation 数に比例)。
+  const endProfRelations = profileStart('meta:relations');
   const directed = getRelationsForEntry(container.relations, entry.lid);
   const resolved = resolveRelations(directed, container.entries);
   const outbound = resolved.filter((r) => r.direction === 'outbound');
@@ -8072,12 +9348,17 @@ function renderMetaPaneImpl(
   relSection.setAttribute('data-pkc-region', 'relations');
   relSection.appendChild(renderRelationGroup('Outgoing relations', 'outgoing', outbound, canEdit));
   relSection.appendChild(renderRelationGroup('Backlinks', 'backlinks', inbound, canEdit));
+  endProfRelations();
 
   // PR-δ: reuse LinkIndex computed at `renderShell` level (spec §5.7)
   // so the sidebar connectedness pass and the References sub-panels
   // share the same per-render result. Fallback keeps this function
   // callable in isolation (tests / future call sites).
+  // pgc-215:linkIndex build を sub-profile で計測(meta pane 20ms
+  // のうち linkIndex 自体が何 ms か切り分け)。
+  const endProfLinkIndex = profileStart('meta:linkIndex');
   const linkIndex = sharedLinkIndex ?? buildLinkIndex(container);
+  endProfLinkIndex();
 
   const referencesSection = createElement('section', 'pkc-references');
   referencesSection.setAttribute('data-pkc-region', 'references');
@@ -8102,17 +9383,30 @@ function renderMetaPaneImpl(
   );
 
   referencesSection.appendChild(relSection);
+  // pgc-215:renderLinkIndexSections は backlinks-by-target walk + section
+  // build で linkIndex の dispose-heavy 部分(References sub-panel 内の
+  // entry refs / asset refs / external links 等)を含む。
+  const endProfLinkSections = profileStart('meta:renderLinkIndexSections');
   referencesSection.appendChild(renderLinkIndexSections(entry, linkIndex, container));
+  endProfLinkSections();
 
   meta.appendChild(referencesSection);
 
+  // pgc-216 v2:`renderRelationCreateForm` は <select> 内に全 user entries
+  // を <option> として展開する(L9966-9973、N entries で N option DOM 操作)。
+  // 100 entries で ~5ms、1000 entries で ~50ms、5000 entries で ~250ms の
+  // 線形 cost。本 sub-profile で実測値を計測、後続 PR で datalist 化や lazy
+  // popup での attack target にする。
   if (canEdit && container.entries.length > 1) {
-    meta.appendChild(renderRelationCreateForm(entry.lid, getUserEntries(container.entries)));
+    const endProfRelCreate = profileStart('meta:relation-create-form');
+    // pgc-237:userEntries は filter-cache で memoize 済 ── O(N) walk skip。
+    meta.appendChild(renderRelationCreateForm(entry.lid, getFilterIndexes(container).userEntries));
+    endProfRelCreate();
   }
 
   // Sandbox control section for HTML attachments
   if (entry.archetype === 'attachment') {
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (isHtml(att.mime) || isSvg(att.mime)) {
       const sandboxSection = createElement('div', 'pkc-sandbox-control');
       sandboxSection.setAttribute('data-pkc-region', 'sandbox-control');
@@ -8172,6 +9466,30 @@ function renderMetaPaneImpl(
       meta.appendChild(sandboxSection);
     }
   }
+
+  // Phase γ-B3:flag ON で mode に応じて section 表示を絞る。
+  if (metaPaneModeTabsEnabled()) {
+    meta.setAttribute('data-pkc-meta-pane-mode', metaPaneMode);
+    applyMetaPaneModeFilter(meta, metaPaneMode);
+  }
+
+  // pgc-109 wave-γ #10(MASTER.md §6.3):Inspector tab strip(flag ON 時)。
+  // meta pane の頭に 5 tab(Properties / References / History / Style /
+  // AI)の strip を prepend、各 tab の visibleRegions に応じて section
+  // 表示を絞る。AI は pgc-147 で機能化、Style は pgc-118 で実装。
+  // pgc-215:inspector section 全体を 1 sub-profile で囲む(flag OFF なら
+  // skip、ON なら Style + AI + tab strip + filter の合計を計測)。
+  const endProfInspector = profileStart('meta:inspector');
+  if (shellMetaPaneInspectorEnabled()) {
+    // pgc-118 wave-γ #18:Style tab を機能化 ── inspector-style-metrics
+    // section を meta pane 末尾に挿入(visibleRegions に登録済)。
+    meta.appendChild(buildInspectorStyleSection(entry, container));
+    const strip = buildMetaPaneInspectorTabStrip(entry, container);
+    // tab strip は header / timestamps の直前(meta pane の最上段)に挿入
+    meta.insertBefore(strip, meta.firstChild);
+    applyInspectorTabFilter(meta);
+  }
+  endProfInspector();
 
   return meta;
 }
@@ -8247,8 +9565,16 @@ function renderLinkIndexSections(
   const backlinks = linkIndex.backlinksByTarget.get(entry.lid) ?? [];
   const brokenForEntry = outgoing.filter((r) => !r.resolved);
 
+  // pgc-228:titleByLid Map は container.entries の O(N) walk で、
+  // c-5000 で ~1ms 累積。refs が全 0 のとき(typical case ── 大半の
+  // entry は外部 link を持たない)この walk は完全に無駄。
+  // **lazy build**:全 refs が空なら Map 自体を作らず、empty Map で
+  // pass(各 renderLinkRefsSection 内で refs.length === 0 short-circuit)。
+  const totalRefs = outgoing.length + backlinks.length + brokenForEntry.length;
   const titleByLid = new Map<string, string>();
-  for (const e of container.entries) titleByLid.set(e.lid, e.title);
+  if (totalRefs > 0) {
+    for (const e of container.entries) titleByLid.set(e.lid, e.title);
+  }
 
   wrap.appendChild(
     renderLinkRefsSection('Outgoing links', 'link-index-outgoing', outgoing, titleByLid, 'target'),
@@ -8273,8 +9599,19 @@ function renderLinkRefsSection(
   const section = createElement('div', 'pkc-link-index-section');
   section.setAttribute('data-pkc-region', regionId);
 
+  // pgc-112 wave-γ #13(MASTER.md §6.3):References の 2 系統 Backlinks
+  // を視覚区別。flag ON 時に "(markdown)" 接尾辞 + tooltip。OFF で従来。
+  const clarify = shellMetaPaneReferencesClarifyEnabled();
   const heading = createElement('div', 'pkc-link-index-heading');
-  heading.textContent = `${label} (${refs.length})`;
+  if (clarify) {
+    heading.textContent = `${label} (${refs.length}) — markdown`;
+    heading.setAttribute(
+      'title',
+      'Markdown 本文内の `[text](lid:foo)` / `[[lid:foo]]` 形式の link から計算される references。Container の first-class relations とは別 system です。',
+    );
+  } else {
+    heading.textContent = `${label} (${refs.length})`;
+  }
   section.appendChild(heading);
 
   if (refs.length === 0) {
@@ -8332,15 +9669,54 @@ function renderLinkRefsSection(
  * - `data-pkc-toc-slug`      — slug of the heading (heading nodes)
  * - `data-pkc-log-id`        — owning article for headings / logs
  */
-function renderFrontmatterSection(entry: Entry): HTMLElement | null {
+// pgc-181 wave-α' #4(v3 統合 master G6、handoff §3.5):revision diff
+// viewer 本体。revision の body と現 entry.body を line-level diff し、
+// `<details>` で折りたためる inline 表示を返す。両 body が完全一致なら
+// `null`(visual noise 回避)。features/diff/line-diff の DiffRow[] を
+// op 別に CSS 分岐して render。
+function renderRevisionDiff(revBody: string, currentBody: string): HTMLElement | null {
+  const rows = diffRows(revBody, currentBody);
+  // 全 row が 'same' なら diff 無し(rev = current)、UI noise 回避で
+  // 非描画。
+  const hasChange = rows.some((r) => r.op !== 'same');
+  if (!hasChange) return null;
+  const wrap = createElement('details', 'pkc-revision-diff');
+  wrap.setAttribute('data-pkc-region', 'revision-diff');
+  const summary = createElement('summary', 'pkc-revision-diff-summary');
+  const addCount = rows.filter((r) => r.op === 'add').length;
+  const delCount = rows.filter((r) => r.op === 'del').length;
+  summary.textContent = `Show diff vs current(+${addCount} / −${delCount})`;
+  wrap.appendChild(summary);
+  const body = createElement('div', 'pkc-revision-diff-body');
+  for (const r of rows) {
+    const line = createElement('div', 'pkc-revision-diff-row');
+    line.setAttribute('data-pkc-diff-op', r.op);
+    const marker = createElement('span', 'pkc-revision-diff-marker');
+    marker.textContent = r.op === 'add' ? '+' : r.op === 'del' ? '−' : ' ';
+    line.appendChild(marker);
+    const text = createElement('span', 'pkc-revision-diff-text');
+    // add は new(right)、del は old(left)、same は left/right どちらも同
+    text.textContent = r.op === 'add' ? (r.right ?? '') : (r.left ?? '');
+    line.appendChild(text);
+    body.appendChild(line);
+  }
+  wrap.appendChild(body);
+  return wrap;
+}
+
+function renderFrontmatterSection(
+  entry: Entry,
+  canEdit: boolean,
+): HTMLElement | null {
   // Only TEXT bodies are markdown-rendered; other archetypes either
   // serialize body as JSON / CSV / opaque blob, where a leading
   // `---` is not a frontmatter fence.
   if (entry.archetype !== 'text') return null;
-  const { meta, found } = parseFrontmatter(entry.body ?? '');
+  const { meta, found, warnings } = parseFrontmatter(entry.body ?? '');
   if (!found) return null;
   const keys = Object.keys(meta);
-  if (keys.length === 0) return null;
+  // warnings があれば key 0 でも section を出す(silent fail 禁止)。
+  if (keys.length === 0 && warnings.length === 0) return null;
 
   const section = createElement('section', 'pkc-frontmatter');
   section.setAttribute('data-pkc-region', 'frontmatter');
@@ -8349,6 +9725,45 @@ function renderFrontmatterSection(entry: Entry): HTMLElement | null {
   heading.textContent = 'Properties';
   section.appendChild(heading);
 
+  // Phase γ-B1:parseFrontmatter の warnings(size cap 超過等)を可視化。
+  if (warnings.length > 0) {
+    section.appendChild(renderFrontmatterWarnings(warnings));
+  }
+
+  // Phase γ-B1:flag ON + 編集可能なら graphical editor、それ以外は従来の
+  // read-only 表示。size cap 超過時は meta が空になり得るのでその場合は省略。
+  if (keys.length > 0) {
+    if (metaPaneYamlGraphicalEnabled() && canEdit) {
+      section.appendChild(renderFrontmatterEditor(entry, meta, keys));
+    } else {
+      section.appendChild(renderFrontmatterReadonly(meta, keys));
+    }
+  }
+  return section;
+}
+
+// parseFrontmatter の warnings を赤バーで可視化する(silent fail 禁止、
+// spec §3.3 / reform-2026-05 §07.3)。
+function renderFrontmatterWarnings(
+  warnings: ReadonlyArray<{ kind: string; detail: string }>,
+): HTMLElement {
+  const bar = createElement('div', 'pkc-frontmatter-warning');
+  bar.setAttribute('data-pkc-region', 'frontmatter-warning');
+  bar.setAttribute('role', 'alert');
+  for (const w of warnings) {
+    const item = createElement('div', 'pkc-frontmatter-warning-item');
+    item.setAttribute('data-pkc-warning-kind', w.kind);
+    item.textContent = `⚠ ${w.detail}`;
+    bar.appendChild(item);
+  }
+  return bar;
+}
+
+// 従来の read-only `<dl>` 表示。
+function renderFrontmatterReadonly(
+  meta: Record<string, unknown>,
+  keys: string[],
+): HTMLElement {
   const dl = document.createElement('dl');
   dl.className = 'pkc-frontmatter-list';
   for (const key of keys) {
@@ -8384,8 +9799,96 @@ function renderFrontmatterSection(entry: Entry): HTMLElement | null {
     }
     dl.appendChild(dd);
   }
-  section.appendChild(dl);
-  return section;
+  return dl;
+}
+
+// strict enum を持つ frontmatter key(spec §3.1、document-globals.ts の
+// VALID_* と整合)。これらは `<select>` で編集する。`kind` は parser が値を
+// 検証しない free string のため select 化しない(text input のまま)。
+const FRONTMATTER_ENUMS: Readonly<Record<string, readonly string[]>> = {
+  writing: ['horizontal', 'vertical'],
+  align: ['left', 'right', 'center', 'top', 'bottom'],
+  layout: [
+    'a4-1col',
+    'a4-2col',
+    'a4-3col',
+    'b5-1col',
+    'b5-2col',
+    'letter-1col',
+    'letter-2col',
+  ],
+};
+
+// 1 つの frontmatter key の編集 control を生成する。enum key は <select>、
+// それ以外は text <input>。現在値が enum 外でも option として残し値を失わない。
+function renderFrontmatterControl(
+  key: string,
+  value: unknown,
+  lid: string,
+): HTMLElement {
+  const current = frontmatterInputValue(value);
+  const enumValues = FRONTMATTER_ENUMS[key];
+  if (enumValues) {
+    const select = document.createElement('select');
+    select.className = 'pkc-frontmatter-edit-input';
+    select.setAttribute('data-pkc-frontmatter-key', key);
+    select.setAttribute('data-pkc-action', 'update-frontmatter-field');
+    select.setAttribute('data-pkc-lid', lid);
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '(未設定)';
+    select.appendChild(blank);
+    const options =
+      current === '' || enumValues.includes(current)
+        ? enumValues
+        : [current, ...enumValues];
+    for (const v of options) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      select.appendChild(opt);
+    }
+    // 全 option 追加後に value を設定(個別 opt.selected 設定だと value
+    // 変更時に複数 selected が残る環境差がある)。
+    select.value = current;
+    return select;
+  }
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'pkc-frontmatter-edit-input';
+  input.value = current;
+  input.setAttribute('data-pkc-frontmatter-key', key);
+  input.setAttribute('data-pkc-action', 'update-frontmatter-field');
+  input.setAttribute('data-pkc-lid', lid);
+  return input;
+}
+
+// Phase γ-B1:key ごとの編集 control を持つ graphical editor。control change を
+// action-binder の `update-frontmatter-field` が拾い、setFrontmatter で
+// entry.body へ書き戻す。
+function renderFrontmatterEditor(
+  entry: Entry,
+  meta: Record<string, unknown>,
+  keys: string[],
+): HTMLElement {
+  const form = createElement('div', 'pkc-frontmatter-editor');
+  for (const key of keys) {
+    const row = createElement('div', 'pkc-frontmatter-edit-row');
+    const label = createElement('label', 'pkc-frontmatter-edit-label');
+    label.textContent = key;
+    row.appendChild(label);
+    row.appendChild(renderFrontmatterControl(key, meta[key], entry.lid));
+    form.appendChild(row);
+  }
+  return form;
+}
+
+// 編集 input に表示する値。formatFrontmatterValue は表示用に null→'—' /
+// boolean→'yes' 等へ整形するため、再 parse 可能な edit 用 format を別に持つ。
+function frontmatterInputValue(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
 }
 
 // Re-export so callers (extensions, debug overlays) can reach the
@@ -8450,8 +9953,19 @@ function renderRelationGroup(
   const group = createElement('div', 'pkc-relation-group');
   group.setAttribute('data-pkc-relation-direction', direction);
 
+  // pgc-112 wave-γ #13(MASTER.md §6.3):References の 2 系統 Backlinks
+  // を視覚区別。flag ON 時に "(relation)" 接尾辞 + tooltip。OFF で従来。
+  const clarify = shellMetaPaneReferencesClarifyEnabled();
   const heading = createElement('div', 'pkc-relation-heading');
-  heading.textContent = `${label} (${relations.length})`;
+  if (clarify) {
+    heading.textContent = `${label} (${relations.length}) — relation`;
+    heading.setAttribute(
+      'title',
+      'First-class relations(structural / categorical / semantic / temporal kind)。Markdown link 由来の参照とは別 system です。',
+    );
+  } else {
+    heading.textContent = `${label} (${relations.length})`;
+  }
   group.appendChild(heading);
 
   if (relations.length === 0) {
@@ -8692,18 +10206,21 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
   const targetSelect = document.createElement('select');
   targetSelect.setAttribute('data-pkc-field', 'relation-target');
   targetSelect.className = 'pkc-relation-select';
+  // pgc-222(pgc-217 fragment + pgc-221 で identify した残 5-27ms 線形 scaling
+  // への deeper attack):tag-target と同 pattern で options を lazy-populate 化。
+  // render 時は placeholder のみ、user mousedown で `handleLazyTagTargetPopulate`
+  // 相当の handler が options 注入。c-5000 で 27.20ms → 0ms 期待。
+  targetSelect.setAttribute('data-pkc-lazy-options', 'relation-target');
+  targetSelect.setAttribute('data-pkc-from-lid', fromLid);
+  // available count を hint(後続 user-side search seed)。
+  // entries は既に fromLid 除外前の総数なので -1 する。
+  targetSelect.setAttribute('data-pkc-lazy-available-count', String(Math.max(0, entries.length - 1)));
   const defaultOpt = document.createElement('option');
   defaultOpt.value = '';
-  defaultOpt.textContent = '-- Target --';
+  defaultOpt.textContent = entries.length > 1
+    ? `-- Target (${entries.length - 1} 候補、クリックで読込) --`
+    : '-- Target --';
   targetSelect.appendChild(defaultOpt);
-  for (const e of entries) {
-    if (e.lid === fromLid) continue;
-    const opt = document.createElement('option');
-    opt.value = e.lid;
-    opt.textContent = truncate(e.title || `(${e.lid})`, 32);
-    opt.title = e.title || `(${e.lid})`;
-    targetSelect.appendChild(opt);
-  }
   row.appendChild(targetSelect);
 
   // Kind select
@@ -8748,10 +10265,45 @@ function renderEditor(entry: Entry, container?: Container | null): HTMLElement {
   titleRow.appendChild(archLabel);
   editor.appendChild(titleRow);
 
+  // 編集モード固定 format ribbon(Group C ワープロ化、Phase γ-C)。Tier 0
+  // flag gated、text / textlog の markdown 編集時のみ。touch 端末では CSS で
+  // 非表示(snippet-toolbar の floating popup を使う)。
+  //
+  // pgc-110 wave-γ #11(MASTER.md §6.4):flag `shell.format_panel_default_
+  // hidden_enabled` ON 時は default 非表示で start、toggle button「🎨
+  // Format」 click で表示。flag OFF or `shellFormatPanelDefaultHiddenEnabled
+  // ()` false なら従来挙動(常時表示)。
+  if (
+    formatPanelEnabled() &&
+    (entry.archetype === 'text' || entry.archetype === 'textlog')
+  ) {
+    if (shellFormatPanelDefaultHiddenEnabled()) {
+      const wrap = createElement('div', 'pkc-format-panel-wrap');
+      wrap.setAttribute('data-pkc-region', 'format-panel-wrap');
+      wrap.appendChild(buildFormatPanelToggleButton());
+      if (isFormatPanelVisible()) {
+        wrap.appendChild(renderFormatPanel(entry.archetype));
+      }
+      editor.appendChild(wrap);
+    } else {
+      editor.appendChild(renderFormatPanel(entry.archetype));
+    }
+  }
+
   // Archetype-dispatched editor body
   const presenter = getPresenter(entry.archetype);
   const editorBody = presenter.renderEditorBody(entry);
   editor.appendChild(editorBody);
+
+  // pgc-125 wave-δ #1(MASTER.md §7 text):flag ON + text/textlog 編集時
+  // に editor 末尾へ compact wordcount footer を append。Inspector Style
+  // tab(pgc-118)とは別 surface ── editor 内で目線移動最小の metrics。
+  if (
+    shellEditorFooterWordcountEnabled() &&
+    (entry.archetype === 'text' || entry.archetype === 'textlog')
+  ) {
+    editor.appendChild(buildEditorFooterWordcount(entry));
+  }
 
   // Resolve asset references in the TEXT split editor's initial preview
   // so that `![alt](asset:key)` and `[label](asset:key)` render inline
@@ -9418,15 +10970,23 @@ function renderArchetypeFilter(current: ReadonlySet<ArchetypeId>): HTMLElement {
 function renderColorFilterStrip(
   allEntries: readonly Entry[],
   current: ReadonlySet<string>,
+  inUseOverride?: ReadonlySet<string>,
 ): HTMLElement | null {
-  const inUse = new Set<string>();
-  const target = COLOR_TAG_IDS.length;
-  for (const entry of allEntries) {
-    if (isColorTagId(entry.color_tag)) {
-      inUse.add(entry.color_tag);
-      if (inUse.size === target) break;
+  // pgc-232:caller(`renderAdvancedFiltersPanel`)が `getFilterIndexes`
+  // 経由で memoized `colorTagsInUse` を渡せる。container ref で memoize
+  // されているため keystroke / re-render で再計算 0。fallback として
+  // 旧 inline walk を残す(test / 単体呼出 用)。
+  const inUse = inUseOverride ?? (() => {
+    const local = new Set<string>();
+    const target = COLOR_TAG_IDS.length;
+    for (const entry of allEntries) {
+      if (isColorTagId(entry.color_tag)) {
+        local.add(entry.color_tag);
+        if (local.size === target) break;
+      }
     }
-  }
+    return local;
+  })();
   if (inUse.size === 0) return null;
 
   const strip = createElement('div', 'pkc-color-filter-strip');
@@ -9507,7 +11067,7 @@ export function buildAssetMimeMap(container: Container): Record<string, string> 
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.asset_key && att.mime) {
       map[att.asset_key] = att.mime;
     }
@@ -9525,7 +11085,7 @@ export function buildAssetNameMap(container: Container): Record<string, string> 
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.asset_key && att.name) {
       map[att.asset_key] = deriveDisplayFilename(att.name, att.mime);
     }
@@ -9541,13 +11101,19 @@ function renderFolderContents(folder: Entry, container: Container): HTMLElement 
   heading.textContent = 'Contents';
   section.appendChild(heading);
 
-  // Find children via structural relations
+  // pgc-233:旧 path は `container.entries.find` を per-child child 数回呼んで
+  // O(R × N) worst case(R = structural relations、N = entries)。folder の
+  // 直下 child は数件でも entries.find が N walk なので、entryByLid Map で
+  // O(1) lookup に変換 ── c-5000 で folder render が dramatically 軽量化。
   const children: Entry[] = [];
+  let entryByLid: Map<string, Entry> | null = null;
   for (const r of container.relations) {
-    if (r.kind === 'structural' && r.from === folder.lid) {
-      const child = container.entries.find((e) => e.lid === r.to);
-      if (child) children.push(child);
+    if (r.kind !== 'structural' || r.from !== folder.lid) continue;
+    if (!entryByLid) {
+      entryByLid = new Map(container.entries.map((e) => [e.lid, e]));
     }
+    const child = entryByLid.get(r.to);
+    if (child) children.push(child);
   }
 
   if (children.length === 0) {
@@ -9585,7 +11151,8 @@ function renderFolderContents(folder: Entry, container: Container): HTMLElement 
  */
 function resolveContextFolder(state: AppState): Entry | null {
   if (!state.selectedLid || !state.container) return null;
-  const selected = state.container.entries.find((e) => e.lid === state.selectedLid);
+  // pgc-239:filter-cache の entryByLid Map で O(1) lookup。
+  const selected = getFilterIndexes(state.container).entryByLid.get(state.selectedLid);
   if (!selected) return null;
 
   if (selected.archetype === 'folder') return selected;
@@ -9651,6 +11218,18 @@ function renderAboutView(aboutEntry: Entry | undefined): HTMLElement {
   container.setAttribute('data-pkc-region', 'about-view');
 
   const payload = resolveAboutPayload(aboutEntry?.body);
+
+  // pgc-113 wave-γ #14(MASTER.md §2 U-19、user direction「Aboutはかなり
+  // 味気ない / もっと PKC-Markdown をドッグフーディング」):flag ON 時に
+  // PKC-Markdown showcase section を About view の頭に prepend。dialect の
+  // 主要機能(callout / mark / em-dot / ruby / footnote / table / details)
+  // を視覚で示し、user に「ここでも PKC-Markdown が使える」と伝える。
+  // 既存 About view(version / license 等の hand-rendered メタ)は完全維持。
+  if (shellAboutPkcMarkdownShowcaseEnabled()) {
+    // pgc-114 wave-γ #15:payload(version / commit / dep counts)を
+    // pass して SHOWCASE_MARKDOWN 内 `{{vars.x}}` を動的展開。
+    container.appendChild(buildAboutShowcaseElement(payload));
+  }
 
   const header = createElement('header', 'pkc-about-header');
   const title = createElement('h1', 'pkc-about-title');
@@ -9955,13 +11534,44 @@ function renderAboutCredits(
 
 function findSelectedEntry(state: AppState): Entry | null {
   if (!state.selectedLid || !state.container) return null;
-  return state.container.entries.find((e) => e.lid === state.selectedLid) ?? null;
+  // pgc-239:filter-cache の entryByLid Map で O(1) lookup ── 3 callers
+  // (renderShell L808 / renderShell L1081 / renderCenterImpl L5308)で
+  // 毎 render に呼ばれる hot path、O(N) → O(1) に変換。
+  return getFilterIndexes(state.container).entryByLid.get(state.selectedLid) ?? null;
 }
 
 /**
  * Format an ISO timestamp for display.
  * Shows date and time in a compact human-readable form.
  */
+// pgc-220(pgc-219 で identify した meta:startup 12ms の主因):
+// `new Intl.DateTimeFormat()` は constructor が重量級(locale parse +
+// options bake)。formatTimestamp が呼ばれる度に毎回新規生成していたため
+// SELECT_ENTRY 1 回で 2 instance 作成 → ~数 ms のロス。
+// locale + options は実質 static(navigator.language は session 中不変)
+// なので、module-local cache で 1 度だけ生成する。
+let cachedTimestampFormatter: Intl.DateTimeFormat | null = null;
+let cachedTimestampLocale: string | null = null;
+
+function getTimestampFormatter(): Intl.DateTimeFormat {
+  const locale = (typeof navigator !== 'undefined' && navigator.language) || 'ja-JP';
+  if (cachedTimestampFormatter && cachedTimestampLocale === locale) {
+    return cachedTimestampFormatter;
+  }
+  cachedTimestampLocale = locale;
+  cachedTimestampFormatter = new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    // 2026-05-06 — en-US default would emit "AM/PM"。日本語 / 英語
+    // 共通で 24 時間表示にして UI を簡潔にする(user 指示 G6)。
+    hour12: false,
+  });
+  return cachedTimestampFormatter;
+}
+
 function formatTimestamp(iso: string): string {
   // 2026-05-06 user direction:「日時関連のロケール解決がされていない
   // 表示があるため、ファイラの日時もエントリごとの右ペインの日時表示
@@ -9970,18 +11580,7 @@ function formatTimestamp(iso: string): string {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    const locale = (typeof navigator !== 'undefined' && navigator.language) || 'ja-JP';
-    const fmt = new Intl.DateTimeFormat(locale, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      // 2026-05-06 — en-US default would emit "AM/PM"。日本語 / 英語
-      // 共通で 24 時間表示にして UI を簡潔にする(user 指示 G6)。
-      hour12: false,
-    });
-    return fmt.format(d);
+    return getTimestampFormatter().format(d);
   } catch {
     return iso;
   }
@@ -10077,6 +11676,9 @@ export function renderContextMenu(
     { action: 'ctx-open-detail', label: '🔍 Open', tip: 'このエントリを Detail で開く', lid, show: !!opts.showOpen },
     // Mutating actions — gated on canEdit.
     { action: 'begin-edit', label: '✏️ Edit', tip: 'このエントリを編集', lid, show: canEdit },
+    // γ-A5-6(user 報告「別窓を開く動線が不足」):main window から
+    // entry を独立ウィンドウで開く動線。全 archetype で常時表示。
+    { action: 'ctx-open-window', label: '🪟 別ウィンドウで開く', tip: 'このエントリを独立した編集ウィンドウで開く', lid, show: true },
     { action: 'ctx-preview', label: '👁️ Preview', tip: 'レンダリング済みプレビューを新しいウィンドウで開く', lid, show: isPreviewable || isSandboxable },
     { action: 'ctx-sandbox-run', label: '🔒 Sandbox', tip: 'サンドボックス環境で安全に開く（HTML/SVG）', lid, show: isSandboxable },
     { action: 'delete-entry', label: '🗑️ Delete', tip: 'このエントリを完全に削除（元に戻せません）', lid, show: canEdit },
@@ -10411,7 +12013,7 @@ export function renderDetachedPanel(entry: Entry, container: Container | null): 
  */
 function renderDetachedAttachment(entry: Entry, container: Container | null): HTMLElement {
   const root = createElement('div', 'pkc-detached-attachment');
-  const att = parseAttachmentBody(entry.body);
+  const att = parseAttachmentBody(entry.body, entry);
 
   if (!att.name) {
     const empty = createElement('div', 'pkc-attachment-empty');

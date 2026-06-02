@@ -1,0 +1,169 @@
+# wave-γ progress: shell redesign 15 PR(pgc-99〜114)
+
+**作成日**: 2026-05-23
+**status**: 進行中(15 PR 着地、後続 candidate あり)
+**parent doc**: `MASTER.md` §6(main shell 刷新)
+
+---
+
+## §1 概要
+
+MASTER.md §6 で定義した shell redesign 25 PR 計画のうち **15 PR が着地**。
+全 PR は **Tier 0 flag default OFF + 後方互換完全維持**の規律で進行、
+user は `?pkc-flag=<name>=1` URL 形式で個別に opt-in 可能。
+
+main 着地は invariant I7 で禁止中 ── 着地済 PR は GitHub PR として
+stack(各 PR の base = 直前 PR の頂点)で保持、user 判断で release 時に
+main へ merge する。
+
+## §2 flag 一覧(15 PR の opt-in 表)
+
+各 flag は default OFF。URL flag form は `?pkc-flag=<name>=1`、複数同時
+opt-in は `&` で連結。
+
+| # | PR | section | flag name | 効果 |
+|---|----|---------|-----------|------|
+| 1 | pgc-99 | §6.1 phase 1 | `shell.new_button_picker_enabled` | header 5 個 archetype create button → 1 個 `+ New` popover |
+| 2 | pgc-100 | §6.1 phase 2 | `shell.data_in_shell_menu_enabled` | `Data…` panel を Shell Menu の section に集約 |
+| 3 | pgc-101 | §6.1 phase 3 | `shell.back_forward_in_breadcrumb_enabled` | `◀` `▶` を breadcrumb 内 `⇐` `⇒` icon に統合 |
+| 4 | pgc-102 | §6.2 起点 | `shell.activity_bar_enabled` | sidebar 左に VSCode 流 Activity Bar(6 tab scaffold) |
+| 5 | pgc-103 | §4.5 | (同上) | Outline tab 実装(現 entry の h1〜h3 を list、click で scroll) |
+| 6 | pgc-104 | §6.2 | (同上) | Recent tab 実装(`selectRecentEntries` で最新 N 件) |
+| 7 | pgc-105 | §6.2 | (同上) | Pinned tab 実装(tab-strip pinned 機構を data source) |
+| 8 | pgc-106 | (hotfix) | (`+ New` 専用) | `+ New` popover 画面外描画 fix(viewport-safe fixed positioning) |
+| 9 | pgc-107 | §6.2 | (同上) | Search tab 実装(`filterEntries` で live filter、最大 50 件) |
+| 10 | pgc-108 | §6.2 | (同上) | Relations tab 実装(現 entry の outbound / inbound を 2 section) |
+| 11 | pgc-109 | §6.3 起点 | `shell.meta_pane_inspector_enabled` | meta pane の頭に Inspector 5 tab strip(Properties / References / History / Style / AI) |
+| 12 | pgc-110 | §6.4 step 1 | `shell.format_panel_default_hidden_enabled` | format panel default 非表示 + `🎨 Format` toggle button |
+| 13 | pgc-111 | §6.5 step 1 | `shell.view_mode_tabs_scoped_enabled` | view-mode tabs に scope mark + 視覚 separator + Detail 選択無し disabled |
+| 14 | pgc-112 | §6.3 follow-up | `shell.meta_pane_references_clarify_enabled` | meta pane References の 2 系統 `Backlinks` を `— relation` / `— markdown` 接尾辞で区別 |
+| 15 | pgc-113 | §2 U-19 | `shell.about_pkc_markdown_showcase_enabled` | About 頭に PKC-Markdown showcase section を prepend(dogfooding) |
+| 15* | pgc-114 | §2 U-19 follow-up | (同上) | About showcase に payload vars 動的展開(version / commit / dep counts) |
+| 16 | pgc-115 | (docs-only) | — | wave-γ progress doc 起こし |
+| 17 | pgc-116 | §6.2 後続 | (`shell.activity_bar_enabled`) | Activity Bar left / right 配置切替(↔ toggle button、main 先頭 / 末尾を flip) |
+| 18 | pgc-117 | §6.3 follow-up | (`shell.meta_pane_inspector_enabled`) | Inspector History tab の visibleRegions silent bug fix(`['history','revisions']` → `['revision-history',...]`)+ non-placeholder tab で no matched empty hint |
+| 19 | pgc-118 | §6.3 follow-up | (同上) | Inspector Style tab に読み取り専用 metrics 実装(archetype / char count / heading 数 / frontmatter style globals / timestamps、placeholder 脱却) |
+| 20 | pgc-119 | (docs-only) | — | wave-γ progress doc update(pgc-115〜118 反映、§6.2/§6.3 status refresh) |
+| 21 | pgc-120 | §6.4 step 2 | (`shell.format_panel_default_hidden_enabled` + `shell.keymap_registry_enabled`) | Format panel toggle に keyboard shortcut(`Alt+Shift+F`)+ command palette `format.toggle` 追加 |
+| 22 | pgc-121 | §6.2 後続 | (`shell.activity_bar_enabled` + `shell.keymap_registry_enabled`) | Activity Bar 6 tab に keyboard shortcut(`Alt+Shift+1`〜`6`)+ command palette `activity.*` 6 件追加 ── Activity Bar が full keyboard navigatable に |
+| 23 | pgc-122 | (docs-only) | — | wave-γ progress doc 2 回目 update(pgc-119〜121 反映) |
+| 24 | pgc-123 | §6.3 後続 | (`shell.meta_pane_inspector_enabled` + `shell.keymap_registry_enabled`) | Inspector tab 5 件 に chord keyboard shortcut(`Ctrl+K P/R/H/Y/I`)+ command palette `inspector.*` 5 件追加 |
+| 25 | pgc-124 | §6.2 / §6.3 follow-up | (関連 flag) | Activity Bar + Inspector tab tooltip に keybind 併記(VSCode 流 button hover 動線、11 button) |
+| 26 | pgc-125 | wave-δ #1 §7 text | `shell.editor_footer_wordcount_enabled` | text / textlog editor 末尾に compact wordcount footer(static render) |
+| 27 | pgc-126 | wave-δ #2 §7 text | (同上) | wordcount footer の live update(textarea input event hook、DOM 直書き) |
+| 28 | pgc-127 | wave-δ #3 §7 text | (同上) | read time 推定(reading-time 互換、`~N min read` / hybrid 英日計算) |
+| 29 | pgc-128 | wave-δ #4 §7 textlog | (`shell.meta_pane_inspector_enabled`) | Inspector Style tab に textlog 専用 metrics(log 件数 / 今日 / 直近 / important) |
+| 30 | pgc-129 | wave-δ #5 §7 todo | (同上) | Inspector Style tab に todo 専用 metrics(status / due / overdue / archived) |
+| 31 | pgc-130 | wave-δ #6 §7 attachment | (同上) | Inspector Style tab に attachment 専用 metrics(name / MIME / size / sandbox / App Launcher) |
+| 32 | pgc-131 | wave-δ #7 §7 folder | (同上) | Inspector Style tab に folder 専用 metrics(直接子 / archetype 内訳 / 最終子更新)+ gitleaks false-positive 修正 |
+| 33 | pgc-132 | wave-δ #8 §7 form | (同上) | Inspector Style tab に form 専用 metrics ── **archetype-specific 6/6 完成** |
+| 34-44 | pgc-134〜145 | wave-δ #9〜#18 + hotfix | (各種) | 詳細は handoff §2.2 + CHANGELOG_v2.3.0.md。todo overdue indicator(pgc-134)、Export 動線消失 hotfix(pgc-135)、user issue 10 件カバー(pgc-136〜144)、AI tab roadmap doc(pgc-145) |
+| 45 | pgc-146 | (docs-only) | — | session handoff doc 2026-05-24(47 PR 引き継ぎ self-contained doc)|
+| 46 | pgc-147 | §6.3 AI tab Phase 1 | `shell.inspector_ai_local_enabled` | AI tab placeholder → **frontmatter suggestion**(本文 H1 → title / `#tag` → frontmatter tags、apply/dismiss button)|
+| 47 | pgc-148 | (同上 Phase 1) | (同 flag) | **abandoned entry warning**(updated_at 30 日+ + relation 0 + link 0 → ⚠️ box)|
+| 48 | pgc-149 | (同上 Phase 1 完了) | (同 flag) | **broken link summary**(`entry:` 参照 target 不在 → 🔗 box + target chip)|
+| 49 | pgc-150 | wave-δ #19 §7 todo | `text.todo_subtask_enabled` | todo description 内 inline `- [ ]` を click で toggle 可能化 |
+| 50 | pgc-151 | wave-δ #20 §7 wordcount | `text.wordcount_exclude_noise_enabled` | editor footer wordcount から code / image / footnote / HTML を除外 |
+| 51 | pgc-152 | (Inspector Style 拡張) | (`shell.meta_pane_inspector_enabled`) | Inspector Style に todo subtask completion graph(progress bar、pgc-150 補完)|
+| 52 | pgc-153 | §6.3 AI tab Phase 2 | (`shell.inspector_ai_local_enabled`) | **duplicate entry detector**(bigram Jaccard 類似度 >= 0.5 で上位 3 件、🔁 box + similarity%)|
+| 53 | pgc-154 | (同上 Phase 2) | (同 flag) | **outline lint**(H1 無し / H1 複数 / heading skip、💡 box + 3 issue kind)|
+| 54 | pgc-155 | wave-δ #22 §7 textlog | `text.textlog_log_search_enabled` | textlog 内 keyword search bar + hit count(space 区切り token AND)|
+| 55 | pgc-156 | wave-δ #23 §7 wordcount | `text.wordcount_mobile_compact_enabled` | wordcount footer を mobile compact 表記(`1.2k · 250w · 42l · ~3m`)|
+| 56 | pgc-157 | wave-δ #24 §7 textlog | `text.textlog_importance_filter_enabled` | textlog importance-only filter toggle(search と AND 条件)|
+| 57 | pgc-158 | (Phase 2) | (`shell.inspector_ai_local_enabled`) | **archetype mismatch detector**(text body が task / timestamp / image 過多なら別 archetype 推奨、🧩 box)|
+| 58 | pgc-159 | (Inspector Style 拡張) | (`shell.meta_pane_inspector_enabled`) | Inspector Style に form filled-fields progress bar(pgc-152 component 再利用)|
+| 59 | pgc-160 | hotfix(user bug #7) | (関連 flag) | breadcrumb / header nav back-forward button click target + disabled tooltip 改善 |
+| 60 | pgc-161 | hotfix(user bug #1) | — | view-mode tabs(6 件)を compact-header ON 時に潰れないよう min-width 4rem 確保 |
+| 61 | pgc-162 | hotfix(user bug #2) | — | header `📤 Export` fallback button の action を `toggle-shell-menu` → `begin-export` 直 export に修正 |
+| 62 | pgc-163 | hotfix(user bug #5) | (`text.textlog_importance_filter_enabled`) | textlog importance toggle を `<button>` → `<label><input type="checkbox" role="switch">` に semantic 修正 |
+| 63 | pgc-164 | (Phase 2) | (`shell.inspector_ai_local_enabled`) | **circular reference detector**(relation + link graph で current entry を含む循環を 1 件提示、🔄 box)|
+| 64 | pgc-165 | (Phase 2 完了) | (同 flag) | **tag imbalance suggester**(container 50%+ tag 文化 + 自 0 件で popular top 3 提示、🏷️ chip)── **A 群 8 件全件着地で Phase 2 完了** |
+| 65 | pgc-166 | hotfix(user bug #3) | (同 flag) | Inspector AI tab(🧠) → **Hints tab(💡)** に rename(heuristic ベース実態と整合、Phase 3 LLM 接続なし)|
+| 66 | pgc-167 | (docs-only) | — | **Tier 0 flag inventory audit doc**(32 flag inventory + always-on 化推奨 11 件 / 維持 15 件、handoff §3.5 step 1)|
+
+`*` = pgc-113 と同 flag を使う follow-up PR
+括弧書き flag = 新 flag 追加なし、既存 flag の機能拡張 PR
+**wave-δ** = pgc-125 以降、archetype-specific UX(MASTER.md §7)へ進入
+
+## §3 全 ON URL 例
+
+wave-γ 全 15 機能を同時 ON にして実機検証する場合:
+
+```
+file:///path/to/pkc2.html?pkc-flag=shell.new_button_picker_enabled=1&pkc-flag=shell.data_in_shell_menu_enabled=1&pkc-flag=shell.back_forward_in_breadcrumb_enabled=1&pkc-flag=shell.activity_bar_enabled=1&pkc-flag=shell.meta_pane_inspector_enabled=1&pkc-flag=shell.format_panel_default_hidden_enabled=1&pkc-flag=shell.view_mode_tabs_scoped_enabled=1&pkc-flag=shell.meta_pane_references_clarify_enabled=1&pkc-flag=shell.about_pkc_markdown_showcase_enabled=1
+```
+
+または **Shell Menu**(右上 `≡` button)→ `Flags Inspector` から GUI で
+toggle するのが楽。
+
+## §4 MASTER §6 残り(後続 PR 候補)
+
+### §6.2 Activity Bar(全 6 tab + 位置切替 + keyboard shortcut すべて完了 ✓)
+
+- 完了:Explorer(既存 sidebar)/ Search / Outline / Relations / Recent / Pinned + 位置切替(pgc-116、↔ button)+ **keyboard shortcut(pgc-121、`Alt+Shift+1`〜`6`)**
+- 後続候補:tab order の user customize / hidden tab(Search / Outline 非表示にして 4 tab に絞る option)/ tab badge(unread count / pending action 等)
+
+### §6.3 meta pane Inspector(scaffold 5 tab + Style archetype-specific 6/6 完成 ✓)
+
+- scaffold 完了(pgc-109)+ References clarify(pgc-112)+ History region fix + empty hint(pgc-117)+ Style metrics 実装(pgc-118)+ keyboard shortcut(pgc-123)
+- **5 tab のうち 4 件機能化**(Properties / References / History / Style)、残り placeholder は **AI 1 件のみ**
+- **Style tab archetype-specific 6/6 完成**(pgc-128〜132):text / textlog / todo / attachment / folder / form 全てに専用 metrics
+- 後続候補:Properties tab の frontmatter 編集 inline UI / History tab の revision diff viewer / Style tab の per-entry theme override / **AI tab** の中身(設計議論待ち、LLM API 連携 or local-only inspector?)
+
+### §6.4 format panel context-aware(3 step のうち 2 件完了 ✓)
+
+- 完了:default 非表示 + toggle button(pgc-110)+ **keyboard shortcut(pgc-120、`Alt+Shift+F`)**
+- 後続候補:**selection-floating inline toolbar**(Notion / Medium 流、scope 大)/ format panel pin 機能(power user 用、常時表示固定)
+
+### §6.5 view-mode tabs
+
+- scope mark + separator + Detail disabled(pgc-111)着地
+- 後続候補:**workspace-level tab(Calendar / Kanban / Filer / Graph / Launcher)を center pane tab strip(pgc-85+)に統合**(MASTER §6.5 の最終形)/ §6.5.1 Launcher view の Quick Open + Home view への統合検討
+
+### §6.1 header(全 phase 完成 ✓)
+
+- 完了:`+ New` / `Data…` 集約 / back-forward → breadcrumb
+- 後続候補:header の更なる削減(`PKC2` title clickable で home / shell menu icon 変更等)
+
+## §5 §7 archetype 別 UX(wave-δ scope、phase 1 着地中)
+
+MASTER §7 の archetype 別 UX 改修は wave-δ scope。wave-γ が一段落
+(用具立て完了)後 pgc-125 から開始:
+
+### Phase 1 完了(pgc-125〜132、8 PR):
+
+- ✅ text:editor footer wordcount + live update + read time(reading-time 互換)
+- ✅ textlog:Inspector Style に log 件数 / 今日 / 直近 / important metrics
+- ✅ todo:Inspector Style に status / due / overdue / archived
+- ✅ attachment:Inspector Style に name / MIME / size / sandbox / App Launcher
+- ✅ folder:Inspector Style に直接子 / archetype 内訳 / 最終子更新
+- ✅ form:Inspector Style に filled fields(archetype-specific 6/6 完成 ✓)
+
+### Phase 2 候補(編集 UX 改善):
+
+- text: multi-cursor / minimap / outline sidebar / reading mode / folding 拡張
+- textlog: 各日の高速 jump、log search、importance filter UI
+- todo: subtask 階層、due-date overdue indicator、completion graph
+- form: field 順序 DnD、conditional field、type richer
+- attachment: preview MIME 拡張、batch download、sandbox policy GUI
+- folder: tree-flat 切替、children sort / filter、bulk select / move
+
+## §6 関連 doc
+
+- `MASTER.md`(本 doc の parent、§6 main shell 刷新の canonical 仕様)
+- `docs/release/CHANGELOG_v2.3.0.md`(各 PR の詳細 entry、wave-γ #1〜#15)
+- `docs/development/render-surface-parity-audit-2026-05.md`(wave-β audit、全 15 Gap 解消済)
+
+## §7 進捗 / history
+
+| date | event |
+|---|---|
+| 2026-05-23 | wave-γ #1〜#15 着地(pgc-99〜114)、本 progress doc 起こし。test 9031、bundle 1928KB |
+| 2026-05-23 | wave-γ #16〜#18 追加着地(pgc-116〜118):Activity Bar 位置切替 / Inspector History region fix + empty hint / Inspector Style metrics 実装。test 9052、bundle 1932KB。Inspector 5 tab のうち 4 件機能化、placeholder 残りは AI 1 件のみ |
+| 2026-05-23 | wave-γ #19〜#21 追加着地(pgc-119〜121):progress doc update / Format panel keyboard shortcut(`Alt+Shift+F`)/ Activity Bar 6 tab keyboard shortcut(`Alt+Shift+1〜6`)。test 9065、bundle 1933KB。**Activity Bar §6.2 全 step 完了**(6 tab + 位置切替 + keyboard shortcut)。Format panel §6.4 step 2 完了(残 inline toolbar)。keymap registry binding 8 → 15 件に拡張 |
+| 2026-05-23 | wave-γ #22〜#23 + wave-δ #1〜#8 着地(pgc-122〜132):progress doc 2nd update + Inspector chord shortcut(Ctrl+K P/R/H/Y/I)+ tooltip keybind 併記 + **wave-δ 開始**(editor footer wordcount + live + read time、Inspector Style に textlog / todo / attachment / folder / form 専用 metrics)。test 9146、bundle 1938KB。**Inspector archetype-specific 6/6 完成**(text / textlog / todo / attachment / folder / form)。keymap registry binding 15 → 20 件 |
+| 2026-05-24 | wave-δ #9〜#18 + hotfix(pgc-134〜145):todo overdue indicator / Export 動線 hotfix / **user issue 10 件 一括カバー** / AI tab roadmap doc。test 9207、bundle 1943KB。**pgc-99〜145 累計 47 PR、handoff doc 起こし(pgc-146)で次セッション引き継ぎ** |
+| 2026-05-24 | **AI tab Phase 1 完了**(pgc-147〜149):frontmatter suggestion / abandoned warning / broken link summary。**flag `shell.inspector_ai_local_enabled`** で 3 機能を gate。Inspector 5 tab 全 5/5 機能化。bundle 1949KB |
+| 2026-05-24 | **wave-δ 続編 + Phase 2 進行**(pgc-150〜158):todo subtask checkbox(pgc-150)+ wordcount noise exclusion(pgc-151)+ Inspector todo subtask progress(pgc-152)+ AI Phase 2 duplicate detector(pgc-153)+ outline lint(pgc-154)+ textlog log search(pgc-155)+ wordcount mobile compact(pgc-156)+ textlog importance filter(pgc-157)+ AI archetype mismatch(pgc-158)+ form filled-fields progress(pgc-159)。test 9472、bundle 1968KB |
+| 2026-05-24 | **user bug 一括 hotfix + AI tab Phase 2 完了 + naming 整合**(pgc-160〜166):breadcrumb forward button(pgc-160)+ view-mode tabs size(pgc-161)+ Export button bug(pgc-162)+ importance toggle switch(pgc-163)+ AI circular reference(pgc-164)+ **AI tag imbalance(pgc-165)で A 群 8 件全件着地、Phase 2 完了** + **Inspector AI tab → Hints tab に rename**(pgc-166、user feedback「AI 看板倒れ」 解消)。test 9509、bundle 1968KB。**8 機能の local lint(frontmatter / abandoned / broken / duplicates / outline / archetype / circular / tag)が 1 flag で揃う** |
+| 2026-05-24 | **flag inventory audit doc 起こし**(pgc-167):pgc-99〜166 で蓄積した 32 Tier 0 flag を inventory + always-on 化推奨 11 件 / 維持 15 件 / 廃止 0 件 を提示、handoff §3.5「flag cleanup」 step 1。docs-only。次は user 確認 → batch default ON 切替 PR |

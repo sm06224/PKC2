@@ -528,6 +528,158 @@
   letter-spacing: 0.05em;
 }
 
+/* 領域 1: entry navigation history の戻る / 進むボタン群。 */
+.pkc-header-nav {
+  display: flex;
+  gap: var(--space-1);
+}
+
+/* pgc-171 wave-δ #26(button-size-audit-2026-05-24 step 1-2):button
+   全体の visual consistency 統一のための base helper(共通 base +
+   5 size category)。新 button class は本 helper を継承して個別
+   override を最小化、user 体感「ボタンサイズバラバラ」 を構造的に解消。
+   step 2 で header nav(pkc-header-nav-btn / pkc-header-path-nav-btn)
+   を base + size-icon に migration、step 3〜6 で他 category 順次。 */
+.pkc-button-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-base);
+  white-space: nowrap;
+  transition: background 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
+}
+.pkc-button-base:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+.pkc-button-base:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* size category(audit §3.1): 5 つに固定、新 button class は base +
+   いずれかを継承する。 */
+.pkc-button-size-action { min-height: 32px; font-size: var(--fs-sm); padding: var(--space-1-5) var(--space-2-5); }
+.pkc-button-size-icon { min-height: 24px; font-size: var(--fs-base); padding: var(--space-0-5) var(--space-1-5); min-width: 28px; }
+.pkc-button-size-tab { min-height: 32px; font-size: var(--fs-base); padding: var(--space-1) var(--space-2); min-width: 4rem; }
+.pkc-button-size-toggle { min-height: 24px; font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); }
+.pkc-button-size-dismiss { min-height: 22px; font-size: var(--fs-xs); padding: var(--space-0-5) var(--space-1-5); }
+/* pgc-176 wave-δ #29(audit step 3-bis):Activity Bar 等の square icon
+   button 用 6th category。WCAG 2.5.8 推奨 44px に近い 40px square、
+   emoji glyph 表示で text tab とは別 sizing 必要(text tab は min-width
+   4rem で horizontal、本 category は width=height で square)。 */
+.pkc-button-size-square-tab { min-width: 40px; min-height: 40px; width: 40px; height: 40px; font-size: 1.2rem; padding: 0; }
+/* pgc-178 wave-α' G8(audit step 4):format toolbar(~40 button)用 7th
+   category。format-panel-btn は font-weight 600 + fs-sm + compact padding
+   が他 5 category と整合せず、専用 size を確保。既存 .pkc-format-panel-btn
+   rule(visual override = background / color / border / font-weight)は
+   後方互換のため保持、本 category は size 基準値の documentation +
+   fallback として機能。 */
+.pkc-button-size-toolbar { min-height: 26px; font-size: var(--fs-sm); padding: var(--space-1) var(--space-1-5); min-width: 2rem; }
+
+.pkc-header-nav-btn {
+  font-size: var(--fs-sm);
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  cursor: pointer;
+}
+
+.pkc-header-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* pgc-101 wave-γ #3(MASTER.md §6.1 phase 3):breadcrumb 内 `⇐` `⇒` icon。
+   shellBackForwardInBreadcrumbEnabled() ON 時、`renderHeaderPathTrail` が
+   nav 先頭に prepend する。標準 nav-btn より少し抑え目(breadcrumb の
+   text と並ぶため)、disabled も標準と同じ opacity 0.3。 */
+.pkc-header-path-nav-btn {
+  /* pgc-160 user bug fix(2026-05-24):「左上のパンクズ進むボタンが
+     押せない」 ── 実態は click target が文字幅程度しかなく(font-size
+     sm + padding small)、border transparent で button 認識自体困難。
+     min-width / min-height で **touch target を 24px 以上** に拡大、
+     default border を subtle visual に変更して button と認識可能化。
+     disabled 時は opacity を 0.3 → 0.45 に上げ + tooltip で「履歴
+     なし」 が伝わる。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-base);
+  line-height: 1;
+  padding: var(--space-0-5) var(--space-1-5);
+  margin: 0 var(--space-0-5);
+  min-width: 28px;
+  min-height: 24px;
+  border: 1px solid var(--c-border, rgba(127, 127, 127, 0.25));
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-fg-dim);
+  cursor: pointer;
+  transition: background 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
+}
+.pkc-header-path-nav-btn:hover:not(:disabled) {
+  background: var(--c-hover, rgba(127, 127, 127, 0.12));
+  color: var(--c-fg);
+  border-color: var(--c-fg-dim);
+}
+.pkc-header-path-nav-btn:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+.pkc-header-path-nav-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.pkc-header-path-nav-back { margin-right: var(--space-0-5); }
+.pkc-header-path-nav-fwd { margin-right: var(--space-2); }
+
+/* Top-header 階層パス(Explorer 風 path trail、pgc-42)。.pkc-header は
+   flex-wrap:wrap なので flex-basis:100% で最下段に独立 1 行となる。
+   segment click は data-pkc-action="select-entry" で jump。 */
+.pkc-header-path {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--c-border);
+  font-size: var(--fs-sm);
+  color: var(--c-fg-dim);
+  overflow-x: auto;
+}
+.pkc-header-path-root,
+.pkc-header-path-truncated,
+.pkc-header-path-current,
+.pkc-header-path-segment {
+  white-space: nowrap;
+}
+.pkc-header-path-current {
+  font-weight: 600;
+  color: var(--c-accent);
+}
+.pkc-header-path-sep {
+  opacity: 0.55;
+}
+.pkc-header-path-segment {
+  cursor: pointer;
+  color: var(--c-accent);
+  border-radius: var(--radius);
+  padding: 0 var(--space-1);
+}
+.pkc-header-path-segment:hover {
+  background: var(--c-accent-dim);
+  text-decoration: underline;
+}
+
 .pkc-phase-badge {
   font-size: var(--fs-xs);
   padding: 0.05rem var(--space-2-5);
@@ -559,6 +711,62 @@
 .pkc-btn-create {
   font-size: var(--fs-sm);
   padding: var(--space-1) var(--space-2-5);
+}
+
+/* pgc-99 wave-γ #1(MASTER.md §6.1):header `+ New` button + popover picker。
+   shellNewButtonPickerEnabled() ON 時に renderer.ts が `pkc-new-picker-wrap`
+   と中の `pkc-new-picker-popover` を描画する。popover は default `data-pkc-
+   open="false"` で hidden、action-binder の `toggle-new-picker` handler が
+   attr を flip + outside click / Escape で close。 */
+.pkc-new-picker-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.pkc-btn-new {
+  font-weight: 600;
+}
+.pkc-new-picker-popover {
+  /* pgc-106 hotfix(user bug report 2026-05-23):viewport 外に描画される
+     問題の修正。元 `position: absolute; top: calc(100% + 4px); right: 0`
+     は header の flex-wrap layout で wrap の位置に依存し画面外に出ること
+     があった。action-binder の `openNewPicker` が click 時に
+     `position: fixed; top/left` を計算して inline style で上書きする
+     (color picker と同流儀)。本 CSS は default の display:none + 視覚
+     style のみ持ち、positioning は JS 側で決定する。 */
+  position: absolute;
+  z-index: 60;
+  display: none;
+  flex-direction: column;
+  min-width: 180px;
+  padding: var(--space-1);
+  background: var(--c-surface, var(--c-bg));
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+.pkc-new-picker-popover[data-pkc-open="true"] {
+  display: flex;
+}
+.pkc-new-picker-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-new-picker-row:hover:not([disabled]),
+.pkc-new-picker-row:focus:not([disabled]) {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-new-picker-row[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Readonly badge ── */
@@ -597,6 +805,25 @@
   border-left: 3px solid var(--c-info);
   background: color-mix(in srgb, var(--c-info) 10%, var(--c-bg));
   color: var(--c-fg);
+}
+
+/* Phase γ-A3:この entry が child window で編集中であることを示す
+   center pane の notice。inline 編集は BEGIN_EDIT guard で弾かれる。 */
+.pkc-view-window-hint {
+  font-size: var(--fs-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 10%, var(--c-bg));
+  color: var(--c-fg);
+}
+
+/* Phase γ-A3:child window で編集中の entry の sidebar 行 marker。
+   tree / filer どちらの行にも `data-pkc-lid` 経由で適用される。layout を
+   崩さない inset box-shadow の accent stripe。 */
+[data-pkc-in-window="true"] {
+  box-shadow: inset 2px 0 0 var(--c-accent);
 }
 
 /* ── Export / Import inline buttons (collapsed behind <details>) ── */
@@ -720,6 +947,420 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+}
+
+/* pgc-102 wave-γ #4(MASTER.md §6.2):VSCode 流 Activity Bar。flag ON 時
+   に sidebar の左に縦 strip として描画。tab(icon button)を click で
+   active tab を切替、active tab は accent line で強調表示。 */
+.pkc-activity-bar {
+  width: 44px;
+  flex-shrink: 0;
+  background: var(--c-bg-dim, var(--c-bg));
+  border-right: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  gap: var(--space-0-5);
+}
+/* pgc-116 wave-γ #16:right-side configuration ── border が右側ではなく
+   左側になる(逆対称)。`data-pkc-side="right"` で flip。 */
+.pkc-activity-bar[data-pkc-side="right"] {
+  border-right: 0;
+  border-left: 1px solid var(--c-border);
+}
+.pkc-activity-bar-spacer {
+  flex: 1; /* 残り高さを spacer で占有して side-toggle を bar 下端に押す */
+}
+.pkc-activity-bar-side-toggle {
+  font-size: 1rem !important;
+  color: var(--c-fg-dim) !important;
+  opacity: 0.6;
+}
+.pkc-activity-bar-side-toggle:hover {
+  opacity: 1;
+}
+.pkc-activity-bar-btn {
+  /* pgc-136 wave-δ #10(user bug report 2026-05-24「左の縦型UIラベルを
+     押下した際に左paneが反応しない時がある」):tap target を 36 → 40px
+     に拡大(WCAG 2.5.8 推奨 44px に近づける、touch + 高密度 display 対応)。
+     `min-width` / `min-height` で明示し、emoji glyph の rendering 揺れに
+     よって button サイズが変わるのを防ぐ。 */
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  color: var(--c-fg-dim);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  /* pgc-180 wave-α' #3(v3 統合 master G8):badge を右上角に絶対配置する
+     ための基準点。 */
+  position: relative;
+}
+/* pgc-180 wave-α' #3:Activity Bar tab の count badge(visual count
+   indicator)。`shell.activity_bar_badges_enabled` ON 時、Outline /
+   Relations / Pinned の 3 tab で値 > 0 のとき icon の右上に小さく重ねる。
+   触り台(touch target)を阻害しないよう pointer-events: none。1〜2 桁
+   想定、99 超は activity-bar.ts 側で `99+` に圧縮。 */
+.pkc-activity-bar-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--c-accent, #3b82f6);
+  color: var(--c-bg, #fff);
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  box-sizing: border-box;
+  pointer-events: none;
+  /* 高密度 display での aliasing 軽減 */
+  letter-spacing: -0.02em;
+}
+.pkc-activity-bar-btn:hover {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-fg);
+}
+.pkc-activity-bar-btn[data-pkc-active="true"] {
+  border-left-color: var(--c-accent);
+  color: var(--c-fg);
+}
+
+/* pgc-136 wave-δ #10:click 視覚 feedback。action-binder の
+   select-activity-tab handler が click 直後に `data-pkc-just-clicked="true"`
+   を立て、150ms 後に attribute を削除する。CSS は短い flash animation で
+   user の click が register されたことを示す。 */
+@keyframes pkc-activity-bar-click-pulse {
+  0%   { background: var(--c-accent); color: var(--c-bg, #000); }
+  100% { background: transparent; }
+}
+.pkc-activity-bar-btn[data-pkc-just-clicked="true"] {
+  animation: pkc-activity-bar-click-pulse 0.15s ease-out;
+}
+
+/* pgc-103 wave-γ #5(MASTER.md §4.5):Outline tab。Activity Bar から
+   `outline` tab を選んだ時に sidebar 位置に出る。現在 entry の見出し
+   (h1〜h3)を抽出して list 化、click で center pane の heading anchor へ
+   scroll。 */
+.pkc-activity-tab-header {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--c-border);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.pkc-activity-tab-title {
+  color: var(--c-fg);
+}
+.pkc-activity-tab-outline-body {
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+}
+.pkc-outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pkc-outline-item {
+  margin: 0;
+  padding: 0;
+}
+.pkc-outline-item[data-pkc-outline-level="2"] { padding-left: var(--space-2); }
+.pkc-outline-item[data-pkc-outline-level="3"] { padding-left: var(--space-4); }
+.pkc-outline-item[data-pkc-outline-level="4"] { padding-left: var(--space-6, 1.5rem); }
+.pkc-outline-item[data-pkc-outline-level="5"] { padding-left: var(--space-8, 2rem); }
+.pkc-outline-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pkc-outline-link:hover,
+.pkc-outline-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-accent);
+  outline: none;
+}
+.pkc-outline-empty-hint {
+  padding: var(--space-3);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+/* pgc-104 wave-γ #6(MASTER.md §6.2):Recent tab。selectRecentEntries で
+   最新 N 件(default 10、`recent.default_limit` flag)を list 表示。row
+   click で select-entry dispatch(既存汎用 handler を透過)。 */
+.pkc-activity-tab-recent-body {
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+}
+.pkc-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pkc-recent-item {
+  margin: 0;
+}
+.pkc-recent-item[data-pkc-active="true"] > .pkc-recent-link {
+  background: var(--c-active, rgba(127, 127, 127, 0.18));
+  color: var(--c-accent);
+}
+.pkc-recent-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-recent-link:hover,
+.pkc-recent-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-recent-icon {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+.pkc-recent-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* pgc-105 wave-γ #7(MASTER.md §6.2):Pinned tab。pinned tab(pgc-88 で
+   導入された tab-strip の pinned 機構)を data source に list 表示。
+   visual は Recent と同流儀(icon + text、active highlight、hover/focus
+   強調)。 */
+.pkc-activity-tab-pinned-body {
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+}
+.pkc-pinned-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pkc-pinned-item {
+  margin: 0;
+}
+.pkc-pinned-item[data-pkc-active="true"] > .pkc-pinned-link {
+  background: var(--c-active, rgba(127, 127, 127, 0.18));
+  color: var(--c-accent);
+}
+.pkc-pinned-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-pinned-link:hover,
+.pkc-pinned-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-pinned-icon {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+.pkc-pinned-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* pgc-107 wave-γ #8(MASTER.md §6.2):Search tab。container 内 entry を
+   title + body 部分一致で絞り込み、最大 50 件 list 表示。 */
+.pkc-activity-search-input-row {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--c-border);
+}
+.pkc-activity-search-input {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+}
+.pkc-activity-search-input:focus {
+  outline: 1px solid var(--c-accent);
+  border-color: var(--c-accent);
+}
+.pkc-activity-search-count {
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-xs);
+  border-bottom: 1px solid var(--c-border);
+}
+.pkc-activity-tab-search-body {
+  overflow-y: auto;
+}
+.pkc-search-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+}
+.pkc-search-item {
+  margin: 0;
+}
+.pkc-search-item[data-pkc-active="true"] > .pkc-search-link {
+  background: var(--c-active, rgba(127, 127, 127, 0.18));
+  color: var(--c-accent);
+}
+.pkc-search-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-search-link:hover,
+.pkc-search-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-search-icon {
+  flex-shrink: 0;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+.pkc-search-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* pgc-108 wave-γ #9(MASTER.md §6.2):Relations tab(Activity Bar 6 件目、
+   最後の tab)。現在 entry の outbound / inbound relation を section に
+   分けて list 表示、row click で peer entry を SELECT_ENTRY。 */
+.pkc-activity-tab-relations-body {
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+}
+.pkc-relations-section {
+  margin-bottom: var(--space-2);
+}
+.pkc-relations-section-label {
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.pkc-relations-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pkc-relations-item {
+  margin: 0;
+}
+.pkc-relations-item[data-pkc-active="true"] > .pkc-relations-link {
+  background: var(--c-active, rgba(127, 127, 127, 0.18));
+  color: var(--c-accent);
+}
+.pkc-relations-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-relations-link:hover,
+.pkc-relations-link:focus-visible {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  outline: none;
+}
+.pkc-relations-kind {
+  flex-shrink: 0;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+.pkc-relations-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Activity Bar の placeholder(Explorer 以外を選んだ場合の sidebar 代替)。
+   wave-γ #4 scaffold ── pgc-103〜108 で 6 tab 全て中身に置き換え完了。 */
+.pkc-activity-tab-placeholder {
+  align-items: center;
+  justify-content: center;
+}
+.pkc-activity-tab-placeholder-inner {
+  margin: auto;
+  text-align: center;
+  padding: var(--space-3);
+  color: var(--c-fg-dim);
+}
+.pkc-activity-tab-placeholder-icon {
+  font-size: 2.5rem;
+  margin-bottom: var(--space-2);
+}
+.pkc-activity-tab-placeholder-title {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.pkc-activity-tab-placeholder-note {
+  font-size: var(--fs-sm);
+  opacity: 0.7;
 }
 
 /* ── Search ── */
@@ -1815,6 +2456,57 @@
 .pkc-md-rendered .pkc-section-warning  { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.08); }
 .pkc-md-rendered .pkc-section-caution  { border-left-color: #d97706; background: rgba(217, 119, 6, 0.08); }
 .pkc-md-rendered .pkc-section-danger   { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+/* v4 §12(stack PR 10):`:::format{...}` block 装飾箱 ── 任意 class くくり。
+   container 自身は装飾なし(neutral)、user-defined class / inline style / indent /
+   align で装飾。`pkc-format-block` は marker class、theme は影響なし。 */
+.pkc-md-rendered .pkc-format-block {
+  margin: var(--space-3) 0;
+}
+.pkc-md-rendered .pkc-format-block > :first-child { margin-top: 0; }
+.pkc-md-rendered .pkc-format-block > :last-child { margin-bottom: 0; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="1"]  { padding-left: 1em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="2"]  { padding-left: 2em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="3"]  { padding-left: 3em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="4"]  { padding-left: 4em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="5"]  { padding-left: 5em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="6"]  { padding-left: 6em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="7"]  { padding-left: 7em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="8"]  { padding-left: 8em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="9"]  { padding-left: 9em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-indent="10"] { padding-left: 10em; }
+.pkc-md-rendered .pkc-format-block[data-pkc-align="left"]    { text-align: left; }
+.pkc-md-rendered .pkc-format-block[data-pkc-align="center"]  { text-align: center; }
+.pkc-md-rendered .pkc-format-block[data-pkc-align="right"]   { text-align: right; }
+.pkc-md-rendered .pkc-format-block[data-pkc-align="justify"] { text-align: justify; }
+/* 領域 6:`:::details` 折りたたみブロック。開閉は native <details> が担う。 */
+.pkc-md-rendered .pkc-details {
+  margin: var(--space-3) 0;
+  border: 1px solid var(--c-border, #d1d5db);
+  border-radius: var(--radius);
+  padding: 0 var(--space-4);
+  background: rgba(0, 0, 0, 0.015);
+}
+.pkc-md-rendered .pkc-details > .pkc-details-summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: var(--space-2) 0;
+  margin: 0 calc(-1 * var(--space-4));
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+}
+.pkc-md-rendered .pkc-details[open] > .pkc-details-summary {
+  border-bottom: 1px solid var(--c-border, #d1d5db);
+  margin-bottom: var(--space-2);
+}
+.pkc-md-rendered .pkc-details > :last-child { margin-bottom: var(--space-2); }
+/* 領域 6:見出し折りたたみ。見出しを native <details>/<summary> で畳む。
+   既定は open ── 見た目は従来どおり、見出しがクリックで畳めるだけ。 */
+.pkc-md-rendered .pkc-heading-fold { margin: var(--space-3) 0 0; }
+.pkc-md-rendered .pkc-heading-fold-summary { cursor: pointer; }
+.pkc-md-rendered .pkc-heading-fold-summary > :first-child {
+  display: inline;
+  margin: 0;
+}
 .pkc-md-rendered blockquote.pkc-quote-citation::after {
   content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
   display: block;
@@ -1833,11 +2525,11 @@
  * - center は物理中央(書字方向 不変)
  * - end / start は CSS logical value、`writing-mode` / `direction` で自動 flip
  * - right / left は formal `:::paragraph{align=right|left}` 経由の物理強制 */
-.pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
-.pkc-md-rendered p[data-pkc-align="end"]    { text-align: end;    }
-.pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
-.pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
-.pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+.pkc-md-rendered [data-pkc-align="center"] { text-align: center; }
+.pkc-md-rendered [data-pkc-align="end"]    { text-align: end;    }
+.pkc-md-rendered [data-pkc-align="start"]  { text-align: start;  }
+.pkc-md-rendered [data-pkc-align="right"]  { text-align: right;  }
+.pkc-md-rendered [data-pkc-align="left"]   { text-align: left;   }
 
 /* L-9(2026-05-08):段落先頭 1 字下げ(行頭 `__` / `＿` プレフィックス、
  * 日本語文書の段落字下げ慣習)。data-pkc-indent="1" は paragraph 起点を
@@ -2313,6 +3005,18 @@ html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
 .pkc-text-edit-preview .pkc-task-checkbox {
   pointer-events: none;
   cursor: default;
+}
+/* pgc-150 wave-δ #19:todo description subtask checkbox を flag ON で
+   interactive 化(`text.todo_subtask_enabled`)。markdown-it 既定の
+   disabled 解除 + click 視覚 hint 追加。hover 時 outline で「押せる」
+   affordance を強化。 */
+.pkc-todo-description.pkc-md-rendered .pkc-task-checkbox.pkc-todo-subtask-interactive {
+  outline: 1px solid transparent;
+  transition: outline-color 80ms ease-out;
+}
+.pkc-todo-description.pkc-md-rendered .pkc-task-checkbox.pkc-todo-subtask-interactive:hover {
+  outline-color: var(--c-accent);
+  outline-offset: 2px;
 }
 
 /* ── Phase 2: table polish ── */
@@ -3554,6 +4258,70 @@ mark.pkc-search-mark {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   margin-right: var(--space-1);
+}
+
+/* pgc-181 wave-α' #4(v3 統合 master G6、handoff §3.5):Inspector History
+   tab の各 revision row 末尾に inline diff viewer(`<details>` で折りたたみ)。
+   rev.body と現 entry.body の line-level diff を `+` / `−` marker + 色分け
+   背景で表示。`shell.revision_diff_viewer_enabled` ON 時に出現。 */
+.pkc-revision-diff {
+  margin-top: var(--space-1);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+}
+.pkc-revision-diff-summary {
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  user-select: none;
+}
+.pkc-revision-diff-summary:hover {
+  color: var(--c-fg);
+}
+.pkc-revision-diff-body {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  padding: var(--space-1) 0;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+.pkc-revision-diff-row {
+  display: flex;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  line-height: 1.4;
+  /* 長い行は折り返し(white-space: pre は overflow-x が増えがちで avoid) */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pkc-revision-diff-row[data-pkc-diff-op="add"] {
+  background: rgba(56, 161, 105, 0.12); /* green tint */
+  color: var(--c-fg);
+}
+.pkc-revision-diff-row[data-pkc-diff-op="del"] {
+  background: rgba(229, 62, 62, 0.12); /* red tint */
+  color: var(--c-fg);
+}
+.pkc-revision-diff-row[data-pkc-diff-op="same"] {
+  color: var(--c-fg-dim);
+}
+.pkc-revision-diff-marker {
+  width: 1ch;
+  flex: 0 0 auto;
+  text-align: center;
+  font-weight: 700;
+  color: var(--c-fg-dim);
+}
+.pkc-revision-diff-row[data-pkc-diff-op="add"] .pkc-revision-diff-marker {
+  color: #38a169;
+}
+.pkc-revision-diff-row[data-pkc-diff-op="del"] .pkc-revision-diff-marker {
+  color: #e53e3e;
+}
+.pkc-revision-diff-text {
+  flex: 1 1 auto;
 }
 
 /* ── Todo presenter ── */
@@ -5675,6 +6443,74 @@ mark.pkc-search-mark {
   border-left: 1px solid var(--c-border);
 }
 
+/* pgc-138 wave-δ #12(user bug report 2026-05-24):tray bar slim chrome。
+   shellTrayBarSlimEnabled() ON 時に renderer が `data-pkc-slim="true"` を
+   立て、tray が 20px → 6px に細くなり SIDEBAR / META text を hide。
+   `:hover` で accent border が見え、click 動線が維持される(title attr で
+   tooltip も継続)── 隠し pane の存在を控えめに hint しつつ視覚ノイズ
+   削減。 */
+.pkc-tray-bar[data-pkc-slim="true"] {
+  width: 6px;
+  font-size: 0; /* SIDEBAR / META text を完全に hide(content も空) */
+  background: transparent;
+  border-right: 1px solid var(--c-border-dim, var(--c-border));
+  transition: width 0.15s ease-out, background 0.15s;
+}
+.pkc-tray-bar[data-pkc-slim="true"].pkc-tray-bar-right {
+  border-right: none;
+  border-left: 1px solid var(--c-border-dim, var(--c-border));
+}
+.pkc-tray-bar[data-pkc-slim="true"]:hover {
+  width: 12px;
+  background: var(--c-accent-dim, rgba(51, 255, 102, 0.12));
+  border-right-color: var(--c-accent);
+}
+.pkc-tray-bar[data-pkc-slim="true"].pkc-tray-bar-right:hover {
+  border-left-color: var(--c-accent);
+}
+
+/* pgc-139 wave-δ #13(user bug report 2026-05-24「上部メニューや操作系が
+   実質 4 段程度占有しているのも少し重い」):header / breadcrumb /
+   view-mode bar / tab strip の縦 padding を圧縮する compact mode。
+   shellHeaderCompactEnabled() ON 時に renderer が shell root へ
+   `data-pkc-compact-header="true"` を立てて 4 段すべて一括で圧縮。
+   font-size も少し下げて密度感を出す。横幅 / 機能は不変、縦方向のみ。 */
+[data-pkc-compact-header="true"] .pkc-header {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  gap: var(--space-1-5);
+}
+[data-pkc-compact-header="true"] .pkc-header-title {
+  font-size: var(--fs-base);
+}
+[data-pkc-compact-header="true"] .pkc-header-path {
+  margin-top: var(--space-0-5);
+  padding-top: var(--space-0-5);
+  font-size: var(--fs-xs);
+}
+[data-pkc-compact-header="true"] .pkc-view-mode-bar {
+  padding: var(--space-1) var(--space-2);
+}
+/* pgc-161 user bug fix(2026-05-24):「センターペインの種別変更タブが
+   小さくなりすぎて読めない」 ── compact-header ON で font-size sm +
+   padding 圧縮の結果、6 個並ぶ view-mode tabs が極小化していた。横方向
+   は touch target 確保のため padding `space-1 space-2-5` で十分な
+   click 範囲を保ち、font-size は base(他要素 parity)を維持。縦
+   方向だけ圧縮で「ヘッダ全体 compact」 の意図を保つ。 */
+[data-pkc-compact-header="true"] .pkc-view-mode-btn {
+  font-size: var(--fs-base);
+  padding: var(--space-1) var(--space-2-5);
+  min-width: 4rem;
+}
+[data-pkc-compact-header="true"] .pkc-tab-strip {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+[data-pkc-compact-header="true"] .pkc-btn-create {
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--fs-sm);
+}
+
 /* ── Guidance & Interaction Hints ── */
 .pkc-guidance {
   line-height: 1.6;
@@ -5725,7 +6561,11 @@ mark.pkc-search-mark {
 .pkc-view-mode-btn {
   font-family: var(--font-mono);
   font-size: var(--fs-base);
-  padding: var(--space-1-5) 0.6rem;
+  padding: var(--space-1-5) var(--space-2-5);
+  /* pgc-161:default でも min-width で「読める幅」 を確保。6 個並ぶ
+     view-mode tabs が viewport 幅で潰れて極小化する事故を構造的に
+     防ぐ(`min-width: 4rem` で 1 文字でも viewport 狭くても潰れない)。 */
+  min-width: 4rem;
   background: none;
   border: 1px solid var(--c-border);
   color: var(--c-muted);
@@ -5763,6 +6603,36 @@ mark.pkc-search-mark {
   background: rgba(51,255,102,0.12);
 }
 
+/* pgc-111 wave-γ #12(MASTER.md §6.5):view-mode tabs scoped(entry-level
+   vs workspace-level)。flag ON 時に Detail と Calendar の間に `|` separator、
+   選択無しで Detail tab は disabled 化(視覚 + 機能で entry-level 強調)。 */
+.pkc-view-mode-bar[data-pkc-scoped="true"] {
+  align-items: center;
+}
+.pkc-view-mode-sep {
+  display: inline-block;
+  width: 1px;
+  height: 1.2em;
+  margin: 0 var(--space-2);
+  color: var(--c-border);
+  user-select: none;
+  vertical-align: middle;
+  border-left: 1px solid var(--c-border);
+}
+.pkc-view-mode-btn[data-pkc-disabled-reason="no-selection"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--c-bg-dim, transparent);
+}
+.pkc-view-mode-btn[data-pkc-disabled-reason="no-selection"]:disabled:hover {
+  color: var(--c-muted);
+  border-color: var(--c-border);
+  background: var(--c-bg-dim, transparent);
+}
+.pkc-view-mode-btn[data-pkc-tab-scope="entry"] {
+  font-style: italic;
+}
+
 /* ── Frontmatter properties (領域 10-6 ζ'' Phase 2a) ── */
 
 .pkc-frontmatter {
@@ -5794,6 +6664,791 @@ mark.pkc-search-mark {
 .pkc-frontmatter-value {
   margin: 0;
   word-break: break-word;
+}
+
+/* ── graph relation wire editor の kind selector popup(Phase γ-B2-3)── */
+.pkc-relation-kind-popup {
+  position: fixed;
+  z-index: 9100;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1-5);
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.pkc-relation-kind-popup-btn,
+.pkc-relation-kind-popup-cancel {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  text-align: left;
+}
+.pkc-relation-kind-popup-btn:hover {
+  border-color: var(--c-accent);
+}
+.pkc-relation-kind-popup-cancel {
+  color: var(--c-fg-dim);
+}
+
+/* ── graph view relation wire editor の View / Edit toggle(Phase γ-B2)── */
+.pkc-graph-edit-toggle {
+  display: inline-flex;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.pkc-graph-edit-toggle-btn {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-graph-edit-toggle-btn.pkc-graph-edit-toggle-active {
+  background: var(--c-accent);
+  color: var(--c-bg);
+}
+
+/* ── meta pane mode bar(Group B、Phase γ-B3)── */
+.pkc-meta-pane-mode-bar {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+.pkc-meta-pane-mode-btn {
+  flex: 1;
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1-5);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-meta-pane-mode-btn.pkc-meta-pane-mode-active {
+  background: var(--c-accent);
+  color: var(--c-bg);
+}
+
+/* pgc-110 wave-γ #11(MASTER.md §6.4):Format panel toggle button。
+   shellFormatPanelDefaultHiddenEnabled() ON 時に renderer が format panel
+   の前に prepend する。click で format panel の表示 / 非表示を flip。 */
+.pkc-format-panel-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-format-panel-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pkc-format-panel-toggle:hover {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-fg);
+  border-color: var(--c-fg-dim);
+}
+.pkc-format-panel-toggle[data-pkc-active="true"] {
+  background: var(--c-accent-dim, rgba(51, 255, 102, 0.12));
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
+/* pgc-109 wave-γ #10(MASTER.md §6.3):meta pane Inspector tab strip。
+   flag ON 時に renderMetaPaneImpl が meta pane の頭に prepend する 5 tab
+   strip(Properties / References / History / Style / AI)。active tab は
+   accent border-bottom で強調、placeholder tab は中央寄せ "Coming soon" を
+   pane 中央に出す。 */
+.pkc-meta-inspector-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+.pkc-meta-inspector-tab {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-1) 0;
+  font-size: 1.05rem;
+  color: var(--c-fg-dim);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pkc-meta-inspector-tab:hover {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-fg);
+}
+.pkc-meta-inspector-tab[data-pkc-active="true"] {
+  color: var(--c-accent);
+  border-bottom-color: var(--c-accent);
+}
+/* pgc-201 wave-α' polish #23:Inspector tab strip badge。Activity Bar
+   badge(pgc-180)と同方針だが tab 形状(横 width 4rem の長方形)に
+   合わせ右下角に小さく配置。`pointer-events: none` で touch target を
+   阻害しない。 */
+.pkc-meta-inspector-tab {
+  position: relative; /* badge を absolute 配置するための基準 */
+}
+.pkc-meta-inspector-tab-badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--c-accent, #3b82f6);
+  color: var(--c-bg, #fff);
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  box-sizing: border-box;
+  pointer-events: none;
+  letter-spacing: -0.02em;
+}
+.pkc-meta-inspector-placeholder,
+.pkc-meta-inspector-empty-hint {
+  margin: var(--space-4) auto;
+  text-align: center;
+  color: var(--c-fg-dim);
+  padding: var(--space-3);
+}
+
+/* pgc-118 wave-γ #18(MASTER.md §6.3):Inspector Style tab content。
+   読み取り専用 metrics(archetype / 文字数 / heading 数 / frontmatter style
+   globals 等)を definition list で表示。per-entry theme override は wave-γ
+   後続 PR で実装。 */
+.pkc-inspector-style {
+  padding: var(--space-2) 0;
+}
+.pkc-inspector-style-heading {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--c-fg);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+}
+.pkc-inspector-style-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
+}
+.pkc-inspector-style-dt {
+  margin: 0;
+  color: var(--c-fg-dim);
+  font-weight: 500;
+}
+.pkc-inspector-style-dd {
+  margin: 0;
+  color: var(--c-fg);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
+.pkc-inspector-style-note {
+  margin-top: var(--space-3);
+  padding: var(--space-1-5) var(--space-2);
+  color: var(--c-fg-dim);
+  font-size: var(--fs-xs);
+  font-style: italic;
+  opacity: 0.8;
+}
+/* pgc-152 wave-δ #21:Inspector Style tab の todo subtask completion
+   graph(progress bar)。done/total から fill 比率を percent で
+   visualize、theme var で Light/Dark/CRT 追従。 */
+.pkc-inspector-progress-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: 4px;
+  background: var(--c-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pkc-inspector-progress-fill {
+  height: 100%;
+  background: var(--c-accent, #4a90e2);
+  transition: width 120ms ease-out;
+}
+
+/* pgc-147 wave-γ #24(MASTER.md §6.3 AI tab、inspector-ai-tab-roadmap §3
+   Phase 1):Inspector AI tab local-only frontmatter suggester。flag
+   `shell.inspector_ai_local_enabled` ON 時に本文 H1 / #tag から候補を
+   提示、apply / dismiss button 付き。LLM 接続なし。 */
+.pkc-inspector-ai {
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--c-border);
+}
+.pkc-inspector-ai-heading {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+  color: var(--c-fg);
+}
+.pkc-inspector-ai-note {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  margin-bottom: var(--space-2);
+  opacity: 0.8;
+}
+.pkc-inspector-ai-empty {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  font-style: italic;
+  padding: var(--space-2);
+  text-align: center;
+  opacity: 0.7;
+}
+.pkc-inspector-ai-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pkc-inspector-ai-suggestion {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  background: var(--c-bg-dim, var(--c-bg));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-suggestion-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+}
+.pkc-inspector-ai-key {
+  background: var(--c-accent, #4a90e2);
+  color: #fff;
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.pkc-inspector-ai-confidence {
+  color: var(--c-fg-dim);
+  font-size: 0.85em;
+  letter-spacing: 0.05em;
+}
+.pkc-inspector-ai-confidence[data-pkc-confidence-level="high"] {
+  color: var(--c-accent, #4a90e2);
+}
+.pkc-inspector-ai-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--c-fg);
+  word-break: break-word;
+}
+.pkc-inspector-ai-reason {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  line-height: 1.4;
+}
+.pkc-inspector-ai-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+.pkc-inspector-ai-apply,
+.pkc-inspector-ai-dismiss {
+  flex: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: 3px;
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.pkc-inspector-ai-apply {
+  background: var(--c-accent, #4a90e2);
+  color: #fff;
+  border-color: var(--c-accent, #4a90e2);
+}
+.pkc-inspector-ai-apply:hover {
+  filter: brightness(1.1);
+}
+.pkc-inspector-ai-dismiss:hover {
+  background: var(--c-bg-hover, var(--c-bg-dim, var(--c-bg)));
+}
+/* pgc-148 wave-γ #25:abandoned entry warning(roadmap §2.2 A 群 4)。
+   updated_at 古い + relation 0 + link 0 件の entry に「使われていない候補」
+   警告 box を frontmatter suggestion の上に表示。 */
+.pkc-inspector-ai-warning {
+  border: 1px solid var(--c-warn, #d97706);
+  background: var(--c-warn-bg, rgba(217, 119, 6, 0.08));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-warning-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-warning-icon {
+  font-size: 1em;
+}
+.pkc-inspector-ai-warning-title {
+  color: var(--c-warn, #d97706);
+}
+.pkc-inspector-ai-warning-detail {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+}
+/* pgc-149 wave-γ #26:broken link summary(roadmap §2.2 A 群 3、
+   Phase 1 完了)。本文 entry: 参照のうち target 削除済を集約、Inspector
+   に橙(warning と danger の中間)で表示。 */
+.pkc-inspector-ai-broken {
+  border: 1px solid var(--c-danger, #dc2626);
+  background: var(--c-danger-bg, rgba(220, 38, 38, 0.06));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-broken-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-broken-title {
+  color: var(--c-danger, #dc2626);
+}
+.pkc-inspector-ai-broken-detail {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+}
+.pkc-inspector-ai-broken-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pkc-inspector-ai-broken-target {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--c-fg-dim);
+  background: var(--c-bg);
+  padding: 1px var(--space-1);
+  border-radius: 3px;
+}
+/* pgc-153 wave-γ #27:duplicate entry detector(roadmap §2.2 A 群 2、
+   Phase 2 1 件目)。bigram Jaccard 類似度 >= 0.5 の他 entry 上位 3 件を
+   Inspector AI tab に提示、info 色(accent 系の薄)。各 item は title +
+   similarity% を 1 行表示、dismiss は section 単位。 */
+.pkc-inspector-ai-duplicates {
+  border: 1px solid var(--c-accent, #4a90e2);
+  background: var(--c-accent-bg, rgba(74, 144, 226, 0.06));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-duplicates-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-duplicates-title {
+  color: var(--c-accent, #4a90e2);
+}
+.pkc-inspector-ai-duplicates-note {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  line-height: 1.4;
+}
+.pkc-inspector-ai-duplicates-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pkc-inspector-ai-duplicates-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-1);
+  background: var(--c-bg);
+  border-radius: 3px;
+  font-size: var(--fs-xs);
+}
+.pkc-inspector-ai-duplicates-item-title {
+  color: var(--c-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.pkc-inspector-ai-duplicates-item-similarity {
+  color: var(--c-accent, #4a90e2);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+/* pgc-154 wave-γ #28:outline lint(roadmap §2.2 A 群 6、Phase 2 2 件目)。
+   markdown body の heading 階層を check、H1 無し / H1 複数 / heading
+   skip(H2→H4 等)を 💡 info box(neutral muted color)で提示。 */
+.pkc-inspector-ai-outline {
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-dim, var(--c-bg));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-outline-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-outline-title {
+  color: var(--c-fg);
+}
+.pkc-inspector-ai-outline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pkc-inspector-ai-outline-issue {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+  padding: 2px var(--space-1);
+}
+/* pgc-158 wave-γ #29:archetype mismatch detector(roadmap §2.2 A 群 8、
+   Phase 2 3 件目)。text archetype だが body が他 archetype 向きの場合に
+   🧩 puzzle piece icon で suggest、neutral info box(border + bg-dim)。 */
+.pkc-inspector-ai-archetype {
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-dim, var(--c-bg));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-archetype-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-archetype-title {
+  color: var(--c-fg);
+  font-family: var(--font-mono);
+}
+.pkc-inspector-ai-archetype-detail {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+}
+/* pgc-164 wave-γ #30:circular reference detector(roadmap §2.2 A 群 5、
+   Phase 2 4 件目)。relation graph 上の閉路を 🔄 cycle icon で warn、
+   danger 色寄り(deletion 推奨だが mutate dangerous なので caution)。 */
+.pkc-inspector-ai-circular {
+  border: 1px solid var(--c-warn, #d97706);
+  background: var(--c-warn-bg, rgba(217, 119, 6, 0.05));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-circular-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-circular-title {
+  color: var(--c-warn, #d97706);
+}
+.pkc-inspector-ai-circular-detail {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+/* pgc-165 wave-γ #31:tag imbalance suggester(roadmap §2.2 A 群 7、
+   Phase 2 完了)。tag 文化のある container で tag 0 件 entry に
+   popular tag をヒント、🏷️ icon + neutral info box。 */
+.pkc-inspector-ai-tag-imbalance {
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-dim, var(--c-bg));
+  border-radius: var(--radius-sm, 4px);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-tag-imbalance-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-inspector-ai-tag-imbalance-detail {
+  font-size: var(--fs-xs);
+  color: var(--c-fg);
+  line-height: 1.4;
+}
+.pkc-inspector-ai-tag-imbalance-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.pkc-inspector-ai-tag-imbalance-item {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--c-accent, #4a90e2);
+  background: var(--c-bg);
+  padding: 1px var(--space-1);
+  border-radius: 3px;
+  border: 1px solid var(--c-border);
+}
+/* pgc-155 wave-δ #22:textlog log search bar(flag ON 時のみ表示)。
+   append area の直下、log document の上に固定。input は flex grow。 */
+.pkc-textlog-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-2);
+  margin-bottom: var(--space-1);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--c-bg-dim, var(--c-bg));
+}
+.pkc-textlog-search-icon {
+  font-size: 1em;
+  opacity: 0.8;
+}
+.pkc-textlog-search-input {
+  flex: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: var(--fs-sm);
+}
+.pkc-textlog-search-input:focus {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+}
+.pkc-textlog-search-count {
+  font-size: var(--fs-xs);
+  color: var(--c-fg-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+/* pgc-157 wave-δ #24:textlog importance-only toggle ── pgc-163 で
+   user 指摘「トグルをボタンで作る意味とは?」 を受け <label> +
+   <input type="checkbox" role="switch"> + <span> に semantic 変更。
+   click target は label 全体、checkbox は accent-color で OS 標準の
+   switch 風 visual、active state は data-pkc-active で text 強調。 */
+.pkc-textlog-importance-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 80ms ease-out, color 80ms ease-out, border-color 80ms ease-out;
+}
+.pkc-textlog-importance-toggle:hover {
+  background: var(--c-bg-hover, var(--c-bg-dim, var(--c-bg)));
+  border-color: var(--c-fg-dim);
+}
+.pkc-textlog-importance-toggle[data-pkc-active="true"] {
+  background: var(--c-bg-accent-subtle, rgba(74, 144, 226, 0.08));
+  border-color: var(--c-accent, #4a90e2);
+  color: var(--c-accent, #4a90e2);
+  font-weight: 600;
+}
+.pkc-textlog-importance-toggle-input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--c-accent, #4a90e2);
+  cursor: pointer;
+}
+.pkc-textlog-importance-toggle-text {
+  line-height: 1;
+}
+
+/* pgc-125 wave-δ #1(MASTER.md §7 text):Editor footer wordcount。
+   flag ON 時に editor 末尾に compact metrics row(char / word / line)を
+   表示。editor 内で完結する目線移動最小の動線(Notion / Bear / Typora 流)。 */
+.pkc-editor-footer-wordcount {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2-5);
+  border-top: 1px solid var(--c-border);
+  background: var(--c-bg-dim, var(--c-bg));
+  color: var(--c-fg-dim);
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+.pkc-editor-footer-icon {
+  opacity: 0.75;
+}
+.pkc-editor-footer-metrics {
+  user-select: text;
+}
+.pkc-meta-inspector-placeholder-icon {
+  font-size: 2.5rem;
+  margin-bottom: var(--space-2);
+}
+.pkc-meta-inspector-placeholder-title {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+.pkc-meta-inspector-placeholder-note {
+  font-size: var(--fs-sm);
+  opacity: 0.7;
+}
+
+/* ── 編集モード picker(Group A、Phase γ-A2)── */
+.pkc-edit-mode-picker {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+.pkc-edit-mode-btn {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1-5);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.pkc-edit-mode-btn.pkc-edit-mode-active {
+  background: var(--c-accent);
+  color: var(--c-bg);
+}
+
+/* ── frontmatter warnings 赤バー(Group B、Phase γ-B1)── */
+.pkc-frontmatter-warning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  margin-bottom: var(--space-2, 0.5rem);
+  padding: var(--space-1-5) var(--space-2);
+  background: rgba(220, 60, 60, 0.12);
+  border: 1px solid var(--c-danger, #d23c3c);
+  border-radius: var(--radius-sm);
+}
+.pkc-frontmatter-warning-item {
+  font-size: var(--fs-sm);
+  color: var(--c-danger, #d23c3c);
+  word-break: break-word;
+}
+
+/* ── frontmatter graphical editor(Group B、Phase γ-B1)── */
+.pkc-frontmatter-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+}
+.pkc-frontmatter-edit-row {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2, 0.5rem);
+  align-items: center;
+}
+.pkc-frontmatter-edit-label {
+  font-weight: 600;
+  opacity: 0.7;
+}
+.pkc-frontmatter-edit-input {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1-5);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+.pkc-frontmatter-edit-input:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
 }
 
 /* ── Filer View (領域 10-6 ζ'' Phase 1) ── */
@@ -6243,6 +7898,51 @@ mark.pkc-search-mark {
   opacity: 0.85;
   padding-bottom: var(--space-1, 0.25rem);
   border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.1));
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1, 0.25rem);
+}
+
+.pkc-sidebar-filer-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 現スコープの item 数(Group A、Phase γ-A1)。 */
+.pkc-sidebar-filer-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-weight: 400;
+  font-size: var(--fs-xs, 0.65rem);
+  opacity: 0.7;
+}
+
+/* filer 操作ヒント(Group A、Phase γ-A1)。 */
+.pkc-sidebar-filer-hint {
+  font-size: var(--fs-xs, 0.65rem);
+  opacity: 0.55;
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+}
+
+/* filer 内 絞り込み検索窓(Group A、Phase γ-A1)。 */
+.pkc-sidebar-filer-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--c-bg, #fff);
+  color: var(--c-fg, #000);
+  border: 1px solid var(--c-border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-sm, 2px);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+  font-family: inherit;
+  font-size: var(--fs-sm, 0.7rem);
+}
+
+/* pgc-51: filer 検索窓を ★ quick-save と同じ `.pkc-search-row`
+   (flex)に収めるとき、入力欄が残り幅を埋め ★ ボタンは content 幅。 */
+.pkc-search-row .pkc-sidebar-filer-search {
+  flex: 1;
+  min-width: 0;
 }
 
 .pkc-sidebar-filer-list {
@@ -7056,6 +8756,41 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 
 .pkc-calendar-todo-item[data-pkc-todo-overdue="true"] {
   border-left: 2px solid var(--c-danger);
+}
+
+/* pgc-134 wave-δ #9(MASTER.md §7 todo):sidebar / filer の todo row
+   overdue indicator。shellTodoOverdueIndicatorEnabled() ON 時に renderer が
+   `data-pkc-todo-overdue="true"` attr を立て、本 selector で warning
+   border + ⚠ badge が見える。kanban / calendar の既存 overdue style と
+   視覚的に統一(同じ c-danger 色)。 */
+.pkc-entry-item[data-pkc-todo-overdue="true"],
+.pkc-filer-row[data-pkc-todo-overdue="true"] {
+  border-left: 2px solid var(--c-danger);
+}
+.pkc-todo-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-1);
+  color: var(--c-danger);
+  font-size: 0.95em;
+  cursor: help;
+}
+
+/* pgc-135 hotfix(user bug report 2026-05-23):shellDataInShellMenuEnabled
+   ON 時に header inline Data… が消える issue を救済する fallback button。
+   控えめ style(transparent + border のみ)で chrome ノイズを最小化、
+   click で Shell Menu を開いて Data section にアクセス。 */
+.pkc-header-export-fallback {
+  background: transparent;
+  border: 1px solid var(--c-border);
+  color: var(--c-fg-dim);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+}
+.pkc-header-export-fallback:hover {
+  background: var(--c-hover, rgba(127, 127, 127, 0.1));
+  color: var(--c-fg);
+  border-color: var(--c-fg-dim);
 }
 
 .pkc-calendar-todo-more {
@@ -7930,6 +9665,15 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   cursor: pointer;
 }
 
+/* user bug 2026-05-27 perf hotfix:checkbox markup を always 出力、
+   visibility は selection mode 親 container の data-attribute で制御。
+   `.pkc-textlog-select-label` default hidden → BEGIN_TEXTLOG_SELECTION 時
+   に textlog container に `data-pkc-textlog-selecting="true"` を set すると
+   一斉に visible。大量 log textlog で selection mode toggle の re-render を
+   skip するための前提条件。 */
+.pkc-textlog-select-label { display: none; }
+[data-pkc-textlog-selecting="true"] .pkc-textlog-select-label { display: inline-flex; align-items: center; }
+
 [data-pkc-textlog-selecting="true"] .pkc-textlog-log[data-pkc-log-selected="true"] {
   background: color-mix(in srgb, var(--c-accent) 12%, transparent);
   border-radius: var(--radius);
@@ -7940,6 +9684,61 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 .pkc-textlog-preview-overlay {
   /* Overlay tier — above attachment sandbox previews (10000). */
   z-index: 20000;
+}
+
+/* user bug 2026-05-27「凄まじく重い…遂行は絶対」hotfix:TEXTLOG → TEXT 変換中の
+   進捗 modal。Web Worker での conversion 中、user に処理中可視化 + cancel 動線。 */
+.pkc-textlog-conversion-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 25000; /* preview-overlay 20000 より上 */
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pkc-textlog-conversion-panel {
+  background: var(--c-bg-elevated, var(--c-surface));
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  width: min(28rem, 92vw);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.pkc-textlog-conversion-heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-2xl);
+}
+.pkc-textlog-conversion-subtitle {
+  margin: 0 0 var(--space-4);
+  opacity: 0.75;
+  font-size: var(--fs-lg);
+}
+.pkc-textlog-conversion-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: var(--c-border);
+  border-radius: var(--radius-pill, 999px);
+  overflow: hidden;
+  margin-bottom: var(--space-2);
+}
+.pkc-textlog-conversion-bar {
+  height: 100%;
+  background: var(--c-accent);
+  width: 0%;
+  transition: width 120ms ease;
+}
+.pkc-textlog-conversion-label {
+  font-size: var(--fs-md);
+  opacity: 0.8;
+  text-align: right;
+  margin-bottom: var(--space-4);
+}
+.pkc-textlog-conversion-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .pkc-textlog-preview-panel {
@@ -8357,6 +10156,52 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   font-style: italic;
 }
 
+/* ── γ-A5-5 競合 diff view(dual-edit-conflict overlay 内の 2-pane 行 diff)── */
+.pkc-conflict-diff {
+  margin: var(--space-3) 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.pkc-conflict-diff-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--c-border);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.pkc-conflict-diff-head > span {
+  background: var(--c-surface);
+  padding: var(--space-2) var(--space-3);
+}
+.pkc-conflict-diff-body {
+  max-height: 14rem;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.pkc-conflict-diff-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+}
+.pkc-conflict-diff-cell {
+  padding: var(--space-1) var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.4em;
+}
+.pkc-conflict-diff-cell[data-op="del"] {
+  background: color-mix(in srgb, var(--c-danger) 20%, transparent);
+}
+.pkc-conflict-diff-cell[data-op="add"] {
+  background: color-mix(in srgb, var(--c-success) 20%, transparent);
+}
+.pkc-conflict-diff-cell[data-op="empty"] {
+  background: var(--c-hover);
+}
+
 /* ── About view ── */
 .pkc-about-scroll {
   flex: 1;
@@ -8370,6 +10215,39 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   padding: 2rem 1.5rem 3rem;
   color: var(--c-fg);
   line-height: 1.6;
+}
+
+/* pgc-113 wave-γ #14(MASTER.md §2 U-19):About entry の PKC-Markdown
+   showcase section。flag ON 時に About view の頭に renderMarkdown 経由で
+   render される ── dialect の callout / mark / em-dot / ruby / footnote 等
+   を視覚で示す dogfooding 領域。既存 .pkc-md-rendered の style を継承
+   (callout / mark / em-dot 等の dialect rule はそのまま発火)、追加で
+   showcase 専用の margin / padding を持たせる。 */
+.pkc-about-showcase {
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg-dim, var(--c-bg));
+}
+.pkc-about-showcase h1 {
+  margin-top: 0;
+  font-size: 1.5rem;
+}
+.pkc-about-showcase h2 {
+  font-size: 1.15rem;
+  margin-top: var(--space-3);
+}
+.pkc-about-showcase table {
+  border-collapse: collapse;
+  margin: var(--space-2) 0;
+  width: 100%;
+}
+.pkc-about-showcase th,
+.pkc-about-showcase td {
+  border: 1px solid var(--c-border);
+  padding: 0.3em 0.6em;
+  text-align: left;
 }
 .pkc-about-header {
   border-bottom: 1px solid var(--c-border);
@@ -9357,6 +11235,49 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 /* Wide tables overflow horizontally inside the wrapper. The cursor
  * hint signals "this scrolls". `touch-action: pan-x` ensures iOS
  * recognises horizontal swipe as scroll, not page scroll. */
+/* pgc-203 wave-α' polish #24(built-in mermaid):placeholder + rendered
+   + error states。`editor.mermaid_render_enabled` OFF 時は placeholder の
+   `<pre class="pkc-mermaid-source">` がそのまま表示(source 閲覧可能、
+   copy / export も維持)。ON + hydration 後は `.pkc-mermaid-rendered` に
+   SVG が差し込まれる。 */
+.pkc-mermaid-placeholder {
+  display: block;
+  margin: var(--space-3) 0;
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+  background: var(--c-bg);
+}
+.pkc-mermaid-source {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--c-surface);
+  color: var(--c-fg-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-x: auto;
+}
+.pkc-mermaid-rendered {
+  display: block;
+  margin: var(--space-3) 0;
+  padding: var(--space-2);
+  text-align: center;
+  /* SVG の <text> 要素にも default font を適用(theme 切替時の整合) */
+  background: var(--c-bg);
+}
+.pkc-mermaid-rendered svg {
+  max-width: 100%;
+  height: auto;
+}
+.pkc-mermaid-error {
+  margin: 0 0 var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(229, 62, 62, 0.12);
+  color: var(--c-fg);
+  border-left: 3px solid #e53e3e;
+  font-size: var(--fs-sm);
+}
+
 .pkc-md-block[data-pkc-md-block-kind="table"] {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -9707,21 +11628,49 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: none;
 }
 
-/* ── 編集画面 floating format panel(PR-2JJ v2、2026-05-13)──
-   text body の選択部に追従する PKC MD フォーマット設定ツールバー。 */
+/* ── 編集モード固定 format panel(ribbon)— Group C ワープロ化, Phase γ-C ──
+   旧 floating panel(PR-2JJ v2)を scrap し、編集面上部に常駐する固定 ribbon
+   として build し直したもの。renderer.ts renderEditor() が描画する。
+   `position: sticky` で center pane(.pkc-center-content、overflow-y:auto)を
+   scroll しても ribbon が上端に残る — これが「常駐」契約の core。opaque な
+   --c-surface 背景で scroll する editor 本文を覆う。 */
 .pkc-format-panel {
-  position: fixed;
-  z-index: 22500;
-  display: none;
+  display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
   padding: var(--space-1-5) var(--space-2);
   background: var(--c-surface);
-  border: 1px solid var(--c-accent);
+  border: 1px solid var(--c-border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  align-items: center;
-  max-width: min(90vw, 480px);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+/* touch 端末は snippet-toolbar の floating popup を使うため非表示(spec §3.1)。 */
+@media (pointer: coarse) {
+  .pkc-format-panel { display: none; }
+}
+.pkc-format-panel-group {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+}
+.pkc-format-panel-group-summary {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--c-fg-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.pkc-format-panel-group-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1-5) var(--space-1-5);
+}
+.pkc-format-panel-group-body:empty {
+  display: none;
 }
 .pkc-format-panel-btn {
   background: var(--c-bg);
@@ -9740,16 +11689,39 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline: 2px solid var(--c-accent);
   outline-offset: 1px;
 }
-.pkc-format-panel-close {
-  margin-left: var(--space-1-5);
-  background: transparent;
-  border: none;
-  color: var(--c-fg-dim);
-  font-size: var(--fs-base);
-  cursor: pointer;
-  padding: var(--space-1);
+/* 値選択 picker(font-size / font-family 等)— trigger + option popup。 */
+.pkc-format-panel-picker {
+  position: relative;
+  display: inline-block;
 }
-.pkc-format-panel-close:hover { color: var(--c-fg); }
+.pkc-format-panel-picker-trigger {
+  list-style: none;
+}
+.pkc-format-panel-picker-trigger::-webkit-details-marker {
+  display: none;
+}
+.pkc-format-panel-picker-body {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+/* 文字色 / 背景色 picker の色見本 option。 */
+.pkc-format-panel-swatch {
+  width: 1.4rem;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+}
 
 /* ── Data.. dropdown menu(PR-2JJ v2、entry detail header、AST / Pandoc 出力)──
    現在 selected entry の body を AST / Canonical / Pandoc / HTML に変換して
@@ -9850,3 +11822,527 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 }
 .pkc-citation-narrative { border-bottom: none; }
 
+
+/* ─── Command Palette overlay ────────────────────────────────────
+ * vscode-grade-overhaul-2026-05 MASTER.md §4.1 wave-α POC(pgc-80)。
+ * VSCode 流 universal command launcher、Ctrl+Shift+P / F1 で起動。
+ * 設計:Family A overlay(centered fixed + accent panel)を再利用、
+ *      ただし top 1/4 寄せ + max-width 600 で「palette らしい」配置。
+ */
+.pkc-command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  pointer-events: auto;
+}
+.pkc-command-palette-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+.pkc-command-palette-card {
+  position: relative;
+  z-index: 1;
+  width: min(600px, 90vw);
+  max-height: 70vh;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 20px rgba(51, 255, 102, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pkc-command-palette-input {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.6rem 0.85rem;
+  border: none;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  outline: none;
+}
+.pkc-command-palette-input:focus {
+  box-shadow: inset 0 -2px 0 var(--c-accent);
+}
+.pkc-command-palette-list {
+  flex: 1 1 auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  overflow-y: auto;
+}
+.pkc-command-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--c-fg);
+}
+.pkc-command-palette-item:hover {
+  background: var(--c-hover);
+}
+.pkc-command-palette-item-active {
+  background: color-mix(in srgb, var(--c-accent) 15%, transparent);
+  outline: 1px solid var(--c-accent-dim);
+  outline-offset: -2px;
+}
+.pkc-command-palette-item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkc-command-palette-item-cat {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: var(--c-muted);
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+}
+.pkc-command-palette-item-kbd {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--c-muted);
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+}
+.pkc-command-palette-empty {
+  padding: 0.85rem;
+  color: var(--c-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  font-style: italic;
+}
+
+/* ─── Quick Open overlay(pgc-81、MASTER.md §4.2)──────────────────
+ * Ctrl+P で起動する entry fuzzy launcher。Command Palette と同じ
+ * Family A overlay 流だが、placeholder / footer / mode hint で
+ * 「entry 検索 + mode prefix」の context を出す。
+ */
+.pkc-quick-open-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  pointer-events: auto;
+}
+.pkc-quick-open-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+.pkc-quick-open-card {
+  position: relative;
+  z-index: 1;
+  width: min(640px, 90vw);
+  max-height: 72vh;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 20px rgba(51, 255, 102, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pkc-quick-open-input {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.6rem 0.85rem;
+  border: none;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  outline: none;
+}
+.pkc-quick-open-input:focus {
+  box-shadow: inset 0 -2px 0 var(--c-accent);
+}
+.pkc-quick-open-mode-hint {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.85rem;
+  font-size: 0.78rem;
+  color: var(--c-muted);
+  background: color-mix(in srgb, var(--c-accent) 8%, transparent);
+  border-bottom: 1px solid var(--c-border);
+}
+.pkc-quick-open-list {
+  flex: 1 1 auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  overflow-y: auto;
+}
+.pkc-quick-open-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--c-fg);
+}
+.pkc-quick-open-item:hover { background: var(--c-hover); }
+.pkc-quick-open-item-active {
+  background: color-mix(in srgb, var(--c-accent) 15%, transparent);
+  outline: 1px solid var(--c-accent-dim);
+  outline-offset: -2px;
+}
+.pkc-quick-open-item-icon {
+  flex: 0 0 auto;
+  font-size: 1.0rem;
+  width: 1.4em;
+  text-align: center;
+}
+.pkc-quick-open-item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkc-quick-open-item-meta {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: var(--c-muted);
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-bg);
+}
+.pkc-quick-open-empty {
+  padding: 0.85rem;
+  color: var(--c-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  font-style: italic;
+}
+.pkc-quick-open-footer {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.72rem;
+  color: var(--c-muted);
+  border-top: 1px solid var(--c-border);
+  background: var(--c-bg);
+}
+.pkc-quick-open-footer kbd {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--c-fg);
+  background: var(--c-surface);
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  margin: 0 0.1em;
+}
+
+/* ─── Tab strip(pgc-85、MASTER.md §4.3)─────────────────────────
+ * Tier 0 flag `shell.tabs_enabled` ON のとき center pane 上部に描画。
+ * VSCode 流の chrome:archetype icon + title + close (×) + dirty (●)。
+ */
+.pkc-tab-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  align-items: stretch;
+  background: var(--c-bg);
+  border-bottom: 1px solid var(--c-border);
+  padding: 0;
+  margin: 0;
+  min-height: 30px;
+  scrollbar-width: thin;
+}
+.pkc-tab-strip-empty {
+  min-height: 30px;
+}
+.pkc-tab-strip-placeholder {
+  padding: 0.4rem 0.85rem;
+  color: var(--c-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+.pkc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.85rem;
+  color: var(--c-fg);
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 240px;
+  min-width: 100px;
+  transition: background 80ms ease;
+}
+.pkc-tab:hover {
+  background: var(--c-hover);
+}
+.pkc-tab-active {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-weight: 500;
+  border-top: 2px solid var(--c-accent);
+  padding-top: calc(0.3rem - 2px);
+}
+.pkc-tab-icon {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.pkc-tab-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pkc-tab-close {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--c-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  margin-left: 0.2rem;
+}
+.pkc-tab-close:hover {
+  background: var(--c-border);
+  color: var(--c-fg);
+}
+.pkc-tab-close-dirty {
+  color: var(--c-accent);
+  font-size: 0.7rem;
+}
+.pkc-tab-dirty .pkc-tab-title::before {
+  content: '';
+}
+
+/* pgc-137 wave-δ #11(user bug report 2026-05-24「センターペインでタブが
+   開く時と開かない時の視覚効果が無いように感じる、重複Openを意識づけ
+   したい」):
+   - `data-pkc-just-opened`:新規 tab が tab strip に追加された時 ──
+     400ms の slide-in animation(width 0 → full)+ accent border flash。
+     user に「新しい tab が増えた」と認識させる。
+   - `data-pkc-just-focused`:既存 tab に re-focus された時 ── 250ms の
+     subtle pulse animation(scale 1.05 一瞬 → 1.0)+ background flash。
+     user に「同じ tab が活性化された(新規ではない)」と認識させる。
+   2 つの animation が異なるため、重複 Open を視覚で意識できる。 */
+@keyframes pkc-tab-just-opened {
+  0%   { max-width: 0; opacity: 0; background: var(--c-accent-dim, rgba(51, 255, 102, 0.18)); }
+  60%  { max-width: 16rem; opacity: 1; }
+  100% { background: transparent; }
+}
+@keyframes pkc-tab-just-focused {
+  0%   { transform: scale(1); background: transparent; }
+  40%  { transform: scale(1.05); background: var(--c-accent-dim, rgba(51, 255, 102, 0.22)); }
+  100% { transform: scale(1); background: transparent; }
+}
+.pkc-tab[data-pkc-just-opened="true"] {
+  animation: pkc-tab-just-opened 0.4s ease-out;
+}
+.pkc-tab[data-pkc-just-focused="true"] {
+  animation: pkc-tab-just-focused 0.25s ease-in-out;
+}
+
+/* ─── Tab pin (pgc-88、MASTER.md §4.3)──────────────────────
+ * pinned tab は close ボタンの代わりに 🔒 を表示、click で unpin。
+ * 視覚的に pinned tab は accent border-left を持つ(右に並んだ entry tab
+ * との切り分け)。
+ */
+.pkc-tab-pinned {
+  border-left: 2px solid var(--c-accent);
+  padding-left: calc(0.55rem - 2px);
+}
+.pkc-tab-pin {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--c-accent);
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  margin-left: 0.2rem;
+}
+.pkc-tab-pin:hover {
+  background: var(--c-border);
+}
+
+/* ─── Split View(pgc-89、MASTER.md §4.3 / §5.5)────────────────────
+ * Tier 0 flag `shell.split_view_enabled` ON のとき center pane を grid
+ * 2-column に変えて secondary pane(read-only viewer)を右側に置く。
+ * close button でいつでも閉じる。
+ */
+.pkc-center-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+  column-gap: 0;
+}
+.pkc-center-split > .pkc-split-view {
+  /* secondary pane は 2 行目に span(tab strip / view-mode bar の下に) */
+  grid-column: 2 / 3;
+  grid-row: 1 / -1;
+  border-left: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.pkc-split-view-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.7rem;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  font-size: 0.85rem;
+}
+.pkc-split-view-title {
+  color: var(--c-muted);
+  font-weight: 500;
+}
+.pkc-split-view-close {
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
+  text-align: center;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: 0.9rem;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+}
+.pkc-split-view-close:hover {
+  background: var(--c-hover);
+}
+.pkc-split-view-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.85rem 1rem;
+  background: var(--c-bg);
+  color: var(--c-fg);
+}
+
+/* ── 領域 10-4 spreadsheet archetype Phase 1 (2026-05-28、user direction #4) ── */
+.pkc-spreadsheet-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.pkc-spreadsheet {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  min-width: 100%;
+}
+.pkc-spreadsheet thead th {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  padding: 0.25rem 0.55rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: pre-wrap;
+}
+.pkc-spreadsheet tbody td {
+  border: 1px solid var(--c-border);
+  padding: 0.2rem 0.55rem;
+  white-space: pre-wrap;
+  vertical-align: top;
+}
+.pkc-spreadsheet tbody tr:nth-child(even) td {
+  background: rgba(127, 127, 127, 0.04);
+}
+.pkc-spreadsheet-empty {
+  color: var(--c-muted);
+  font-style: italic;
+  padding: 0.5rem;
+  text-align: left;
+  caption-side: top;
+}
+.pkc-spreadsheet-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.pkc-spreadsheet-edit-hint {
+  color: var(--c-muted);
+  font-size: 0.8rem;
+  margin: 0;
+}
+.pkc-spreadsheet-tsv {
+  width: 100%;
+  min-height: 12rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  resize: vertical;
+  tab-size: 12;
+}
+
+/* ── 領域 10-4 spreadsheet Phase 2 grid editor (2026-05-29) ── */
+.pkc-spreadsheet-toolbar {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+.pkc-spreadsheet-toolbar .pkc-btn-small {
+  padding: 0.18rem 0.55rem;
+  font-size: 0.82rem;
+}
+/* grid editor の cell は contenteditable で focus 強調 */
+table.pkc-spreadsheet-grid th[contenteditable],
+table.pkc-spreadsheet-grid td[contenteditable] {
+  outline: none;
+  min-width: 4rem;
+  cursor: text;
+}
+table.pkc-spreadsheet-grid th[contenteditable]:focus,
+table.pkc-spreadsheet-grid td[contenteditable]:focus {
+  background: rgba(80, 144, 220, 0.12);
+  box-shadow: inset 0 0 0 2px var(--c-accent, #4d8be0);
+}
+/* Grid mode と TSV mode の表示切替(data-pkc-spreadsheet-mode 属性で gate) */
+.pkc-spreadsheet-editor[data-pkc-spreadsheet-mode="grid"] textarea.pkc-spreadsheet-tsv {
+  display: none;
+}
+.pkc-spreadsheet-editor[data-pkc-spreadsheet-mode="tsv"] table.pkc-spreadsheet-grid {
+  display: none;
+}

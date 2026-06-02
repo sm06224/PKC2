@@ -134,6 +134,12 @@ interface CanvasViewState {
   dragOrigUser?: Map<string, { x: number; y: number }>;
   dragNeighborFactor?: Map<string, number>;
   dragMouseStartClient?: { x: number; y: number } | null;
+  /**
+   * Phase γ-B2:relation wire editor の drag 中状態。wireSource = drag 元
+   * node の lid、wireTarget = cursor の user-space 座標。edit mode 時のみ。
+   */
+  wireSource?: string | null;
+  wireTarget?: { x: number; y: number } | null;
 }
 
 // PR-DD (2026-05-06、user 報告「銀河の星々のように」):zoom range を
@@ -153,6 +159,23 @@ function getOrInitView(canvas: HTMLCanvasElement): CanvasViewState {
     viewStates.set(canvas, v);
   }
   return v;
+}
+
+// ── Phase γ-B2:relation wire editor の edit mode ──
+//
+// graph view の view / edit mode を保持する canvas-local runtime state。
+// edit mode では node 間 drag で relation を作成する(drag 実装は後続 PR)。
+// AppState には載せない(graph view の runtime 操作 state、persistence 不要)。
+export type GraphEditMode = 'view' | 'edit';
+
+let graphEditMode: GraphEditMode = 'view';
+
+export function getGraphEditMode(): GraphEditMode {
+  return graphEditMode;
+}
+
+export function setGraphEditMode(mode: GraphEditMode): void {
+  graphEditMode = mode;
 }
 
 /**
@@ -614,6 +637,24 @@ export function drawGraphCanvas(canvas: HTMLCanvasElement): void {
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
+  }
+
+  // Phase γ-B2:relation wire editor の prototype line(edit mode の drag 中)。
+  // kind 未確定なので neutral 灰色 + 半透明 + 点線(spec OQ-B-4 暫定)。
+  if (view.wireSource && view.wireTarget) {
+    const src = payload.positions.get(view.wireSource);
+    if (src) {
+      ctx.save();
+      ctx.strokeStyle = theme.fgMuted;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 2 / view.scale;
+      ctx.setLineDash([6 / view.scale, 4 / view.scale]);
+      ctx.beginPath();
+      ctx.moveTo(src.x, src.y);
+      ctx.lineTo(view.wireTarget.x, view.wireTarget.y);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // PR-Δ21 (2026-05-07、user 指摘「Venn って何?どう見てもベンでは
@@ -1112,6 +1153,20 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
     if (pressDownLid && mouseDownPos) {
       const movedDist = Math.hypot(me.clientX - mouseDownPos.x, me.clientY - mouseDownPos.y);
       const payload = payloads.get(canvas);
+      // Phase γ-B2:edit mode の node press は wire drag(prototype line →
+      // relation 作成)。Shift+drag は edit mode でも従来の node-drag に退避
+      // (spec §2.1)。node-drag が既に engage 済なら wire には入らない。
+      if (getGraphEditMode() === 'edit' && !view.dragLid) {
+        if (!view.wireSource && !me.shiftKey && movedDist > 5) {
+          view.wireSource = pressDownLid;
+        }
+        if (view.wireSource) {
+          const lg = clientToLogical(canvas, me.clientX, me.clientY);
+          view.wireTarget = logicalToUser(canvas, lg.x, lg.y);
+          drawGraphCanvas(canvas);
+          return;
+        }
+      }
       if (!view.dragLid && movedDist > 5 && payload) {
         view.dragLid = pressDownLid;
         view.dragMouseStartClient = { x: mouseDownPos.x, y: mouseDownPos.y };
@@ -1227,6 +1282,27 @@ export function installGraphCanvasGestures(canvas: HTMLCanvasElement): void {
       view.dragOrigUser = undefined;
       view.dragNeighborFactor = undefined;
       view.dragMouseStartClient = null;
+    }
+    // Phase γ-B2-3:wire drag 終了。drop 点に別 node があれば wire-drop
+    // event を発行(action-binder が kind selector popup → CREATE_RELATION)。
+    if (view.wireSource) {
+      const dropTarget = hitTestNodeAt(canvas, me.clientX, me.clientY);
+      if (dropTarget && dropTarget !== view.wireSource) {
+        canvas.dispatchEvent(
+          new CustomEvent('pkc-graph-wire-drop', {
+            detail: {
+              source: view.wireSource,
+              target: dropTarget,
+              clientX: me.clientX,
+              clientY: me.clientY,
+            },
+            bubbles: true,
+          }),
+        );
+      }
+      view.wireSource = null;
+      view.wireTarget = null;
+      drawGraphCanvas(canvas);
     }
   }, { signal });
 

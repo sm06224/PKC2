@@ -698,9 +698,7 @@ solid + kind 色。
 | 2026-05-19 | PR #480(PR-β0)merge:Phase β plan 着地 |
 | 2026-05-19 | PR #481(PR-β1)merge:Group A 統合 spec 着地、OQ-A-1〜A-5 未合意のまま |
 | 2026-05-19 | **本書起こし(PR-β2)**:Group B 右ペイン特化 spec、現状 meta pane 13 section + graph view 線引き非サポート整理 + relation wire editor + YAML graphical editor 詳細設計 + Tier 0 flag 6 件 + visual parity 計画 + 新 OQ-B-1〜B-7 |
-| TBD | PR-β3 Group C 書式機能 spec |
-| TBD | PR-β4 Phase γ 実装 wave map |
-| TBD | OQ-A / OQ-B 合意 → Phase γ-B1 着手判断 |
+| 2026-05-20 | **Phase γ-B 実装着地(stack PR-pgc-15〜26)**:§3 YAML graphical editor(serialize / 編集 form / field-type-aware / warnings 可視化)、§2 graph relation wire editor(edit mode / wire drag / kind popup / CREATE_RELATION / Shift+drag 退避 / multi-select 一括 / visual parity test)、§4 meta pane mode tabs が着地。すべて flag gate。詳細は CHANGELOG v2.3.0 §Phase γ-B |
 
 ---
 

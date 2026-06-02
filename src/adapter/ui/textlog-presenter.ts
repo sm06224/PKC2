@@ -31,11 +31,62 @@ import {
   attachTocViewportTracker,
   type TocViewportHandle,
 } from './textlog-toc-viewport';
+import { searchTextlogEntries } from '../../features/textlog/textlog-search';
+import { textTextlogLogSearchEnabled, textTextlogImportanceFilterEnabled } from './shell-flags';
 
 export { parseTextlogBody, serializeTextlogBody, appendLogEntry };
 
 let activeHydrator: HydratorHandle | null = null;
 let activeTocViewport: TocViewportHandle | null = null;
+
+/**
+ * pgc-155 wave-δ #22:textlog log search query を per-lid で持つ
+ * module-local state。renderer は描画時に getSearchQuery で読む、
+ * action-binder は setSearchQuery で update + SYS_SYNC dispatch。
+ * reload で消える(localStorage 化は後続 PR で検討)。
+ */
+const searchQueryByLid = new Map<string, string>();
+
+/**
+ * pgc-157 wave-δ #24:per-lid の importance-only filter active state。
+ * search query と同流儀で module-local Map、reload で消える。
+ */
+const importanceFilterByLid = new Map<string, boolean>();
+
+export function getTextlogSearchQuery(lid: string): string {
+  return searchQueryByLid.get(lid) ?? '';
+}
+
+export function setTextlogSearchQuery(lid: string, query: string): void {
+  if (query === '') {
+    searchQueryByLid.delete(lid);
+  } else {
+    searchQueryByLid.set(lid, query);
+  }
+}
+
+export function isTextlogImportanceOnly(lid: string): boolean {
+  return importanceFilterByLid.get(lid) === true;
+}
+
+export function setTextlogImportanceOnly(lid: string, value: boolean): void {
+  if (value) {
+    importanceFilterByLid.set(lid, true);
+  } else {
+    importanceFilterByLid.delete(lid);
+  }
+}
+
+export function toggleTextlogImportanceOnly(lid: string): boolean {
+  const next = !isTextlogImportanceOnly(lid);
+  setTextlogImportanceOnly(lid, next);
+  return next;
+}
+
+export function resetTextlogSearchState(): void {
+  searchQueryByLid.clear();
+  importanceFilterByLid.clear();
+}
 
 function cleanupActiveHydrator(): void {
   if (activeHydrator) {
@@ -132,7 +183,41 @@ export const textlogPresenter: DetailPresenter = {
 
     container.appendChild(appendArea);
 
-    const doc = buildTextlogDoc(entry, { order: 'desc' });
+    // pgc-155 wave-δ #22 + pgc-157 wave-δ #24:flag ON 時に search bar +
+    // importance toggle を append area の直下に表示。query / importance
+    // 両 filter は AND 条件で下の doc.sections に適用される。flag OFF
+    // だと何も出さない(完全後方互換)。
+    let searchQuery = '';
+    let searchHits = 0;
+    let searchTotal = 0;
+    const importanceOnly
+      = textTextlogImportanceFilterEnabled() && isTextlogImportanceOnly(entry.lid);
+    if (textTextlogLogSearchEnabled() || textTextlogImportanceFilterEnabled()) {
+      searchQuery = textTextlogLogSearchEnabled() ? getTextlogSearchQuery(entry.lid) : '';
+      const parsed = parseTextlogBody(entry.body);
+      const searchResult = searchTextlogEntries(parsed.entries, searchQuery);
+      // importance フィルタは search 結果 entries 数を不変にせず、表示用に
+      // 件数も計算しなおす(`{matches, totalHits, totalEntries}` は search
+      // 単独の結果、importance フィルタ後の hit を別に算出して bar に出す)。
+      const afterImportance = importanceOnly
+        ? searchResult.matches.filter((e) => e.flags.includes('important'))
+        : searchResult.matches;
+      searchHits = afterImportance.length;
+      searchTotal = searchResult.totalEntries;
+      container.appendChild(
+        renderTextlogSearchBar(
+          entry.lid,
+          searchQuery,
+          searchHits,
+          searchTotal,
+          importanceOnly,
+        ),
+      );
+    }
+
+    const docFull = buildTextlogDoc(entry, { order: 'desc' });
+    const docAfterSearch = filterTextlogDocByQuery(docFull, searchQuery);
+    const doc = importanceOnly ? filterTextlogDocByImportance(docAfterSearch) : docAfterSearch;
 
     if (doc.sections.length === 0) {
       const empty = document.createElement('div');
@@ -140,11 +225,26 @@ export const textlogPresenter: DetailPresenter = {
       empty.setAttribute('data-pkc-region', 'textlog-empty');
       const emptyTitle = document.createElement('div');
       emptyTitle.className = 'pkc-textlog-empty-title';
-      emptyTitle.textContent = 'No log entries yet.';
+      // pgc-155:search active で hit 0 件なら "No matches" を出す。
+      // pgc-157:importance フィルタ active で 0 件なら専用文言。
+      const isSearchActive = searchQuery.trim() !== '' && searchTotal > 0;
+      if (importanceOnly && searchTotal > 0) {
+        emptyTitle.textContent = isSearchActive
+          ? `No important matches for "${searchQuery}"`
+          : 'No important log entries';
+      } else {
+        emptyTitle.textContent = isSearchActive ? `No matches for "${searchQuery}"` : 'No log entries yet.';
+      }
       empty.appendChild(emptyTitle);
       const emptyHint = document.createElement('div');
       emptyHint.className = 'pkc-textlog-empty-hint';
-      emptyHint.textContent = 'Write your first log entry above ↑';
+      if (importanceOnly && searchTotal > 0) {
+        emptyHint.textContent = 'Turn off the ⭐ filter or mark logs as important to see them here.';
+      } else {
+        emptyHint.textContent = isSearchActive
+          ? 'Clear the search to see all log entries.'
+          : 'Write your first log entry above ↑';
+      }
       empty.appendChild(emptyHint);
       container.appendChild(empty);
       return container;
@@ -399,23 +499,24 @@ function renderLogArticle(
   const header = document.createElement('header');
   header.className = 'pkc-textlog-log-header';
 
-  // Slice 4: checkbox shown only while selection mode is active for
-  // this TEXTLOG. Pre-checked when the module-local selection set
-  // already contains this id (restores state across re-renders).
+  // user bug 2026-05-27 perf hotfix:checkbox markup を **always** 出力、
+  // visibility は CSS の `[data-pkc-textlog-selecting]` attribute で制御。
+  // 大量 log textlog で selection mode toggle 時の re-render 回避が目的。
+  // `selecting` は initial checked 状態のためのみ使用、markup 自体は常出力。
+  const selectLabel = document.createElement('label');
+  selectLabel.className = 'pkc-textlog-select-label';
+  selectLabel.setAttribute('title', 'Include this log in the TEXT extract');
+  const selectCheck = document.createElement('input');
+  selectCheck.type = 'checkbox';
+  selectCheck.className = 'pkc-textlog-select-check';
+  selectCheck.setAttribute('data-pkc-field', 'textlog-select');
+  selectCheck.setAttribute('data-pkc-lid', lid);
+  selectCheck.setAttribute('data-pkc-log-id', log.id);
   if (selecting) {
-    const selectLabel = document.createElement('label');
-    selectLabel.className = 'pkc-textlog-select-label';
-    selectLabel.setAttribute('title', 'Include this log in the TEXT extract');
-    const selectCheck = document.createElement('input');
-    selectCheck.type = 'checkbox';
-    selectCheck.className = 'pkc-textlog-select-check';
-    selectCheck.setAttribute('data-pkc-field', 'textlog-select');
-    selectCheck.setAttribute('data-pkc-lid', lid);
-    selectCheck.setAttribute('data-pkc-log-id', log.id);
     selectCheck.checked = isLogSelected(log.id);
-    selectLabel.appendChild(selectCheck);
-    header.appendChild(selectLabel);
   }
+  selectLabel.appendChild(selectCheck);
+  header.appendChild(selectLabel);
 
   const flagBtn = document.createElement('button');
   flagBtn.className = 'pkc-textlog-flag-btn';
@@ -524,7 +625,7 @@ function renderLogArticle(
  * of the TEXTLOG view on every dispatch; state continuity is kept by
  * reading from `textlog-selection` at render time.
  */
-function renderSelectionToolbar(lid: string, selecting: boolean): HTMLElement {
+export function renderSelectionToolbar(lid: string, selecting: boolean): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'pkc-textlog-select-toolbar';
   bar.setAttribute('data-pkc-region', 'textlog-select-toolbar');
@@ -568,4 +669,125 @@ function renderSelectionToolbar(lid: string, selecting: boolean): HTMLElement {
   bar.appendChild(convertBtn);
 
   return bar;
+}
+
+/**
+ * pgc-155 wave-δ #22:textlog search bar(flag ON 時の log keyword
+ * filter)。input change で `set-textlog-search` action を発火、
+ * action-binder が module-local state を更新 + SYS_SYNC で再描画。
+ */
+function renderTextlogSearchBar(
+  lid: string,
+  query: string,
+  hits: number,
+  total: number,
+  importanceOnly: boolean = false,
+): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'pkc-textlog-search';
+  bar.setAttribute('data-pkc-region', 'textlog-search');
+
+  // pgc-155 search input(flag ON 時)
+  if (textTextlogLogSearchEnabled()) {
+    const icon = document.createElement('span');
+    icon.className = 'pkc-textlog-search-icon';
+    icon.textContent = '🔍';
+    bar.appendChild(icon);
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'pkc-textlog-search-input';
+    input.setAttribute('data-pkc-action', 'set-textlog-search');
+    input.setAttribute('data-pkc-lid', lid);
+    input.setAttribute('data-pkc-field', 'textlog-search-query');
+    input.placeholder = 'Filter log entries by keyword(space-separated AND)';
+    input.value = query;
+    bar.appendChild(input);
+  }
+
+  // pgc-157 importance toggle(flag ON 時)── pgc-163 で <button> から
+  // <label><input type="checkbox" role="switch"> に変更(user bug
+  // report 2026-05-24「トグルをボタンで作る意味とは?」)。
+  // semantically toggle = checkbox/switch、screen reader にも適切に
+  // 「checked / unchecked」 が伝わる。click target は label 全体。
+  if (textTextlogImportanceFilterEnabled()) {
+    const label = document.createElement('label');
+    label.className = 'pkc-textlog-importance-toggle';
+    if (importanceOnly) label.setAttribute('data-pkc-active', 'true');
+    label.title = importanceOnly
+      ? 'Showing only logs marked as important. Click to clear.'
+      : 'Show only logs marked as important.';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'pkc-textlog-importance-toggle-input';
+    input.setAttribute('role', 'switch');
+    input.setAttribute('data-pkc-action', 'toggle-textlog-importance-only');
+    input.setAttribute('data-pkc-lid', lid);
+    input.checked = importanceOnly;
+    label.appendChild(input);
+    const text = document.createElement('span');
+    text.className = 'pkc-textlog-importance-toggle-text';
+    text.textContent = importanceOnly ? '⭐ Only important' : '⭐ All logs';
+    label.appendChild(text);
+    bar.appendChild(label);
+  }
+
+  const count = document.createElement('span');
+  count.className = 'pkc-textlog-search-count';
+  count.setAttribute('data-pkc-hits', String(hits));
+  count.setAttribute('data-pkc-total', String(total));
+  if (query.trim() === '' && !importanceOnly) {
+    count.textContent = `${total} entries`;
+  } else {
+    count.textContent = `${hits} / ${total}`;
+  }
+  bar.appendChild(count);
+
+  return bar;
+}
+
+/**
+ * pgc-157 wave-δ #24:doc.sections を importance only で filter。
+ * 各 day section の logs を `flags.includes('important')` の log のみ
+ * に絞り、空 day section は drop。
+ */
+function filterTextlogDocByImportance<T extends { sections: Array<{ dateKey: string; logs: LogArticle[] }> }>(
+  doc: T,
+): T {
+  const filteredSections = [];
+  for (const section of doc.sections) {
+    const filteredLogs = section.logs.filter((log) => log.flags.includes('important'));
+    if (filteredLogs.length > 0) {
+      filteredSections.push({ ...section, logs: filteredLogs });
+    }
+  }
+  return { ...doc, sections: filteredSections };
+}
+
+/**
+ * pgc-155 wave-δ #22:doc.sections を search query で filter。
+ * 空 query は元 doc をそのまま返す。各 day section の logs を hit
+ * のみに絞り、空 day section は drop。順序保持(buildTextlogDoc が
+ * 既に order:'desc' で出している)。
+ */
+function filterTextlogDocByQuery<T extends { sections: Array<{ dateKey: string; logs: LogArticle[] }> }>(
+  doc: T,
+  query: string,
+): T {
+  if (query.trim() === '') return doc;
+  const tokens = query.trim().toLowerCase().split(/\s+/);
+  const filteredSections = [];
+  for (const section of doc.sections) {
+    const filteredLogs = section.logs.filter((log) => {
+      const hay = log.bodySource.toLowerCase();
+      for (const tok of tokens) {
+        if (!hay.includes(tok)) return false;
+      }
+      return true;
+    });
+    if (filteredLogs.length > 0) {
+      filteredSections.push({ ...section, logs: filteredLogs });
+    }
+  }
+  return { ...doc, sections: filteredSections };
 }

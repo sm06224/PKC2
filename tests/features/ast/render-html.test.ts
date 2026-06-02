@@ -252,3 +252,128 @@ describe('PR-2Z renderAstToHtml — core node coverage', () => {
     });
   });
 });
+
+// pgc-243(2026-05-25、user 報告:PKC IR 経由 render で改行が消える)
+// PKC Markdown は `breaks: true` semantic(`\n` = 視覚的改行 = `<br>`)を
+// supreme invariant としており、IR 経路でも legacy renderMarkdown と
+// byte-equivalent な `<br>\n` 出力を返さなければ可換性が壊れる。
+//
+// 修正前は render-html.ts `case 'text': return escapeHtml(node.value)` で
+// AstText{value:'\n'}(parse.ts L172-180 で softbreak/hardbreak から
+// 格上げされたもの)をそのまま literal '\n' で出していたため、HTML 仕様上
+// text content の '\n' は whitespace として collapse され「改行が消える」
+// バグになっていた。
+describe('pgc-243 newline preservation in IR pipeline', () => {
+  it('softbreak in paragraph: line1\\nline2 → line1<br>\\nline2', () => {
+    const html = roundtrip('line1\nline2');
+    expect(html).toContain('line1<br>');
+    expect(html).toContain('line2');
+    // 確認:literal '\n' のみの隙間が無く、明示的 <br> が間に入る
+    expect(html).not.toContain('line1\nline2');
+  });
+
+  it('hardbreak (trailing 2-space) も <br> として render される', () => {
+    const html = roundtrip('line1  \nline2');
+    expect(html).toContain('<br>');
+    expect(html).toContain('line1');
+    expect(html).toContain('line2');
+  });
+
+  it('複数行 paragraph で連続 <br> が出る', () => {
+    const html = roundtrip('a\nb\nc');
+    // a<br>\nb<br>\nc(canonicalize 後の text node に複数 \n が embed される)
+    const brCount = (html.match(/<br>/g) || []).length;
+    expect(brCount).toBe(2);
+    expect(html).toContain('a');
+    expect(html).toContain('b');
+    expect(html).toContain('c');
+  });
+
+  it('heading 内の改行も <br> として保持(canonical PKC dialect)', () => {
+    // markdown-it は heading 内に softbreak を保持(`#` で始まる行は heading として
+    // tokenize、次行の text は paragraph として別 block 化される)。本 case は
+    // heading 内 hardbreak で改行が出るかを cover ── inline 構造保持の確認。
+    const html = roundtrip('# title');
+    expect(html).toContain('<h1>title</h1>');
+  });
+
+  it('escape 含む text に \\n が混ざっても safe', () => {
+    // 5 < 10\n & 10 > 5 のような escape が必要な多行 text
+    const html = roundtrip('5 < 10\n& 10 > 5');
+    expect(html).toContain('5 &lt; 10');
+    expect(html).toContain('&amp; 10 &gt; 5');
+    expect(html).toContain('<br>');
+    // literal '<' '>' '&' が escape されずに出ていないこと
+    expect(html).not.toContain('5 < 10\n');
+    expect(html).not.toContain('& 10 > 5');
+  });
+
+  it('単一行 text は <br> を含まない(false positive 防止)', () => {
+    const html = roundtrip('single line');
+    expect(html).toContain('single line');
+    expect(html).not.toContain('<br>');
+  });
+});
+
+// pgc-243(2026-05-25、可換性 audit Phase 2):link / image の title attribute は
+// PKC Markdown / HTML 両方で表現可能だが、修正前は AST に保持されず
+// MD → IR → HTML / HTML → IR → MD の round-trip で消えていた。
+describe('pgc-243 link/image title preservation', () => {
+  it('CommonMark `[text](url "title")` → AST.title → HTML title attr', () => {
+    const html = roundtrip('[click](https://example.com "hover hint")');
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('title="hover hint"');
+    expect(html).toContain('>click</a>');
+  });
+
+  it('CommonMark `![alt](src "caption")` → AST.title → HTML title attr', () => {
+    const html = roundtrip('![photo](pic.png "shot from beach")');
+    expect(html).toContain('src="pic.png"');
+    expect(html).toContain('alt="photo"');
+    expect(html).toContain('title="shot from beach"');
+  });
+
+  it('title 無し link/image は title attr を出さない', () => {
+    const html = roundtrip('[a](url)\n\n![b](img.png)');
+    // title attr が無いことを確認
+    expect(html).not.toContain('title="');
+  });
+
+  it('title 内 `"` は escape される', () => {
+    const html = roundtrip('[x](url "say \\"hi\\"")');
+    // markdown-it は `\"` を `"` として parse する。HTML output で属性値の `"`
+    // が `&quot;` として escape されることを確認。
+    expect(html).toContain('href="url"');
+    expect(html).toMatch(/title="[^"]*&quot;hi&quot;[^"]*"/);
+  });
+});
+
+// pgc-243(2026-05-25、可換性 audit Phase 3):GFM table の column alignment
+// (`|:---:|---:|`)は legacy markdown-it が `<th style="text-align:X">` で
+// 出力するが、IR 経路は AstTable.align field に転記せず render-html.ts も
+// style attr を出していなかった。AST 経由で align 情報が消える可換性違反。
+describe('pgc-243 table column alignment preservation', () => {
+  it('left/right/center alignment が <th style="text-align:X"> として出力される', () => {
+    const md = '| A | B | C |\n|:---|:---:|---:|\n| 1 | 2 | 3 |';
+    const html = roundtrip(md);
+    expect(html).toContain('style="text-align:left"');
+    expect(html).toContain('style="text-align:center"');
+    expect(html).toContain('style="text-align:right"');
+  });
+
+  it('alignment 無し table は style attr を出さない', () => {
+    const md = '| A | B |\n|---|---|\n| 1 | 2 |';
+    const html = roundtrip(md);
+    expect(html).not.toContain('style="text-align');
+    expect(html).toContain('<th>A</th>');
+    expect(html).toContain('<th>B</th>');
+  });
+
+  it('body 行も同 column の alignment を継承する', () => {
+    const md = '| A |\n|:---:|\n| body |';
+    const html = roundtrip(md);
+    // header + body 両方 center が掛かる
+    const centerCount = (html.match(/style="text-align:center"/g) || []).length;
+    expect(centerCount).toBe(2);
+  });
+});

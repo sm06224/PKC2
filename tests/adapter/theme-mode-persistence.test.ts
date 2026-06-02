@@ -52,6 +52,10 @@ function setup() {
   dispatcher.onState((state) => render(state, root));
 
   dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+  // pgc-207:shell menu の Theme buttons は menuOpen=true 時のみ build される
+  // (lazy build)。本 file の test は全て set-theme button click を行うため
+  // setup で menu を open しておく。
+  dispatcher.dispatch({ type: 'TOGGLE_MENU' });
   render(dispatcher.getState(), root);
   cleanup = bindActions(root, dispatcher);
 

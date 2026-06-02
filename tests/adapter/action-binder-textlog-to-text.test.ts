@@ -106,16 +106,23 @@ function click(el: Element) {
 }
 
 describe('ActionBinder — TEXTLOG → TEXT selection mode', () => {
-  it('Begin selection button enters selection mode and reveals checkboxes on each log', () => {
+  it('Begin selection button enters selection mode(CSS で checkbox visibility 制御)', () => {
+    // user bug 2026-05-27 perf hotfix:checkbox markup は **always** DOM に出力、
+    // visibility は selection mode 親 container `[data-pkc-textlog-selecting]` 属性で
+    // CSS 制御。本 test は属性 toggle を verify、`input.length` 自体は selecting に
+    // 関わらず 3(常に DOM 存在)。
     bootstrap();
-    // Before clicking Begin: no checkbox on any log article.
-    expect(root.querySelector('input[data-pkc-field="textlog-select"]')).toBeNull();
+    // Before clicking Begin: checkboxes already in DOM(CSS で hidden)、selecting attr 不在
+    expect(root.querySelectorAll('input[data-pkc-field="textlog-select"]').length).toBe(3);
+    expect(
+      root.querySelector('.pkc-textlog-view[data-pkc-textlog-selecting="true"]'),
+    ).toBeNull();
 
     const beginBtn = root.querySelector<HTMLElement>('[data-pkc-action="begin-textlog-selection"]');
     expect(beginBtn).not.toBeNull();
     click(beginBtn!);
 
-    // Now each log should have a selection checkbox.
+    // After click: same 3 checkboxes(常時 DOM)、selecting attr が container に付く
     const checks = root.querySelectorAll('input[data-pkc-field="textlog-select"]');
     expect(checks.length).toBe(3);
 
@@ -222,12 +229,19 @@ describe('ActionBinder — TEXTLOG → TEXT selection mode', () => {
     expect(src.body).toBe(baseContainer.entries[0]!.body);
   });
 
-  it('Cancel selection button exits the mode and removes checkboxes', () => {
+  it('Cancel selection button exits the mode and removes selecting attribute', () => {
+    // user bug 2026-05-27 perf hotfix:checkbox markup は常時 DOM に存在(CSS で
+    // visibility 制御)、selection mode は `[data-pkc-textlog-selecting]` attribute
+    // の有無で表示 / 非表示。`input.length === 0` ではなく attribute の有無で verify。
     bootstrap();
     click(root.querySelector<HTMLElement>('[data-pkc-action="begin-textlog-selection"]')!);
     expect(root.querySelectorAll('input[data-pkc-field="textlog-select"]').length).toBe(3);
+    expect(
+      root.querySelector('.pkc-textlog-view[data-pkc-textlog-selecting="true"]'),
+    ).not.toBeNull();
     click(root.querySelector<HTMLElement>('[data-pkc-action="cancel-textlog-selection"]')!);
-    expect(root.querySelectorAll('input[data-pkc-field="textlog-select"]').length).toBe(0);
+    // checkbox 自体は常時存在(CSS で hidden)、selecting attribute が外れたことを verify
+    expect(root.querySelectorAll('input[data-pkc-field="textlog-select"]').length).toBe(3);
     expect(
       root.querySelector('.pkc-textlog-view[data-pkc-textlog-selecting="true"]'),
     ).toBeNull();
@@ -261,10 +275,19 @@ describe('ActionBinder — TEXTLOG → TEXT selection mode', () => {
     ).not.toBeNull();
   });
 
-  it('plain viewer without selection mode has no checkboxes (regression guard)', () => {
+  it('plain viewer without selection mode keeps checkbox markup hidden via CSS(perf hotfix 2026-05-27)', () => {
+    // user bug 2026-05-27 perf hotfix:checkbox markup は always DOM 出力、
+    // selection mode 親 container の `[data-pkc-textlog-selecting]` 不在 +
+    // CSS `.pkc-textlog-select-label { display: none }` で hidden。
+    // happy-dom は CSS computed style を返さないため、ここでは attribute 不在を verify。
     bootstrap();
-    expect(root.querySelectorAll('input[data-pkc-field="textlog-select"]').length).toBe(0);
-    // Append area, flag buttons, and anchor buttons remain unaffected.
+    // checkbox 自体は常時 DOM(view rendering 経由で 3 log × 1 cb = 3)
+    expect(root.querySelectorAll('input[data-pkc-field="textlog-select"]').length).toBe(3);
+    // selecting attribute 不在(= CSS で hidden)を verify
+    expect(
+      root.querySelector('.pkc-textlog-view[data-pkc-textlog-selecting="true"]'),
+    ).toBeNull();
+    // Append area, flag buttons, anchor buttons は無変更
     expect(root.querySelector('.pkc-textlog-append')).not.toBeNull();
     expect(root.querySelectorAll('.pkc-textlog-flag-btn').length).toBeGreaterThan(0);
   });

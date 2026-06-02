@@ -393,7 +393,10 @@ describe('textlog renderBody', () => {
 
   // ── Slice 2 structure ──
 
-  it('article layout is <header>(flag, ts, anchor) then .pkc-textlog-text', () => {
+  it('article layout is <header>(selectLabel, flag, ts, anchor) then .pkc-textlog-text', () => {
+    // user bug 2026-05-27 perf hotfix:select-label は always 出力(CSS で hidden)、
+    // selectLabel が header の **先頭** に位置するように変更。視覚的には CSS で
+    // hidden、selection mode 突入時のみ display:inline-flex で表示。
     const el = textlogPresenter.renderBody(makeEntry(sampleBody));
     const articles = el.querySelectorAll<HTMLElement>('.pkc-textlog-log');
     for (const art of articles) {
@@ -401,12 +404,12 @@ describe('textlog renderBody', () => {
       expect(children[0]!.classList.contains('pkc-textlog-log-header')).toBe(true);
       expect(children[1]!.classList.contains('pkc-textlog-text')).toBe(true);
       const headerKids = Array.from(children[0]!.children) as HTMLElement[];
-      // Header order is [flag, timestamp, anchor]. Flag and anchor are
-      // both buttons — disambiguate by data-pkc-action so the assertion
-      // survives future cosmetic tweaks to child classes.
-      expect(headerKids[0]!.classList.contains('pkc-textlog-flag-btn')).toBe(true);
-      expect(headerKids[1]!.classList.contains('pkc-textlog-timestamp')).toBe(true);
-      expect(headerKids[2]!.getAttribute('data-pkc-action')).toBe('copy-log-line-ref');
+      // Header order is [selectLabel, flag, timestamp, anchor]. selectLabel は
+      // perf hotfix で always 出力(CSS で hidden)。
+      expect(headerKids[0]!.classList.contains('pkc-textlog-select-label')).toBe(true);
+      expect(headerKids[1]!.classList.contains('pkc-textlog-flag-btn')).toBe(true);
+      expect(headerKids[2]!.classList.contains('pkc-textlog-timestamp')).toBe(true);
+      expect(headerKids[3]!.getAttribute('data-pkc-action')).toBe('copy-log-line-ref');
     }
   });
 });

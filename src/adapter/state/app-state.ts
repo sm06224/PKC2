@@ -98,7 +98,29 @@ export interface AppState {
   phase: AppPhase;
   container: Container | null;
   selectedLid: string | null;
+  /**
+   * 領域 1: navigation history。`navHistory` は訪問した entry lid の
+   * 順序付きリスト、`navIndex` が現在位置を指す。SELECT_ENTRY が push
+   * (前方履歴は truncate)、GO_BACK / GO_FORWARD が index を移動する。
+   * 空のとき `navIndex === -1`。
+   */
+  navHistory: string[];
+  navIndex: number;
   editingLid: string | null;
+  /**
+   * Phase γ-A:編集モード。inline = 中央ペイン内編集(従来)、window =
+   * 専用 entry-window で編集。flag `shell.edit_mode_enabled` で gate。
+   */
+  editMode?: 'inline' | 'window';
+  /**
+   * Phase γ-A3:child entry-window で開いている entry の lid 集合。
+   * entry-window.ts が window の open/close 時に `SYS_SYNC_CHILD_WINDOWS`
+   * を dispatch して同期する。state machine が multi-window を「前提」
+   * として扱うための field — renderer の indicator と `BEGIN_EDIT` の
+   * 二重編集 guard が参照する。optional(既存 AppState fixture 互換、
+   * undefined は空集合扱い)。
+   */
+  childWindowLids?: string[];
   error: string | null;
   /** True when running inside an iframe. Set once at init. */
   embedded: boolean;
@@ -333,6 +355,11 @@ export interface AppState {
    */
   graphMode?: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
   /**
+   * Phase γ-B3:meta pane の表示 mode。all = 全 section、properties =
+   * frontmatter のみ、references = 関連 section のみ。flag gate(spec §4)。
+   */
+  metaPaneMode?: 'all' | 'properties' | 'references';
+  /**
    * Optional focus lid for graph view. When set, the graph centers on
    * this entry and includes its 1-hop neighbourhood. When unset, the
    * graph shows the full container.
@@ -393,6 +420,14 @@ export interface AppState {
    * 絞り込み(深さ無制限 subtree search)。Runtime-only。
    */
   filerSearchQuery?: string;
+  /**
+   * Phase γ-A1:filer モード sidebar(`sidebar.mode='filer'`)の現スコープ
+   * 内 絞り込み query。空 / undefined = 絞り込みなし。非空 = 現フォルダの
+   * direct children を title 部分一致で絞り込む(center filer の
+   * `filerSearchQuery` の subtree 検索とは別概念。sidebar は per-folder
+   * filter)。Runtime-only。
+   */
+  sidebarFilerQuery?: string;
   /**
    * Filer view runtime scope override. 領域 10-6 ζ'' Phase 1 PR-2.
    * - `'auto'` (default): the filer scope is resolved from `selectedLid`
@@ -593,12 +628,18 @@ export interface ReduceResult {
   events: DomainEvent[];
 }
 
+/** 領域 1: navHistory の上限。超過時は最古を捨てる。 */
+const NAV_HISTORY_CAP = 100;
+
 export function createInitialState(): AppState {
   return {
     phase: 'initializing',
     container: null,
     selectedLid: null,
+    navHistory: [],
+    navIndex: -1,
     editingLid: null,
+    childWindowLids: [],
     error: null,
     embedded: false,
     pendingOffers: [],
@@ -689,6 +730,13 @@ function reclassifyPreview(
  * plus a console.warn in development.
  */
 export function reduce(state: AppState, action: Dispatchable): ReduceResult {
+  // Phase γ-A3:child entry-window の open/close 同期。phase に依らず
+  // `childWindowLids` を更新する純粋な system sync(副作用なし)。phase
+  // switch より前で処理し、editing / exporting 等でも window 開閉を
+  // 取りこぼさない。
+  if (action.type === 'SYS_SYNC_CHILD_WINDOWS') {
+    return { state: { ...state, childWindowLids: [...action.lids] }, events: [] };
+  }
   switch (state.phase) {
     case 'initializing':
       return reduceInitializing(state, action);
@@ -1272,15 +1320,56 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const textToTextlogModal = (state.textToTextlogModal && state.textToTextlogModal.sourceLid !== action.lid)
         ? null
         : state.textToTextlogModal;
+      // 領域 1: navigation history に push。現在のエントリを再選択した
+      // 場合は履歴 no-op。新規選択は前方履歴を truncate して append し、
+      // 直近 NAV_HISTORY_CAP 件に丸める。
+      let navHistory = state.navHistory;
+      let navIndex = state.navIndex;
+      if (state.navHistory[state.navIndex] !== action.lid) {
+        navHistory = [...state.navHistory.slice(0, state.navIndex + 1), action.lid]
+          .slice(-NAV_HISTORY_CAP);
+        navIndex = navHistory.length - 1;
+      }
       const next: AppState = {
         ...state,
         selectedLid: action.lid,
+        navHistory,
+        navIndex,
         multiSelectedLids: [],
         collapsedFolders,
         textlogSelection,
         textToTextlogModal,
       };
       return { state: next, events: [{ type: 'ENTRY_SELECTED', lid: action.lid }] };
+    }
+    case 'GO_BACK':
+    case 'GO_FORWARD': {
+      // 領域 1: navigation history を index 移動する。stack の端では
+      // no-op。navHistory 自体は変更せず navIndex のみ動かす。
+      const delta = action.type === 'GO_BACK' ? -1 : 1;
+      const navIndex = state.navIndex + delta;
+      if (navIndex < 0 || navIndex >= state.navHistory.length) {
+        return { state, events: [] };
+      }
+      const lid = state.navHistory[navIndex]!;
+      // SELECT_ENTRY と同じ per-entry transient UI の掃除(P1-1)。
+      const textlogSelection =
+        state.textlogSelection && state.textlogSelection.activeLid !== lid
+          ? null
+          : state.textlogSelection;
+      const textToTextlogModal =
+        state.textToTextlogModal && state.textToTextlogModal.sourceLid !== lid
+          ? null
+          : state.textToTextlogModal;
+      const next: AppState = {
+        ...state,
+        selectedLid: lid,
+        navIndex,
+        multiSelectedLids: [],
+        textlogSelection,
+        textToTextlogModal,
+      };
+      return { state: next, events: [{ type: 'ENTRY_SELECTED', lid }] };
     }
     case 'NAVIGATE_TO_LOCATION': {
       // S-18 (A-4 FULL): same selection semantics as SELECT_ENTRY
@@ -1344,6 +1433,20 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
     case 'BEGIN_EDIT': {
       if (state.readonly) return blocked(state, action);
       if (isReservedLid(action.lid)) return blocked(state, action);
+      // Phase γ-A3:対象 entry が child window で開かれている間は inline
+      // 編集に入らない(同一 entry を 2 surface で編集 → save 衝突の防止)。
+      // action-binder の triggerEdit が代わりにその window を focus する。
+      //
+      // γ-A5(2026-05-22 bugfix):ただし `windowSave`(子 entry-window
+      // 自身の save 経路が発行する transient begin)は免除する ── 子窓は
+      // 自分の編集を commit する正当な経路で、二重編集防止ガードに
+      // 引っかかると save が main へ伝搬しなくなる(user 報告)。
+      if (
+        state.childWindowLids?.includes(action.lid) &&
+        !action.windowSave
+      ) {
+        return blocked(state, action);
+      }
       // P1-1: BEGIN_EDIT terminates any in-progress transient UI flows
       // (log selection / preview modal). The user is switching to the
       // structured editor; carrying over a TEXTLOG selection toolbar
@@ -1358,6 +1461,22 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const base = state.container
         ? captureEditBase(state.container, action.lid)
         : null;
+      // γ-A5:windowSave は直後に COMMIT_EDIT が続く transient begin。
+      // viewMode / selectedLid / 過渡 UI を変えない minimal begin にして、
+      // 子窓の save が main window の表示を奪わないようにする。EDIT_BEGUN
+      // も出さない(main の編集 UI を開く begin ではないため)。
+      if (action.windowSave) {
+        return {
+          state: {
+            ...state,
+            phase: 'editing',
+            editingLid: action.lid,
+            editingBase: base,
+            dualEditConflict: null,
+          },
+          events: [],
+        };
+      }
       const next: AppState = {
         ...state,
         phase: 'editing',
@@ -1445,6 +1564,17 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const lid = generateLid();
       container = addEntry(container, lid, action.archetype, action.title, ts);
       events.push({ type: 'ENTRY_CREATED', lid, archetype: action.archetype });
+
+      // 領域 3: optional 初期 body(attachment → TEXT 変換が decode 済み
+      // ファイル内容を seed する経路)。通常作成では未指定 = 空のまま。
+      if (typeof action.body === 'string' && action.body.length > 0) {
+        const seeded = action.body;
+        container = {
+          ...container,
+          entries: container.entries.map((e) =>
+            e.lid === lid ? { ...e, body: seeded } : e),
+        };
+      }
 
       if (placementParentLid) {
         const relId = generateLid();
@@ -2867,7 +2997,12 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       if (existing.length >= SAVED_SEARCH_CAP) return blocked(state, action);
       const ts = new Date().toISOString();
       const saved = createSavedSearch(generateLid(), trimmed, ts, {
-        searchQuery: state.searchQuery,
+        // pgc-51:filer sidebar の検索 query は `sidebarFilerQuery`、tree
+        // sidebar は `searchQuery` と別 field。両者は active な sidebar
+        // mode で排他(描画されない側の input は dispatch されないので空
+        // のまま)なので、`searchQuery || sidebarFilerQuery` でどちらの
+        // sidebar から保存しても現在の query が捕捉される。
+        searchQuery: state.searchQuery || (state.sidebarFilerQuery ?? ''),
         archetypeFilter: state.archetypeFilter,
         categoricalPeerFilter: state.categoricalPeerFilter,
         // Slice E (2026-04-23) — Tag axis round-trip. `state.tagFilter`
@@ -2925,6 +3060,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         ...state,
         container,
         searchQuery: fields.searchQuery,
+        // pgc-51:saved search の query を filer sidebar 側の query field
+        // にも復元する。tree / filer どちらの sidebar mode でも saved
+        // search を apply すれば検索 query が効く(描画されない側の field
+        // は set されても無害)。
+        sidebarFilerQuery: fields.searchQuery,
         archetypeFilter: fields.archetypeFilter,
         categoricalPeerFilter: fields.categoricalPeerFilter,
         // Slice E: Tag axis round-trip. Missing `tag_filter_v2` in the
@@ -3045,6 +3185,18 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, graphMode: action.mode };
       return { state: next, events: [] };
     }
+    case 'SET_META_PANE_MODE': {
+      const next: AppState = { ...state, metaPaneMode: action.mode };
+      return { state: next, events: [] };
+    }
+    case 'SET_EDIT_MODE': {
+      // Phase γ-A2(A2-1):編集モード(inline / window)の選択を保持する
+      // だけの foundation reducer。UI / wiring は A2-2(pgc-28)で接続。
+      // flag `shell.edit_mode_enabled` が OFF の間は誰も dispatch しない
+      // ため editMode は undefined のまま = 従来の inline 編集(後方互換)。
+      const next: AppState = { ...state, editMode: action.mode };
+      return { state: next, events: [] };
+    }
     case 'OPEN_GRAPH_FOR_ENTRY': {
       // Set focus lid + flip viewMode to 'graph' atomically. lid===null
       // = full container graph (no focus center).
@@ -3097,6 +3249,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // PR-L (2026-05-06):filer 側の検索 query を更新。空文字列 →
       // 検索キャンセル(direct children に戻る)、非空 → subtree search。
       const next: AppState = { ...state, filerSearchQuery: action.query };
+      return { state: next, events: [] };
+    }
+    case 'SET_SIDEBAR_FILER_QUERY': {
+      // Phase γ-A1:filer モード sidebar の per-folder 絞り込み query。
+      const next: AppState = { ...state, sidebarFilerQuery: action.query };
       return { state: next, events: [] };
     }
     case 'SET_VIEW_MODE': {

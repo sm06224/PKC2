@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { createHash } from 'crypto';
+import { gunzipSync } from 'zlib';
 import type { ReleaseMeta } from '@runtime/release-meta';
 
 const DIST = resolve(__dirname, '../../dist');
@@ -23,11 +24,19 @@ describe.skipIf(!htmlExists)('Builder output verification', () => {
     html = readFileSync(PKC2_HTML, 'utf8');
   });
 
-  it('contains all required fixed IDs', () => {
-    const ids = ['pkc-root', 'pkc-data', 'pkc-meta', 'pkc-core', 'pkc-styles', 'pkc-theme'];
+  it('contains the static fixed IDs', () => {
+    // pgc-53: pkc-core は pkc-loader が runtime 生成するため static HTML
+    // には現れない。残る contract ID は static のまま。
+    const ids = ['pkc-root', 'pkc-data', 'pkc-meta', 'pkc-styles', 'pkc-theme'];
     for (const id of ids) {
       expect(html).toContain(`id="${id}"`);
     }
+  });
+
+  it('contains the gzip payload + loader elements (pgc-53)', () => {
+    expect(html).toContain('id="pkc-css-gz"');
+    expect(html).toContain('id="pkc-core-gz"');
+    expect(html).toContain('id="pkc-loader"');
   });
 
   it('contains data-pkc-app attribute', () => {
@@ -67,16 +76,19 @@ describe.skipIf(!htmlExists)('Builder output verification', () => {
     expect(Array.isArray(meta.capabilities)).toBe(true);
   });
 
-  it('code_integrity matches actual pkc-core content', () => {
-    // Extract pkc-core content
-    const coreMatch = html.match(/<script id="pkc-core">([\s\S]*?)<\/script>/);
-    expect(coreMatch).not.toBeNull();
+  it('code_integrity matches the gzip-embedded pkc-core payload (pgc-53)', () => {
+    // pgc-53: pkc-core 本体は pkc-core-gz に gzip+base64 で埋め込まれる。
+    // base64 decode → gunzip して復元した JS を hash し integrity と照合
+    // する(loader 展開後の runtime pkc-core 内容と同一であることの保証)。
+    const gzMatch = html.match(
+      /<script id="pkc-core-gz" type="application\/octet-stream">([\s\S]*?)<\/script>/,
+    );
+    expect(gzMatch).not.toBeNull();
 
-    const coreContent = coreMatch![1]!;
-    const hash = createHash('sha256').update(coreContent, 'utf8').digest('hex');
-    const expected = `sha256:${hash}`;
+    const code = gunzipSync(Buffer.from(gzMatch![1]!.trim(), 'base64')).toString('utf8');
+    const hash = createHash('sha256').update(code, 'utf8').digest('hex');
 
-    expect(meta.code_integrity).toBe(expected);
+    expect(meta.code_integrity).toBe(`sha256:${hash}`);
   });
 
   it('pkc-data contains __about__ entry with valid AboutPayload', () => {

@@ -44,6 +44,7 @@ const ARCHETYPE_BADGE: Record<ArchetypeId, { icon: string; label: string }> = {
   folder: { icon: '📁', label: 'Folder' },
   generic: { icon: '📄', label: 'Generic' },
   opaque: { icon: '🔒', label: 'Opaque' },
+  spreadsheet: { icon: '🧮', label: 'Sheet' },
   'system-about': { icon: 'ℹ️', label: 'About' },
   'system-settings': { icon: '⚙️', label: 'Settings' },
   'system-flags': { icon: '⚑', label: 'Flags' },

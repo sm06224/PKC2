@@ -29,6 +29,16 @@ import type {
 } from '@core/ast/index';
 import { escapeHtml, escapeAttr } from '@core/escape';
 
+/**
+ * pgc-243:text node の value 内 `\n` を `<br>\n` に変換しつつ escape。
+ * markdown-it `breaks: true` 経路(legacy renderMarkdown)と完全同形の出力で、
+ * PKC Markdown ↔ IR ↔ HTML 可換性を保証する core helper。
+ */
+function renderTextWithBreaks(value: string): string {
+  if (!value.includes('\n')) return escapeHtml(value);
+  return value.split('\n').map(escapeHtml).join('<br>\n');
+}
+
 export interface RenderOptions {
   /** `data-pkc-source-line` attr を block element に転記する。 */
   sourceLineAnchors?: boolean;
@@ -85,7 +95,23 @@ function renderInline(inlines: readonly AstInline[]): string {
 function renderInlineNode(node: AstInline): string {
   switch (node.kind) {
     case 'text':
-      return escapeHtml(node.value);
+      // pgc-243(user 報告:PKC IR 経由 render で改行が消える):softbreak /
+      // hardbreak は parse 段階で AstText{ value: '\n' } に格上げされる
+      // (parse.ts L172-180)が、ここで `escapeHtml(value)` のまま literal '\n'
+      // を HTML に流すと、HTML 仕様上 text content の '\n' は whitespace
+      // として collapse され、「改行が消える」 bug になる。
+      //
+      // markdown-it `breaks: true` 経路(legacy renderMarkdown)は softbreak
+      // token を直接 `<br>\n` に変換するため発生しない。
+      //
+      // PKC Markdown の supreme invariant「行末 `\n` = 視覚的改行」(parse.ts
+      // L174-178 既述)を render 側でも保証するため、'\n' を含む text は
+      // `<br>\n` separator で split + 各 segment を escape する。markdown-it
+      // と同じ出力形状(`<br>\n`)で legacy 経路との byte-equivalent を保つ。
+      //
+      // 同時に MD → IR → HTML / HTML → IR → MD の双方向可換性も維持される
+      // (parse-html.ts は `<br>` → text '\n' を既に対応済、L304-305 test)。
+      return renderTextWithBreaks(node.value);
     case 'strong':
       return `<strong>${renderInline(node.children)}</strong>`;
     case 'emphasis':
@@ -109,7 +135,8 @@ function renderInlineNode(node: AstInline): string {
     case 'span':
       return `<span${attrsToString(node.attrs)}>${renderInline(node.children)}</span>`;
     case 'link': {
-      const titleAttr = ''; // PR-2Y では title 抽出未実装
+      // pgc-243:`AstLink.title` を `<a title="...">` で双方向可換に出力。
+      const titleAttr = node.title ? ` title="${escapeAttr(node.title)}"` : '';
       const linkKindClass = ` class="pkc-link-${escapeAttr(node.linkKind)}"`;
       return `<a href="${escapeAttr(node.href)}"${linkKindClass}${titleAttr}>${renderInline(node.children)}</a>`;
     }
@@ -117,8 +144,11 @@ function renderInlineNode(node: AstInline): string {
       return `<span class="pkc-card" data-pkc-ref="${escapeAttr(node.ref)}">${renderInline(node.children)}</span>`;
     case 'embed':
       return `<span class="pkc-embed pkc-embed-${escapeAttr(node.mode)}" data-pkc-ref="${escapeAttr(node.ref)}">${renderInline(node.children)}</span>`;
-    case 'image':
-      return `<img src="${escapeAttr(node.src)}" alt="${escapeAttr(node.alt)}">`;
+    case 'image': {
+      // pgc-243:`AstImage.title` を `<img title="...">` で双方向可換に出力。
+      const titleAttr = node.title ? ` title="${escapeAttr(node.title)}"` : '';
+      return `<img src="${escapeAttr(node.src)}" alt="${escapeAttr(node.alt)}"${titleAttr}>`;
+    }
     case 'auto-ref':
       return `<a class="pkc-auto-ref" href="#${escapeAttr(node.id)}" data-pkc-ref-id="${escapeAttr(node.id)}"></a>`;
     case 'var':
@@ -159,9 +189,18 @@ function renderListItem(item: AstListItem): string {
   return `<li>${item.children.map((c) => renderBlock(c, { sourceLineAnchors: false })).join('\n')}</li>`;
 }
 
-function renderTableRow(row: AstTableRow): string {
+function renderTableRow(row: AstTableRow, align?: ReadonlyArray<'left' | 'right' | 'center' | null>): string {
   const cellTag = row.isHeader ? 'th' : 'td';
-  const cells = row.cells.map((c) => `<${cellTag}>${renderInline(c.children)}</${cellTag}>`).join('');
+  // pgc-243:GFM table の column alignment は legacy markdown-it と同形の
+  // `style="text-align:X"` で出力(双方向可換、`<th style>` を parse-html
+  // で AstTable.align に逆 round-trip できる)。
+  const cells = row.cells
+    .map((c, idx) => {
+      const a = align?.[idx];
+      const styleAttr = a ? ` style="text-align:${a}"` : '';
+      return `<${cellTag}${styleAttr}>${renderInline(c.children)}</${cellTag}>`;
+    })
+    .join('');
   return `<tr>${cells}</tr>`;
 }
 
@@ -193,12 +232,14 @@ function renderBlock(block: AstBlock, opts: RenderOptions): string {
     case 'table': {
       const headerRows = block.rows.filter((r) => r.isHeader);
       const bodyRows = block.rows.filter((r) => !r.isHeader);
+      // pgc-243:column alignment を全 row に thread(双方向可換)。
+      const align = block.align;
       let inner = '';
       if (headerRows.length > 0) {
-        inner += `<thead>${headerRows.map(renderTableRow).join('')}</thead>`;
+        inner += `<thead>${headerRows.map((r) => renderTableRow(r, align)).join('')}</thead>`;
       }
       if (bodyRows.length > 0) {
-        inner += `<tbody>${bodyRows.map(renderTableRow).join('')}</tbody>`;
+        inner += `<tbody>${bodyRows.map((r) => renderTableRow(r, align)).join('')}</tbody>`;
       }
       return `<table${lineAttr}>${inner}</table>`;
     }
@@ -248,6 +289,43 @@ function renderBlock(block: AstBlock, opts: RenderOptions): string {
       // PR-2JJ v2 final(2026-05-13、ChatGPT review 反映):未知構文 preserve。
       if (block.sourceFormat === 'html') return block.original;
       return `<pre class="pkc-opaque-block" data-pkc-source-format="${escapeAttr(block.sourceFormat)}"${lineAttr}>${escapeHtml(block.original)}</pre>`;
+    case 'format-block': {
+      // v4 §12(stack PR 4、formal `:::format{...}` real impl):
+      // canonical attrs 順(diff friendly、§1.4):
+      //   1. class(pkc-format-block + ABC sorted user classes)
+      //   2. id
+      //   3. data-pkc-format-block(marker)
+      //   4. style(vocabulary 経由の inline style)
+      //   5. data-pkc-indent / data-pkc-align(特殊解釈 key)
+      //   6. data-pkc-*(その他 kvs、key ABC 順)
+      const inner = block.children.map((c) => renderBlock(c, opts)).join('\n');
+      const classList = ['pkc-format-block', ...block.classes];
+      const classAttr = ` class="${escapeAttr(classList.join(' '))}"`;
+      const idAttr = block.blockId ? ` id="${escapeAttr(block.blockId)}"` : '';
+      const markerAttr = ' data-pkc-format-block';
+      // style attribute(vocabulary 経由の inline style)、key ABC 順
+      let styleAttr = '';
+      if (block.styles) {
+        const styleEntries = Object.entries(block.styles).sort(([a], [b]) => a.localeCompare(b));
+        if (styleEntries.length > 0) {
+          const styleStr = styleEntries.map(([k, v]) => `${k}: ${v}`).join('; ');
+          styleAttr = ` style="${escapeAttr(styleStr)}"`;
+        }
+      }
+      const indentAttr = block.indent !== undefined ? ` data-pkc-indent="${block.indent}"` : '';
+      const alignAttr = block.align ? ` data-pkc-align="${escapeAttr(block.align)}"` : '';
+      // kvs(key ABC 順、boolean true は値なし attr、string は data-pkc-<key>="value")
+      let kvsAttr = '';
+      if (block.kvs) {
+        const kvsEntries = Object.entries(block.kvs).sort(([a], [b]) => a.localeCompare(b));
+        for (const [k, v] of kvsEntries) {
+          if (v === true) kvsAttr += ` data-pkc-${escapeAttr(k)}`;
+          else if (v === false) continue; // false は出力しない
+          else kvsAttr += ` data-pkc-${escapeAttr(k)}="${escapeAttr(v)}"`;
+        }
+      }
+      return `<div${classAttr}${idAttr}${markerAttr}${styleAttr}${indentAttr}${alignAttr}${kvsAttr}${lineAttr}${layoutAttr}>${inner}</div>`;
+    }
     default: {
       const unreachable: never = block;
       void unreachable;

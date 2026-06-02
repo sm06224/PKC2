@@ -36,11 +36,16 @@ export function getRelationsForEntry(
 /**
  * Resolve peer entries for directed relations.
  * Relations whose peer entry cannot be found are omitted.
+ *
+ * pgc-228:`directed.length === 0` の早期 return ── 大半の entry は
+ * relation を持たないため、entries 全件で Map を build する O(N) cost
+ * (c-5000 で ~1-2ms)を skip。
  */
 export function resolveRelations(
   directed: readonly DirectedRelation[],
   entries: readonly Entry[],
 ): ResolvedRelation[] {
+  if (directed.length === 0) return [];
   const entryMap = new Map(entries.map((e) => [e.lid, e]));
   const result: ResolvedRelation[] = [];
   for (const d of directed) {
