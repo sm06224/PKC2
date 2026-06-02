@@ -887,6 +887,30 @@ function now(): string {
 }
 
 /**
+ * archetype 別の default title を生成。同 archetype の既存 entry 数を数え
+ * `Untitled Sheet 1` / `Untitled Sheet 2` ... のように suffix で番号付け
+ * (VSCode の "Untitled-N" 流儀)。user direction 2026-06-02。
+ */
+function defaultTitleForArchetype(
+  archetype: ArchetypeId,
+  container: Container,
+): string {
+  const labels: Partial<Record<ArchetypeId, string>> = {
+    text: 'Untitled',
+    textlog: 'Untitled Log',
+    todo: 'Untitled Todo',
+    spreadsheet: 'Untitled Sheet',
+    attachment: 'Untitled File',
+    folder: 'Untitled Folder',
+    form: 'Untitled Form',
+  };
+  const base = labels[archetype] ?? 'Untitled';
+  // 同 archetype の Untitled-* 件数を数え +1。系列で衝突しない番号を採番。
+  const existing = container.entries.filter((e) => e.archetype === archetype && e.title.startsWith(base)).length;
+  return `${base} ${existing + 1}`;
+}
+
+/**
  * Inject the v0 capture provenance header per
  * `docs/spec/record-offer-capture-profile.md` §10.4. Header lines are
  * emitted only for fields explicitly provided (non-null, non-empty
@@ -1562,8 +1586,33 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       }
 
       const lid = generateLid();
-      container = addEntry(container, lid, action.archetype, action.title, ts);
+      // user direction 2026-06-02「新規作成したエントリ名おかしくない?」 — empty
+      // title で create された entry に archetype-specific な default title を
+      // 自動付与。通称は entry list / breadcrumb で「(無題)」より具体的に
+      // 識別できるよう短い英語ラベル(VSCode の "Untitled-N" 流儀)。
+      const effectiveTitle = action.title === ''
+        ? defaultTitleForArchetype(action.archetype, container)
+        : action.title;
+      container = addEntry(container, lid, action.archetype, effectiveTitle, ts);
       events.push({ type: 'ENTRY_CREATED', lid, archetype: action.archetype });
+
+      // 領域 10-4 spreadsheet Phase 4(2026-06-02):新規 spreadsheet は default
+      // grid(5x6 空 cell)を body に seed して「最初からセルが見える」状態に。
+      // user direction「スプレッドシートなんだから、最初からセルが表示されるべき」
+      if (
+        action.archetype === 'spreadsheet'
+        && (typeof action.body !== 'string' || action.body.length === 0)
+      ) {
+        const defaultBodyJson = JSON.stringify({
+          rows: Array.from({ length: 6 }, () => Array.from({ length: 5 }, () => '')),
+          noHeader: true,
+        });
+        container = {
+          ...container,
+          entries: container.entries.map((e) =>
+            e.lid === lid ? { ...e, body: defaultBodyJson } : e),
+        };
+      }
 
       // 領域 3: optional 初期 body(attachment → TEXT 変換が decode 済み
       // ファイル内容を seed する経路)。通常作成では未指定 = 空のまま。

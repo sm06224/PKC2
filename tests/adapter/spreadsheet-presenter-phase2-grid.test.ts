@@ -55,13 +55,19 @@ describe('spreadsheet Phase 2 grid editor', () => {
       expect(el.getAttribute('data-pkc-spreadsheet-mode')).toBe('grid');
     });
 
-    it('case 2: toolbar に 3 button(+ 行 / + 列 / TSV ⇄ Grid)', () => {
+    it('case 2: toolbar に Phase 4 で 9 button(行 / 列 / ヘッダー / グラフ / フォーム / 埋込 / CSV / ODF / TSV)', () => {
       const el = mountEditor('');
       const buttons = el.querySelectorAll<HTMLButtonElement>('.pkc-spreadsheet-toolbar button[data-pkc-action]');
-      expect(buttons.length).toBe(3);
+      expect(buttons.length).toBe(9);
       const actions = Array.from(buttons).map((b) => b.getAttribute('data-pkc-action'));
       expect(actions).toContain('spreadsheet-add-row');
       expect(actions).toContain('spreadsheet-add-column');
+      expect(actions).toContain('spreadsheet-toggle-header');
+      expect(actions).toContain('spreadsheet-add-chart');
+      expect(actions).toContain('spreadsheet-open-form');
+      expect(actions).toContain('spreadsheet-copy-embed');
+      expect(actions).toContain('spreadsheet-export-csv');
+      expect(actions).toContain('spreadsheet-export-fods');
       expect(actions).toContain('spreadsheet-toggle-tsv');
     });
 
@@ -79,32 +85,36 @@ describe('spreadsheet Phase 2 grid editor', () => {
       }
     });
 
-    it('case 4: 空 body は seed として 2 cell(1 行 × 2 列)を提示', () => {
+    it('case 4: 空 body は Phase 4 で seed として 5 列 × 6 行 grid を提示', () => {
       const el = mountEditor('');
       expect(getCell(el, 0, 0)).not.toBeNull();
-      expect(getCell(el, 0, 1)).not.toBeNull();
-      expect(getCell(el, 0, 2)).toBeNull();
+      expect(getCell(el, 0, 4)).not.toBeNull();
+      expect(getCell(el, 0, 5)).toBeNull();
+      expect(getCell(el, 5, 0)).not.toBeNull();
+      expect(getCell(el, 6, 0)).toBeNull();
     });
 
-    it('case 5: hidden textarea[data-pkc-field=body] が常駐(TSV 同期先)', () => {
+    it('case 5: hidden textarea[data-pkc-field=body] が常駐(Phase 4 で JSON 同期)', () => {
       const el = mountEditor('{"rows":[["a","b"]]}');
       const ta = el.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
       expect(ta).not.toBeNull();
-      expect(ta!.value).toBe('a\tb');
+      const parsed = JSON.parse(ta!.value);
+      expect(parsed.rows).toEqual([['a', 'b']]);
     });
   });
 
   describe('cell input → textarea sync', () => {
-    it('case 6: cell 編集 → hidden textarea が TSV で sync される', () => {
+    it('case 6: cell 編集 → hidden textarea が JSON body で sync される(Phase 4)', () => {
       const el = mountEditor('{"rows":[["x","y"]]}');
       const cell = getCell(el, 0, 0)!;
       cell.textContent = 'updated';
       dispatchInput(cell);
       const ta = el.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]')!;
-      expect(ta.value).toBe('updated\ty');
+      const parsed = JSON.parse(ta.value);
+      expect(parsed.rows).toEqual([['updated', 'y']]);
     });
 
-    it('case 7: 複数 cell 連続編集でも sync 維持', () => {
+    it('case 7: 複数 cell 連続編集でも sync 維持(Phase 4 JSON)', () => {
       const el = mountEditor('{"rows":[["a","b"],["1","2"]]}');
       const c01 = getCell(el, 0, 1)!;
       c01.textContent = 'B';
@@ -113,7 +123,8 @@ describe('spreadsheet Phase 2 grid editor', () => {
       c11.textContent = '22';
       dispatchInput(c11);
       const ta = el.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]')!;
-      expect(ta.value).toBe('a\tB\n1\t22');
+      const parsed = JSON.parse(ta.value);
+      expect(parsed.rows).toEqual([['a', 'B'], ['1', '22']]);
     });
 
     it('case 8: textarea の input event が dirty 経路へ bubbles', () => {

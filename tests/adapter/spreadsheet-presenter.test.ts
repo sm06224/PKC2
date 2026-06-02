@@ -42,12 +42,14 @@ describe('spreadsheetPresenter.renderBody', () => {
     expect(trs[1]?.querySelectorAll('td')[1]?.textContent).toBe('25');
   });
 
-  it('case 2: 空 body は placeholder caption を表示', () => {
+  it('case 2: 空 body でも default 5x6 grid が表示される(Phase 4 user direction 2026-06-02「最初からセルが表示されるべき」)', () => {
     const entry = mkEntry('');
     const el = spreadsheetPresenter.renderBody(entry);
-    const caption = el.querySelector('.pkc-spreadsheet-empty');
-    expect(caption).not.toBeNull();
-    expect(caption?.textContent).toContain('空');
+    const table = el.querySelector('table.pkc-spreadsheet');
+    expect(table).not.toBeNull();
+    // noHeader=true で seed されるので、全 cell は tbody td
+    const cells = table!.querySelectorAll('tbody td');
+    expect(cells.length).toBe(6 * 5);
   });
 
   it('case 3: ragged row は最大列数で正規化(短い行は空 td 補完)', () => {
@@ -69,11 +71,13 @@ describe('spreadsheetPresenter.renderBody', () => {
     expect(th?.textContent).toBe('<script>alert(1)</script>');
   });
 
-  it('case 5: 不正 JSON でも throw せず空 placeholder', () => {
+  it('case 5: 不正 JSON でも throw せず default grid に fallback(Phase 4)', () => {
     const entry = mkEntry('not-json');
     expect(() => spreadsheetPresenter.renderBody(entry)).not.toThrow();
     const el = spreadsheetPresenter.renderBody(entry);
-    expect(el.querySelector('.pkc-spreadsheet-empty')).not.toBeNull();
+    const table = el.querySelector('table.pkc-spreadsheet');
+    expect(table).not.toBeNull();
+    expect(table!.querySelectorAll('tbody td').length).toBe(6 * 5);
   });
 
   it('case 6: data-pkc-region="spreadsheet-table" を付与', () => {
@@ -89,12 +93,14 @@ describe('spreadsheetPresenter.renderEditorBody', () => {
     document.body.innerHTML = '';
   });
 
-  it('case 1: textarea[data-pkc-field=body] が emit され、TSV value が入る', () => {
+  it('case 1: textarea[data-pkc-field=body] が emit され、Phase 4 から JSON body を保持(metadata 保持のため)', () => {
     const entry = mkEntry('{"rows":[["a","b"],["1","2"]]}');
     const el = spreadsheetPresenter.renderEditorBody(entry);
     const ta = el.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
     expect(ta).not.toBeNull();
-    expect(ta!.value).toBe('a\tb\n1\t2');
+    // Phase 4: textarea は JSON(colWidths / charts / noHeader 等の metadata 保持)
+    const parsed = JSON.parse(ta!.value);
+    expect(parsed.rows).toEqual([['a', 'b'], ['1', '2']]);
   });
 
   it('case 2: Phase 2 grid editor の toolbar が表示される(編集 hint <p> は Phase 2 で toolbar に置換)', () => {
@@ -105,12 +111,14 @@ describe('spreadsheetPresenter.renderEditorBody', () => {
     expect(el.querySelector('[data-pkc-action="spreadsheet-toggle-tsv"]')).not.toBeNull();
   });
 
-  it('case 3: 空 body は Phase 2 で seed として 2 空 cell(1 行 × 2 列)を提示', () => {
+  it('case 3: 空 body は Phase 4 で seed として 6 行 × 5 列の空 grid を提示(noHeader=true)', () => {
     const entry = mkEntry('');
     const el = spreadsheetPresenter.renderEditorBody(entry);
     const ta = el.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
-    // 2 cell seed → TSV `\t`(空文字列 × 2 を tab で join)
-    expect(ta?.value).toBe('\t');
+    const parsed = JSON.parse(ta!.value);
+    expect(parsed.rows.length).toBe(6);
+    expect(parsed.rows[0].length).toBe(5);
+    expect(parsed.noHeader).toBe(true);
   });
 });
 

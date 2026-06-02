@@ -62,6 +62,7 @@ import {
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import { parseTodoBody, formatTodoDate } from '../../features/todo/todo-body';
 import { getFormatLocale, getFormatTimeZone } from './format-context';
+import { spreadsheetPresenter } from './spreadsheet-presenter';
 
 /**
  * Archetypes that can be expanded as embed targets. Other archetypes
@@ -77,6 +78,7 @@ const EMBEDDABLE_ARCHETYPES: ReadonlySet<string> = new Set([
   'text',
   'textlog',
   'todo',
+  'spreadsheet',
 ]);
 
 export interface TransclusionContext {
@@ -283,6 +285,17 @@ function renderEntryEmbed(
       return;
     }
     renderTextlogSections(body, doc.sections, target.lid, ctx);
+    return;
+  }
+
+  // 領域 10-4 Phase 4(2026-06-02):spreadsheet 埋め込み導線。
+  // spreadsheet entry を `![[entry:lid]]` で埋めると read-only mini table
+  // と chart を render(presenter と同じ build path を再利用)。
+  if (target.archetype === 'spreadsheet') {
+    const el = spreadsheetPresenter.renderBody(target);
+    // wrapper element の class を embed 用に置換し再追加
+    body.classList.add('pkc-spreadsheet-embed');
+    while (el.firstChild) body.appendChild(el.firstChild);
     return;
   }
 

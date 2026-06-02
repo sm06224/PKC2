@@ -12346,3 +12346,199 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
 .pkc-spreadsheet-editor[data-pkc-spreadsheet-mode="tsv"] table.pkc-spreadsheet-grid {
   display: none;
 }
+.pkc-spreadsheet-editor[data-pkc-spreadsheet-mode="tsv"] .pkc-spreadsheet-charts {
+  display: none;
+}
+
+/* ── 領域 10-4 spreadsheet Phase 4 (2026-06-02、user direction 9 項目一括) ── */
+/* Column / row header(A B C / 1 2 3) */
+.pkc-spreadsheet-grid .pkc-spreadsheet-colheader th {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  position: relative;
+  user-select: none;
+  padding: 0.15rem 0;
+}
+.pkc-spreadsheet-grid .pkc-spreadsheet-corner {
+  width: 36px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+}
+.pkc-spreadsheet-grid .pkc-spreadsheet-rowhead {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-align: center;
+  width: 36px;
+  user-select: none;
+  position: relative;
+  padding: 0;
+}
+/* Resize handles */
+.pkc-spreadsheet-col-resize {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 2;
+}
+.pkc-spreadsheet-col-resize:hover {
+  background: var(--c-accent, #4d8be0);
+  opacity: 0.6;
+}
+.pkc-spreadsheet-row-resize {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 100%;
+  height: 5px;
+  cursor: row-resize;
+  background: transparent;
+  z-index: 2;
+}
+.pkc-spreadsheet-row-resize:hover {
+  background: var(--c-accent, #4d8be0);
+  opacity: 0.6;
+}
+/* Formula cell hint(編集中以外は raw を data-pkc-raw に保持) */
+.pkc-spreadsheet-grid td[data-pkc-raw]::after,
+.pkc-spreadsheet-grid th[data-pkc-raw]:not(.pkc-spreadsheet-colhead):not(.pkc-spreadsheet-rowhead)::after {
+  content: '𝑓';
+  position: absolute;
+  top: 0;
+  right: 2px;
+  font-size: 0.65rem;
+  color: var(--c-accent, #4d8be0);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.pkc-spreadsheet-grid td[data-pkc-raw],
+.pkc-spreadsheet-grid th[data-pkc-raw] {
+  position: relative;
+}
+/* Charts */
+.pkc-spreadsheet-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+.pkc-spreadsheet-chart {
+  position: relative;
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  padding: 0.5rem;
+  background: var(--c-bg);
+  margin: 0;
+}
+.pkc-spreadsheet-chart-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  color: var(--c-fg);
+}
+.pkc-spreadsheet-chart-svg {
+  width: 100%;
+  height: auto;
+  color: var(--c-fg);
+}
+.pkc-spreadsheet-chart-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0;
+}
+.pkc-spreadsheet-chart-remove:hover {
+  background: var(--c-surface);
+}
+/* Form modal */
+.pkc-spreadsheet-form-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.pkc-spreadsheet-form-modal {
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  padding: 1rem;
+  min-width: 320px;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.pkc-spreadsheet-form-modal h3 {
+  margin: 0 0 0.6rem 0;
+  font-size: 1rem;
+}
+.pkc-spreadsheet-form-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.pkc-spreadsheet-form-row span {
+  flex: 0 0 6rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: right;
+  color: var(--c-muted);
+}
+.pkc-spreadsheet-form-row input {
+  flex: 1;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  font-size: 0.9rem;
+}
+.pkc-spreadsheet-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+/* Toast */
+.pkc-spreadsheet-toast {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  background: var(--c-accent, #4d8be0);
+  color: #fff;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+  pointer-events: none;
+}
+/* Embed scope */
+.pkc-spreadsheet-embed {
+  max-height: 360px;
+  overflow: auto;
+}
+.pkc-spreadsheet-embed .pkc-spreadsheet {
+  font-size: 0.82rem;
+}
