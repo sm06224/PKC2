@@ -12542,3 +12542,24 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
 .pkc-spreadsheet-embed .pkc-spreadsheet {
   font-size: 0.82rem;
 }
+/* Selection highlight(Excel-like、shift+arrow / shift+click で構築) */
+.pkc-spreadsheet-grid [data-pkc-cell-selected="true"] {
+  background: rgba(80, 144, 220, 0.18) !important;
+  outline: 1px solid var(--c-accent, #4d8be0);
+  outline-offset: -1px;
+}
+/* Formula error cell:cell text 横に小さな ⚠ を出す */
+.pkc-spreadsheet-grid [data-pkc-formula-error] {
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.06);
+}
+.pkc-spreadsheet-grid [data-pkc-formula-error]::before {
+  content: '⚠ ';
+  font-size: 0.7rem;
+}
+/* View 用 toolbar(export / 埋込 専用、edit toolbar とは別 region) */
+.pkc-spreadsheet-toolbar-view {
+  margin-bottom: 0.4rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--c-border);
+}

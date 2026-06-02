@@ -313,29 +313,61 @@ export function isFormula(cell: string): boolean {
   return cell.startsWith('=');
 }
 
+/** Formula evaluation の詳細結果(value + 必要なら error 種別 + 人間可読 reason)。 */
+export interface FormulaResult {
+  /** 評価結果文字列(エラーコードも文字列で返す ── `#ERR!` 等)。 */
+  value: string;
+  /** エラー時のみセット ── Excel 流のコード(`#NAME?` / `#DIV/0!` / `#REF!` / `#CYCLE!` / `#NUM!` / `#ERR!`)。 */
+  errorCode?: string;
+  /** エラー時のみセット ── 人間可読の理由(tooltip 表示用)。 */
+  errorReason?: string;
+}
+
+/** 内部例外:評価エラー種別 + reason を構造化して throw → catch 側で FormulaResult に整形。 */
+class FormulaError extends Error {
+  constructor(public code: string, public reason: string) {
+    super(`${code} ${reason}`);
+  }
+}
+
 /**
- * formula を評価。body 全体を渡し、cell 参照 / range / 関数 / 算術を eval。
- * 循環参照は短絡(深さ制限)、エラーは `#ERR!` 文字列を返す。
- *
- * `ctx` を渡さない呼出は per-call の新 ctx を作る(test / 単発 helper 用)。
- * `evaluateBody` 経由なら body 全体で 1 ctx を共有 = memo 効く。
+ * formula を詳細結果付きで評価。エラー時は code + 人間可読 reason を返す。
+ * UI 側で tooltip に reason を出して「何のエラーか分からない」 問題を解消。
  */
-export function evaluateFormula(
+export function evaluateFormulaDetail(
   formula: string,
   body: SpreadsheetBody,
   ctx: FormulaCtx = newCtx(),
-): string {
-  if (ctx.depth > 64) return '#CYCLE!';
+): FormulaResult {
+  if (ctx.depth > 64) {
+    return { value: '#CYCLE!', errorCode: '#CYCLE!', errorReason: '循環参照(64 段超え):cell が自身を間接参照しています。' };
+  }
   const src = formula.startsWith('=') ? formula.slice(1) : formula;
   try {
     const tokens = tokenize(src);
     const parser = new Parser(tokens);
     const ast = parser.parseExpr();
     const v = evalNode(ast, body, ctx);
-    return formatValue(v);
-  } catch {
-    return '#ERR!';
+    return { value: formatValue(v) };
+  } catch (e) {
+    if (e instanceof FormulaError) {
+      return { value: e.code, errorCode: e.code, errorReason: e.reason };
+    }
+    if (e instanceof Error) {
+      // 構造化されていない error は #ERR! + 原文 reason
+      return { value: '#ERR!', errorCode: '#ERR!', errorReason: e.message };
+    }
+    return { value: '#ERR!', errorCode: '#ERR!', errorReason: '不明なエラー' };
   }
+}
+
+/** 後方互換 ── 文字列のみ返す。詳細が必要なら `evaluateFormulaDetail` を使う。 */
+export function evaluateFormula(
+  formula: string,
+  body: SpreadsheetBody,
+  ctx: FormulaCtx = newCtx(),
+): string {
+  return evaluateFormulaDetail(formula, body, ctx).value;
 }
 
 type FormulaValue = number | string | boolean;
@@ -431,8 +463,7 @@ function tokenize(src: string): Token[] {
       i++;
       continue;
     }
-    // unknown char
-    throw new Error('unknown token: ' + ch);
+    throw new FormulaError('#ERR!', `想定外の文字 \`${ch}\` を含んでいます`);
   }
   return tokens;
 }
@@ -515,7 +546,7 @@ class Parser {
   }
   parsePrimary(): Node {
     const tok = this.peek();
-    if (!tok) throw new Error('unexpected end');
+    if (!tok) throw new FormulaError('#ERR!', '数式が途中で終わっています(末尾に値か式が必要)');
     if (tok.t === 'num') {
       this.consume();
       return { kind: 'num', num: tok.v };
@@ -527,7 +558,7 @@ class Parser {
     if (tok.t === 'lp') {
       this.consume();
       const inner = this.parseExpr();
-      if (!this.match('rp')) throw new Error('expected )');
+      if (!this.match('rp')) throw new FormulaError('#ERR!', '`)` が見つかりません(括弧が閉じていない)');
       this.consume();
       return inner;
     }
@@ -546,7 +577,7 @@ class Parser {
             args.push(this.parseExpr());
           }
         }
-        if (!this.match('rp')) throw new Error('expected )');
+        if (!this.match('rp')) throw new FormulaError('#ERR!', `関数 ${tok.v.toUpperCase()} の \`)\` が見つかりません`);
         this.consume();
         return { kind: 'call', fn: tok.v.toUpperCase(), args };
       }
@@ -561,18 +592,18 @@ class Parser {
         const rowNum = numTok.v;
         const refStr = `${tok.v.toUpperCase()}${rowNum}`;
         const cell = parseCellRef(refStr);
-        if (!cell) throw new Error('bad ref ' + refStr);
+        if (!cell) throw new FormulaError('#REF!', `不正な cell 参照 \`${refStr}\``);
         // range?
         if (this.match('colon')) {
           this.consume();
           const end = this.peek();
-          if (!end || end.t !== 'id') throw new Error('bad range');
+          if (!end || end.t !== 'id') throw new FormulaError('#REF!', 'range 終端の列文字が必要(例 `A1:B10`)');
           this.consume();
           const endNum = this.peek();
-          if (!endNum || endNum.t !== 'num') throw new Error('bad range');
+          if (!endNum || endNum.t !== 'num') throw new FormulaError('#REF!', 'range 終端の行番号が必要(例 `A1:B10`)');
           this.consume();
           const endRef = parseCellRef(`${(end as { v: string }).v.toUpperCase()}${(endNum as { v: number }).v}`);
-          if (!endRef) throw new Error('bad range end');
+          if (!endRef) throw new FormulaError('#REF!', 'range 終端の cell 参照が不正');
           return {
             kind: 'range',
             range: {
@@ -590,7 +621,7 @@ class Parser {
       if (tok.v.toUpperCase() === 'FALSE') return { kind: 'num', num: 0 };
       return { kind: 'str', str: tok.v };
     }
-    throw new Error('unexpected token');
+    throw new FormulaError('#ERR!', '想定外のトークン(数値・文字列・cell 参照・関数のいずれかが必要)');
   }
 }
 
@@ -621,7 +652,7 @@ function evalNode(node: Node, body: SpreadsheetBody, ctx: FormulaCtx): FormulaVa
         case '*': return toNum(l) * toNum(r);
         case '/': {
           const d = toNum(r);
-          if (d === 0) throw new Error('div by zero');
+          if (d === 0) throw new FormulaError('#DIV/0!', 'ゼロでの除算');
           return toNum(l) / d;
         }
         case '^': return Math.pow(toNum(l), toNum(r));
@@ -632,7 +663,7 @@ function evalNode(node: Node, body: SpreadsheetBody, ctx: FormulaCtx): FormulaVa
         case '=': return l === r || toNum(l) === toNum(r) ? 1 : 0;
         case '<>': return l !== r && toNum(l) !== toNum(r) ? 1 : 0;
       }
-      throw new Error('bad op');
+      throw new FormulaError('#ERR!', `不明な演算子 ${node.op}`);
     }
     case 'call': {
       return evalCall(node.fn!, node.args!, body, ctx);
@@ -643,7 +674,9 @@ function evalNode(node: Node, body: SpreadsheetBody, ctx: FormulaCtx): FormulaVa
 function readCellValue(row: number, col: number, body: SpreadsheetBody, ctx: FormulaCtx): FormulaValue {
   const key = `${row},${col}`;
   if (ctx.memo.has(key)) return ctx.memo.get(key)!;
-  if (ctx.visiting.has(key)) throw new Error('cycle');
+  if (ctx.visiting.has(key)) {
+    throw new FormulaError('#CYCLE!', `${colIndexToLetter(col)}${row + 1} が自身を参照しています`);
+  }
   const raw = body.rows[row]?.[col] ?? '';
   if (raw === '') {
     ctx.memo.set(key, '');
@@ -741,7 +774,7 @@ function evalCall(fn: string, args: Node[], body: SpreadsheetBody, ctx: FormulaC
     case 'LEN':
       return String(evalNode(args[0]!, body, ctx)).length;
   }
-  throw new Error('unknown function ' + fn);
+  throw new FormulaError('#NAME?', `関数 ${fn} は未定義です(対応:SUM / AVG / MIN / MAX / COUNT / IF / ABS / ROUND / CONCAT / LEN)`);
 }
 
 function toNum(v: FormulaValue): number {

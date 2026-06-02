@@ -235,6 +235,31 @@ export function recordTabClose(lid: string): string | null {
 }
 
 /**
+ * 削除された entry の tab を自動的に閉じる(user direction 2026-06-02
+ * 「削除したエントリのタブが開きっぱなし」 fix)。pinned tab も含めて
+ * 強制 close(削除済 entry を pin で保持する意味は無いため)。
+ * `ENTRY_DELETED` event listener / SYS_SYNC 経路から呼ばれる。
+ *
+ * 戻り値:新しい active lid(削除 entry が active だった場合の再配置先)。
+ */
+export function closeTabsForDeletedEntries(container: Container | null): string | null {
+  if (!container) return activeLid;
+  const alive = new Set(container.entries.map((e) => e.lid));
+  const before = openTabs.length;
+  openTabs = openTabs.filter((t) => {
+    // view tab(`__view:...`)は entry に紐付かないので保持
+    if (t.lid.startsWith('__view:')) return true;
+    return alive.has(t.lid);
+  });
+  if (openTabs.length === before) return activeLid;
+  // active が消えていたら近い tab に再配置
+  if (activeLid && !openTabs.find((t) => t.lid === activeLid)) {
+    activeLid = openTabs.length > 0 ? openTabs[0]!.lid : null;
+  }
+  return activeLid;
+}
+
+/**
  * title 更新を反映(entry の title が変わった時、tab の表示も update)。
  */
 export function refreshTabTitles(container: Container | null): void {
@@ -576,6 +601,10 @@ export function wireTabStrip(dispatcher: Dispatcher): () => void {
   const off2 = dispatcher.onState((s, prev) => {
     if (s.container && s.container !== prev.container) {
       refreshTabTitles(s.container);
+      // user direction 2026-06-02「削除したエントリのタブが開きっぱなし」 fix:
+      // container 変化のたびに削除済 entry の tab を自動 close。pinned tab も
+      // 含めて(削除済 entry を pin で持つ意味はない)。
+      closeTabsForDeletedEntries(s.container);
       persistTabState();
     }
     if (s.selectedLid && s.selectedLid !== prev.selectedLid && s.container) {

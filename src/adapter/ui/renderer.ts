@@ -1343,12 +1343,25 @@ function renderMobileHeader(state: AppState): HTMLElement {
   }
 
   if (page === 'detail') {
+    // user direction 2026-06-02「戻る進むの左上のボタンはタイトル横のモバイル
+    // モードでの初期戻しボタンと合流すべき」 fix:mobile detail header の
+    // 「‹ List」 を desktop と同じ `go-back` history navigation に統一。
+    // history が空なら fallback で list 表示(action-binder で分岐)。
+    // 同 button の右に「進む」 も追加(両者で 1 つの nav unit を構成)。
     const backBtn = createElement('button', 'pkc-mobile-header-btn');
-    backBtn.setAttribute('data-pkc-action', 'mobile-back');
-    backBtn.setAttribute('aria-label', '一覧に戻る');
-    backBtn.setAttribute('title', '一覧に戻る');
-    backBtn.textContent = '‹ List';
+    backBtn.setAttribute('data-pkc-action', 'go-back');
+    backBtn.setAttribute('aria-label', '戻る');
+    backBtn.setAttribute('title', '戻る(履歴がない場合は一覧へ)');
+    backBtn.textContent = '◀';
     bar.appendChild(backBtn);
+    const fwdBtn = createElement('button', 'pkc-mobile-header-btn');
+    fwdBtn.setAttribute('data-pkc-action', 'go-forward');
+    fwdBtn.setAttribute('aria-label', '進む');
+    fwdBtn.setAttribute('title', '進む');
+    fwdBtn.textContent = '▶';
+    const fwdDisabled = state.navIndex >= state.navHistory.length - 1;
+    if (fwdDisabled) fwdBtn.setAttribute('disabled', '');
+    bar.appendChild(fwdBtn);
 
     // pgc-238:filter-cache の entryByLid Map で O(1) lookup。
     const selectedTitle = state.container && state.selectedLid

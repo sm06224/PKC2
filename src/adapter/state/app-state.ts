@@ -887,25 +887,25 @@ function now(): string {
 }
 
 /**
- * archetype 別の default title を生成。同 archetype の既存 entry 数を数え
- * `Untitled Sheet 1` / `Untitled Sheet 2` ... のように suffix で番号付け
- * (VSCode の "Untitled-N" 流儀)。user direction 2026-06-02。
+ * archetype 別の default title を生成。user direction 2026-06-02
+ * 「ニューエントリー作成時のデフォ名がおかしい」 を受けて Japanese
+ * 流儀に変更(`新規シート 1` / `新規メモ 1` 等、UI の他 label と統一)。
+ * 同 archetype の既存 entry 数を grep して suffix で番号付け。
  */
 function defaultTitleForArchetype(
   archetype: ArchetypeId,
   container: Container,
 ): string {
   const labels: Partial<Record<ArchetypeId, string>> = {
-    text: 'Untitled',
-    textlog: 'Untitled Log',
-    todo: 'Untitled Todo',
-    spreadsheet: 'Untitled Sheet',
-    attachment: 'Untitled File',
-    folder: 'Untitled Folder',
-    form: 'Untitled Form',
+    text: '新規メモ',
+    textlog: '新規ログ',
+    todo: '新規TODO',
+    spreadsheet: '新規シート',
+    attachment: '新規添付',
+    folder: '新規フォルダ',
+    form: '新規フォーム',
   };
-  const base = labels[archetype] ?? 'Untitled';
-  // 同 archetype の Untitled-* 件数を数え +1。系列で衝突しない番号を採番。
+  const base = labels[archetype] ?? '新規エントリ';
   const existing = container.entries.filter((e) => e.archetype === archetype && e.title.startsWith(base)).length;
   return `${base} ${existing + 1}`;
 }
@@ -1597,14 +1597,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       events.push({ type: 'ENTRY_CREATED', lid, archetype: action.archetype });
 
       // 領域 10-4 spreadsheet Phase 4(2026-06-02):新規 spreadsheet は default
-      // grid(5x6 空 cell)を body に seed して「最初からセルが見える」状態に。
-      // user direction「スプレッドシートなんだから、最初からセルが表示されるべき」
+      // grid(20 行 × 12 列 空 cell)を body に seed して「最初からセルが見える」 +
+      // 「デフォのセル数少なすぎ」 の両 user direction を解消。
       if (
         action.archetype === 'spreadsheet'
         && (typeof action.body !== 'string' || action.body.length === 0)
       ) {
         const defaultBodyJson = JSON.stringify({
-          rows: Array.from({ length: 6 }, () => Array.from({ length: 5 }, () => '')),
+          rows: Array.from({ length: 20 }, () => Array.from({ length: 12 }, () => '')),
           noHeader: true,
         });
         container = {

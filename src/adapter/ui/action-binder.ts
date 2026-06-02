@@ -2200,12 +2200,23 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
         break;
-      case 'go-back':
+      case 'go-back': {
         // pgc-55: 全 back/forward を browser history へ集約。
         // history.back() → popstate → nav-history bridge が GO_BACK を
         // dispatch する単一経路(分岐 = stack 二重化を構造的に排除)。
-        window.history.back();
+        // user direction 2026-06-02「戻る進む button と mobile 初期戻し合流」 fix:
+        // PKC2 internal nav history が空(初手 entry)の場合は browser back では
+        // 親 page に飛んでしまうため、`SELECT_ENTRY` を null clear して mobile
+        // 一覧に戻る fallback を踏む。internal history があれば従来通り browser back。
+        const st = dispatcher.getState();
+        if (st.navIndex <= 0) {
+          // 履歴 0 = mobile 「‹ List」 と同じ effect:選択 clear + detail view を解除
+          dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
+        } else {
+          window.history.back();
+        }
         break;
+      }
       case 'go-forward':
         window.history.forward();
         break;
@@ -3962,7 +3973,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'toggle-focus-mode': {
-        toggleFocusMode(root);
+        toggleFocusMode(root, dispatcher);
         break;
       }
       case 'set-view-mode': {
@@ -4303,11 +4314,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'toggle-sidebar': {
-        togglePane(root, 'sidebar');
+        togglePane(root, 'sidebar', dispatcher);
         break;
       }
       case 'toggle-meta': {
-        togglePane(root, 'meta');
+        togglePane(root, 'meta', dispatcher);
         break;
       }
       case 'toc-jump': {
@@ -5240,7 +5251,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       e.preventDefault();
-      togglePane(root, e.shiftKey ? 'meta' : 'sidebar');
+      togglePane(root, e.shiftKey ? 'meta' : 'sidebar', dispatcher);
       return;
     }
 
@@ -10398,18 +10409,22 @@ function shiftCalendarMonth(
   return { year: y, month: m };
 }
 
-function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
+function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta', dispatcher?: Dispatcher): void {
   const selector = pane === 'sidebar' ? '[data-pkc-region="sidebar"]' : '[data-pkc-region="meta"]';
   const paneEl = root.querySelector<HTMLElement>(selector);
   if (!paneEl) return;
   const isCollapsed = paneEl.getAttribute('data-pkc-collapsed') === 'true';
   const nextCollapsed = !isCollapsed;
-  // H-7 (S-19, 2026-04-14): persist to localStorage then apply the
-  // DOM effect via the shared helper so click / shortcut / tray
-  // paths all go through identical code. The prefs cache returned
-  // by setPaneCollapsed is authoritative for the next render.
   setPaneCollapsed(pane, nextCollapsed);
   applyOnePaneCollapsedToDOM(root, pane, nextCollapsed);
+  // user direction 2026-06-02「左右ペインを隠したあと、元に戻してもペイン内が
+  // 何も表示されないことがある」 fix:collapsed → 展開時、renderer の
+  // partial render path が `wasCollapsed` を見て placeholder を出すため
+  // 中身が空になる。展開時は SYS_SYNC を dispatch して完全 render を強制。
+  if (!nextCollapsed && dispatcher) {
+    const st = dispatcher.getState();
+    dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+  }
 }
 
 // Focus-mode toggle: shared by the Ctrl+Alt+\ keyboard chord and
@@ -10417,18 +10432,18 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
 // otherwise expand both. The "either-open → fold-both" rule
 // mirrors OS focus modes — one trigger flips the whole layout
 // regardless of mixed intermediate states.
-function toggleFocusMode(root: HTMLElement): void {
+function toggleFocusMode(root: HTMLElement, dispatcher?: Dispatcher): void {
   const sidebarEl = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
   const metaEl = root.querySelector<HTMLElement>('[data-pkc-region="meta"]');
   const sidebarCollapsed = sidebarEl?.getAttribute('data-pkc-collapsed') === 'true';
   const metaCollapsed = metaEl?.getAttribute('data-pkc-collapsed') === 'true';
   const eitherOpen = !sidebarCollapsed || !metaCollapsed;
   if (eitherOpen) {
-    if (!sidebarCollapsed) togglePane(root, 'sidebar');
-    if (!metaCollapsed) togglePane(root, 'meta');
+    if (!sidebarCollapsed) togglePane(root, 'sidebar', dispatcher);
+    if (!metaCollapsed) togglePane(root, 'meta', dispatcher);
   } else {
-    if (sidebarCollapsed) togglePane(root, 'sidebar');
-    if (metaCollapsed) togglePane(root, 'meta');
+    if (sidebarCollapsed) togglePane(root, 'sidebar', dispatcher);
+    if (metaCollapsed) togglePane(root, 'meta', dispatcher);
   }
 }
 

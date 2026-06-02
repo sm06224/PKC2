@@ -78,8 +78,8 @@ describe('spreadsheet Phase 4 formula evaluator', () => {
       expect(evaluateFormula('=-5+3', body([]))).toBe('-2');
     });
 
-    it('case 9: ゼロ除算は `#ERR!`', () => {
-      expect(evaluateFormula('=1/0', body([]))).toBe('#ERR!');
+    it('case 9: ゼロ除算は `#DIV/0!`(Phase 4 で Excel 流の細分化エラーコード)', () => {
+      expect(evaluateFormula('=1/0', body([]))).toBe('#DIV/0!');
     });
   });
 
@@ -150,8 +150,8 @@ describe('spreadsheet Phase 4 formula evaluator', () => {
       expect(evaluateFormula('=CONCAT("hello"," ","world")', body([]))).toBe('hello world');
     });
 
-    it('case 22: 未知関数は `#ERR!`', () => {
-      expect(evaluateFormula('=UNKNOWN(1,2)', body([]))).toBe('#ERR!');
+    it('case 22: 未知関数は `#NAME?`(Phase 4 で Excel 流の細分化エラーコード)', () => {
+      expect(evaluateFormula('=UNKNOWN(1,2)', body([]))).toBe('#NAME?');
     });
   });
 

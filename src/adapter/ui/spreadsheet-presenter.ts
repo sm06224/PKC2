@@ -29,6 +29,7 @@ import {
   detectPasteAsSpreadsheet,
   evaluateBody,
   isFormula,
+  evaluateFormulaDetail,
   evaluateFormula,
   colIndexToLetter,
   type SpreadsheetBody,
@@ -36,8 +37,10 @@ import {
 } from '@features/spreadsheet/spreadsheet-body';
 import { createZipBlob } from '../platform/zip-package';
 
-const DEFAULT_VIEW_ROWS = 6;
-const DEFAULT_VIEW_COLS = 5;
+// user direction 2026-06-02「デフォのセル数少なすぎ」 → 5x6 → 12x20。
+// Excel ライクに広い canvas を最初から表示。
+const DEFAULT_VIEW_ROWS = 20;
+const DEFAULT_VIEW_COLS = 12;
 const DEFAULT_COL_WIDTH = 96; // px
 const DEFAULT_ROW_HEIGHT = 28; // px
 const MIN_COL_WIDTH = 32;
@@ -299,14 +302,20 @@ function readBodyFromGrid(table: HTMLTableElement, prevBody?: SpreadsheetBody): 
     const cells = tr.querySelectorAll<HTMLElement>('[data-col][contenteditable]');
     const rowVals: string[] = [];
     for (const c of Array.from(cells)) {
-      // formula は data-pkc-raw を優先(表示中は評価値、raw は保持)
-      const raw = c.getAttribute('data-pkc-raw');
-      rowVals.push(raw !== null ? raw : (c.textContent ?? ''));
+      // user direction 2026-06-02「関数入力でエラーになっても入力状態は保持すべき」 fix:
+      // **focus 中の cell は textContent を採用**(user 編集中の text が真実)。
+      // 非 focus 状態の formula cell は data-pkc-raw(評価値 vs raw 切替時の raw 保持)。
+      const isFocused = document.activeElement === c;
+      if (isFocused) {
+        rowVals.push(c.textContent ?? '');
+      } else {
+        const raw = c.getAttribute('data-pkc-raw');
+        rowVals.push(raw !== null ? raw : (c.textContent ?? ''));
+      }
     }
     rows.push(rowVals);
   }
   const out: SpreadsheetBody = { rows };
-  // preserve metadata
   if (prevBody?.colWidths) out.colWidths = prevBody.colWidths;
   if (prevBody?.rowHeights) out.rowHeights = prevBody.rowHeights;
   if (prevBody?.charts) out.charts = prevBody.charts;
@@ -341,21 +350,31 @@ function writeBodyState(wrapper: HTMLElement, body: SpreadsheetBody): void {
 }
 
 function refreshFormulaDisplay(table: HTMLTableElement, body: SpreadsheetBody): void {
-  const evaluated = evaluateBody(body);
   const cells = table.querySelectorAll<HTMLElement>('[data-col][contenteditable]');
   for (const c of Array.from(cells)) {
+    // focus 中の cell は触らない(user 編集中の text を上書きしない、入力状態保持)
+    if (document.activeElement === c) continue;
     const r = parseInt(c.getAttribute('data-row') ?? '-1', 10);
     const col = parseInt(c.getAttribute('data-col') ?? '-1', 10);
     if (r < 0 || col < 0) continue;
     const raw = body.rows[r]?.[col] ?? '';
     if (isFormula(raw)) {
+      // user direction 2026-06-02「関数エラーが出て何がエラーかわからん」 fix:
+      // evaluateFormulaDetail で errorReason を取り、tooltip / data attribute に。
+      const detail = evaluateFormulaDetail(raw, body);
       c.setAttribute('data-pkc-raw', raw);
-      // 編集中(focus)なら raw のまま、それ以外は評価値で表示
-      if (document.activeElement !== c) {
-        c.textContent = evaluated[r]?.[col] ?? '';
+      c.textContent = detail.value;
+      if (detail.errorCode) {
+        c.setAttribute('data-pkc-formula-error', detail.errorCode);
+        c.title = `${detail.errorCode}:${detail.errorReason ?? '不明なエラー'}\n数式:${raw}`;
+      } else {
+        c.removeAttribute('data-pkc-formula-error');
+        c.title = `数式:${raw}\n結果:${detail.value}`;
       }
     } else {
       c.removeAttribute('data-pkc-raw');
+      c.removeAttribute('data-pkc-formula-error');
+      c.removeAttribute('title');
     }
   }
 }
@@ -501,13 +520,17 @@ function wireGridEvents(wrapper: HTMLElement): void {
     syncGridToTextarea(wrapper);
   });
 
-  // 2) focus / blur で formula raw / evaluated 切替
+  // 2) focus / blur で formula raw / evaluated 切替 + 選択状態更新
   wrapper.addEventListener('focusin', (e: FocusEvent) => {
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
     if (!t.hasAttribute('contenteditable')) return;
     const raw = t.getAttribute('data-pkc-raw');
     if (raw !== null && t.textContent !== raw) t.textContent = raw;
+    // 選択を anchor + active = この cell に。
+    const row = parseInt(t.getAttribute('data-row') ?? '0', 10);
+    const col = parseInt(t.getAttribute('data-col') ?? '0', 10);
+    setSelection(wrapper, row, col, row, col);
   });
   wrapper.addEventListener('focusout', (e: FocusEvent) => {
     const t = e.target;
@@ -516,7 +539,7 @@ function wireGridEvents(wrapper: HTMLElement): void {
     syncGridToTextarea(wrapper);
   });
 
-  // 3) keyboard navigation
+  // 3) keyboard navigation(Excel-like:Tab/Enter/Arrow/Shift+Arrow/Ctrl+Arrow/Esc/Delete/Ctrl+C)
   wrapper.addEventListener('keydown', (e: KeyboardEvent) => {
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
@@ -526,6 +549,55 @@ function wireGridEvents(wrapper: HTMLElement): void {
     if (rowAttr === null || colAttr === null) return;
     const row = parseInt(rowAttr, 10);
     const col = parseInt(colAttr, 10);
+
+    // Esc:現 cell の編集を取り消し(focus 直後の raw に戻して blur)
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      const body = readBodyState(wrapper);
+      const orig = body.rows[row]?.[col] ?? '';
+      t.textContent = orig;
+      t.blur();
+      return;
+    }
+    // Delete / Backspace:選択範囲を一括クリア(複数 cell に効く Excel-like)
+    if ((e.key === 'Delete' || e.key === 'Backspace') && getSelection_(wrapper) && !isSelectionSingleCell(wrapper)) {
+      e.preventDefault();
+      clearSelectionCells(wrapper);
+      return;
+    }
+    // Ctrl+C:選択範囲を TSV として clipboard へ
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault();
+      copySelectionTsv(wrapper);
+      return;
+    }
+    // Ctrl+ArrowKey:contiguous な data block の端まで jump
+    if ((e.ctrlKey || e.metaKey) && (e.key.startsWith('Arrow'))) {
+      e.preventDefault();
+      const body = readBodyState(wrapper);
+      let nextRow = row;
+      let nextCol = col;
+      if (e.key === 'ArrowDown') nextRow = jumpEdge(body, row, col, 1, 0);
+      else if (e.key === 'ArrowUp') nextRow = jumpEdge(body, row, col, -1, 0);
+      else if (e.key === 'ArrowRight') nextCol = jumpEdge(body, row, col, 0, 1);
+      else if (e.key === 'ArrowLeft') nextCol = jumpEdge(body, row, col, 0, -1);
+      focusCell(wrapper, nextRow, nextCol);
+      return;
+    }
+    // Shift+Arrow:選択範囲を拡張(anchor を保持して active corner を移動)
+    if (e.shiftKey && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const sel = getSelection_(wrapper);
+      const anchor = sel ? { row: sel.r1, col: sel.c1 } : { row, col };
+      let nextRow = row, nextCol = col;
+      if (e.key === 'ArrowDown') nextRow = row + 1;
+      else if (e.key === 'ArrowUp') nextRow = Math.max(0, row - 1);
+      else if (e.key === 'ArrowRight') nextCol = col + 1;
+      else if (e.key === 'ArrowLeft') nextCol = Math.max(0, col - 1);
+      setSelection(wrapper, anchor.row, anchor.col, nextRow, nextCol);
+      focusCell(wrapper, nextRow, nextCol);
+      return;
+    }
     if (e.key === 'Tab') {
       e.preventDefault();
       const nextCol = e.shiftKey ? col - 1 : col + 1;
@@ -566,6 +638,39 @@ function wireGridEvents(wrapper: HTMLElement): void {
       focusCell(wrapper, row - 1, col);
       return;
     }
+    if (e.key === 'ArrowRight' && !e.altKey && !e.shiftKey) {
+      // caret が末尾なら次列、それ以外は default
+      const sel = window.getSelection();
+      if (sel && sel.anchorNode === t.firstChild && sel.anchorOffset === (t.textContent?.length ?? 0)) {
+        e.preventDefault();
+        focusCell(wrapper, row, col + 1);
+        return;
+      }
+    }
+    if (e.key === 'ArrowLeft' && !e.altKey && !e.shiftKey) {
+      const sel = window.getSelection();
+      if (sel && sel.anchorOffset === 0) {
+        e.preventDefault();
+        focusCell(wrapper, row, col - 1);
+        return;
+      }
+    }
+  });
+
+  // Shift+Click で selection 拡張(anchor 保持、target を active corner に)
+  wrapper.addEventListener('mousedown', (e: MouseEvent) => {
+    if (!e.shiftKey) return;
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (!t.hasAttribute('contenteditable')) return;
+    const r = parseInt(t.getAttribute('data-row') ?? '-1', 10);
+    const c = parseInt(t.getAttribute('data-col') ?? '-1', 10);
+    if (r < 0 || c < 0) return;
+    const sel = getSelection_(wrapper);
+    if (!sel) return;
+    e.preventDefault();
+    setSelection(wrapper, sel.r1, sel.c1, r, c);
+    focusCell(wrapper, r, c);
   });
 
   // 4) paste auto-import
@@ -724,6 +829,127 @@ function startRowResize(wrapper: HTMLElement, rowIdx: number, startY: number): v
 function applyRowHeightLive(wrapper: HTMLElement, rowIdx: number, h: number): void {
   const tr = wrapper.querySelector<HTMLTableRowElement>(`tr[data-row="${rowIdx}"]`);
   if (tr) tr.style.height = `${h}px`;
+}
+
+// ── Selection state(Excel-like range)─────────────────
+
+interface CellSelection {
+  r1: number; c1: number; r2: number; c2: number;
+}
+
+function getSelection_(wrapper: HTMLElement): CellSelection | null {
+  const raw = wrapper.getAttribute('data-pkc-selection');
+  if (!raw) return null;
+  const parts = raw.split(',').map((s) => parseInt(s, 10));
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null;
+  return { r1: parts[0]!, c1: parts[1]!, r2: parts[2]!, c2: parts[3]! };
+}
+
+function setSelection(wrapper: HTMLElement, r1: number, c1: number, r2: number, c2: number): void {
+  wrapper.setAttribute('data-pkc-selection', `${r1},${c1},${r2},${c2}`);
+  applySelectionHighlight(wrapper);
+}
+
+function isSelectionSingleCell(wrapper: HTMLElement): boolean {
+  const sel = getSelection_(wrapper);
+  if (!sel) return true;
+  return sel.r1 === sel.r2 && sel.c1 === sel.c2;
+}
+
+function applySelectionHighlight(wrapper: HTMLElement): void {
+  const sel = getSelection_(wrapper);
+  const cells = wrapper.querySelectorAll<HTMLElement>('[data-col][contenteditable]');
+  for (const c of Array.from(cells)) {
+    c.removeAttribute('data-pkc-cell-selected');
+  }
+  if (!sel) return;
+  const minR = Math.min(sel.r1, sel.r2);
+  const maxR = Math.max(sel.r1, sel.r2);
+  const minC = Math.min(sel.c1, sel.c2);
+  const maxC = Math.max(sel.c1, sel.c2);
+  for (let r = minR; r <= maxR; r++) {
+    for (let col = minC; col <= maxC; col++) {
+      const cell = wrapper.querySelector<HTMLElement>(`[contenteditable][data-row="${r}"][data-col="${col}"]`);
+      if (cell) cell.setAttribute('data-pkc-cell-selected', 'true');
+    }
+  }
+}
+
+function clearSelectionCells(wrapper: HTMLElement): void {
+  const sel = getSelection_(wrapper);
+  if (!sel) return;
+  const body = readBodyState(wrapper);
+  const minR = Math.min(sel.r1, sel.r2);
+  const maxR = Math.max(sel.r1, sel.r2);
+  const minC = Math.min(sel.c1, sel.c2);
+  const maxC = Math.max(sel.c1, sel.c2);
+  for (let r = minR; r <= maxR; r++) {
+    if (!body.rows[r]) continue;
+    for (let c = minC; c <= maxC; c++) {
+      body.rows[r]![c] = '';
+    }
+  }
+  writeBodyState(wrapper, body);
+  rebuildGrid(wrapper, body, { row: minR, col: minC });
+  setSelection(wrapper, minR, minC, maxR, maxC);
+  syncGridToTextarea(wrapper);
+}
+
+function copySelectionTsv(wrapper: HTMLElement): void {
+  const sel = getSelection_(wrapper);
+  if (!sel) return;
+  const body = readBodyState(wrapper);
+  const minR = Math.min(sel.r1, sel.r2);
+  const maxR = Math.max(sel.r1, sel.r2);
+  const minC = Math.min(sel.c1, sel.c2);
+  const maxC = Math.max(sel.c1, sel.c2);
+  const lines: string[] = [];
+  for (let r = minR; r <= maxR; r++) {
+    const row: string[] = [];
+    for (let c = minC; c <= maxC; c++) {
+      row.push(body.rows[r]?.[c] ?? '');
+    }
+    lines.push(row.join('\t'));
+  }
+  const tsv = lines.join('\n');
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(tsv).catch(() => undefined);
+  }
+}
+
+/**
+ * Ctrl+Arrow:contiguous data block の端まで jump(Excel と同じ動作)。
+ * 現 cell が値 cell なら、同方向の最後の値 cell まで。空 cell なら次の値 cell まで。
+ */
+function jumpEdge(body: SpreadsheetBody, row: number, col: number, dr: number, dc: number): number {
+  const isVertical = dr !== 0;
+  const limit = isVertical ? body.rows.length : getColumnCount(body);
+  const current = body.rows[row]?.[col] ?? '';
+  const inData = current !== '';
+  let r = row;
+  let c = col;
+  // 1 歩進める
+  r += dr; c += dc;
+  if (r < 0 || c < 0 || r >= body.rows.length || c >= limit) {
+    return isVertical ? Math.max(0, Math.min(body.rows.length - 1, row + dr)) : Math.max(0, Math.min(limit - 1, col + dc));
+  }
+  if (inData) {
+    // 同方向に進みながら data block の終端を探す
+    while (r >= 0 && c >= 0 && r < body.rows.length && c < limit && (body.rows[r]?.[c] ?? '') !== '') {
+      r += dr; c += dc;
+    }
+    r -= dr; c -= dc;
+  } else {
+    // 空 cell なら次の data cell まで進む
+    while (r >= 0 && c >= 0 && r < body.rows.length && c < limit && (body.rows[r]?.[c] ?? '') === '') {
+      r += dr; c += dc;
+    }
+    if (r < 0 || c < 0 || r >= body.rows.length || c >= limit) {
+      r = Math.max(0, Math.min(body.rows.length - 1, r));
+      c = Math.max(0, Math.min(limit - 1, c));
+    }
+  }
+  return isVertical ? r : c;
 }
 
 // ── row / column ops ───────────────────────────────────
@@ -1172,9 +1398,31 @@ export const spreadsheetPresenter: DetailPresenter = {
     const wrapper = document.createElement('div');
     wrapper.className = 'pkc-view-body pkc-spreadsheet-wrapper';
     wrapper.setAttribute('data-pkc-spreadsheet-lid', entry.lid);
+    // user direction 2026-06-02「エクスポート導線が編集画面に入っているのはダメ、
+    // コレは閲覧側の機能」:view 用 toolbar に export + 埋込 を配置(read-only な
+    // 行為なので閲覧 mode が正しい所属)。
+    const viewToolbar = document.createElement('div');
+    viewToolbar.className = 'pkc-spreadsheet-toolbar pkc-spreadsheet-toolbar-view';
+    viewToolbar.setAttribute('data-pkc-region', 'spreadsheet-view-toolbar');
+    const mkVB = (label: string, action: string, title: string): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'pkc-btn pkc-btn-small';
+      b.setAttribute('data-pkc-action', action);
+      b.textContent = label;
+      b.title = title;
+      return b;
+    };
+    viewToolbar.appendChild(mkVB('🔗 埋込', 'spreadsheet-copy-embed', '![[entry:lid]] 埋め込み記法を clipboard へ'));
+    viewToolbar.appendChild(mkVB('💾 CSV', 'spreadsheet-export-csv', 'CSV ファイルとしてダウンロード'));
+    viewToolbar.appendChild(mkVB('💾 ODF', 'spreadsheet-export-fods', 'ODF Flat XML (.fods) としてダウンロード(LibreOffice 互換)'));
+    viewToolbar.appendChild(mkVB('💾 XLSX', 'spreadsheet-export-xlsx', 'Excel xlsx としてダウンロード(Office Open XML)'));
+    wrapper.appendChild(viewToolbar);
     const body = parseSpreadsheetBody(entry.body);
+    // body state を view にも書いておく(view toolbar の export action が
+    // readBodyState で読めるように、edit と同じ contract)。
+    writeBodyState(wrapper, body);
     wrapper.appendChild(buildTableElement(document, body));
-    // chart 配置
     if (body.charts && body.charts.length > 0) {
       const area = document.createElement('div');
       area.setAttribute('data-pkc-region', 'spreadsheet-charts');
@@ -1184,6 +1432,16 @@ export const spreadsheetPresenter: DetailPresenter = {
       }
       wrapper.appendChild(area);
     }
+    // view mode でも export / embed action を捕まえる click listener
+    wrapper.addEventListener('click', (e: MouseEvent) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const action = t.getAttribute('data-pkc-action');
+      if (action === 'spreadsheet-export-csv') downloadFile(wrapper, 'csv');
+      else if (action === 'spreadsheet-export-fods') downloadFile(wrapper, 'fods');
+      else if (action === 'spreadsheet-export-xlsx') downloadFile(wrapper, 'xlsx');
+      else if (action === 'spreadsheet-copy-embed') copyEmbedLink(wrapper);
+    });
     return wrapper;
   },
 
@@ -1214,15 +1472,13 @@ export const spreadsheetPresenter: DetailPresenter = {
       b.title = title;
       return b;
     };
+    // user direction 2026-06-02「エクスポート導線が編集画面に入っているのはダメ、
+    // コレは閲覧側の機能」 fix:edit toolbar からは export を削除、view 側に移管。
     toolbar.appendChild(mkBtn('+ 行', 'spreadsheet-add-row', '行を追加(Enter で末尾 cell から自動追加)'));
     toolbar.appendChild(mkBtn('+ 列', 'spreadsheet-add-column', '列を追加'));
     toolbar.appendChild(mkBtn('📋 ヘッダー', 'spreadsheet-toggle-header', '先頭行を header として扱う/解除'));
     toolbar.appendChild(mkBtn('📊 グラフ', 'spreadsheet-add-chart', 'bar / line / pie chart を追加'));
     toolbar.appendChild(mkBtn('📝 フォーム', 'spreadsheet-open-form', '1 行を form 入力'));
-    toolbar.appendChild(mkBtn('🔗 埋込', 'spreadsheet-copy-embed', '![[entry:lid]] 埋め込み記法を clipboard へ'));
-    toolbar.appendChild(mkBtn('💾 CSV', 'spreadsheet-export-csv', 'CSV ファイルとしてダウンロード'));
-    toolbar.appendChild(mkBtn('💾 ODF', 'spreadsheet-export-fods', 'ODF Flat XML (.fods) としてダウンロード(LibreOffice 互換)'));
-    toolbar.appendChild(mkBtn('💾 XLSX', 'spreadsheet-export-xlsx', 'Excel xlsx としてダウンロード(Office Open XML / OOXML)'));
     toolbar.appendChild(mkBtn('TSV ⇄ Grid', 'spreadsheet-toggle-tsv', 'TSV 編集モードと Grid 編集モードを切替'));
     wrapper.appendChild(toolbar);
 

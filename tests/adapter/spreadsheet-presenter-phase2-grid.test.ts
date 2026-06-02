@@ -55,21 +55,22 @@ describe('spreadsheet Phase 2 grid editor', () => {
       expect(el.getAttribute('data-pkc-spreadsheet-mode')).toBe('grid');
     });
 
-    it('case 2: toolbar に Phase 4 で 10 button(行 / 列 / ヘッダー / グラフ / フォーム / 埋込 / CSV / ODF / XLSX / TSV)', () => {
+    it('case 2: edit toolbar は Phase 4 view 側移管後 6 button(行 / 列 / ヘッダー / グラフ / フォーム / TSV)、埋込 / export は view 側へ移管', () => {
       const el = mountEditor('');
       const buttons = el.querySelectorAll<HTMLButtonElement>('.pkc-spreadsheet-toolbar button[data-pkc-action]');
-      expect(buttons.length).toBe(10);
+      expect(buttons.length).toBe(6);
       const actions = Array.from(buttons).map((b) => b.getAttribute('data-pkc-action'));
       expect(actions).toContain('spreadsheet-add-row');
       expect(actions).toContain('spreadsheet-add-column');
       expect(actions).toContain('spreadsheet-toggle-header');
       expect(actions).toContain('spreadsheet-add-chart');
       expect(actions).toContain('spreadsheet-open-form');
-      expect(actions).toContain('spreadsheet-copy-embed');
-      expect(actions).toContain('spreadsheet-export-csv');
-      expect(actions).toContain('spreadsheet-export-fods');
-      expect(actions).toContain('spreadsheet-export-xlsx');
       expect(actions).toContain('spreadsheet-toggle-tsv');
+      // user direction 2026-06-02:export と 埋込 は view 側
+      expect(actions).not.toContain('spreadsheet-export-csv');
+      expect(actions).not.toContain('spreadsheet-export-fods');
+      expect(actions).not.toContain('spreadsheet-export-xlsx');
+      expect(actions).not.toContain('spreadsheet-copy-embed');
     });
 
     it('case 3: 既存 body から grid を build、各 cell に data-row/col + contenteditable', () => {
@@ -86,13 +87,13 @@ describe('spreadsheet Phase 2 grid editor', () => {
       }
     });
 
-    it('case 4: 空 body は Phase 4 で seed として 5 列 × 6 行 grid を提示', () => {
+    it('case 4: 空 body は Phase 4 で seed として 12 列 × 20 行 grid を提示', () => {
       const el = mountEditor('');
       expect(getCell(el, 0, 0)).not.toBeNull();
-      expect(getCell(el, 0, 4)).not.toBeNull();
-      expect(getCell(el, 0, 5)).toBeNull();
-      expect(getCell(el, 5, 0)).not.toBeNull();
-      expect(getCell(el, 6, 0)).toBeNull();
+      expect(getCell(el, 0, 11)).not.toBeNull();
+      expect(getCell(el, 0, 12)).toBeNull();
+      expect(getCell(el, 19, 0)).not.toBeNull();
+      expect(getCell(el, 20, 0)).toBeNull();
     });
 
     it('case 5: hidden textarea[data-pkc-field=body] が常駐(Phase 4 で JSON 同期)', () => {

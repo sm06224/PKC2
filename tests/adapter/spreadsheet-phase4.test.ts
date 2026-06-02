@@ -40,18 +40,18 @@ describe('spreadsheet Phase 4 — 9 features', () => {
   });
 
   describe('#1 最初からセル表示', () => {
-    it('case 1: 空 body の view mode も 6 行 × 5 列 grid を出す', () => {
+    it('case 1: 空 body の view mode も 20 行 × 12 列 grid を出す(Phase 4 拡大、user direction「デフォのセル数少なすぎ」)', () => {
       const el = mountView('');
       const table = el.querySelector('table.pkc-spreadsheet');
       expect(table).not.toBeNull();
       const cells = table!.querySelectorAll('tbody td');
-      expect(cells.length).toBe(30); // 6 × 5
+      expect(cells.length).toBe(20 * 12);
     });
 
-    it('case 2: 編集 mode も同じく 5 列 × 6 行 seed grid', () => {
+    it('case 2: 編集 mode も同じく 12 列 × 20 行 seed grid', () => {
       const el = mountEditor('');
       const editableCells = el.querySelectorAll('[contenteditable][data-row][data-col]');
-      expect(editableCells.length).toBe(30);
+      expect(editableCells.length).toBe(20 * 12);
     });
   });
 
@@ -122,8 +122,8 @@ describe('spreadsheet Phase 4 — 9 features', () => {
   });
 
   describe('#5 埋め込み導線', () => {
-    it('case 9: 🔗 埋込 toolbar button が出る', () => {
-      const el = mountEditor('');
+    it('case 9: 🔗 埋込 toolbar button は view 側に出る(user direction 2026-06-02「閲覧側の機能」)', () => {
+      const el = mountView('');
       const btn = el.querySelector('[data-pkc-action="spreadsheet-copy-embed"]');
       expect(btn).not.toBeNull();
     });
@@ -135,16 +135,16 @@ describe('spreadsheet Phase 4 — 9 features', () => {
   });
 
   describe('#6 セルサイズ調整', () => {
-    it('case 11: 各 column header に resize handle が出る', () => {
+    it('case 11: 各 column header に resize handle が出る(Phase 4 default 12 列)', () => {
       const el = mountEditor('');
       const handles = el.querySelectorAll('.pkc-spreadsheet-col-resize');
-      expect(handles.length).toBe(5); // default 5 列
+      expect(handles.length).toBe(12);
     });
 
-    it('case 12: row header にも resize handle', () => {
+    it('case 12: row header にも resize handle(Phase 4 default 20 行)', () => {
       const el = mountEditor('');
       const handles = el.querySelectorAll('.pkc-spreadsheet-row-resize');
-      expect(handles.length).toBe(6); // default 6 行
+      expect(handles.length).toBe(20);
     });
 
     it('case 13: colWidths が指定されていると colgroup col の width に反映', () => {
@@ -208,11 +208,16 @@ describe('spreadsheet Phase 4 — 9 features', () => {
     });
   });
 
-  describe('#9 export', () => {
-    it('case 20: 💾 CSV / 💾 ODF toolbar button が出る', () => {
-      const el = mountEditor('');
-      expect(el.querySelector('[data-pkc-action="spreadsheet-export-csv"]')).not.toBeNull();
-      expect(el.querySelector('[data-pkc-action="spreadsheet-export-fods"]')).not.toBeNull();
+  describe('#9 export(view 側に移管 2026-06-02)', () => {
+    it('case 20: 💾 CSV / 💾 ODF / 💾 XLSX toolbar button は view mode に出る、edit mode には無い', () => {
+      const elView = mountView('');
+      expect(elView.querySelector('[data-pkc-action="spreadsheet-export-csv"]')).not.toBeNull();
+      expect(elView.querySelector('[data-pkc-action="spreadsheet-export-fods"]')).not.toBeNull();
+      expect(elView.querySelector('[data-pkc-action="spreadsheet-export-xlsx"]')).not.toBeNull();
+      const elEdit = mountEditor('');
+      expect(elEdit.querySelector('[data-pkc-action="spreadsheet-export-csv"]')).toBeNull();
+      expect(elEdit.querySelector('[data-pkc-action="spreadsheet-export-fods"]')).toBeNull();
+      expect(elEdit.querySelector('[data-pkc-action="spreadsheet-export-xlsx"]')).toBeNull();
     });
   });
 });

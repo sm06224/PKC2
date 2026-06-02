@@ -3,7 +3,7 @@
  *
  * 領域 10-4 spreadsheet Phase 4(user direction 2026-06-02、9 項目一括 #4):
  * 「新規作成したエントリ名おかしくない?」を受けて、CREATE_ENTRY で title='' の場合
- * archetype 別の default title("Untitled Sheet N" 等)を自動採番する確認。
+ * archetype 別の default title("新規シート N" 等)を自動採番する確認。
  */
 
 import { describe, it, expect } from 'vitest';
@@ -35,42 +35,42 @@ function emptyState(): AppState {
 }
 
 describe('CREATE_ENTRY default title assignment(Phase 4)', () => {
-  it('case 1: spreadsheet で title="" → "Untitled Sheet 1"', () => {
+  it('case 1: spreadsheet で title="" → "新規シート 1"', () => {
     const s = emptyState();
     const r = reduce(s, { type: 'CREATE_ENTRY', archetype: 'spreadsheet', title: '' });
-    expect(r.state.container?.entries[0]?.title).toBe('Untitled Sheet 1');
+    expect(r.state.container?.entries[0]?.title).toBe('新規シート 1');
   });
 
-  it('case 2: 既存 "Untitled Sheet 1" がある container で create → "Untitled Sheet 2"', () => {
+  it('case 2: 既存 "新規シート 1" がある container で create → "新規シート 2"', () => {
     const s = emptyState();
     s.container = {
       ...s.container!,
       entries: [{
-        lid: 'pre1', title: 'Untitled Sheet 1', body: '{}', archetype: 'spreadsheet',
+        lid: 'pre1', title: '新規シート 1', body: '{}', archetype: 'spreadsheet',
         created_at: TS, updated_at: TS,
       }],
     };
     const r = reduce(s, { type: 'CREATE_ENTRY', archetype: 'spreadsheet', title: '' });
     const titles = r.state.container?.entries.map((e) => e.title);
-    expect(titles).toContain('Untitled Sheet 2');
+    expect(titles).toContain('新規シート 2');
   });
 
   it('case 3: text で title="" → "Untitled 1"', () => {
     const s = emptyState();
     const r = reduce(s, { type: 'CREATE_ENTRY', archetype: 'text', title: '' });
-    expect(r.state.container?.entries[0]?.title).toBe('Untitled 1');
+    expect(r.state.container?.entries[0]?.title).toBe('新規メモ 1');
   });
 
-  it('case 4: todo で title="" → "Untitled Todo 1"', () => {
+  it('case 4: todo で title="" → "新規TODO 1"', () => {
     const s = emptyState();
     const r = reduce(s, { type: 'CREATE_ENTRY', archetype: 'todo', title: '' });
-    expect(r.state.container?.entries[0]?.title).toBe('Untitled Todo 1');
+    expect(r.state.container?.entries[0]?.title).toBe('新規TODO 1');
   });
 
-  it('case 5: folder で title="" → "Untitled Folder 1"', () => {
+  it('case 5: folder で title="" → "新規フォルダ 1"', () => {
     const s = emptyState();
     const r = reduce(s, { type: 'CREATE_ENTRY', archetype: 'folder', title: '' });
-    expect(r.state.container?.entries[0]?.title).toBe('Untitled Folder 1');
+    expect(r.state.container?.entries[0]?.title).toBe('新規フォルダ 1');
   });
 
   it('case 6: title 指定あり(非 empty)は上書きしない', () => {
@@ -79,14 +79,14 @@ describe('CREATE_ENTRY default title assignment(Phase 4)', () => {
     expect(r.state.container?.entries[0]?.title).toBe('売上集計');
   });
 
-  it('case 7: spreadsheet 新規 → 空 body ではなく 5x6 default grid を seed(noHeader=true)', () => {
+  it('case 7: spreadsheet 新規 → 空 body ではなく 20 行 × 12 列 default grid を seed(noHeader=true)', () => {
     const s = emptyState();
     const r = reduce(s, { type: 'CREATE_ENTRY', archetype: 'spreadsheet', title: '' });
     const entry = r.state.container?.entries[0];
     expect(entry?.body).toBeTruthy();
     const parsed = JSON.parse(entry!.body);
-    expect(parsed.rows.length).toBe(6);
-    expect(parsed.rows[0].length).toBe(5);
+    expect(parsed.rows.length).toBe(20);
+    expect(parsed.rows[0].length).toBe(12);
     expect(parsed.noHeader).toBe(true);
   });
 
@@ -106,20 +106,20 @@ describe('CREATE_ENTRY default title assignment(Phase 4)', () => {
     s.container = {
       ...s.container!,
       entries: [
-        { lid: 'p1', title: 'Untitled Sheet 1', body: '{}', archetype: 'spreadsheet', created_at: TS, updated_at: TS },
-        { lid: 'p2', title: 'Untitled 1', body: '', archetype: 'text', created_at: TS, updated_at: TS },
+        { lid: 'p1', title: '新規シート 1', body: '{}', archetype: 'spreadsheet', created_at: TS, updated_at: TS },
+        { lid: 'p2', title: '新規メモ 1', body: '', archetype: 'text', created_at: TS, updated_at: TS },
       ],
     };
     const r = reduce(s, { type: 'CREATE_ENTRY', archetype: 'spreadsheet', title: '' });
     const titles = r.state.container?.entries.map((e) => e.title) ?? [];
-    expect(titles).toContain('Untitled Sheet 1');
-    expect(titles).toContain('Untitled Sheet 2');
-    expect(titles).toContain('Untitled 1');
+    expect(titles).toContain('新規シート 1');
+    expect(titles).toContain('新規シート 2');
+    expect(titles).toContain('新規メモ 1');
   });
 
-  it('case 10: attachment で title="" → "Untitled File 1"', () => {
+  it('case 10: attachment で title="" → "新規添付 1"', () => {
     const s = emptyState();
     const r = reduce(s, { type: 'CREATE_ENTRY', archetype: 'attachment', title: '' });
-    expect(r.state.container?.entries[0]?.title).toBe('Untitled File 1');
+    expect(r.state.container?.entries[0]?.title).toBe('新規添付 1');
   });
 });

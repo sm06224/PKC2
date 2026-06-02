@@ -42,14 +42,13 @@ describe('spreadsheetPresenter.renderBody', () => {
     expect(trs[1]?.querySelectorAll('td')[1]?.textContent).toBe('25');
   });
 
-  it('case 2: 空 body でも default 5x6 grid が表示される(Phase 4 user direction 2026-06-02「最初からセルが表示されるべき」)', () => {
+  it('case 2: 空 body でも default 20x12 grid が表示される(Phase 4 user direction 2026-06-02「デフォのセル数少なすぎ」)', () => {
     const entry = mkEntry('');
     const el = spreadsheetPresenter.renderBody(entry);
     const table = el.querySelector('table.pkc-spreadsheet');
     expect(table).not.toBeNull();
-    // noHeader=true で seed されるので、全 cell は tbody td
     const cells = table!.querySelectorAll('tbody td');
-    expect(cells.length).toBe(6 * 5);
+    expect(cells.length).toBe(20 * 12);
   });
 
   it('case 3: ragged row は最大列数で正規化(短い行は空 td 補完)', () => {
@@ -71,13 +70,13 @@ describe('spreadsheetPresenter.renderBody', () => {
     expect(th?.textContent).toBe('<script>alert(1)</script>');
   });
 
-  it('case 5: 不正 JSON でも throw せず default grid に fallback(Phase 4)', () => {
+  it('case 5: 不正 JSON でも throw せず default 20x12 grid に fallback(Phase 4)', () => {
     const entry = mkEntry('not-json');
     expect(() => spreadsheetPresenter.renderBody(entry)).not.toThrow();
     const el = spreadsheetPresenter.renderBody(entry);
     const table = el.querySelector('table.pkc-spreadsheet');
     expect(table).not.toBeNull();
-    expect(table!.querySelectorAll('tbody td').length).toBe(6 * 5);
+    expect(table!.querySelectorAll('tbody td').length).toBe(20 * 12);
   });
 
   it('case 6: data-pkc-region="spreadsheet-table" を付与', () => {
@@ -111,13 +110,13 @@ describe('spreadsheetPresenter.renderEditorBody', () => {
     expect(el.querySelector('[data-pkc-action="spreadsheet-toggle-tsv"]')).not.toBeNull();
   });
 
-  it('case 3: 空 body は Phase 4 で seed として 6 行 × 5 列の空 grid を提示(noHeader=true)', () => {
+  it('case 3: 空 body は Phase 4 で seed として 20 行 × 12 列の空 grid を提示(noHeader=true)', () => {
     const entry = mkEntry('');
     const el = spreadsheetPresenter.renderEditorBody(entry);
     const ta = el.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
     const parsed = JSON.parse(ta!.value);
-    expect(parsed.rows.length).toBe(6);
-    expect(parsed.rows[0].length).toBe(5);
+    expect(parsed.rows.length).toBe(20);
+    expect(parsed.rows[0].length).toBe(12);
     expect(parsed.noHeader).toBe(true);
   });
 });
