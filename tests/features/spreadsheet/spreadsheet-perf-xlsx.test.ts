@@ -139,4 +139,113 @@ describe('spreadsheet Phase 4 perf + xlsx', () => {
       expect(wb.content).toContain('name="売上"');
     });
   });
+
+  describe('xlsx with charts(user direction 2026-06-03「xlsx にもグラフ出力」)', () => {
+    const body = {
+      rows: [['x', 'y'], ['1', '10'], ['2', '20'], ['3', '30']],
+      charts: [{
+        id: 'c1', kind: 'bar' as const, title: '売上推移',
+        xCol: 0, yCols: [1], startRow: 1,
+      }],
+    };
+
+    it('case 13: chart 1 個でも xlsx zip に必要 8 ファイルが全部入る', () => {
+      const files = buildXlsxFiles(body);
+      const names = files.map((f) => f.name).sort();
+      expect(names).toEqual([
+        '[Content_Types].xml',
+        '_rels/.rels',
+        'xl/_rels/workbook.xml.rels',
+        'xl/charts/chart1.xml',
+        'xl/drawings/_rels/drawing1.xml.rels',
+        'xl/drawings/drawing1.xml',
+        'xl/workbook.xml',
+        'xl/worksheets/_rels/sheet1.xml.rels',
+        'xl/worksheets/sheet1.xml',
+      ]);
+    });
+
+    it('case 14: sheet1.xml に <drawing r:id="rId1"/> が追加される', () => {
+      const files = buildXlsxFiles(body);
+      const sheet = files.find((f) => f.name === 'xl/worksheets/sheet1.xml')!;
+      expect(sheet.content).toContain('<drawing r:id="rId1"/>');
+    });
+
+    it('case 15: [Content_Types].xml に chart + drawing Override が追加される', () => {
+      const files = buildXlsxFiles(body);
+      const ct = files.find((f) => f.name === '[Content_Types].xml')!;
+      expect(ct.content).toContain('drawingml.chart+xml');
+      expect(ct.content).toContain('officedocument.drawing+xml');
+    });
+
+    it('case 16: chart1.xml に c:barChart + 系列(c:ser)+ 範囲参照(Sheet1!$A$2:$A$4)', () => {
+      const files = buildXlsxFiles(body);
+      const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
+      expect(chart.content).toContain('c:barChart');
+      expect(chart.content).toContain('c:ser');
+      expect(chart.content).toContain('Sheet1!$A$2:$A$4');
+      expect(chart.content).toContain('Sheet1!$B$2:$B$4');
+    });
+
+    it('case 17: chart title は <c:title> に escape 済 text として入る', () => {
+      const files = buildXlsxFiles({
+        ...body,
+        charts: [{ id: 'c1', kind: 'bar', title: '<title&"特殊">', xCol: 0, yCols: [1], startRow: 1 }],
+      });
+      const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
+      expect(chart.content).toContain('&lt;title&amp;&quot;特殊&quot;&gt;');
+    });
+
+    it('case 18: line kind は c:lineChart に切替', () => {
+      const files = buildXlsxFiles({
+        ...body,
+        charts: [{ id: 'c1', kind: 'line', title: '', xCol: 0, yCols: [1], startRow: 1 }],
+      });
+      const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
+      expect(chart.content).toContain('c:lineChart');
+    });
+
+    it('case 19: pie / doughnut も対応', () => {
+      for (const kind of ['pie', 'doughnut'] as const) {
+        const files = buildXlsxFiles({
+          ...body,
+          charts: [{ id: 'c1', kind, title: '', xCol: 0, yCols: [1], startRow: 1 }],
+        });
+        const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
+        const expected = kind === 'pie' ? 'c:pieChart' : 'c:doughnutChart';
+        expect(chart.content).toContain(expected);
+      }
+    });
+
+    it('case 20: 複数 chart で chart1.xml + chart2.xml が出力、drawing rels も 2 件', () => {
+      const files = buildXlsxFiles({
+        ...body,
+        charts: [
+          { id: 'c1', kind: 'bar', title: 'A', xCol: 0, yCols: [1], startRow: 1 },
+          { id: 'c2', kind: 'line', title: 'B', xCol: 0, yCols: [1], startRow: 1 },
+        ],
+      });
+      const names = files.map((f) => f.name);
+      expect(names).toContain('xl/charts/chart1.xml');
+      expect(names).toContain('xl/charts/chart2.xml');
+      const drels = files.find((f) => f.name === 'xl/drawings/_rels/drawing1.xml.rels')!;
+      expect(drels.content).toContain('rId1');
+      expect(drels.content).toContain('rId2');
+    });
+
+    it('case 21: chart 無し body は従来 5 ファイル(後方互換)', () => {
+      const files = buildXlsxFiles({ rows: [['a']] });
+      expect(files.length).toBe(5);
+      expect(files.find((f) => f.name === 'xl/charts/chart1.xml')).toBeUndefined();
+    });
+
+    it('case 22: legend=false で c:legend 出力なし', () => {
+      const files = buildXlsxFiles({
+        ...body,
+        charts: [{ id: 'c1', kind: 'bar', title: '', xCol: 0, yCols: [1], startRow: 1, legend: false }],
+      });
+      const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
+      expect(chart.content).not.toContain('c:legend');
+    });
+  });
 });

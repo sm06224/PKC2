@@ -32,6 +32,24 @@ export interface ChartConfig {
   filter?: string;
 }
 
+/** 列ごとのデータ書式(2026-06-03、user direction「基本的なデータ型と見せ方には対応」)。
+ *  Excel 流儀。number/currency/percent/date/text の 5 種、precision で小数桁、
+ *  currency で通貨コード(ISO 4217 例「JPY」「USD」)、dateFormat で日付幅。
+ */
+export interface ColumnFormat {
+  /** 0-indexed column。 */
+  col: number;
+  type: 'number' | 'currency' | 'percent' | 'date' | 'text';
+  /** number/currency/percent の小数桁。未指定 = 0(integer)。 */
+  precision?: number;
+  /** currency 専用、ISO 4217 通貨コード。未指定 = 'JPY'。 */
+  currency?: string;
+  /** date 専用、`short` / `medium` / `long`(Intl.DateTimeFormat dateStyle)。未指定 = 'short'。 */
+  dateFormat?: 'short' | 'medium' | 'long';
+  /** 桁区切り(number/currency)、default true。 */
+  useGrouping?: boolean;
+}
+
 /** Spreadsheet body の JSON 表現。 */
 export interface SpreadsheetBody {
   /** 各行 = 列文字列の配列。先頭行は header として presenter が render(noHeader=true で無効)。 */
@@ -44,6 +62,59 @@ export interface SpreadsheetBody {
   charts?: ChartConfig[];
   /** Phase 4: true で先頭行を header 扱いしない。 */
   noHeader?: boolean;
+  /** Phase 4(2026-06-03):列ごとのデータ書式。 */
+  columnFormats?: ColumnFormat[];
+}
+
+/**
+ * 列 index から format を引く。未指定なら null。
+ */
+export function findColumnFormat(body: SpreadsheetBody, col: number): ColumnFormat | null {
+  if (!body.columnFormats) return null;
+  return body.columnFormats.find((f) => f.col === col) ?? null;
+}
+
+/**
+ * cell value を column format に従って表示用文字列に整形。
+ * 数値文字列は parse、それ以外はそのまま返す。date は ISO-like string を parse。
+ * locale 引数で `Intl.NumberFormat` / `Intl.DateTimeFormat` の locale を切替。
+ */
+export function formatCellValue(value: string, fmt: ColumnFormat | null, locale?: string): string {
+  if (!fmt || fmt.type === 'text' || value === '') return value;
+  const trimmed = value.trim();
+  if (fmt.type === 'number' || fmt.type === 'currency' || fmt.type === 'percent') {
+    const n = parseFloat(trimmed);
+    if (Number.isNaN(n)) return value;
+    const precision = fmt.precision ?? 0;
+    const useGrouping = fmt.useGrouping !== false;
+    if (fmt.type === 'currency') {
+      const currency = fmt.currency ?? 'JPY';
+      try {
+        return new Intl.NumberFormat(locale, {
+          style: 'currency', currency,
+          minimumFractionDigits: precision, maximumFractionDigits: precision,
+          useGrouping,
+        }).format(n);
+      } catch { /* invalid currency fallback */ }
+    }
+    if (fmt.type === 'percent') {
+      return new Intl.NumberFormat(locale, {
+        style: 'percent',
+        minimumFractionDigits: precision, maximumFractionDigits: precision,
+        useGrouping,
+      }).format(n);
+    }
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: precision, maximumFractionDigits: precision,
+      useGrouping,
+    }).format(n);
+  }
+  if (fmt.type === 'date') {
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) return value;
+    return new Intl.DateTimeFormat(locale, { dateStyle: fmt.dateFormat ?? 'short' }).format(d);
+  }
+  return value;
 }
 
 /** 空 body(0 行 0 列)。新規 entry 作成時の seed。 */
@@ -121,6 +192,25 @@ export function parseSpreadsheetBody(body: string): SpreadsheetBody {
     if (charts.length > 0) out.charts = charts;
   }
   if (obj.noHeader === true) out.noHeader = true;
+  if (Array.isArray((obj as { columnFormats?: unknown }).columnFormats)) {
+    const formats: ColumnFormat[] = [];
+    const validTypes: ReadonlyArray<string> = ['number', 'currency', 'percent', 'date', 'text'];
+    for (const f of (obj as { columnFormats: unknown[] }).columnFormats) {
+      if (!f || typeof f !== 'object') continue;
+      const ff = f as Partial<ColumnFormat>;
+      if (typeof ff.col !== 'number') continue;
+      if (typeof ff.type !== 'string' || !validTypes.includes(ff.type)) continue;
+      formats.push({
+        col: ff.col,
+        type: ff.type as ColumnFormat['type'],
+        ...(typeof ff.precision === 'number' ? { precision: ff.precision } : {}),
+        ...(typeof ff.currency === 'string' ? { currency: ff.currency } : {}),
+        ...(typeof ff.dateFormat === 'string' ? { dateFormat: ff.dateFormat as 'short' | 'medium' | 'long' } : {}),
+        ...(typeof ff.useGrouping === 'boolean' ? { useGrouping: ff.useGrouping } : {}),
+      });
+    }
+    if (formats.length > 0) out.columnFormats = formats;
+  }
   return out;
 }
 
@@ -131,6 +221,7 @@ export function serializeSpreadsheetBody(body: SpreadsheetBody): string {
   if (body.rowHeights && body.rowHeights.length > 0) out.rowHeights = body.rowHeights;
   if (body.charts && body.charts.length > 0) out.charts = body.charts;
   if (body.noHeader) out.noHeader = true;
+  if (body.columnFormats && body.columnFormats.length > 0) out.columnFormats = body.columnFormats;
   return JSON.stringify(out);
 }
 
@@ -865,15 +956,117 @@ export interface XlsxFile {
  * formula は評価値を出力(user direction「見たままを csv で落としたい」 と同方針、
  * formula 自体は <f> tag で添えるオプションを今後追加可能)。
  */
+/**
+ * user direction 2026-06-03「xlsx にもグラフ出力すべき」 fix:
+ * OOXML chart は xl/charts/chartN.xml(chart 定義)+ xl/drawings/drawingN.xml
+ * (sheet 上の anchor)+ sheet.xml への `<drawing>` element + 各 rels file +
+ * `[Content_Types].xml` の Override 拡張で構成。本実装は bar/line/pie/doughnut
+ * の 4 種 chart kind を OOXML 化(scatter/polarArea/radar は Chart.js 固有
+ * representation で OOXML 直対応難、bar 系に fallback)。
+ *
+ * 構造(本 PR、chart 1 個の場合):
+ *   - [Content_Types].xml ─ chart + drawing Override 追加
+ *   - _rels/.rels
+ *   - xl/workbook.xml + xl/_rels/workbook.xml.rels
+ *   - xl/worksheets/sheet1.xml(末尾に `<drawing r:id="rId1"/>` 追加)
+ *   - xl/worksheets/_rels/sheet1.xml.rels(drawing への rel)
+ *   - xl/drawings/drawing1.xml(anchor 定義)
+ *   - xl/drawings/_rels/drawing1.xml.rels(chart への rel)
+ *   - xl/charts/chart1.xml(chart 定義)
+ */
+function xlsxEscape(s: string): string {
+  return s.replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function buildChartXml(chart: ChartConfig, evaluated: string[][], sheetName: string): string {
+  const start = Math.max(0, chart.startRow);
+  const end = chart.endRow ?? evaluated.length;
+  const dataStart = start + 1; // xlsx 1-indexed
+  const dataEnd = Math.min(end, evaluated.length);
+  // X 軸 cell range
+  const xColLetter = colIndexToLetter(chart.xCol);
+  const xRange = `${xlsxEscape(sheetName)}!$${xColLetter}$${dataStart}:$${xColLetter}$${dataEnd}`;
+  // OOXML chart kind 対応:scatter/radar/polarArea は bar に fallback(警告は出さず silent)
+  const chartElement = (() => {
+    switch (chart.kind) {
+      case 'line': return { tag: 'c:lineChart', wrap: '<c:grouping val="standard"/>' };
+      case 'pie': return { tag: 'c:pieChart', wrap: '' };
+      case 'doughnut': return { tag: 'c:doughnutChart', wrap: '<c:firstSliceAng val="0"/><c:holeSize val="50"/>' };
+      default: return { tag: 'c:barChart', wrap: '<c:barDir val="col"/><c:grouping val="clustered"/>' };
+    }
+  })();
+  const isCircular = chart.kind === 'pie' || chart.kind === 'doughnut';
+  const seriesXml = chart.yCols.map((yc, idx) => {
+    const yColLetter = colIndexToLetter(yc);
+    const yRange = `${xlsxEscape(sheetName)}!$${yColLetter}$${dataStart}:$${yColLetter}$${dataEnd}`;
+    return `<c:ser>
+      <c:idx val="${idx}"/>
+      <c:order val="${idx}"/>
+      <c:tx><c:v>${xlsxEscape(colIndexToLetter(yc))}</c:v></c:tx>
+      <c:cat><c:strRef><c:f>${xRange}</c:f></c:strRef></c:cat>
+      <c:val><c:numRef><c:f>${yRange}</c:f></c:numRef></c:val>
+    </c:ser>`;
+  }).join('');
+  const chartInner = `${chartElement.wrap}${seriesXml}${isCircular ? '' : `<c:axId val="1"/><c:axId val="2"/>`}`;
+  const tag = chartElement.tag; // 例 'c:barChart'
+  const plotArea = isCircular
+    ? `<c:plotArea><c:layout/><${tag}>${chartInner}</${tag}></c:plotArea>`
+    : `<c:plotArea><c:layout/><${tag}>${chartInner}</${tag}><c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx><c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:crossAx val="1"/></c:valAx></c:plotArea>`;
+  const titleXml = chart.title
+    ? `<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>${xlsxEscape(chart.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`
+    : '';
+  const legendXml = chart.legend !== false
+    ? `<c:legend><c:legendPos val="r"/></c:legend>`
+    : '';
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:chart>
+    ${titleXml}
+    ${plotArea}
+    ${legendXml}
+    <c:plotVisOnly val="1"/>
+  </c:chart>
+</c:chartSpace>`;
+}
+
+function buildDrawingXml(charts: ReadonlyArray<ChartConfig>): string {
+  // 各 chart を sheet 上に anchor(縦に並べる、各 chart は col 1 - col 8、
+  // row offset 16 ずつ)。
+  const anchors = charts.map((_, idx) => {
+    const fromRow = idx * 16;
+    const toRow = fromRow + 15;
+    return `<xdr:twoCellAnchor>
+      <xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${fromRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>8</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${toRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+      <xdr:graphicFrame macro="">
+        <xdr:nvGraphicFramePr>
+          <xdr:cNvPr id="${idx + 2}" name="Chart ${idx + 1}"/>
+          <xdr:cNvGraphicFramePr/>
+        </xdr:nvGraphicFramePr>
+        <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
+        <xdr:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+            <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rId${idx + 1}"/>
+          </a:graphicData>
+        </xdr:graphic>
+      </xdr:graphicFrame>
+      <xdr:clientData/>
+    </xdr:twoCellAnchor>`;
+  }).join('');
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+${anchors}
+</xdr:wsDr>`;
+}
+
 export function buildXlsxFiles(body: SpreadsheetBody, sheetName: string = 'Sheet1'): XlsxFile[] {
-  const xmlEscape = (s: string): string =>
-    s.replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
   const evaluated = evaluateBody(body);
   const cols = getColumnCount(body);
+  const charts = body.charts ?? [];
 
   // sheet rows
   const sheetRows: string[] = [];
@@ -885,21 +1078,38 @@ export function buildXlsxFiles(body: SpreadsheetBody, sheetName: string = 'Sheet
       const ref = `${colIndexToLetter(c)}${r + 1}`;
       const isNum = /^-?[0-9.]+$/.test(v.trim()) && v.trim() !== '';
       if (isNum) {
-        cells.push(`<c r="${ref}"><v>${xmlEscape(v.trim())}</v></c>`);
+        cells.push(`<c r="${ref}"><v>${xlsxEscape(v.trim())}</v></c>`);
       } else {
-        // inline string(`t="inlineStr"` + <is><t>...</t></is>)
-        cells.push(`<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(v)}</t></is></c>`);
+        cells.push(`<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xlsxEscape(v)}</t></is></c>`);
       }
     }
     sheetRows.push(`<row r="${r + 1}">${cells.join('')}</row>`);
   }
 
+  // Sheet XML(chart 有り無しで `<drawing>` element 切替)
+  const drawingRef = charts.length > 0 ? '<drawing r:id="rId1"/>' : '';
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheetData>
+${sheetRows.join('\n')}
+</sheetData>
+${drawingRef}
+</worksheet>`;
+
+  // Content_Types
+  const chartOverrides = charts.map((_, i) =>
+    `<Override PartName="/xl/charts/chart${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`).join('\n');
+  const drawingOverride = charts.length > 0
+    ? `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`
+    : '';
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+${drawingOverride}
+${chartOverrides}
 </Types>`;
 
   const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -909,7 +1119,7 @@ export function buildXlsxFiles(body: SpreadsheetBody, sheetName: string = 'Sheet
 
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
+<sheets><sheet name="${xlsxEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
 </workbook>`;
 
   const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -917,20 +1127,48 @@ export function buildXlsxFiles(body: SpreadsheetBody, sheetName: string = 'Sheet
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 </Relationships>`;
 
-  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetData>
-${sheetRows.join('\n')}
-</sheetData>
-</worksheet>`;
-
-  return [
+  const files: XlsxFile[] = [
     { name: '[Content_Types].xml', content: contentTypes },
     { name: '_rels/.rels', content: rootRels },
     { name: 'xl/workbook.xml', content: workbook },
     { name: 'xl/_rels/workbook.xml.rels', content: workbookRels },
     { name: 'xl/worksheets/sheet1.xml', content: sheet },
   ];
+
+  if (charts.length > 0) {
+    // sheet → drawing rel
+    files.push({
+      name: 'xl/worksheets/_rels/sheet1.xml.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>`,
+    });
+    // drawing.xml
+    files.push({
+      name: 'xl/drawings/drawing1.xml',
+      content: buildDrawingXml(charts),
+    });
+    // drawing → chart rels
+    const drawingRels = charts.map((_, i) =>
+      `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${i + 1}.xml"/>`).join('\n');
+    files.push({
+      name: 'xl/drawings/_rels/drawing1.xml.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${drawingRels}
+</Relationships>`,
+    });
+    // 各 chartN.xml
+    for (let i = 0; i < charts.length; i++) {
+      files.push({
+        name: `xl/charts/chart${i + 1}.xml`,
+        content: buildChartXml(charts[i]!, evaluated, sheetName),
+      });
+    }
+  }
+
+  return files;
 }
 
 // user direction 2026-06-02「ODF 廃止、xlsx あれば不要」 ── ODF .fods export

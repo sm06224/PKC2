@@ -12266,7 +12266,20 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 .pkc-spreadsheet {
   border-collapse: collapse;
   font-size: 0.9rem;
-  min-width: 100%;
+  /* user direction 2026-06-03「列幅と行高さもウィンドウ幅に左右されるし、ちっとも
+   * 自由じゃない」 fix:`table-layout: fixed` で colgroup の col[width] が
+   * 強制反映、cell 内容が長くても column 幅が変動しない(Excel-like 固定幅)。
+   * width: auto + min-content で table 全体が固定 column 幅の合計に縮む。 */
+  table-layout: fixed;
+  width: max-content;
+  max-width: none;
+}
+.pkc-spreadsheet td, .pkc-spreadsheet th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* white-space は cell content によって pre-wrap or nowrap、grid 編集中は
+   * cell の内容が見えるよう pre-wrap、view mode は cell に rich content 含む
+   * 場合があるため pre-wrap 既定。 */
 }
 .pkc-spreadsheet thead th {
   background: var(--c-surface);
@@ -12567,4 +12580,18 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
   margin-bottom: 0.4rem;
   padding: 0.2rem 0;
   border-bottom: 1px solid var(--c-border);
+}
+
+/* Seamless transclusion(user direction 2026-06-03):section header / border /
+ * padding を消して本文がそのまま流れ込む見た目。 */
+.pkc-transclusion-seamless {
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+.pkc-transclusion-seamless > .pkc-transclusion-header { display: none; }
+.pkc-transclusion-seamless > .pkc-transclusion-body {
+  padding: 0;
+  border: none;
 }

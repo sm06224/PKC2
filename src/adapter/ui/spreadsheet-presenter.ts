@@ -31,9 +31,13 @@ import {
   evaluateFormulaDetail,
   evaluateFormula,
   colIndexToLetter,
+  findColumnFormat,
+  formatCellValue,
   type SpreadsheetBody,
   type ChartConfig,
+  type ColumnFormat,
 } from '@features/spreadsheet/spreadsheet-body';
+import { getFormatLocale } from './format-context';
 import { createZipBlob } from '../platform/zip-package';
 // user direction 2026-06-03「他のプロダクトを参考にするとか一旦依存するとかで
 // まともになりませんか?」 fix:自前 SVG chart を捨て Chart.js に置換。
@@ -139,13 +143,19 @@ function buildTableElement(doc: Document, body: SpreadsheetBody): HTMLTableEleme
   const tbody = doc.createElement('tbody');
   const dataRows = showHeader ? dataRowsRaw : evaluated;
   const rowOffset = showHeader ? 1 : 0;
+  const locale = getFormatLocale();
   for (let r = 0; r < dataRows.length; r++) {
     const row = dataRows[r]!;
     const tr = doc.createElement('tr');
     tr.style.height = `${rowHeightAt(seed, r + rowOffset)}px`;
     for (let i = 0; i < cols; i++) {
       const td = doc.createElement('td');
-      td.textContent = row[i] ?? '';
+      const raw = row[i] ?? '';
+      // user direction 2026-06-03「基本的なデータ型と見せ方には対応すべき」 fix:
+      // 列 format(columnFormats)があれば適用、なければ raw のまま。
+      const fmt = findColumnFormat(seed, i);
+      td.textContent = formatCellValue(raw, fmt, locale);
+      if (fmt) td.setAttribute('data-pkc-col-format', fmt.type);
       tr.appendChild(td);
     }
     tbody.appendChild(tr);
@@ -313,19 +323,21 @@ function writeBodyState(wrapper: HTMLElement, body: SpreadsheetBody): void {
 
 function refreshFormulaDisplay(table: HTMLTableElement, body: SpreadsheetBody): void {
   const cells = table.querySelectorAll<HTMLElement>('[data-col][contenteditable]');
+  const locale = getFormatLocale();
   for (const c of Array.from(cells)) {
-    // focus 中の cell は触らない(user 編集中の text を上書きしない、入力状態保持)
     if (document.activeElement === c) continue;
     const r = parseInt(c.getAttribute('data-row') ?? '-1', 10);
     const col = parseInt(c.getAttribute('data-col') ?? '-1', 10);
     if (r < 0 || col < 0) continue;
     const raw = body.rows[r]?.[col] ?? '';
+    const fmt = findColumnFormat(body, col);
+    if (fmt) c.setAttribute('data-pkc-col-format', fmt.type);
+    else c.removeAttribute('data-pkc-col-format');
     if (isFormula(raw)) {
-      // user direction 2026-06-02「関数エラーが出て何がエラーかわからん」 fix:
-      // evaluateFormulaDetail で errorReason を取り、tooltip / data attribute に。
       const detail = evaluateFormulaDetail(raw, body);
       c.setAttribute('data-pkc-raw', raw);
-      c.textContent = detail.value;
+      // formula 評価値に format を適用(数値結果に通貨/桁区切り/小数桁 等)
+      c.textContent = formatCellValue(detail.value, fmt, locale);
       if (detail.errorCode) {
         c.setAttribute('data-pkc-formula-error', detail.errorCode);
         c.title = `${detail.errorCode}:${detail.errorReason ?? '不明なエラー'}\n数式:${raw}`;
@@ -336,7 +348,14 @@ function refreshFormulaDisplay(table: HTMLTableElement, body: SpreadsheetBody): 
     } else {
       c.removeAttribute('data-pkc-raw');
       c.removeAttribute('data-pkc-formula-error');
-      c.removeAttribute('title');
+      // 非 formula cell も format 適用(raw を保持しつつ表示だけ format)
+      const formatted = formatCellValue(raw, fmt, locale);
+      if (formatted !== raw) {
+        c.setAttribute('data-pkc-raw', raw); // raw 保持
+        c.textContent = formatted;
+      } else {
+        c.removeAttribute('title');
+      }
     }
   }
 }
@@ -822,8 +841,14 @@ function wireGridEvents(wrapper: HTMLElement): void {
       case 'spreadsheet-show-formula-help':
         openFormulaHelp(wrapper);
         break;
+      case 'spreadsheet-open-format-modal':
+        openFormatModal(wrapper);
+        break;
       case 'spreadsheet-copy-embed':
-        copyEmbedLink(wrapper);
+        copyEmbedLink(wrapper, false);
+        break;
+      case 'spreadsheet-copy-embed-seamless':
+        copyEmbedLink(wrapper, true);
         break;
     }
   });
@@ -1435,6 +1460,101 @@ function openRecordForm(wrapper: HTMLElement): void {
   });
 }
 
+// ── Column format modal(2026-06-03) ──────────────────
+
+function openFormatModal(wrapper: HTMLElement): void {
+  const body = readBodyState(wrapper);
+  const cols = Math.max(1, getColumnCount(body));
+  const headers: string[] = [];
+  for (let c = 0; c < cols; c++) {
+    if (!body.noHeader && body.rows[0]?.[c]) headers.push(body.rows[0][c]!);
+    else headers.push(colIndexToLetter(c));
+  }
+  const overlay = document.createElement('div');
+  overlay.className = 'pkc-spreadsheet-form-overlay';
+  overlay.setAttribute('data-pkc-region', 'spreadsheet-format-modal');
+  const modal = document.createElement('div');
+  modal.className = 'pkc-spreadsheet-form-modal pkc-spreadsheet-format-modal';
+  modal.innerHTML = `<h3>📐 列書式</h3><p style="margin:0.3rem 0 0.6rem;font-size:0.82rem;color:var(--c-muted)">列ごとに書式を選択(空欄=書式なし)。number/currency/percent では小数桁、currency では通貨を指定。</p>`;
+  const formatTypes = ['', 'number', 'currency', 'percent', 'date', 'text'] as const;
+  for (let c = 0; c < cols; c++) {
+    const existing = findColumnFormat(body, c);
+    const row = document.createElement('div');
+    row.className = 'pkc-spreadsheet-form-row';
+    const label = document.createElement('span');
+    label.textContent = `${colIndexToLetter(c)} (${headers[c]})`;
+    row.appendChild(label);
+    const sel = document.createElement('select');
+    sel.setAttribute('data-pkc-format-col', String(c));
+    for (const t of formatTypes) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t === '' ? '(なし)' : t;
+      if (existing?.type === t) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    row.appendChild(sel);
+    const prec = document.createElement('input');
+    prec.type = 'number';
+    prec.min = '0';
+    prec.max = '10';
+    prec.placeholder = '小数桁';
+    prec.style.width = '4rem';
+    prec.value = String(existing?.precision ?? '');
+    prec.setAttribute('data-pkc-format-col-precision', String(c));
+    row.appendChild(prec);
+    const cur = document.createElement('input');
+    cur.type = 'text';
+    cur.placeholder = 'JPY';
+    cur.style.width = '4rem';
+    cur.value = existing?.currency ?? '';
+    cur.setAttribute('data-pkc-format-col-currency', String(c));
+    row.appendChild(cur);
+    modal.appendChild(row);
+  }
+  const actions = document.createElement('div');
+  actions.className = 'pkc-spreadsheet-form-actions';
+  const apply = document.createElement('button');
+  apply.type = 'button';
+  apply.className = 'pkc-btn';
+  apply.textContent = '適用';
+  apply.setAttribute('data-pkc-format-apply', '');
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'pkc-btn';
+  cancel.textContent = 'キャンセル';
+  actions.appendChild(apply);
+  actions.appendChild(cancel);
+  modal.appendChild(actions);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  cancel.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.remove(); });
+  apply.addEventListener('click', () => {
+    const formats: ColumnFormat[] = [];
+    for (let c = 0; c < cols; c++) {
+      const sel2 = modal.querySelector<HTMLSelectElement>(`select[data-pkc-format-col="${c}"]`);
+      const precInp = modal.querySelector<HTMLInputElement>(`input[data-pkc-format-col-precision="${c}"]`);
+      const curInp = modal.querySelector<HTMLInputElement>(`input[data-pkc-format-col-currency="${c}"]`);
+      if (!sel2 || !sel2.value) continue;
+      const fmt: ColumnFormat = { col: c, type: sel2.value as ColumnFormat['type'] };
+      if (precInp?.value !== '') fmt.precision = parseInt(precInp!.value, 10) || 0;
+      if (curInp?.value) fmt.currency = curInp.value;
+      formats.push(fmt);
+    }
+    const next: SpreadsheetBody = { ...body, columnFormats: formats };
+    writeBodyState(wrapper, next);
+    const ta = wrapper.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+    if (ta) {
+      ta.value = serializeSpreadsheetBody(next);
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    rebuildGrid(wrapper, next, null);
+    overlay.remove();
+  });
+}
+
 // ── Formula help modal ─────────────────────────────────
 
 function openFormulaHelp(wrapper: HTMLElement): void {
@@ -1534,25 +1654,21 @@ function downloadFile(wrapper: HTMLElement, format: 'csv' | 'xlsx'): void {
 
 // ── Embed link copy ─────────────────────────────────────
 
-function copyEmbedLink(wrapper: HTMLElement): void {
+function copyEmbedLink(wrapper: HTMLElement, seamless: boolean): void {
   const lid = wrapper.getAttribute('data-pkc-spreadsheet-lid');
   if (!lid) return;
-  // user direction 2026-06-03「埋め込みが動作してない」 fix:
-  // PKC2 の transclusion 構文は markdown image syntax `![alt](entry:lid)`。
-  // wikilink 風 `![[entry:lid]]` は未対応で、markdown-it が image 化せず
-  // literal text として描画される。entry: protocol image でないと
-  // `expandTransclusions` が拾わない(markdown-render.ts:441 経路)。
-  // alt は fallback / accessibility label。空でも markdown-it は image token を
-  // emit するが、`hasMarkdownSyntax` 旧 regex で空 alt の `[]()` が markdown 認識
-  // されなかった bug history があるため(2026-06-03 fix 済)、念のため alt 埋め。
-  const embed = `![sheet:${lid}](entry:${lid})`;
+  // user direction 2026-06-03「シームレス埋め込みとシームレスじゃない埋め込み」 対応:
+  // seamless=true なら alt=`seamless`(transclusion.ts の expandTransclusions で
+  // section header / chrome を全て省略)、それ以外は section header 付き。
+  const alt = seamless ? 'seamless' : `sheet:${lid}`;
+  const embed = `![${alt}](entry:${lid})`;
   if (navigator.clipboard) {
     navigator.clipboard.writeText(embed).catch(() => {
       alert(`埋め込み記法をコピーできませんでした。手動でコピーしてください:\n${embed}`);
     });
     const toast = document.createElement('div');
     toast.className = 'pkc-spreadsheet-toast';
-    toast.textContent = '埋め込み記法をコピーしました';
+    toast.textContent = seamless ? 'シームレス埋め込み記法をコピーしました' : '埋め込み記法をコピーしました';
     wrapper.appendChild(toast);
     setTimeout(() => toast.remove(), 1500);
   } else {
@@ -1620,9 +1736,10 @@ export const spreadsheetPresenter: DetailPresenter = {
     };
     // user direction 2026-06-02「ODF 廃止、xlsx あるなら不要」 fix:
     // export は xlsx と CSV(見たまま)の 2 経路に集約。
-    viewToolbar.appendChild(mkVB('🔗 埋込', 'spreadsheet-copy-embed', '![[entry:lid]] 埋め込み記法を clipboard へ'));
+    viewToolbar.appendChild(mkVB('🔗 埋込', 'spreadsheet-copy-embed', '![sheet:lid](entry:lid) 埋め込み記法を clipboard へ(section header 付き)'));
+    viewToolbar.appendChild(mkVB('🪶 シームレス埋込', 'spreadsheet-copy-embed-seamless', '![seamless](entry:lid) シームレス埋め込み(section header 無し、本文がそのまま流れ込む)'));
     viewToolbar.appendChild(mkVB('💾 CSV', 'spreadsheet-export-csv', 'CSV ファイルとしてダウンロード(見たまま)'));
-    viewToolbar.appendChild(mkVB('💾 XLSX', 'spreadsheet-export-xlsx', 'Excel xlsx としてダウンロード(Office Open XML)'));
+    viewToolbar.appendChild(mkVB('💾 XLSX', 'spreadsheet-export-xlsx', 'Excel xlsx としてダウンロード(chart 含む、Office Open XML)'));
     wrapper.appendChild(viewToolbar);
     const body = parseSpreadsheetBody(entry.body);
     // body state を view にも書いておく(view toolbar の export action が
@@ -1645,7 +1762,8 @@ export const spreadsheetPresenter: DetailPresenter = {
       const action = t.getAttribute('data-pkc-action');
       if (action === 'spreadsheet-export-csv') downloadFile(wrapper, 'csv');
       else if (action === 'spreadsheet-export-xlsx') downloadFile(wrapper, 'xlsx');
-      else if (action === 'spreadsheet-copy-embed') copyEmbedLink(wrapper);
+      else if (action === 'spreadsheet-copy-embed') copyEmbedLink(wrapper, false);
+      else if (action === 'spreadsheet-copy-embed-seamless') copyEmbedLink(wrapper, true);
     });
     return wrapper;
   },
@@ -1684,6 +1802,7 @@ export const spreadsheetPresenter: DetailPresenter = {
     toolbar.appendChild(mkBtn('📋 ヘッダー', 'spreadsheet-toggle-header', '先頭行を header として扱う/解除'));
     toolbar.appendChild(mkBtn('📊 グラフ', 'spreadsheet-add-chart', 'bar / line / pie chart を追加'));
     toolbar.appendChild(mkBtn('📝 フォーム', 'spreadsheet-open-form', '1 行を form 入力'));
+    toolbar.appendChild(mkBtn('📐 列書式', 'spreadsheet-open-format-modal', '列ごとのデータ書式(number / currency / percent / date / text)を設定'));
     toolbar.appendChild(mkBtn('❓ 関数', 'spreadsheet-show-formula-help', '対応関数の一覧 / 使い方を表示'));
     toolbar.appendChild(mkBtn('TSV ⇄ Grid', 'spreadsheet-toggle-tsv', 'TSV 編集モードと Grid 編集モードを切替'));
     wrapper.appendChild(toolbar);

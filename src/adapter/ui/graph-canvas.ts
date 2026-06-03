@@ -425,27 +425,24 @@ function resolveTheme(canvas: HTMLCanvasElement): {
  */
 function archetypeFill(archetype: string, themeBgIsDark: boolean): string {
   if (themeBgIsDark) {
-    // Dark theme:従来の semi-transparent muted colors。bg #0d0f0a 上で
-    // 1:1 〜 3:1 程度の見え方、border (theme.fg = #c8d8b0) と組み合わせ
-    // node が明確に見える。
     switch (archetype) {
       case 'folder': return 'rgba(255, 200, 100, 0.55)';
       case 'text': return 'rgba(120, 180, 255, 0.55)';
       case 'textlog': return 'rgba(100, 220, 180, 0.55)';
       case 'todo': return 'rgba(255, 150, 150, 0.55)';
+      case 'spreadsheet': return 'rgba(180, 140, 255, 0.55)';
       case 'attachment': return 'rgba(180, 180, 180, 0.55)';
       default: return 'rgba(160, 160, 160, 0.55)';
     }
   }
-  // Light theme(parchment bg #f0ebe0):dark saturated colors で
-  // 4:1+ contrast 確保。
   switch (archetype) {
-    case 'folder': return '#d97706';      // amber-600  4.3:1 vs #f0ebe0
-    case 'text': return '#2563eb';        // blue-600   4.5:1
-    case 'textlog': return '#059669';     // emerald-600 4.0:1
-    case 'todo': return '#dc2626';        // red-600    5.0:1
-    case 'attachment': return '#525b67';  // slate-600  6.5:1
-    default: return '#71717a';            // zinc-500   4.7:1
+    case 'folder': return '#d97706';
+    case 'text': return '#2563eb';
+    case 'textlog': return '#059669';
+    case 'todo': return '#dc2626';
+    case 'spreadsheet': return '#7c3aed';   // violet-600 ~5:1 vs #f0ebe0
+    case 'attachment': return '#525b67';
+    default: return '#71717a';
   }
 }
 
@@ -472,6 +469,7 @@ export function archetypeEmoji(archetype: string): string {
     case 'text': return '📝';
     case 'textlog': return '📜';
     case 'todo': return '☑';
+    case 'spreadsheet': return '🧮';
     case 'attachment': return '📎';
     case 'form': return '📋';
     case 'generic': return '📄';
