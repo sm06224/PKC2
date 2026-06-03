@@ -57,6 +57,7 @@ import {
 import { parseFormBody, formPresenter } from './form-presenter';
 import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
+import { spreadsheetPresenter } from './spreadsheet-presenter';
 import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled, shellEntryWindowSplitDefaultOffEnabled, shellEntryWindowChromeEnabled } from './shell-flags';
 import type { DiffRow } from '../../features/diff/line-diff';
 import {
@@ -1386,6 +1387,14 @@ function renderViewBody(
       // click handler relies on.
       return buildTextlogViewBodyHtml(entry.lid, entry.body);
     }
+    case 'spreadsheet': {
+      // user direction 2026-06-02「マルチウィンドウの編集画面もできてない」 fix:
+      // spreadsheet を multi-window でも spreadsheetPresenter で render
+      // (text 経路に fallback されると markdown として解釈されてしまう)。
+      const el = spreadsheetPresenter.renderBody(entry);
+      syncDomPropertiesToHtml(el);
+      return el.outerHTML;
+    }
     default: {
       // Text / generic: use the pre-resolved body when the parent
       // provided one, so that `![](asset:…)` embeds and
@@ -1671,7 +1680,7 @@ function buildWindowHtml(
   // mirrors the center pane TEXT editor (A-2, 2026-04-14). All other
   // non-structured archetypes (attachment / folder / generic / opaque)
   // keep the existing Source/Preview tab bar.
-  const structuredArchetypes = new Set(['textlog', 'todo', 'form']);
+  const structuredArchetypes = new Set(['textlog', 'todo', 'form', 'spreadsheet']);
   const useStructuredEditor = structuredArchetypes.has(entry.archetype);
   // A-2 (USER_REQUEST_LEDGER S-13): live split editor for TEXT only.
   // Reuses the center pane `.pkc-text-split-editor` grid. tab bar is
@@ -1689,6 +1698,8 @@ function buildWindowHtml(
       textlog: textlogPresenter,
       todo: todoPresenter,
       form: formPresenter,
+      // user direction 2026-06-02「マルチウィンドウの編集画面もできてない」 fix
+      spreadsheet: spreadsheetPresenter,
     };
     const presenter = presenterMap[entry.archetype];
     if (presenter) {

@@ -1891,8 +1891,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           triggerCreateFileAttach(ctxFolder);
           break;
         }
-        const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
-        const title = titleMap[arch] ?? 'New Text';
+        // user direction 2026-06-02「デフォ名称が New TEXT、スプレッドシート
+        // じゃないの?」 fix:従来は archetype 別の英語固定 title を渡していたが、
+        // spreadsheet 等は titleMap になく `'New Text'` に fallback して
+        // しまっていた。reducer の `defaultTitleForArchetype` が title='' で
+        // archetype 別の Japanese 名(`新規シート` / `新規メモ` 等)を採番する
+        // 設計なので、ここでは常に空文字を渡して reducer に名前生成を委譲。
+        const title = '';
         // Explicit context from a "+ New" button inside a folder row.
         // When present, it always wins — the user asked specifically
         // for that folder.

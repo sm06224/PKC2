@@ -67,6 +67,7 @@
     "vitest": "^4.1.8"
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
     "docx": "^9.6.1",
     "markdown-it": "^14.1.1",
     "markdown-it-footnote": "^4.0.0",

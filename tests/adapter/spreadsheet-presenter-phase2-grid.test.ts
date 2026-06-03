@@ -55,21 +55,21 @@ describe('spreadsheet Phase 2 grid editor', () => {
       expect(el.getAttribute('data-pkc-spreadsheet-mode')).toBe('grid');
     });
 
-    it('case 2: edit toolbar は Phase 4 view 側移管後 6 button(行 / 列 / ヘッダー / グラフ / フォーム / TSV)、埋込 / export は view 側へ移管', () => {
+    it('case 2: edit toolbar(2026-06-02 最終 7 button:行 / 列 / ヘッダー / グラフ / フォーム / 関数ヘルプ / TSV)、埋込 / export は view 側', () => {
       const el = mountEditor('');
       const buttons = el.querySelectorAll<HTMLButtonElement>('.pkc-spreadsheet-toolbar button[data-pkc-action]');
-      expect(buttons.length).toBe(6);
+      expect(buttons.length).toBe(7);
       const actions = Array.from(buttons).map((b) => b.getAttribute('data-pkc-action'));
       expect(actions).toContain('spreadsheet-add-row');
       expect(actions).toContain('spreadsheet-add-column');
       expect(actions).toContain('spreadsheet-toggle-header');
       expect(actions).toContain('spreadsheet-add-chart');
       expect(actions).toContain('spreadsheet-open-form');
+      expect(actions).toContain('spreadsheet-show-formula-help');
       expect(actions).toContain('spreadsheet-toggle-tsv');
-      // user direction 2026-06-02:export と 埋込 は view 側
       expect(actions).not.toContain('spreadsheet-export-csv');
-      expect(actions).not.toContain('spreadsheet-export-fods');
       expect(actions).not.toContain('spreadsheet-export-xlsx');
+      expect(actions).not.toContain('spreadsheet-export-fods'); // ODF 完全廃止 2026-06-02
       expect(actions).not.toContain('spreadsheet-copy-embed');
     });
 

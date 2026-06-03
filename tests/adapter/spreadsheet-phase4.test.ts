@@ -77,7 +77,7 @@ describe('spreadsheet Phase 4 — 9 features', () => {
   });
 
   describe('#3 グラフ作成', () => {
-    it('case 6: charts metadata があると SVG が render される', () => {
+    it('case 6: charts metadata があると Chart.js canvas が render される(2026-06-03 chart.js 移行)', () => {
       const body = JSON.stringify({
         rows: [['x', 'y'], ['1', '10'], ['2', '20'], ['3', '30']],
         charts: [{
@@ -86,26 +86,26 @@ describe('spreadsheet Phase 4 — 9 features', () => {
         }],
       });
       const el = mountView(body);
-      const svg = el.querySelector('.pkc-spreadsheet-chart-svg');
-      expect(svg).not.toBeNull();
+      // Chart.js は <canvas> を要求。自前 SVG は撤去。
+      const canvas = el.querySelector('.pkc-spreadsheet-chart-canvas');
+      expect(canvas).not.toBeNull();
       const caption = el.querySelector('.pkc-spreadsheet-chart-title');
       expect(caption?.textContent).toBe('Test Chart');
     });
 
-    it('case 7: line chart は polyline、pie chart は path で render', () => {
-      const lineBody = JSON.stringify({
-        rows: [['x', 'y'], ['1', '5']],
-        charts: [{ id: 'c1', kind: 'line', title: '', xCol: 0, yCols: [1], startRow: 1 }],
-      });
-      const elLine = mountView(lineBody);
-      expect(elLine.querySelector('polyline')).not.toBeNull();
-      const pieBody = JSON.stringify({
+    it('case 7: kind 別 chart(bar/line/pie)それぞれ canvas + data-pkc-chart-kind attribute で識別', () => {
+      const mkBody = (kind: 'bar' | 'line' | 'pie'): string => JSON.stringify({
         rows: [['a', '1'], ['b', '2']],
         noHeader: true,
-        charts: [{ id: 'c2', kind: 'pie', title: '', xCol: 0, yCols: [1], startRow: 0 }],
+        charts: [{ id: 'c1', kind, title: '', xCol: 0, yCols: [1], startRow: 0 }],
       });
-      const elPie = mountView(pieBody);
-      expect(elPie.querySelector('path')).not.toBeNull();
+      for (const kind of ['bar', 'line', 'pie'] as const) {
+        const el = mountView(mkBody(kind));
+        const fig = el.querySelector('.pkc-spreadsheet-chart');
+        expect(fig).not.toBeNull();
+        expect(fig?.getAttribute('data-pkc-chart-kind')).toBe(kind);
+        expect(fig?.querySelector('canvas')).not.toBeNull();
+      }
     });
 
     it('case 8: edit mode で chart に削除 button が出る', () => {
@@ -208,16 +208,16 @@ describe('spreadsheet Phase 4 — 9 features', () => {
     });
   });
 
-  describe('#9 export(view 側に移管 2026-06-02)', () => {
-    it('case 20: 💾 CSV / 💾 ODF / 💾 XLSX toolbar button は view mode に出る、edit mode には無い', () => {
+  describe('#9 export(view 側に移管 2026-06-02、ODF 廃止 → CSV + XLSX 2 経路)', () => {
+    it('case 20: 💾 CSV / 💾 XLSX toolbar button は view mode に出る、edit mode には無い、ODF は完全廃止', () => {
       const elView = mountView('');
       expect(elView.querySelector('[data-pkc-action="spreadsheet-export-csv"]')).not.toBeNull();
-      expect(elView.querySelector('[data-pkc-action="spreadsheet-export-fods"]')).not.toBeNull();
       expect(elView.querySelector('[data-pkc-action="spreadsheet-export-xlsx"]')).not.toBeNull();
+      expect(elView.querySelector('[data-pkc-action="spreadsheet-export-fods"]')).toBeNull();
       const elEdit = mountEditor('');
       expect(elEdit.querySelector('[data-pkc-action="spreadsheet-export-csv"]')).toBeNull();
-      expect(elEdit.querySelector('[data-pkc-action="spreadsheet-export-fods"]')).toBeNull();
       expect(elEdit.querySelector('[data-pkc-action="spreadsheet-export-xlsx"]')).toBeNull();
+      expect(elEdit.querySelector('[data-pkc-action="spreadsheet-export-fods"]')).toBeNull();
     });
   });
 });

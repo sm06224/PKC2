@@ -12449,6 +12449,11 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
   height: auto;
   color: var(--c-fg);
 }
+.pkc-spreadsheet-chart-canvas {
+  width: 100% !important;
+  max-height: 260px;
+  display: block;
+}
 .pkc-spreadsheet-chart-remove {
   position: absolute;
   top: 4px;

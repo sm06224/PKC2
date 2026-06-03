@@ -924,49 +924,5 @@ ${sheetRows.join('\n')}
   ];
 }
 
-// ── ODF .fods export(flat XML、zip 不要) ────────────────
-
-/**
- * SpreadsheetBody を ODF Flat XML(.fods)文字列に変換。
- * `application/vnd.oasis.opendocument.spreadsheet-flat-xml` 形式。
- * LibreOffice / OpenOffice で開ける。Excel は直接非対応(LibreOffice 経由)。
- */
-export function serializeBodyToFods(body: SpreadsheetBody, sheetName: string = 'Sheet1'): string {
-  const evaluated = evaluateBody(body);
-  const xmlEscape = (s: string): string =>
-    s.replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-  const cols = getColumnCount(body);
-  const cells: string[] = [];
-  for (const r of evaluated) {
-    cells.push('<table:table-row>');
-    for (let c = 0; c < cols; c++) {
-      const v = r[c] ?? '';
-      const isNum = /^-?[0-9.]+$/.test(v.trim()) && v.trim() !== '';
-      if (isNum) {
-        cells.push(`<table:table-cell office:value-type="float" office:value="${xmlEscape(v.trim())}"><text:p>${xmlEscape(v)}</text:p></table:table-cell>`);
-      } else {
-        cells.push(`<table:table-cell office:value-type="string"><text:p>${xmlEscape(v)}</text:p></table:table-cell>`);
-      }
-    }
-    cells.push('</table:table-row>');
-  }
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<office:document
-  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
-  xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
-  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
-  office:version="1.2"
-  office:mimetype="application/vnd.oasis.opendocument.spreadsheet">
-<office:body>
-<office:spreadsheet>
-<table:table table:name="${xmlEscape(sheetName)}">
-${cells.join('\n')}
-</table:table>
-</office:spreadsheet>
-</office:body>
-</office:document>`;
-}
+// user direction 2026-06-02「ODF 廃止、xlsx あれば不要」 ── ODF .fods export
+// 完全撤去。export は CSV + XLSX の 2 経路に集約。
