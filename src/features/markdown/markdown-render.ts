@@ -3995,7 +3995,7 @@ export function renderMarkdown(
  */
 export function hasMarkdownSyntax(text: string): boolean {
   if (!text) return false;
-  if (/^#{1,6}\s|\*\*|__|\*[^*\s]|_[^_\s]|`[^`]+`|^\d+\.\s|^[-*+]\s|^>\s|^```|^---$|^[*]{3,}$|\[.+\]\(.+\)|^\|.+\||^[-*+]\s+\[[ xX]\]/m.test(text)) return true;
+  if (/^#{1,6}\s|\*\*|__|\*[^*\s]|_[^_\s]|`[^`]+`|^\d+\.\s|^[-*+]\s|^>\s|^```|^---$|^[*]{3,}$|!?\[[^\]]*\]\([^)]+\)|^\|.+\||^[-*+]\s+\[[ xX]\]/m.test(text)) return true;
   // FI-08.x: bare URLs should flow through markdown-it linkify (D-FB1=B).
   if (/\b(?:https?|ftp):\/\/[^\s<>]/i.test(text)) return true;
   // wave-10-2 Phase 1 dialect extensions: L-1 / L-2 / L-3 / L-4 / L-5 / L-7 を

@@ -1542,7 +1542,10 @@ function copyEmbedLink(wrapper: HTMLElement): void {
   // wikilink 風 `![[entry:lid]]` は未対応で、markdown-it が image 化せず
   // literal text として描画される。entry: protocol image でないと
   // `expandTransclusions` が拾わない(markdown-render.ts:441 経路)。
-  const embed = `![](entry:${lid})`;
+  // alt は fallback / accessibility label。空でも markdown-it は image token を
+  // emit するが、`hasMarkdownSyntax` 旧 regex で空 alt の `[]()` が markdown 認識
+  // されなかった bug history があるため(2026-06-03 fix 済)、念のため alt 埋め。
+  const embed = `![sheet:${lid}](entry:${lid})`;
   if (navigator.clipboard) {
     navigator.clipboard.writeText(embed).catch(() => {
       alert(`埋め込み記法をコピーできませんでした。手動でコピーしてください:\n${embed}`);
