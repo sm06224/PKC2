@@ -57,7 +57,7 @@ import {
 import { parseFormBody, formPresenter } from './form-presenter';
 import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
-import { spreadsheetPresenter } from './spreadsheet-presenter';
+import { spreadsheetPresenter, renderSpreadsheetEmbedBody } from './spreadsheet-presenter';
 import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled, shellEntryWindowSplitDefaultOffEnabled, shellEntryWindowChromeEnabled } from './shell-flags';
 import type { DiffRow } from '../../features/diff/line-diff';
 import {
@@ -1388,10 +1388,10 @@ function renderViewBody(
       return buildTextlogViewBodyHtml(entry.lid, entry.body);
     }
     case 'spreadsheet': {
-      // user direction 2026-06-02「マルチウィンドウの編集画面もできてない」 fix:
-      // spreadsheet を multi-window でも spreadsheetPresenter で render
-      // (text 経路に fallback されると markdown として解釈されてしまう)。
-      const el = spreadsheetPresenter.renderBody(entry);
+      // user direction 2026-06-03:multi-window の閲覧 view body は embed
+      // builder を使う(toolbar を含まない、popup window は parent の
+      // dispatcher と離れているため action button が機能しない)。
+      const el = renderSpreadsheetEmbedBody(entry);
       syncDomPropertiesToHtml(el);
       return el.outerHTML;
     }

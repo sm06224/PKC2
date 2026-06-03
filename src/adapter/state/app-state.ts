@@ -76,6 +76,8 @@ import {
 import { SAVED_SEARCH_CAP, SAVED_SEARCH_NAME_MAX } from '../../core/model/saved-search';
 import { buildLinkMigrationPreview } from '../../features/link/migration-scanner';
 import { applyLinkMigrations } from '../../features/link/migration-apply';
+import { formatShortDate } from '../../features/datetime/datetime-format';
+import { getFormatLocale } from '../ui/format-context';
 
 /**
  * AppPhase: explicit state machine to prevent operation-order bugs.
@@ -887,28 +889,44 @@ function now(): string {
 }
 
 /**
- * archetype 別の default title を生成。user direction 2026-06-02
- * 「ニューエントリー作成時のデフォ名がおかしい」 を受けて Japanese
- * 流儀に変更(`新規シート 1` / `新規メモ 1` 等、UI の他 label と統一)。
- * 同 archetype の既存 entry 数を grep して suffix で番号付け。
+ * archetype 別の default title を生成。user direction 2026-06-03:
+ *   - 「i18n で対応?日本語勝手 hardcode は違反」 ── label は **English neutral**
+ *     (Sheet / Note / Log / Todo / File / Folder / Form)に統一、`Intl` 経由の
+ *     locale 化は date 部分のみ。
+ *   - 「あたまに yy/MM/dd ddd(ロケール曜日)、プロジェクトで日付の扱いを統一
+ *     したこと思い出せ」 ── `features/datetime/datetime-format.ts:formatShortDate`
+ *     を使用、`getFormatLocale()` で user 設定 locale の `Intl.DateTimeFormat`
+ *     曜日(`weekday:'short'`)を prefix。
+ *   - 「つけた名前にしてよ」 ── title='' なら `{date} {ArchetypeLabel} N`、
+ *     title 指定あれば `{date} {userTitle}`(date prefix を自動付与)。
  */
+function archetypeBaseLabel(archetype: ArchetypeId): string {
+  const labels: Partial<Record<ArchetypeId, string>> = {
+    text: 'Note',
+    textlog: 'Log',
+    todo: 'Todo',
+    spreadsheet: 'Sheet',
+    attachment: 'File',
+    folder: 'Folder',
+    form: 'Form',
+  };
+  return labels[archetype] ?? 'Entry';
+}
+
 function defaultTitleForArchetype(
   archetype: ArchetypeId,
   container: Container,
 ): string {
-  const labels: Partial<Record<ArchetypeId, string>> = {
-    text: '新規メモ',
-    textlog: '新規ログ',
-    todo: '新規TODO',
-    spreadsheet: '新規シート',
-    attachment: '新規添付',
-    folder: '新規フォルダ',
-    form: '新規フォーム',
-  };
-  const base = labels[archetype] ?? '新規エントリ';
-  const existing = container.entries.filter((e) => e.archetype === archetype && e.title.startsWith(base)).length;
-  return `${base} ${existing + 1}`;
+  const base = archetypeBaseLabel(archetype);
+  // 同 archetype の `{anyDate} {base}` を含む既存 entry を数えて連番。
+  // date prefix が変動するため、suffix 番号で衝突回避。
+  const existing = container.entries.filter((e) =>
+    e.archetype === archetype && new RegExp(`\\b${base}\\b`).test(e.title)
+  ).length;
+  const datePrefix = formatShortDate(new Date(), { locale: getFormatLocale() });
+  return `${datePrefix} ${base} ${existing + 1}`;
 }
+
 
 /**
  * Inject the v0 capture provenance header per
@@ -1614,6 +1632,10 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         };
       }
 
+      // user direction 2026-06-03:date prefix は **defaultTitleForArchetype
+      // 内**(title='' の経路)のみで適用。programmatic CREATE_ENTRY(duplicate
+      // = `Copy of …`、attachment-to-text = `TEXT from …`、template 等)は
+      // 呼出側 title をそのまま保持(構造化 title が破壊されない)。
       // 領域 3: optional 初期 body(attachment → TEXT 変換が decode 済み
       // ファイル内容を seed する経路)。通常作成では未指定 = 空のまま。
       if (typeof action.body === 'string' && action.body.length > 0) {

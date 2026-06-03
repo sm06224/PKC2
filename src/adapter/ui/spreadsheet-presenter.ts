@@ -42,17 +42,24 @@ import {
   Chart,
   CategoryScale,
   LinearScale,
+  RadialLinearScale,
   BarController, BarElement,
   LineController, LineElement, PointElement,
-  PieController, ArcElement,
+  PieController, DoughnutController, ArcElement,
+  ScatterController,
+  PolarAreaController,
+  RadarController,
   Tooltip, Legend, Title,
   type ChartConfiguration,
 } from 'chart.js';
 Chart.register(
-  CategoryScale, LinearScale,
+  CategoryScale, LinearScale, RadialLinearScale,
   BarController, BarElement,
   LineController, LineElement, PointElement,
-  PieController, ArcElement,
+  PieController, DoughnutController, ArcElement,
+  ScatterController,
+  PolarAreaController,
+  RadarController,
   Tooltip, Legend, Title,
 );
 
@@ -187,16 +194,29 @@ function renderChart(doc: Document, body: SpreadsheetBody, chart: ChartConfig): 
     try {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      const datasets = chart.yCols.map((yc, i) => ({
-        label: `Col ${colIndexToLetter(yc)}`,
-        data: series[i] ?? [],
-        backgroundColor: chart.kind === 'pie'
-          ? labels.map((_, j) => CHART_PALETTE[j % CHART_PALETTE.length]!)
-          : CHART_PALETTE[i % CHART_PALETTE.length]!,
-        borderColor: CHART_PALETTE[i % CHART_PALETTE.length]!,
-        borderWidth: chart.kind === 'line' ? 2 : 1,
-        fill: false,
-      }));
+      // 円系(pie / doughnut / polarArea)は category ごとに色違いで、
+      // それ以外は dataset ごとに統一色。
+      const isCategoryColored = chart.kind === 'pie' || chart.kind === 'doughnut' || chart.kind === 'polarArea';
+      // scatter 系は {x, y} 形式
+      const datasets = chart.yCols.map((yc, i) => {
+        const baseColor = CHART_PALETTE[i % CHART_PALETTE.length]!;
+        const dataPoints = chart.kind === 'scatter'
+          ? labels.map((lbl, j) => ({ x: parseFloat(lbl), y: series[i]?.[j] ?? 0 }))
+          : (series[i] ?? []);
+        return {
+          label: `Col ${colIndexToLetter(yc)}`,
+          data: dataPoints,
+          backgroundColor: isCategoryColored
+            ? labels.map((_, j) => CHART_PALETTE[j % CHART_PALETTE.length]!)
+            : baseColor,
+          borderColor: baseColor,
+          borderWidth: chart.kind === 'line' || chart.kind === 'radar' ? 2 : 1,
+          fill: chart.kind === 'radar',
+          pointRadius: chart.kind === 'scatter' || chart.kind === 'line' || chart.kind === 'radar' ? 4 : 0,
+          tension: chart.kind === 'line' ? 0.1 : 0,
+        };
+      });
+      const showLegend = chart.legend !== false && (chart.yCols.length > 1 || isCategoryColored);
       const cfg: ChartConfiguration = {
         type: chart.kind,
         data: { labels, datasets },
@@ -205,8 +225,17 @@ function renderChart(doc: Document, body: SpreadsheetBody, chart: ChartConfig): 
           maintainAspectRatio: false,
           animation: false,
           plugins: {
-            legend: { display: chart.yCols.length > 1 || chart.kind === 'pie' },
-            tooltip: { enabled: true },
+            legend: {
+              display: showLegend,
+              position: 'top',
+              labels: { boxWidth: 14, padding: 8 },
+            },
+            tooltip: {
+              enabled: true,
+              mode: chart.kind === 'pie' || chart.kind === 'doughnut' ? 'nearest' : 'index',
+              intersect: false,
+            },
+            title: chart.title ? { display: false, text: chart.title } : undefined,
           },
         },
       };
@@ -1134,16 +1163,18 @@ function openChartModal(wrapper: HTMLElement, body: SpreadsheetBody, cols: numbe
   modal.className = 'pkc-spreadsheet-form-modal pkc-spreadsheet-chart-modal';
   modal.innerHTML = `<h3>📊 グラフ作成</h3>`;
 
-  // kind radio
+  // kind radio:Chart.js v4 が対応する 7 種類
   const kindWrap = document.createElement('div');
   kindWrap.className = 'pkc-spreadsheet-form-row';
   const kindLabel = document.createElement('span');
   kindLabel.textContent = '種別';
   kindWrap.appendChild(kindLabel);
   const kindOptions = document.createElement('div');
-  for (const k of ['bar', 'line', 'pie'] as const) {
+  kindOptions.style.display = 'flex';
+  kindOptions.style.flexWrap = 'wrap';
+  kindOptions.style.gap = '0.4rem';
+  for (const k of ['bar', 'line', 'pie', 'doughnut', 'scatter', 'polarArea', 'radar'] as const) {
     const l = document.createElement('label');
-    l.style.marginRight = '0.6rem';
     const r = document.createElement('input');
     r.type = 'radio';
     r.name = 'pkc-chart-kind';
@@ -1156,6 +1187,19 @@ function openChartModal(wrapper: HTMLElement, body: SpreadsheetBody, cols: numbe
   }
   kindWrap.appendChild(kindOptions);
   modal.appendChild(kindWrap);
+
+  // legend toggle
+  const legendWrap = document.createElement('label');
+  legendWrap.className = 'pkc-spreadsheet-form-row';
+  const legendLabel = document.createElement('span');
+  legendLabel.textContent = '凡例';
+  const legendCb = document.createElement('input');
+  legendCb.type = 'checkbox';
+  legendCb.checked = true;
+  legendCb.setAttribute('data-pkc-chart-legend-input', '');
+  legendWrap.appendChild(legendLabel);
+  legendWrap.appendChild(legendCb);
+  modal.appendChild(legendWrap);
 
   // title input
   const titleWrap = document.createElement('label');
@@ -1287,6 +1331,7 @@ function openChartModal(wrapper: HTMLElement, body: SpreadsheetBody, cols: numbe
       yCols,
       startRow,
       ...(endRow !== undefined ? { endRow } : {}),
+      legend: legendCb.checked,
     };
     const b = readBodyState(wrapper);
     const next: SpreadsheetBody = { ...b, charts: [...(b.charts ?? []), chart] };
@@ -1513,6 +1558,38 @@ function copyEmbedLink(wrapper: HTMLElement): void {
 }
 
 // ── Presenter export ───────────────────────────────────
+
+/**
+ * 埋め込み専用の minimal body builder。toolbar / 編集 UI を含まない
+ * 純粋な閲覧表示(table + chart のみ)。transclusion + multi-window で使用。
+ *
+ * user direction 2026-06-03「個別 HTML レンダリングでは表示されるが、
+ * 不要なボタンが表示される」 / 「チャートもレンダリングされてない」 fix:
+ * renderBody がはく view toolbar(export 4 button)を embed に流し込むのを
+ * やめ、ここでは table + chart-area のみを返す。chart.js init は内部で rAF
+ * で defer されるので、移動先 parent に append されれば正常 init。
+ */
+export function renderSpreadsheetEmbedBody(entry: Entry): HTMLElement {
+  if (typeof document === 'undefined') {
+    const div = { tagName: 'DIV', className: 'pkc-view-body', innerHTML: '' } as unknown as HTMLElement;
+    return div;
+  }
+  const wrapper = document.createElement('div');
+  wrapper.className = 'pkc-spreadsheet-embed-body';
+  wrapper.setAttribute('data-pkc-spreadsheet-lid', entry.lid);
+  const body = parseSpreadsheetBody(entry.body);
+  wrapper.appendChild(buildTableElement(document, body));
+  if (body.charts && body.charts.length > 0) {
+    const area = document.createElement('div');
+    area.setAttribute('data-pkc-region', 'spreadsheet-charts');
+    area.className = 'pkc-spreadsheet-charts pkc-spreadsheet-charts-embed';
+    for (const ch of body.charts) {
+      area.appendChild(renderChart(document, body, ch));
+    }
+    wrapper.appendChild(area);
+  }
+  return wrapper;
+}
 
 export const spreadsheetPresenter: DetailPresenter = {
   renderBody(entry: Entry): HTMLElement {

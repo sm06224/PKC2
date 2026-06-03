@@ -62,7 +62,7 @@ import {
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import { parseTodoBody, formatTodoDate } from '../../features/todo/todo-body';
 import { getFormatLocale, getFormatTimeZone } from './format-context';
-import { spreadsheetPresenter } from './spreadsheet-presenter';
+import { renderSpreadsheetEmbedBody } from './spreadsheet-presenter';
 
 /**
  * Archetypes that can be expanded as embed targets. Other archetypes
@@ -288,12 +288,11 @@ function renderEntryEmbed(
     return;
   }
 
-  // 領域 10-4 Phase 4(2026-06-02):spreadsheet 埋め込み導線。
-  // spreadsheet entry を `![[entry:lid]]` で埋めると read-only mini table
-  // と chart を render(presenter と同じ build path を再利用)。
+  // 領域 10-4 Phase 4(2026-06-03):spreadsheet 埋め込みは専用 embed body
+  // builder で render(toolbar / export button を除外、table + chart のみ)。
+  // user direction「不要なボタンが表示される / チャートもレンダリングされてない」 fix。
   if (target.archetype === 'spreadsheet') {
-    const el = spreadsheetPresenter.renderBody(target);
-    // wrapper element の class を embed 用に置換し再追加
+    const el = renderSpreadsheetEmbedBody(target);
     body.classList.add('pkc-spreadsheet-embed');
     while (el.firstChild) body.appendChild(el.firstChild);
     return;

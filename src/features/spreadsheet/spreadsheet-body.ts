@@ -11,10 +11,12 @@
  * features/ 層は pure TypeScript、browser API 非依存。
  */
 
-/** Chart configuration(Phase 4)。 */
+/** Chart configuration(Phase 4 + 2026-06-03 extended kinds)。 */
+export type ChartKind = 'bar' | 'line' | 'pie' | 'doughnut' | 'scatter' | 'polarArea' | 'radar';
+
 export interface ChartConfig {
   id: string;
-  kind: 'bar' | 'line' | 'pie';
+  kind: ChartKind;
   title: string;
   /** X 軸(label)列 index、0-indexed。 */
   xCol: number;
@@ -24,6 +26,10 @@ export interface ChartConfig {
   startRow: number;
   /** data 終了 row exclusive、未指定なら最終行まで。 */
   endRow?: number;
+  /** 凡例表示(default true)。 */
+  legend?: boolean;
+  /** 行 / 列 をフィルタする expression(将来用、未実装)。 */
+  filter?: string;
 }
 
 /** Spreadsheet body の JSON 表現。 */
@@ -96,17 +102,20 @@ export function parseSpreadsheetBody(body: string): SpreadsheetBody {
       if (!c || typeof c !== 'object') continue;
       const cc = c as Partial<ChartConfig>;
       if (typeof cc.id !== 'string') continue;
-      if (cc.kind !== 'bar' && cc.kind !== 'line' && cc.kind !== 'pie') continue;
+      const validKinds: ReadonlyArray<string> = ['bar', 'line', 'pie', 'doughnut', 'scatter', 'polarArea', 'radar'];
+      if (typeof cc.kind !== 'string' || !validKinds.includes(cc.kind)) continue;
       if (typeof cc.xCol !== 'number') continue;
       if (!Array.isArray(cc.yCols)) continue;
       charts.push({
         id: cc.id,
-        kind: cc.kind,
+        kind: cc.kind as ChartKind,
         title: typeof cc.title === 'string' ? cc.title : '',
         xCol: cc.xCol,
         yCols: cc.yCols.filter((y): y is number => typeof y === 'number'),
         startRow: typeof cc.startRow === 'number' ? cc.startRow : 1,
         endRow: typeof cc.endRow === 'number' ? cc.endRow : undefined,
+        legend: typeof cc.legend === 'boolean' ? cc.legend : undefined,
+        filter: typeof cc.filter === 'string' ? cc.filter : undefined,
       });
     }
     if (charts.length > 0) out.charts = charts;

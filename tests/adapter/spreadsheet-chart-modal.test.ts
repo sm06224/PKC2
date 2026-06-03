@@ -39,13 +39,13 @@ describe('spreadsheet Phase 4 chart modal', () => {
     expect(modal).not.toBeNull();
   });
 
-  it('case 2: kind radio で bar / line / pie 3 択(default bar)', () => {
+  it('case 2: kind radio は Chart.js v4 対応の 7 種(2026-06-03 拡張)、default bar', () => {
     const el = mountEditor('{"rows":[["x","y"],["1","10"]]}');
     el.querySelector<HTMLButtonElement>('[data-pkc-action="spreadsheet-add-chart"]')!.click();
     const radios = document.querySelectorAll<HTMLInputElement>('input[name="pkc-chart-kind"]');
-    expect(radios.length).toBe(3);
+    expect(radios.length).toBe(7);
     const values = Array.from(radios).map((r) => r.value);
-    expect(values).toEqual(['bar', 'line', 'pie']);
+    expect(values).toEqual(['bar', 'line', 'pie', 'doughnut', 'scatter', 'polarArea', 'radar']);
     const checked = Array.from(radios).find((r) => r.checked);
     expect(checked?.value).toBe('bar');
   });
