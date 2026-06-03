@@ -462,10 +462,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       createLabel.textContent = 'Create';
       createSection.appendChild(createLabel);
 
+      // user direction 2026-06-03「iPhone 側の導線ないね」 fix:mobile drawer
+      // の create section に spreadsheet を追加(desktop の picker / + New と同様)。
       const archetypes: { arch: string; label: string }[] = [
         { arch: 'text', label: '📝 Text' },
         { arch: 'textlog', label: '📋 Log' },
         { arch: 'todo', label: '☑ Todo' },
+        { arch: 'spreadsheet', label: '🧮 Sheet' },
         { arch: 'attachment', label: '📎 File' },
         { arch: 'folder', label: '📁 Folder' },
       ];
