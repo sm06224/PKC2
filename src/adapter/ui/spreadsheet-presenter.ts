@@ -33,6 +33,7 @@ import {
   colIndexToLetter,
   findColumnFormat,
   formatCellValue,
+  evalChartFilter,
   type SpreadsheetBody,
   type ChartConfig,
   type ColumnFormat,
@@ -183,9 +184,12 @@ function renderChart(doc: Document, body: SpreadsheetBody, chart: ChartConfig): 
   const labels: string[] = [];
   const series: number[][] = chart.yCols.map(() => []);
   for (let r = start; r < Math.min(end, evaluated.length); r++) {
-    labels.push(evaluated[r]?.[chart.xCol] ?? '');
+    const row = evaluated[r] ?? [];
+    // user direction 2026-06-03「フィルターも弱い」 fix:chart.filter 評価
+    if (!evalChartFilter(chart.filter, row)) continue;
+    labels.push(row[chart.xCol] ?? '');
     for (let i = 0; i < chart.yCols.length; i++) {
-      const v = parseFloat(evaluated[r]?.[chart.yCols[i]!] ?? '');
+      const v = parseFloat(row[chart.yCols[i]!] ?? '');
       series[i]!.push(Number.isNaN(v) ? 0 : v);
     }
   }
@@ -1305,6 +1309,20 @@ function openChartModal(wrapper: HTMLElement, body: SpreadsheetBody, cols: numbe
   rangeWrap.appendChild(rangeBox);
   modal.appendChild(rangeWrap);
 
+  // filter expression(2026-06-03、user direction「フィルターも弱い」)
+  const filterWrap = document.createElement('label');
+  filterWrap.className = 'pkc-spreadsheet-form-row';
+  const filterLabel = document.createElement('span');
+  filterLabel.textContent = 'フィルター';
+  const filterInput = document.createElement('input');
+  filterInput.type = 'text';
+  filterInput.placeholder = '例 B>10、A=foo(列文字+演算子+値)';
+  filterInput.setAttribute('data-pkc-chart-filter-input', '');
+  filterInput.style.width = '14rem';
+  filterWrap.appendChild(filterLabel);
+  filterWrap.appendChild(filterInput);
+  modal.appendChild(filterWrap);
+
   // actions
   const actions = document.createElement('div');
   actions.className = 'pkc-spreadsheet-form-actions';
@@ -1348,6 +1366,7 @@ function openChartModal(wrapper: HTMLElement, body: SpreadsheetBody, cols: numbe
     const startRow = Math.max(0, parseInt(startInput.value, 10) || 0);
     const endRowRaw = endInput.value.trim();
     const endRow = endRowRaw === '' ? undefined : parseInt(endRowRaw, 10);
+    const filterExpr = filterInput.value.trim();
     const chart: ChartConfig = {
       id: `c${Date.now().toString(36)}`,
       kind,
@@ -1357,6 +1376,7 @@ function openChartModal(wrapper: HTMLElement, body: SpreadsheetBody, cols: numbe
       startRow,
       ...(endRow !== undefined ? { endRow } : {}),
       legend: legendCb.checked,
+      ...(filterExpr !== '' ? { filter: filterExpr } : {}),
     };
     const b = readBodyState(wrapper);
     const next: SpreadsheetBody = { ...b, charts: [...(b.charts ?? []), chart] };

@@ -933,6 +933,48 @@ export function evaluateBody(body: SpreadsheetBody): string[][] {
   return out;
 }
 
+/**
+ * Chart filter expression を評価して row を残すか判定する。
+ * 構文:`{col letter}{op}{value}`(例 `B>10`、`A=foo`、`C<>0`)。op = `>` `<` `>=` `<=` `=` `<>`。
+ * 不正 expr は filter なし扱い(全 row 採用)。
+ * user direction 2026-06-03「フィルターや凡例も弱い」 fix の filter 実装。
+ */
+export function evalChartFilter(filter: string | undefined, row: ReadonlyArray<string>): boolean {
+  if (!filter || filter.trim() === '') return true;
+  const m = /^\s*([A-Z]+)\s*(<=|>=|<>|<|>|=)\s*(.+?)\s*$/.exec(filter);
+  if (!m) return true;
+  const colIdx = colLetterToIndex(m[1]!);
+  if (colIdx < 0 || colIdx >= row.length) return true;
+  const op = m[2]!;
+  const rhs = m[3]!;
+  // RHS が operator 文字で始まる場合は malformed(`B>>10` 等)→ fallback
+  if (/^[<>=]/.test(rhs)) return true;
+  const lhs = row[colIdx] ?? '';
+  // 両方数値なら数値比較、それ以外は文字列比較。
+  const ln = parseFloat(lhs);
+  const rn = parseFloat(rhs);
+  const isNumeric = !Number.isNaN(ln) && !Number.isNaN(rn) && /^-?[0-9.]+$/.test(lhs.trim()) && /^-?[0-9.]+$/.test(rhs.trim());
+  if (isNumeric) {
+    switch (op) {
+      case '>': return ln > rn;
+      case '<': return ln < rn;
+      case '>=': return ln >= rn;
+      case '<=': return ln <= rn;
+      case '=': return ln === rn;
+      case '<>': return ln !== rn;
+    }
+  }
+  switch (op) {
+    case '=': return lhs === rhs;
+    case '<>': return lhs !== rhs;
+    case '>': return lhs > rhs;
+    case '<': return lhs < rhs;
+    case '>=': return lhs >= rhs;
+    case '<=': return lhs <= rhs;
+  }
+  return true;
+}
+
 // ── xlsx export(Office Open XML、最小 zip 構造)─────────
 
 /** xlsx ファイル内に格納する file entry(name + content)。 */

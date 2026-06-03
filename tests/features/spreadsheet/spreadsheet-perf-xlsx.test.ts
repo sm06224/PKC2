@@ -1,10 +1,13 @@
 /**
+ * @vitest-environment happy-dom
+ *
  * 領域 10-4 spreadsheet Phase 4(user direction 2026-06-02、追加 3 項目):
  * formula evaluation memoization + xlsx export + chart modal の検証。
  *
  * user direction「パフォーマンスに不安があるなら解決して!」を受けて、
  * evaluateBody が単一 ctx で memo を共有することで重複参照のある grid を
  * 線形時間で評価することを実測 + xlsx zip 構造 + modal UI の確認。
+ * 2026-06-03:happy-dom 環境で OOXML XML を DOMParser 経由で valid 検証。
  */
 
 import { describe, it, expect } from 'vitest';
@@ -246,6 +249,72 @@ describe('spreadsheet Phase 4 perf + xlsx', () => {
       });
       const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
       expect(chart.content).not.toContain('c:legend');
+    });
+  });
+
+  describe('OOXML schema strict validation(2026-06-03 残視覚 verify)', () => {
+    const body = {
+      rows: [['x', 'y'], ['1', '10'], ['2', '20']],
+      charts: [{
+        id: 'c1', kind: 'bar' as const, title: 'T',
+        xCol: 0, yCols: [1], startRow: 1,
+      }],
+    };
+
+    it('case 23: chart1.xml が valid XML(parser で throw しない)', () => {
+      const files = buildXlsxFiles(body);
+      const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(chart.content, 'application/xml');
+      const errors = doc.getElementsByTagName('parsererror');
+      expect(errors.length).toBe(0);
+    });
+
+    it('case 24: drawing1.xml が valid XML + twoCellAnchor を含む', () => {
+      const files = buildXlsxFiles(body);
+      const drawing = files.find((f) => f.name === 'xl/drawings/drawing1.xml')!;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(drawing.content, 'application/xml');
+      expect(doc.getElementsByTagName('parsererror').length).toBe(0);
+      expect(drawing.content).toContain('twoCellAnchor');
+      expect(drawing.content).toContain('graphicFrame');
+    });
+
+    it('case 25: chart1.xml に必須 namespace 3 件(c / a / r)', () => {
+      const files = buildXlsxFiles(body);
+      const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
+      expect(chart.content).toContain('xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"');
+      expect(chart.content).toContain('xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"');
+      expect(chart.content).toContain('xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
+    });
+
+    it('case 26: chart1.xml の <c:ser> 構造に <c:idx> <c:order> <c:cat> <c:val> が含まれる', () => {
+      const files = buildXlsxFiles(body);
+      const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
+      expect(chart.content).toContain('<c:idx val="0"/>');
+      expect(chart.content).toContain('<c:order val="0"/>');
+      expect(chart.content).toContain('<c:cat>');
+      expect(chart.content).toContain('<c:val>');
+      expect(chart.content).toContain('<c:strRef>');
+      expect(chart.content).toContain('<c:numRef>');
+    });
+
+    it('case 27: sheet1.xml.rels が valid + chart drawing への rel を持つ', () => {
+      const files = buildXlsxFiles(body);
+      const rels = files.find((f) => f.name === 'xl/worksheets/_rels/sheet1.xml.rels')!;
+      expect(rels.content).toContain('Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"');
+      expect(rels.content).toContain('Target="../drawings/drawing1.xml"');
+      const doc = new DOMParser().parseFromString(rels.content, 'application/xml');
+      expect(doc.getElementsByTagName('parsererror').length).toBe(0);
+    });
+
+    it('case 28: drawing1.xml.rels が valid + chart への rel を持つ', () => {
+      const files = buildXlsxFiles(body);
+      const rels = files.find((f) => f.name === 'xl/drawings/_rels/drawing1.xml.rels')!;
+      expect(rels.content).toContain('Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"');
+      expect(rels.content).toContain('Target="../charts/chart1.xml"');
+      const doc = new DOMParser().parseFromString(rels.content, 'application/xml');
+      expect(doc.getElementsByTagName('parsererror').length).toBe(0);
     });
   });
 });
