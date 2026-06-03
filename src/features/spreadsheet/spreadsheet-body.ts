@@ -1029,80 +1029,96 @@ function buildChartXml(chart: ChartConfig, evaluated: string[][], sheetName: str
   const end = chart.endRow ?? evaluated.length;
   const dataStart = start + 1; // xlsx 1-indexed
   const dataEnd = Math.min(end, evaluated.length);
-  // X 軸 cell range
   const xColLetter = colIndexToLetter(chart.xCol);
-  const xRange = `${xlsxEscape(sheetName)}!$${xColLetter}$${dataStart}:$${xColLetter}$${dataEnd}`;
-  // OOXML chart kind 対応:scatter/radar/polarArea は bar に fallback(警告は出さず silent)
-  const chartElement = (() => {
-    switch (chart.kind) {
-      case 'line': return { tag: 'c:lineChart', wrap: '<c:grouping val="standard"/>' };
-      case 'pie': return { tag: 'c:pieChart', wrap: '' };
-      case 'doughnut': return { tag: 'c:doughnutChart', wrap: '<c:firstSliceAng val="0"/><c:holeSize val="50"/>' };
-      default: return { tag: 'c:barChart', wrap: '<c:barDir val="col"/><c:grouping val="clustered"/>' };
-    }
+  // sheet name は always quote(空白 / 特殊文字 / 数字始まり 対策、openpyxl と同じ流儀)
+  const quotedSheet = `'${xlsxEscape(sheetName.replace(/'/g, "''"))}'`;
+  const xRange = `${quotedSheet}!$${xColLetter}$${dataStart}:$${xColLetter}$${dataEnd}`;
+
+  const kindMap: Record<string, { tag: string; barDir?: string }> = {
+    line: { tag: 'lineChart' },
+    pie: { tag: 'pieChart' },
+    doughnut: { tag: 'doughnutChart' },
+    bar: { tag: 'barChart', barDir: 'col' },
+  };
+  const cfg = kindMap[chart.kind] ?? kindMap.bar!;
+  const isBar = cfg.tag === 'barChart';
+  const isCircular = cfg.tag === 'pieChart' || cfg.tag === 'doughnutChart';
+
+  const chartHeader = (() => {
+    if (isBar) return `<c:barDir val="${cfg.barDir}"/><c:grouping val="clustered"/><c:varyColors val="0"/>`;
+    if (cfg.tag === 'lineChart') return `<c:grouping val="standard"/><c:varyColors val="0"/>`;
+    if (cfg.tag === 'pieChart') return `<c:varyColors val="1"/>`;
+    if (cfg.tag === 'doughnutChart') return `<c:varyColors val="1"/>`;
+    return '';
   })();
-  const isCircular = chart.kind === 'pie' || chart.kind === 'doughnut';
+  const chartFooter = (() => {
+    if (isBar) return `<c:gapWidth val="150"/><c:overlap val="-27"/><c:axId val="10"/><c:axId val="20"/>`;
+    if (cfg.tag === 'lineChart') return `<c:marker val="1"/><c:axId val="10"/><c:axId val="20"/>`;
+    if (cfg.tag === 'pieChart') return `<c:firstSliceAng val="0"/>`;
+    if (cfg.tag === 'doughnutChart') return `<c:firstSliceAng val="0"/><c:holeSize val="50"/>`;
+    return '';
+  })();
+
   const seriesXml = chart.yCols.map((yc, idx) => {
     const yColLetter = colIndexToLetter(yc);
-    const yRange = `${xlsxEscape(sheetName)}!$${yColLetter}$${dataStart}:$${yColLetter}$${dataEnd}`;
-    return `<c:ser>
-      <c:idx val="${idx}"/>
-      <c:order val="${idx}"/>
-      <c:tx><c:v>${xlsxEscape(colIndexToLetter(yc))}</c:v></c:tx>
-      <c:cat><c:strRef><c:f>${xRange}</c:f></c:strRef></c:cat>
-      <c:val><c:numRef><c:f>${yRange}</c:f></c:numRef></c:val>
-    </c:ser>`;
+    const yRange = `${quotedSheet}!$${yColLetter}$${dataStart}:$${yColLetter}$${dataEnd}`;
+    const seriesNameRef = `${quotedSheet}!$${yColLetter}$1`;
+    return `<c:ser><c:idx val="${idx}"/><c:order val="${idx}"/>`
+      + `<c:tx><c:strRef><c:f>${seriesNameRef}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${xlsxEscape(colIndexToLetter(yc))}</c:v></c:pt></c:strCache></c:strRef></c:tx>`
+      + `<c:cat><c:strRef><c:f>${xRange}</c:f></c:strRef></c:cat>`
+      + `<c:val><c:numRef><c:f>${yRange}</c:f></c:numRef></c:val>`
+      + `</c:ser>`;
   }).join('');
-  const chartInner = `${chartElement.wrap}${seriesXml}${isCircular ? '' : `<c:axId val="1"/><c:axId val="2"/>`}`;
-  const tag = chartElement.tag; // 例 'c:barChart'
+
   const plotArea = isCircular
-    ? `<c:plotArea><c:layout/><${tag}>${chartInner}</${tag}></c:plotArea>`
-    : `<c:plotArea><c:layout/><${tag}>${chartInner}</${tag}><c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:crossAx val="2"/></c:catAx><c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:crossAx val="1"/></c:valAx></c:plotArea>`;
+    ? `<c:plotArea><c:layout/><c:${cfg.tag}>${chartHeader}${seriesXml}${chartFooter}</c:${cfg.tag}></c:plotArea>`
+    : `<c:plotArea>`
+      + `<c:layout/>`
+      + `<c:${cfg.tag}>${chartHeader}${seriesXml}${chartFooter}</c:${cfg.tag}>`
+      + `<c:catAx><c:axId val="10"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/>`
+      + `<c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>`
+      + `<c:crossAx val="20"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/>`
+      + `</c:catAx>`
+      + `<c:valAx><c:axId val="20"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/>`
+      + `<c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/>`
+      + `<c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>`
+      + `<c:crossAx val="10"/><c:crosses val="autoZero"/><c:crossBetween val="between"/>`
+      + `</c:valAx>`
+      + `</c:plotArea>`;
+
   const titleXml = chart.title
-    ? `<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>${xlsxEscape(chart.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`
+    ? `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>${xlsxEscape(chart.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`
     : '';
+  const autoTitleDeleted = chart.title ? '<c:autoTitleDeleted val="0"/>' : '<c:autoTitleDeleted val="1"/>';
   const legendXml = chart.legend !== false
-    ? `<c:legend><c:legendPos val="r"/></c:legend>`
+    ? `<c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>`
     : '';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <c:chart>
-    ${titleXml}
-    ${plotArea}
-    ${legendXml}
-    <c:plotVisOnly val="1"/>
-  </c:chart>
-</c:chartSpace>`;
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:chart>${titleXml}${autoTitleDeleted}${plotArea}${legendXml}<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>`;
 }
 
 function buildDrawingXml(charts: ReadonlyArray<ChartConfig>): string {
-  // 各 chart を sheet 上に anchor(縦に並べる、各 chart は col 1 - col 8、
-  // row offset 16 ずつ)。
+  // EMU(English Metric Units、1 inch = 914400 EMU)で chart 表示サイズ指定。
+  // xfrm extent ゼロは LibreOffice / Excel が「サイズ未定」 として描画 skip するため
+  // 明示的な実サイズが必要。
+  const widthEmu = 5486400;  // 6 inch
+  const heightEmu = 3200400; // 3.5 inch
   const anchors = charts.map((_, idx) => {
-    const fromRow = idx * 16;
-    const toRow = fromRow + 15;
-    return `<xdr:twoCellAnchor>
-      <xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${fromRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-      <xdr:to><xdr:col>8</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${toRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
-      <xdr:graphicFrame macro="">
-        <xdr:nvGraphicFramePr>
-          <xdr:cNvPr id="${idx + 2}" name="Chart ${idx + 1}"/>
-          <xdr:cNvGraphicFramePr/>
-        </xdr:nvGraphicFramePr>
-        <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
-        <xdr:graphic>
-          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
-            <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rId${idx + 1}"/>
-          </a:graphicData>
-        </xdr:graphic>
-      </xdr:graphicFrame>
-      <xdr:clientData/>
-    </xdr:twoCellAnchor>`;
+    const fromRow = 1 + idx * 18;
+    const toRow = fromRow + 16;
+    return `<xdr:twoCellAnchor editAs="oneCell">`
+      + `<xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${fromRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>`
+      + `<xdr:to><xdr:col>10</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${toRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>`
+      + `<xdr:graphicFrame macro="">`
+      + `<xdr:nvGraphicFramePr><xdr:cNvPr id="${idx + 2}" name="Chart ${idx + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>`
+      + `<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="${widthEmu}" cy="${heightEmu}"/></xdr:xfrm>`
+      + `<xdr:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rId${idx + 1}"/></a:graphicData></xdr:graphic>`
+      + `</xdr:graphicFrame>`
+      + `<xdr:clientData/>`
+      + `</xdr:twoCellAnchor>`;
   }).join('');
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-${anchors}
-</xdr:wsDr>`;
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;
 }
 
 export function buildXlsxFiles(body: SpreadsheetBody, sheetName: string = 'Sheet1'): XlsxFile[] {
@@ -1138,7 +1154,7 @@ ${sheetRows.join('\n')}
 ${drawingRef}
 </worksheet>`;
 
-  // Content_Types
+  // Content_Types(docProps + styles + theme + chart + drawing 全部 Override)
   const chartOverrides = charts.map((_, i) =>
     `<Override PartName="/xl/charts/chart${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`).join('\n');
   const drawingOverride = charts.length > 0
@@ -1150,6 +1166,10 @@ ${drawingRef}
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 ${drawingOverride}
 ${chartOverrides}
 </Types>`;
@@ -1157,6 +1177,8 @@ ${chartOverrides}
   const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
 </Relationships>`;
 
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1167,13 +1189,56 @@ ${chartOverrides}
   const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/>
 </Relationships>`;
+
+  // Minimal stub:Excel が require する補助 part(欠けると「ファイルが壊れています」になる)
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font></fonts>
+<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  // Minimal theme(stub):Excel が theme 参照を解決できないと chart 描画 reject。
+  // 必須 element だけ(clrScheme / fontScheme / fmtScheme)、内容は default。
+  const themeXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">
+<a:themeElements>
+<a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="5B9BD5"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="4472C4"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme>
+<a:fontScheme name="Office"><a:majorFont><a:latin typeface="Calibri Light"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme>
+<a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="12700" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
+</a:themeElements>
+</a:theme>`;
+
+  // docProps:Excel は core.xml / app.xml が無いと一部 version で「壊れている」 警告
+  const isoNow = new Date().toISOString();
+  const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<dc:creator>PKC2</dc:creator><cp:lastModifiedBy>PKC2</cp:lastModifiedBy>
+<dcterms:created xsi:type="dcterms:W3CDTF">${isoNow}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${isoNow}</dcterms:modified>
+</cp:coreProperties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+<Application>PKC2</Application><DocSecurity>0</DocSecurity><ScaleCrop>false</ScaleCrop>
+<HeadingPairs><vt:vector size="2" baseType="variant"><vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant><vt:variant><vt:i4>1</vt:i4></vt:variant></vt:vector></HeadingPairs>
+<TitlesOfParts><vt:vector size="1" baseType="lpstr"><vt:lpstr>${xlsxEscape(sheetName)}</vt:lpstr></vt:vector></TitlesOfParts>
+<LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>16.0000</AppVersion>
+</Properties>`;
 
   const files: XlsxFile[] = [
     { name: '[Content_Types].xml', content: contentTypes },
     { name: '_rels/.rels', content: rootRels },
+    { name: 'docProps/core.xml', content: coreXml },
+    { name: 'docProps/app.xml', content: appXml },
     { name: 'xl/workbook.xml', content: workbook },
     { name: 'xl/_rels/workbook.xml.rels', content: workbookRels },
+    { name: 'xl/styles.xml', content: stylesXml },
+    { name: 'xl/theme/theme1.xml', content: themeXml },
     { name: 'xl/worksheets/sheet1.xml', content: sheet },
   ];
 

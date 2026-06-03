@@ -78,13 +78,17 @@ describe('spreadsheet Phase 4 perf + xlsx', () => {
   });
 
   describe('xlsx (Office Open XML) export', () => {
-    it('case 5: buildXlsxFiles は最小 5 ファイルを返す(content_types / rels / workbook / sheet / sheet rels)', () => {
+    it('case 5: buildXlsxFiles は 9 ファイルを返す(content_types + rels + workbook + sheet + docProps + styles + theme)', () => {
       const files = buildXlsxFiles({ rows: [['a']] });
       const names = files.map((f) => f.name).sort();
       expect(names).toEqual([
         '[Content_Types].xml',
         '_rels/.rels',
+        'docProps/app.xml',
+        'docProps/core.xml',
         'xl/_rels/workbook.xml.rels',
+        'xl/styles.xml',
+        'xl/theme/theme1.xml',
         'xl/workbook.xml',
         'xl/worksheets/sheet1.xml',
       ]);
@@ -152,16 +156,20 @@ describe('spreadsheet Phase 4 perf + xlsx', () => {
       }],
     };
 
-    it('case 13: chart 1 個でも xlsx zip に必要 8 ファイルが全部入る', () => {
+    it('case 13: chart 1 個でも xlsx zip に必要 12 ファイルが全部入る(docProps + styles + theme stub)', () => {
       const files = buildXlsxFiles(body);
       const names = files.map((f) => f.name).sort();
       expect(names).toEqual([
         '[Content_Types].xml',
         '_rels/.rels',
+        'docProps/app.xml',
+        'docProps/core.xml',
         'xl/_rels/workbook.xml.rels',
         'xl/charts/chart1.xml',
         'xl/drawings/_rels/drawing1.xml.rels',
         'xl/drawings/drawing1.xml',
+        'xl/styles.xml',
+        'xl/theme/theme1.xml',
         'xl/workbook.xml',
         'xl/worksheets/_rels/sheet1.xml.rels',
         'xl/worksheets/sheet1.xml',
@@ -181,13 +189,14 @@ describe('spreadsheet Phase 4 perf + xlsx', () => {
       expect(ct.content).toContain('officedocument.drawing+xml');
     });
 
-    it('case 16: chart1.xml に c:barChart + 系列(c:ser)+ 範囲参照(Sheet1!$A$2:$A$4)', () => {
+    it('case 16: chart1.xml に c:barChart + 系列(c:ser)+ 範囲参照(sheet quoted 形式)', () => {
       const files = buildXlsxFiles(body);
       const chart = files.find((f) => f.name === 'xl/charts/chart1.xml')!;
       expect(chart.content).toContain('c:barChart');
       expect(chart.content).toContain('c:ser');
-      expect(chart.content).toContain('Sheet1!$A$2:$A$4');
-      expect(chart.content).toContain('Sheet1!$B$2:$B$4');
+      // sheet name は always quote(openpyxl 流儀、空白 / 特殊文字対策)
+      expect(chart.content).toContain("'Sheet1'!$A$2:$A$4");
+      expect(chart.content).toContain("'Sheet1'!$B$2:$B$4");
     });
 
     it('case 17: chart title は <c:title> に escape 済 text として入る', () => {
@@ -236,10 +245,15 @@ describe('spreadsheet Phase 4 perf + xlsx', () => {
       expect(drels.content).toContain('rId2');
     });
 
-    it('case 21: chart 無し body は従来 5 ファイル(後方互換)', () => {
+    it('case 21: chart 無し body も docProps + styles + theme stub を含めて 9 ファイル', () => {
       const files = buildXlsxFiles({ rows: [['a']] });
-      expect(files.length).toBe(5);
+      expect(files.length).toBe(9);
       expect(files.find((f) => f.name === 'xl/charts/chart1.xml')).toBeUndefined();
+      // 必須 stub 4 件
+      expect(files.find((f) => f.name === 'docProps/core.xml')).toBeDefined();
+      expect(files.find((f) => f.name === 'docProps/app.xml')).toBeDefined();
+      expect(files.find((f) => f.name === 'xl/styles.xml')).toBeDefined();
+      expect(files.find((f) => f.name === 'xl/theme/theme1.xml')).toBeDefined();
     });
 
     it('case 22: legend=false で c:legend 出力なし', () => {
