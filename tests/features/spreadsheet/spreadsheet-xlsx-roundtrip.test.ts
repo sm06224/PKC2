@@ -12,11 +12,19 @@ import ExcelJS from 'exceljs';
 import { buildXlsxFiles } from '@features/spreadsheet/spreadsheet-body';
 import { createZipBytes } from '@adapter/platform/zip-package';
 
-function buildXlsxBuffer(body: Parameters<typeof buildXlsxFiles>[0]): Buffer {
+/**
+ * `Uint8Array` で返す(Node 20 / 22 で `Buffer<ArrayBufferLike>` 型不整合を回避、
+ * ExcelJS の `xlsx.load()` は ArrayBuffer 受け付ける)。
+ */
+function buildXlsxArrayBuffer(body: Parameters<typeof buildXlsxFiles>[0]): ArrayBuffer {
   const files = buildXlsxFiles(body);
   const enc = new TextEncoder();
   const entries = files.map((f) => ({ name: f.name, data: enc.encode(f.content) }));
-  return Buffer.from(createZipBytes(entries));
+  const bytes = createZipBytes(entries);
+  // SharedArrayBuffer / ArrayBufferLike を確実に ArrayBuffer に正規化
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
+  return ab;
 }
 
 describe('xlsx structural round-trip(ExcelJS で実 parse)', () => {
@@ -28,7 +36,7 @@ describe('xlsx structural round-trip(ExcelJS で実 parse)', () => {
         xCol: 0, yCols: [1], startRow: 1, legend: true,
       }],
     };
-    const buf = buildXlsxBuffer(body);
+    const buf = buildXlsxArrayBuffer(body);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf);
     const ws = wb.getWorksheet('Sheet1');
@@ -41,7 +49,7 @@ describe('xlsx structural round-trip(ExcelJS で実 parse)', () => {
 
   it('case 2: chart 無し xlsx も valid parse', async () => {
     const body = { rows: [['hello', 'world']] };
-    const buf = buildXlsxBuffer(body);
+    const buf = buildXlsxArrayBuffer(body);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf);
     const ws = wb.getWorksheet('Sheet1');
@@ -58,7 +66,7 @@ describe('xlsx structural round-trip(ExcelJS で実 parse)', () => {
           xCol: 0, yCols: [1], startRow: 1,
         }],
       };
-      const buf = buildXlsxBuffer(body);
+      const buf = buildXlsxArrayBuffer(body);
       const wb = new ExcelJS.Workbook();
       await expect(wb.xlsx.load(buf)).resolves.not.toThrow();
       const ws = wb.getWorksheet('Sheet1');
@@ -74,14 +82,14 @@ describe('xlsx structural round-trip(ExcelJS で実 parse)', () => {
         { id: 'c2', kind: 'line' as const, title: 'B', xCol: 0, yCols: [2], startRow: 1 },
       ],
     };
-    const buf = buildXlsxBuffer(body);
+    const buf = buildXlsxArrayBuffer(body);
     const wb = new ExcelJS.Workbook();
     await expect(wb.xlsx.load(buf)).resolves.not.toThrow();
   });
 
   it('case 5: docProps(creator / lastModifiedBy)を ExcelJS が parse できる', async () => {
     const body = { rows: [['a']] };
-    const buf = buildXlsxBuffer(body);
+    const buf = buildXlsxArrayBuffer(body);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf);
     expect(wb.creator).toBe('PKC2');
@@ -92,7 +100,7 @@ describe('xlsx structural round-trip(ExcelJS で実 parse)', () => {
       rows: [['x', 'y'], ['1', '10'], ['2', '20']],
       charts: [{ id: 'c1', kind: 'bar' as const, title: '', xCol: 0, yCols: [1], startRow: 1 }],
     };
-    const buf = buildXlsxBuffer(body);
+    const buf = buildXlsxArrayBuffer(body);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf);
     // worksheet が chart 含むかは ExcelJS が chart support 完備していないため
