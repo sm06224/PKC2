@@ -1098,24 +1098,26 @@ function buildChartXml(chart: ChartConfig, evaluated: string[][], sheetName: str
 }
 
 function buildDrawingXml(charts: ReadonlyArray<ChartConfig>): string {
-  // EMU(English Metric Units、1 inch = 914400 EMU)で chart 表示サイズ指定。
-  // xfrm extent ゼロは LibreOffice / Excel が「サイズ未定」 として描画 skip するため
-  // 明示的な実サイズが必要。
-  const widthEmu = 5486400;  // 6 inch
-  const heightEmu = 3200400; // 3.5 inch
+  // openpyxl 互換構造:`<oneCellAnchor>` で from(左上 cell)+ ext(EMU 実サイズ)。
+  // **xfrm 内 a:off / a:ext は出さない**(openpyxl 流儀、`<xfrm/>` 空タグ)。
+  // user 報告 2026-06-03「Excel に chart が出てこない、drawing.xml はあった」 fix:
+  // 私の旧構造は `<twoCellAnchor>`(from + to 両方)+ xfrm に extent 明示で、
+  // anchor 範囲と xfrm 値が **二重指定** → Excel が「どっち使うか不明」 として
+  // graphicFrame を描画 skip していた。oneCellAnchor + ext で曖昧性解消。
+  const widthEmu = 5400000;   // ~5.9 inch
+  const heightEmu = 2700000;  // ~2.95 inch
   const anchors = charts.map((_, idx) => {
-    const fromRow = 1 + idx * 18;
-    const toRow = fromRow + 16;
-    return `<xdr:twoCellAnchor editAs="oneCell">`
+    const fromRow = 1 + idx * 16;
+    return `<xdr:oneCellAnchor>`
       + `<xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${fromRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>`
-      + `<xdr:to><xdr:col>10</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${toRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>`
+      + `<xdr:ext cx="${widthEmu}" cy="${heightEmu}"/>`
       + `<xdr:graphicFrame macro="">`
       + `<xdr:nvGraphicFramePr><xdr:cNvPr id="${idx + 2}" name="Chart ${idx + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>`
       + `<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="${widthEmu}" cy="${heightEmu}"/></xdr:xfrm>`
       + `<xdr:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rId${idx + 1}"/></a:graphicData></xdr:graphic>`
       + `</xdr:graphicFrame>`
       + `<xdr:clientData/>`
-      + `</xdr:twoCellAnchor>`;
+      + `</xdr:oneCellAnchor>`;
   }).join('');
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchors}</xdr:wsDr>`;

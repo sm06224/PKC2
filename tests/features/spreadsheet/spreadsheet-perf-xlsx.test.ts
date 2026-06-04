@@ -284,14 +284,17 @@ describe('spreadsheet Phase 4 perf + xlsx', () => {
       expect(errors.length).toBe(0);
     });
 
-    it('case 24: drawing1.xml が valid XML + twoCellAnchor を含む', () => {
+    it('case 24: drawing1.xml が valid XML + oneCellAnchor を含む(openpyxl 互換、user 報告 2026-06-03 Excel chart 描画 fix)', () => {
       const files = buildXlsxFiles(body);
       const drawing = files.find((f) => f.name === 'xl/drawings/drawing1.xml')!;
       const parser = new DOMParser();
       const doc = parser.parseFromString(drawing.content, 'application/xml');
       expect(doc.getElementsByTagName('parsererror').length).toBe(0);
-      expect(drawing.content).toContain('twoCellAnchor');
+      // user 報告 Excel chart 描画 fix:twoCellAnchor + xfrm extent の二重指定が
+      // Excel に reject されたため、openpyxl 流の oneCellAnchor + ext に切替。
+      expect(drawing.content).toContain('oneCellAnchor');
       expect(drawing.content).toContain('graphicFrame');
+      expect(drawing.content).not.toContain('twoCellAnchor');
     });
 
     it('case 25: chart1.xml に必須 namespace 3 件(c / a / r)', () => {
