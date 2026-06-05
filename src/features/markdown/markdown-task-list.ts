@@ -36,6 +36,15 @@ const FENCE_OPEN_RE = /^(\s{0,3})(`{3,}|~{3,})/;
 export function findTaskItems(body: string): TaskItem[] {
   if (!body) return [];
 
+  // pgc-230:cheap pre-check ── task list は必ず `[ ]` / `[x]` / `[X]` を
+  // 含む。大半の entry body にこれら marker が存在しない場合、line split
+  // + per-line regex を完全に skip できる。sidebar render で全 entry の
+  // countTaskProgress → findTaskItems が呼ばれるため、c-1000+ で linear
+  // scaling の cost を圧縮(typical text body は task marker を含まない)。
+  if (!body.includes('[ ]') && !body.includes('[x]') && !body.includes('[X]')) {
+    return [];
+  }
+
   const lines = body.split('\n');
   const items: TaskItem[] = [];
   let fenceChar: string | null = null;

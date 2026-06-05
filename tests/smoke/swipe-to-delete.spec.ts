@@ -78,7 +78,7 @@ test.describe('swipe-to-delete (touch only)', () => {
 
   test('left swipe past commit threshold deletes the entry', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/pkc2.html');
+    await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
     await bootReady(page);
 
     await createOne(page, 'Swipe-delete target');
@@ -96,7 +96,7 @@ test.describe('swipe-to-delete (touch only)', () => {
 
   test('short swipe snaps back without deleting', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/pkc2.html');
+    await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
     await bootReady(page);
 
     await createOne(page, 'Snap-back target');

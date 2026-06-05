@@ -33,6 +33,8 @@ function baseState(overrides: Partial<AppState> = {}): AppState {
     phase: 'ready',
     container: null,
     selectedLid: null,
+    navHistory: [],
+    navIndex: -1,
     editingLid: null,
     error: null,
     embedded: false,

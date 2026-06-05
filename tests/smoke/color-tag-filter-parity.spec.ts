@@ -25,7 +25,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 async function bootAndCreateRedEntry(page: Page): Promise<void> {
-  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 

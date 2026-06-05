@@ -73,6 +73,39 @@ export function parseAttachmentBody(body: string): AttachmentBody {
 }
 
 /**
+ * 領域 3: この attachment が「テキストとして開ける」種別か。
+ * `.md` / `.markdown` / `.txt` / `.text` 拡張子、または `text/plain` /
+ * `text/markdown` MIME を attachable-as-text と認定する。
+ */
+export function isTextConvertibleAttachment(body: AttachmentBody): boolean {
+  const mime = body.mime.toLowerCase();
+  if (mime === 'text/plain' || mime === 'text/markdown' || mime === 'text/x-markdown') {
+    return true;
+  }
+  return /\.(md|markdown|txt|text)$/i.test(body.name);
+}
+
+/**
+ * 領域 3: attachment の base64 データを UTF-8 テキストへ復号する。
+ * new format(`asset_key` → `assets`)/ legacy format(`data` 直埋め)の
+ * 両方に対応。データ欠落 / 不正 base64 のときは `null`。
+ */
+export function decodeAttachmentText(
+  body: AttachmentBody,
+  assets: Record<string, string> | undefined,
+): string | null {
+  const b64 = body.asset_key ? assets?.[body.asset_key] : body.data;
+  if (typeof b64 !== 'string' || b64.length === 0) return null;
+  try {
+    const binary = atob(b64);
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Serialize attachment body as metadata-only JSON (new format).
  * Does NOT include data — data goes to container.assets.
  */
@@ -370,6 +403,18 @@ export const attachmentPresenter: DetailPresenter = {
         );
         openHtmlBtn.textContent = '🌐 Open in New Window';
         actionRow.appendChild(openHtmlBtn);
+      }
+
+      // 領域 3: テキスト系添付(.md / .txt / text MIME)は内容を新しい
+      // TEXT エントリとして開く変換ボタンを出す。
+      if (isTextConvertibleAttachment(att)) {
+        const convertBtn = document.createElement('button');
+        convertBtn.className = 'pkc-btn pkc-btn-small pkc-attachment-convert-text';
+        convertBtn.setAttribute('data-pkc-action', 'convert-attachment-to-text');
+        convertBtn.setAttribute('data-pkc-lid', entry.lid);
+        convertBtn.setAttribute('title', 'この添付の内容を新しい TEXT エントリとして開く');
+        convertBtn.textContent = '📄 TEXT に変換';
+        actionRow.appendChild(convertBtn);
       }
 
       card.appendChild(actionRow);

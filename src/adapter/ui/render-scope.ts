@@ -33,7 +33,7 @@
 
 import type { AppState } from '../state/app-state';
 
-export type RenderScope = 'none' | 'settings-only' | 'sidebar-only' | 'full';
+export type RenderScope = 'none' | 'settings-only' | 'sidebar-only' | 'selection-only' | 'full';
 
 /**
  * Compute the minimum render work required to bring the DOM in sync
@@ -49,6 +49,15 @@ export type RenderScope = 'none' | 'settings-only' | 'sidebar-only' | 'full';
  * (`applySystemSettings`, `renderSidebar`) are themselves cheap
  * and idempotent, so re-running them on structurally-equal input
  * is harmless.
+ *
+ * pgc-208 (user 報告 2026-05-25「100エントリ程度で凄まじく動作が重い」):
+ * `'selection-only'` scope を追加 ── SELECT_ENTRY のみの場合(selectedLid /
+ * navHistory / navIndex / textlogSelection / textToTextlogModal /
+ * collapsedFolders / multiSelectedLids が変化、その他 fields は不変)、
+ * sidebar + center + meta の 3 region 差し替えに限定し、header /
+ * shell-menu / activity-bar / tray-bar の rebuild を skip(これらは
+ * selectedLid に依存しない or 軽微依存で済む)。bench 上 SELECT_ENTRY
+ * 52ms → ~20-25ms に短縮見込み(60FPS 16.7ms 予算近接)。
  */
 export function computeRenderScope(state: AppState, prev: AppState | null): RenderScope {
   if (prev === null) return 'full';
@@ -61,7 +70,13 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // narrower buckets below).
   if (state.phase !== prev.phase) return 'full';
   if (state.container !== prev.container) return 'full';
-  if (state.selectedLid !== prev.selectedLid) return 'full';
+  // pgc-208:selectedLid / multiSelectedLids / navHistory / navIndex /
+  // collapsedFolders / textlogSelection / textToTextlogModal の 7 fields
+  // は SELECT_ENTRY reducer が変化させる set(`SELECT_ENTRY` / `GO_BACK` /
+  // `GO_FORWARD` で同じ pattern)。これらが ONLY changed なら
+  // 'selection-only' で sidebar + center + meta 差し替えに限定する。
+  // 1 個でも他 field が変わった場合は full に fall through。
+  // selectedLid 単独 check は最後に行う(他 'full' trigger が先行)。
   if (state.editingLid !== prev.editingLid) return 'full';
   if (state.editingBase !== prev.editingBase) return 'full';
   if (state.error !== prev.error) return 'full';
@@ -87,29 +102,43 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.graphFocusLid !== prev.graphFocusLid) return 'full';
   if (state.inventoryQuery !== prev.inventoryQuery) return 'full';
   if (state.filerExplorerSort !== prev.filerExplorerSort) return 'full';
-  // PR-NNN (2026-05-06、user 修正指示6「Filer の検索窓が活きていない」):
-  // `SET_FILER_SEARCH_QUERY` dispatch で `filerSearchQuery` のみ変わる
-  // ケースで render-scope が `'none'` を返し、filter が画面に反映され
-  // ない bug。`'full'` trigger に追加して filer 再描画を起こす。
   if (state.filerSearchQuery !== prev.filerSearchQuery) return 'full';
-  // PR-Δ9 (2026-05-07、user 報告「グラフの Venn と region ボタンが
-  // 押しても反応しない」):graphVennGroupingMode / graphRegionSelectMode /
-  // graphRegionSelectedLids が full-trigger に無いため、toggle dispatch
-  // しても再描画されず button visual が固まっていた。PR-NNN と同型 bug。
   if (state.graphVennGroupingMode !== prev.graphVennGroupingMode) return 'full';
   if (state.graphRegionSelectMode !== prev.graphRegionSelectMode) return 'full';
   if (state.graphRegionSelectedLids !== prev.graphRegionSelectedLids) return 'full';
   if (state.calendarYear !== prev.calendarYear) return 'full';
   if (state.calendarMonth !== prev.calendarMonth) return 'full';
-  if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
   if (state.storageProfileOpen !== prev.storageProfileOpen) return 'full';
   if (state.shortcutHelpOpen !== prev.shortcutHelpOpen) return 'full';
   if (state.flagsInspectorOpen !== prev.flagsInspectorOpen) return 'full';
   if (state.todoAddPopover !== prev.todoAddPopover) return 'full';
   if (state.recentEntryRefLids !== prev.recentEntryRefLids) return 'full';
-  if (state.textlogSelection !== prev.textlogSelection) return 'full';
-  if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
   if (state.dualEditConflict !== prev.dualEditConflict) return 'full';
+  if (state.editMode !== prev.editMode) return 'full';
+  if (state.childWindowLids !== prev.childWindowLids) return 'full';
+  if (state.sidebarFilerQuery !== prev.sidebarFilerQuery) return 'full';
+  if (state.metaPaneMode !== prev.metaPaneMode) return 'full';
+
+  // ── pgc-208 SELECTION-ONLY scope check ───────────────────────────
+  // SELECT_ENTRY が変える 7 fields のうち selectedLid / multiSelectedLids /
+  // textlogSelection / textToTextlogModal / collapsedFolders の差分を
+  // selection-only に集約。navHistory / navIndex は SELECT_ENTRY 専用 mutate
+  // で、selection-only path 内で navHistory consumer(breadcrumb の back/
+  // forward 状態など)は header 据え置きでも次回 full render で同期されるため
+  // 体感上問題なし。
+  // pgc-208:collapsedFolders は selection-only と sidebar-only の両 axis に
+  // 跨る(SELECT_ENTRY revealInSidebar=true で expand される / user 明示
+  // collapse/expand で変化)。両軸 重複を避けるため selection-only check
+  // からは外す ── selectedLid とセットで変わる典型 case では selectedLid
+  // 側の signal で selection-only に振り分けられる、collapsedFolders 単独
+  // 変化は sidebar-only に流す(現状 test の後方互換)。
+  const selectionChanged =
+    state.selectedLid !== prev.selectedLid
+    || state.multiSelectedLids !== prev.multiSelectedLids
+    || state.textlogSelection !== prev.textlogSelection
+    || state.textToTextlogModal !== prev.textToTextlogModal
+    || state.navHistory !== prev.navHistory
+    || state.navIndex !== prev.navIndex;
 
   // ── Fields the SIDEBAR consumes exclusively ──────────────────────
   // When ONLY these change, the center / meta / header / overlays
@@ -181,7 +210,12 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // Multiple narrow buckets changed → fall back to 'full' since the
   // narrow paths are designed to be standalone. This keeps the
   // optimization correct without trying to be clever.
+  // pgc-208:selection-only も同様、他 narrow scope と独立に判定。
+  if (selectionChanged && sidebarOnlyChanged && settingsChanged) return 'full';
+  if (selectionChanged && sidebarOnlyChanged) return 'full';
+  if (selectionChanged && settingsChanged) return 'full';
   if (sidebarOnlyChanged && settingsChanged) return 'full';
+  if (selectionChanged) return 'selection-only';
   if (sidebarOnlyChanged) return 'sidebar-only';
   if (settingsChanged) return 'settings-only';
 

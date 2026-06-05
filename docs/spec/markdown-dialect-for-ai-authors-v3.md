@@ -4,6 +4,7 @@
 **Reader**: 機械的に処理する LLM。可読性は保つが、構造化と非曖昧化を優先。
 **Companion(human-oriented)**: `docs/manual/12_マークダウン拡張記法.md`(末端 user 用)+ `docs/development/notation-redesign-2026-05/`(設計議論)
 **Status**: ✅ **canonical**(2026-05-12 promoted、reform-2026-05 Phase 3 wave 16 PR 完了 + AST 公開 API 着地)
+**⚠️ Successor v4 candidate**: 人間向け完全 spec v4 ([`pkc-markdown-complete-spec-v4.md`](./pkc-markdown-complete-spec-v4.md)、2026-05-25 user Q1-Q8 OK 取得済) + **AI 規約 v4 ([`markdown-dialect-for-ai-authors-v4.md`](./markdown-dialect-for-ai-authors-v4.md)、stack PR 12 で起草、stack PR 13 着地で canonical promote)**。本 v3 は v4 canonical promote 時に archive 候補。
 **Version**: v3(supersedes v2、2026-05-09 起草、2026-05-12 promoted to canonical)
 **Phase 反映**: Phase 1(L-1〜L-9 + M-7)+ Phase 2(R-2A〜R-2Q、寛容 parse + html-render + 段組組版)+ Phase 3(IR migration AstDocument 経路 + WCAG resolver + theme switching + AST 公開 API)
 **Supersedes**: `markdown-dialect-for-ai-authors-v2.md`(2026-05-09 〜 2026-05-12、v3 promoted で archive 候補)

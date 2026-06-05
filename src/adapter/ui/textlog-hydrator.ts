@@ -112,20 +112,27 @@ export function renderLogArticlePlaceholder(
   const header = document.createElement('header');
   header.className = 'pkc-textlog-log-header';
 
+  // user bug 2026-05-27 perf hotfix:選択モード toggle 時の center pane
+  // 全体 re-render を避けるため、placeholder + article に checkbox markup
+  // を **常に** 含める(visibility は CSS の `[data-pkc-textlog-selecting]`
+  // attribute selector で制御)。これで BEGIN_TEXTLOG_SELECTION dispatch は
+  // 数千件 placeholder の再構築を triggers せず、container 1 attribute toggle
+  // で済む。`selecting` 引数は initial render 時点の `data-pkc-log-selected`
+  // 整合のためのみ使用、checkbox markup 自体は always 出力。
+  const selectLabel = document.createElement('label');
+  selectLabel.className = 'pkc-textlog-select-label';
+  selectLabel.setAttribute('title', 'Include this log in the TEXT extract');
+  const selectCheck = document.createElement('input');
+  selectCheck.type = 'checkbox';
+  selectCheck.className = 'pkc-textlog-select-check';
+  selectCheck.setAttribute('data-pkc-field', 'textlog-select');
+  selectCheck.setAttribute('data-pkc-lid', lid);
+  selectCheck.setAttribute('data-pkc-log-id', log.id);
   if (selecting) {
-    const selectLabel = document.createElement('label');
-    selectLabel.className = 'pkc-textlog-select-label';
-    selectLabel.setAttribute('title', 'Include this log in the TEXT extract');
-    const selectCheck = document.createElement('input');
-    selectCheck.type = 'checkbox';
-    selectCheck.className = 'pkc-textlog-select-check';
-    selectCheck.setAttribute('data-pkc-field', 'textlog-select');
-    selectCheck.setAttribute('data-pkc-lid', lid);
-    selectCheck.setAttribute('data-pkc-log-id', log.id);
     selectCheck.checked = isLogSelected(log.id);
-    selectLabel.appendChild(selectCheck);
-    header.appendChild(selectLabel);
   }
+  selectLabel.appendChild(selectCheck);
+  header.appendChild(selectLabel);
 
   const flagBtn = document.createElement('button');
   flagBtn.className = 'pkc-textlog-flag-btn';

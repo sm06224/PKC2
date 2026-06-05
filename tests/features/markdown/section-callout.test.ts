@@ -23,16 +23,15 @@ describe(':::section{role=…} semantic / callout(reform Phase 2 PR-2F)', () => 
     });
   }
 
-  it('role 省略 → generic class(role-specific class なし)', () => {
+  it('role 省略 → generic class + pkc-section-generic(v4 §8.1.2 stack PR 7 で任意 role に CSS class 自動命名)', () => {
     const html = renderMarkdown(':::section\n本文\n:::');
-    expect(html).toMatch(/<section[^>]*class="pkc-section-callout"[^>]*data-pkc-role="generic"/);
+    expect(html).toMatch(/<section[^>]*class="pkc-section-callout pkc-section-generic"[^>]*data-pkc-role="generic"/);
   });
 
-  it('未知 role(unknown_xyz)→ generic class、data-pkc-role は raw stamp', () => {
+  it('未知 role(unknown_xyz)→ pkc-section-unknown_xyz class 自動命名(v4 §8.1.2)', () => {
     const html = renderMarkdown(':::section{role=unknown_xyz}\n本文\n:::');
-    expect(html).toMatch(/<section[^>]*class="pkc-section-callout"[^>]*data-pkc-role="unknown_xyz"/);
-    // pkc-section-unknown_xyz class は出ない(allowlist 経由のみ)
-    expect(html).not.toContain('pkc-section-unknown_xyz');
+    expect(html).toMatch(/<section[^>]*class="pkc-section-callout pkc-section-unknown_xyz"[^>]*data-pkc-role="unknown_xyz"/);
+    // v4 §8.1.2(stack PR 7):任意 role でも CSS class 自動命名、user-side CSS で装飾可能
   });
 
   it('content の markdown が render される(nested)', () => {

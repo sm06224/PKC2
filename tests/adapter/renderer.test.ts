@@ -11,6 +11,19 @@ import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import type { SavedSearch } from '@core/model/saved-search';
+import { setContainerFlagSource } from '@adapter/flags';
+
+// pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
+// tree sidebar の構造を検証する本 suite は tree mode に固定する。
+// 2026-05-28: `shell.meta_pane_references_clarify_enabled` always-on 化済
+// (heading text に " — relation" / " — markdown" suffix 付与)── 本 suite は
+// 旧 heading text を assert しているため明示 OFF にする。
+beforeEach(() => {
+  setContainerFlagSource({
+    'sidebar.mode': 'tree',
+    'shell.meta_pane_references_clarify_enabled': false,
+  });
+});
 
 const mockContainer: Container = {
   meta: {
@@ -56,7 +69,7 @@ describe('Renderer', () => {
   it('renders initializing phase', () => {
     const state: AppState = {
       phase: 'initializing', container: null,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('initializing');
@@ -66,7 +79,7 @@ describe('Renderer', () => {
   it('renders error phase with message', () => {
     const state: AppState = {
       phase: 'error', container: null,
-      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: 'test error', embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('error');
@@ -76,7 +89,7 @@ describe('Renderer', () => {
   it('renders ready phase with entry list', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-phase')).toBe('ready');
@@ -97,7 +110,7 @@ describe('Renderer', () => {
   it('marks selected entry with data-pkc-selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -109,7 +122,7 @@ describe('Renderer', () => {
   it('renders detail view for selected entry', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -128,7 +141,7 @@ describe('Renderer', () => {
   it('renders editor in editing phase', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -150,14 +163,14 @@ describe('Renderer', () => {
   it('shows create button only in ready phase', () => {
     const readyState: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(readyState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).not.toBeNull();
 
     const editingState: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(editingState, root);
     expect(root.querySelector('[data-pkc-action="create-entry"]')).toBeNull();
@@ -170,7 +183,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     // Drop zone replaces the old placeholder when editable
@@ -183,7 +196,7 @@ describe('Renderer', () => {
   it('shows inline export buttons (Export + Light) in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
@@ -202,7 +215,7 @@ describe('Renderer', () => {
   it('shows exporting badge in exporting phase', () => {
     const state: AppState = {
       phase: 'exporting', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-action="begin-export"]')).toBeNull();
@@ -212,7 +225,7 @@ describe('Renderer', () => {
   it('readonly mode: no edit/create/delete/export buttons, shows rehydrate', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     // No create buttons
@@ -236,7 +249,7 @@ describe('Renderer', () => {
   it('readonly mode: shows data-pkc-readonly=true on root', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-readonly')).toBe('true');
@@ -245,7 +258,7 @@ describe('Renderer', () => {
   it('readonly mode: search/filter/sort still work', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'test', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'test', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     // Search input exists
@@ -258,7 +271,7 @@ describe('Renderer', () => {
   it('inline export buttons are editable mutability only', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const exportBtns = root.querySelectorAll('[data-pkc-action="begin-export"]');
@@ -270,7 +283,7 @@ describe('Renderer', () => {
   it('uses data-pkc-* attributes for all action elements', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -287,7 +300,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=false for standalone', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('false');
@@ -296,7 +309,7 @@ describe('Renderer', () => {
   it('sets data-pkc-embedded=true for embedded', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: true, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.getAttribute('data-pkc-embedded')).toBe('true');
@@ -308,7 +321,7 @@ describe('Renderer', () => {
     // Sender-visible message types are advertised via PongProfile.
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const caps = root.getAttribute('data-pkc-capabilities');
@@ -322,7 +335,7 @@ describe('Renderer', () => {
   it('does not show pending offers bar when empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="pending-offers"]')).toBeNull();
@@ -337,7 +350,7 @@ describe('Renderer', () => {
           archetype: 'text', source_container_id: null,
           reply_to_id: null, received_at: '2026-01-01T00:00:00Z',
         },
-      ], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      ], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -365,7 +378,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -377,7 +390,7 @@ describe('Renderer', () => {
   it('does not show revision badge on entries without revisions', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-revision-count]')).toBeNull();
@@ -395,7 +408,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -422,7 +435,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -436,7 +449,7 @@ describe('Renderer', () => {
   it('does not show backlink badge when no relations exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('.pkc-backlink-badge')).toBeNull();
@@ -448,7 +461,7 @@ describe('Renderer', () => {
     // mockContainer has relations: [] — both e1 and e2 are orphans.
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -473,7 +486,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -499,7 +512,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerMixed,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -514,7 +527,7 @@ describe('Renderer', () => {
   it('shows orphan marker in readonly context (informational only)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -527,7 +540,7 @@ describe('Renderer', () => {
   it('sets data-pkc-connectedness="fully-unconnected" and renders new marker for entries with no relations and no markdown refs', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -544,7 +557,7 @@ describe('Renderer', () => {
   it('v1 `.pkc-orphan-marker` and v3 `.pkc-unconnected-marker` coexist on fully-unconnected rows (contract §4.5)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -569,7 +582,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerMd,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -596,7 +609,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerRel,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -611,7 +624,7 @@ describe('Renderer', () => {
   it('shows v3 marker in readonly context (viewing is safe, contract §4.4 has no edit semantics)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -624,7 +637,7 @@ describe('Renderer', () => {
   it('v3 marker tooltip avoids bare "orphan" wording (contract §4.2 / §1.2)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -643,7 +656,7 @@ describe('Renderer', () => {
   it('does not render v3 attribute/marker when container is null (initializing phase)', () => {
     const state: AppState = {
       phase: 'initializing', container: null,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -664,7 +677,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -689,7 +702,7 @@ describe('Renderer', () => {
         schema_version: 1,
         source: 'backup.html',
         container: mockContainer,
-      }, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -720,7 +733,7 @@ describe('Renderer', () => {
   it('does not render import panel when importPreview is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="import-confirm"]')).toBeNull();
@@ -750,7 +763,7 @@ describe('Renderer', () => {
           { index: 4, title: 'Log 2', archetype: 'textlog' },
         ],
         selectedIndices: [0, 1, 2, 3, 4],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -795,7 +808,7 @@ describe('Renderer', () => {
         source: 'test.zip',
         entries: [{ index: 0, title: 'Note', archetype: 'text' }],
         selectedIndices: [0],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -821,7 +834,7 @@ describe('Renderer', () => {
         source: 'test.zip',
         entries: [{ index: 0, title: 'A', archetype: 'text' }, { index: 1, title: 'B', archetype: 'text' }],
         selectedIndices: [0, 1],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -848,7 +861,7 @@ describe('Renderer', () => {
         source: 'folder-project.folder-export.zip',
         entries: [{ index: 0, title: 'Doc', archetype: 'text' }, { index: 1, title: 'Log', archetype: 'textlog' }],
         selectedIndices: [0, 1],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -876,7 +889,7 @@ describe('Renderer', () => {
         source: 'folder-project.folder-export.zip',
         entries: [{ index: 0, title: 'Doc A', archetype: 'text' }, { index: 1, title: 'Doc B', archetype: 'text' }],
         selectedIndices: [0, 1],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -911,7 +924,7 @@ describe('Renderer', () => {
         source: 'bad.folder-export.zip',
         entries: [{ index: 0, title: 'Doc', archetype: 'text' }],
         selectedIndices: [0],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -947,7 +960,7 @@ describe('Renderer', () => {
           { index: 1, title: 'Note B', archetype: 'text' },
         ],
         selectedIndices: [0, 1],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -992,7 +1005,7 @@ describe('Renderer', () => {
           { index: 1, title: 'Note B', archetype: 'text' },
         ],
         selectedIndices: [0], // only first selected
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1019,7 +1032,7 @@ describe('Renderer', () => {
         source: 'test.zip',
         entries: [{ index: 0, title: 'Note', archetype: 'text' }],
         selectedIndices: [], // none selected
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1054,7 +1067,7 @@ describe('Renderer', () => {
         source: 'test.zip',
         entries: [{ index: 0, title: 'Note', archetype: 'text' }],
         selectedIndices: [0],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1098,7 +1111,7 @@ describe('Renderer', () => {
         entries: [{ index: 0, title: 'Note', archetype: 'text' }],
         selectedIndices: [0],
         targetFolderLid: 'f1',
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1129,7 +1142,7 @@ describe('Renderer', () => {
           assetCount: 2,
         }],
         selectedIndices: [0],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1168,7 +1181,7 @@ describe('Renderer', () => {
           missingAssetCount: 1,
         }],
         selectedIndices: [0],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1200,7 +1213,7 @@ describe('Renderer', () => {
         source: 'test.zip',
         entries: [{ index: 0, title: 'Note', archetype: 'text' }],
         selectedIndices: [0],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1229,7 +1242,7 @@ describe('Renderer', () => {
           { index: 1, title: 'B', archetype: 'text', bodySnippet: 'snippet B', bodyLength: 200 },
         ],
         selectedIndices: [0],
-      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      }, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1247,7 +1260,7 @@ describe('Renderer', () => {
   it('does not render batch preview when batchImportPreview is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="batch-import-preview"]')).toBeNull();
@@ -1262,7 +1275,7 @@ describe('Renderer', () => {
         restoreStructure: false, actualDestination: '/ (Root)',
         intendedDestination: null, fallbackToRoot: false, source: 'test.zip',
       },
-      collapsedFolders: [], recentEntryRefLids: [],
+      collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const banner = root.querySelector('[data-pkc-region="batch-import-result"]');
@@ -1287,7 +1300,7 @@ describe('Renderer', () => {
         restoreStructure: true, actualDestination: 'My Folder',
         intendedDestination: null, fallbackToRoot: false, source: 'archive.zip',
       },
-      collapsedFolders: [], recentEntryRefLids: [],
+      collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const msg = root.querySelector('[data-pkc-role="import-result-message"]')!;
@@ -1306,7 +1319,7 @@ describe('Renderer', () => {
         restoreStructure: false, actualDestination: '/ (Root)',
         intendedDestination: 'Project Alpha', fallbackToRoot: true, source: 'import.zip',
       },
-      collapsedFolders: [], recentEntryRefLids: [],
+      collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const msg = root.querySelector('[data-pkc-role="import-result-message"]')!;
@@ -1319,7 +1332,7 @@ describe('Renderer', () => {
   it('does not render result banner when batchImportResult is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="batch-import-result"]')).toBeNull();
@@ -1344,7 +1357,7 @@ describe('Renderer', () => {
         restoreStructure: false, actualDestination: '/ (Root)',
         intendedDestination: null, fallbackToRoot: false, source: 'old.zip',
       },
-      collapsedFolders: [], recentEntryRefLids: [],
+      collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     // Preview is shown, result banner is hidden
@@ -1361,7 +1374,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1383,7 +1396,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1408,7 +1421,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithDeletedRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1435,7 +1448,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: deletedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const purgeBtn = root.querySelector('[data-pkc-action="purge-trash"]');
@@ -1453,7 +1466,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: deletedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-action="purge-trash"]')).toBeNull();
@@ -1462,7 +1475,7 @@ describe('Renderer', () => {
   it('shows multi-selection action bar when multiSelectedLids is non-empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: ['e1', 'e2'], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: ['e1', 'e2'], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const bar = root.querySelector('[data-pkc-region="multi-action-bar"]');
@@ -1475,7 +1488,7 @@ describe('Renderer', () => {
   it('marks multi-selected entries with data-pkc-multi-selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: ['e1', 'e2'], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: ['e1', 'e2'], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const e1 = root.querySelector('.pkc-entry-item[data-pkc-lid="e1"]');
@@ -1493,7 +1506,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1520,7 +1533,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRevisions,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1554,7 +1567,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithDeletedRevisions,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1570,7 +1583,7 @@ describe('Renderer', () => {
   it('renders search input when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1584,7 +1597,7 @@ describe('Renderer', () => {
     const emptyContainer: Container = { ...mockContainer, entries: [] };
     const state: AppState = {
       phase: 'ready', container: emptyContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1594,7 +1607,7 @@ describe('Renderer', () => {
   it('filters entries by search query', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'One', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'One', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1606,7 +1619,7 @@ describe('Renderer', () => {
   it('shows "No matching entries" when search has no results', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'zzzzz', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'zzzzz', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1617,7 +1630,7 @@ describe('Renderer', () => {
   it('preserves search input value from state', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'hello', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'hello', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1628,7 +1641,7 @@ describe('Renderer', () => {
   it('renders archetype filter bar when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1648,7 +1661,7 @@ describe('Renderer', () => {
   it('marks active archetype filter button', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(['todo'] as const), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(['todo'] as const), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1662,7 +1675,7 @@ describe('Renderer', () => {
   it('filters entries by archetype', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(['todo'] as const), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(['todo'] as const), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1674,7 +1687,7 @@ describe('Renderer', () => {
   it('shows result count when filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(['text'] as const), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(['text'] as const), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1686,7 +1699,7 @@ describe('Renderer', () => {
   it('shows result count when search query is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'One', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'One', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1698,7 +1711,7 @@ describe('Renderer', () => {
   it('does not show result count when no filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1708,7 +1721,7 @@ describe('Renderer', () => {
   it('shows clear-filters button when search query is non-empty', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'test', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'test', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1720,7 +1733,7 @@ describe('Renderer', () => {
   it('shows clear-filters button when archetype filter is set', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(['todo'] as const), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(['todo'] as const), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1731,7 +1744,7 @@ describe('Renderer', () => {
   it('does not show clear-filters button when no filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1741,7 +1754,7 @@ describe('Renderer', () => {
   it('renders sort controls when entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1760,7 +1773,7 @@ describe('Renderer', () => {
   it('sort select reflects current sort state', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1775,7 +1788,7 @@ describe('Renderer', () => {
     // Sort by title asc: e1 "Entry One" < e2 "Entry Two"
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1788,7 +1801,7 @@ describe('Renderer', () => {
   it('applies sort after filter: desc reverses order', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1802,7 +1815,7 @@ describe('Renderer', () => {
     // Filter to "One" → only e1. Sort does not change single item.
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'One', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'One', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'title', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1822,7 +1835,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1846,7 +1859,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1864,7 +1877,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1885,7 +1898,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1899,7 +1912,7 @@ describe('Renderer', () => {
   it('always shows relation section with empty states when no relations exist (Backlinks v1)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1928,7 +1941,7 @@ describe('Renderer', () => {
     // markdown-reference-based (link-index-backlinks). Both should coexist in meta pane.
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1946,7 +1959,7 @@ describe('Renderer', () => {
   it('renders a single References umbrella region when an entry is selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1960,7 +1973,7 @@ describe('Renderer', () => {
   it('References umbrella contains both relations and link-index sub-panels', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1975,7 +1988,7 @@ describe('Renderer', () => {
   it('References umbrella is not rendered when no entry is selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -1985,7 +1998,7 @@ describe('Renderer', () => {
   it('relations-based backlinks heading and link-index backlinks heading both survive inside the umbrella', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2010,7 +2023,7 @@ describe('Renderer', () => {
   it('renders References summary row with all three counts below the umbrella heading', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2028,7 +2041,7 @@ describe('Renderer', () => {
   it('References summary row appears inside the umbrella and before sub-panels', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2066,7 +2079,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2085,7 +2098,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithMdRefs,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2103,7 +2116,7 @@ describe('Renderer', () => {
   it('References summary row Broken item carries broken marker only when count > 0', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2116,7 +2129,7 @@ describe('Renderer', () => {
   it('References summary row is not rendered when no entry is selected', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2128,7 +2141,7 @@ describe('Renderer', () => {
   it('summary row items render as <button> with jump action and correct target (v3)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2150,7 +2163,7 @@ describe('Renderer', () => {
   it('summary buttons remain clickable when count is zero (still navigable to empty-state sub-panel)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2163,7 +2176,7 @@ describe('Renderer', () => {
   it('summary buttons expose accessible labels that avoid forbidden wording (v3)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2185,7 +2198,7 @@ describe('Renderer', () => {
   it('summary buttons render in readonly context (navigation is safe)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2207,7 +2220,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2229,7 +2242,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2248,7 +2261,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2268,7 +2281,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2292,7 +2305,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2312,7 +2325,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2331,7 +2344,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2360,7 +2373,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2393,7 +2406,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2426,7 +2439,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2452,7 +2465,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2472,7 +2485,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2492,7 +2505,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2521,7 +2534,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2549,7 +2562,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2580,7 +2593,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2608,7 +2621,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2635,7 +2648,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2664,7 +2677,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2695,7 +2708,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2731,7 +2744,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2758,7 +2771,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2787,7 +2800,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector<HTMLButtonElement>('.pkc-provenance-metadata-copy');
@@ -2804,7 +2817,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('.pkc-provenance-metadata-copy')).toBeNull();
@@ -2823,7 +2836,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithRels,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('.pkc-provenance-metadata-copy')).toBeNull();
@@ -2832,7 +2845,7 @@ describe('Renderer', () => {
   it('shows relation creation form in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2844,8 +2857,13 @@ describe('Renderer', () => {
     const targetSelect = createForm!.querySelector('[data-pkc-field="relation-target"]');
     expect(targetSelect).not.toBeNull();
     const options = targetSelect!.querySelectorAll('option');
-    // 1 default + 1 other entry (e2)
-    expect(options).toHaveLength(2);
+    // pgc-222(lazy options):render-time は placeholder のみ。user mousedown
+    // で action-binder の handleLazyTagTargetPopulate が options を inject する。
+    expect(options).toHaveLength(1);
+    expect(targetSelect!.getAttribute('data-pkc-lazy-options')).toBe('relation-target');
+    expect(targetSelect!.getAttribute('data-pkc-from-lid')).toBe('e1');
+    // 1 other entry (e2)が available 候補なので count attr は 1
+    expect(targetSelect!.getAttribute('data-pkc-lazy-available-count')).toBe('1');
 
     // Kind select
     const kindSelect = createForm!.querySelector('[data-pkc-field="relation-kind"]');
@@ -2859,7 +2877,7 @@ describe('Renderer', () => {
   it('does not show relation create form in editing phase', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2878,7 +2896,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2901,7 +2919,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2920,7 +2938,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerMixed,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2931,7 +2949,7 @@ describe('Renderer', () => {
   it('shows tag add form with available targets', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2946,7 +2964,7 @@ describe('Renderer', () => {
     expect(addBtn).not.toBeNull();
   });
 
-  it('tag add form excludes already-tagged entries', () => {
+  it('tag add form shows lazy select even when all targets already tagged (pgc-226)', () => {
     const containerWithTags: Container = {
       ...mockContainer,
       relations: [
@@ -2955,19 +2973,26 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
-    // e2 is already tagged, so no available targets (only 2 entries total)
+    // pgc-226:render-time の visibility check は `container.entries.length > 1` の
+    // cheap check のみ。actual available の判定は user mousedown 時に lazy で行う。
+    // 「e2 already tagged → addForm は出ない」 という古い semantic は廃止。
+    // available=0 の case は action-binder 側で「(候補無し)」 placeholder で対処。
     const addForm = root.querySelector('[data-pkc-region="tag-add"]');
-    expect(addForm).toBeNull(); // no form when all tagged
+    expect(addForm).not.toBeNull();
+    const select = addForm!.querySelector<HTMLSelectElement>('[data-pkc-field="tag-target"]');
+    expect(select).not.toBeNull();
+    expect(select!.getAttribute('data-pkc-lazy-options')).toBe('tag-target');
+    expect(select!.getAttribute('data-pkc-lazy-populated')).toBeNull();
   });
 
   it('tags section always shows even with no tags', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -2989,7 +3014,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3002,7 +3027,7 @@ describe('Renderer', () => {
   it('shows tag filter indicator when tag filter is active', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3024,7 +3049,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3049,7 +3074,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: threeEntries,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: 'e2', sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: 'e2', sortKey: 'title', sortDirection: 'asc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3068,7 +3093,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: containerWithTags,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: 'e2', sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3081,7 +3106,7 @@ describe('Renderer', () => {
   it('no tag filter indicator when categoricalPeerFilter is null', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3094,7 +3119,7 @@ describe('Renderer', () => {
   it('detail view has data-pkc-archetype attribute', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3106,7 +3131,7 @@ describe('Renderer', () => {
   it('editor has data-pkc-archetype attribute', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3118,7 +3143,7 @@ describe('Renderer', () => {
   it('detail view uses presenter for body rendering', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3133,7 +3158,7 @@ describe('Renderer', () => {
     // e2 is archetype: 'todo'
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e2', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3152,7 +3177,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3180,7 +3205,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3213,7 +3238,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: todoContainer,
-      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 't1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3227,7 +3252,7 @@ describe('Renderer', () => {
   it('header has both Note and Todo create buttons', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3259,7 +3284,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: formContainer,
-      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3282,7 +3307,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'editing', container: formContainer,
-      selectedLid: 'f1', editingLid: 'f1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'f1', editingLid: 'f1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3306,7 +3331,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: mixedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3328,7 +3353,7 @@ describe('Renderer', () => {
   it('detail view shows Copy link button next to title (replaces the bottom-right-redundant archetype badge)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3358,7 +3383,7 @@ describe('Renderer', () => {
   it('editor shows archetype label next to title input', () => {
     const state: AppState = {
       phase: 'editing', container: mockContainer,
-      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3371,7 +3396,7 @@ describe('Renderer', () => {
   it('archetype filter bar uses human-readable labels', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3392,7 +3417,7 @@ describe('Renderer', () => {
   it('header has Attachment create button', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3412,7 +3437,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'ready', container: attContainer,
-      selectedLid: 'a1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'a1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3433,7 +3458,7 @@ describe('Renderer', () => {
     };
     const state: AppState = {
       phase: 'editing', container: attContainer,
-      selectedLid: 'a1', editingLid: 'a1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'a1', editingLid: 'a1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -3448,7 +3473,7 @@ describe('Renderer', () => {
   it('renders inline export/import panel in ready phase', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
@@ -3471,7 +3496,7 @@ describe('Renderer', () => {
   it('inline export panel has Export, Light, and Import buttons', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const panel = root.querySelector('[data-pkc-region="export-import-panel"]');
@@ -3486,7 +3511,7 @@ describe('Renderer', () => {
   it('does not render export/import panel in readonly mode', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="export-import-panel"]')).toBeNull();
@@ -3495,7 +3520,7 @@ describe('Renderer', () => {
   it('pane toggle buttons are present in header', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const sidebarToggle = root.querySelector('[data-pkc-action="toggle-sidebar"]');
@@ -3507,7 +3532,7 @@ describe('Renderer', () => {
   it('import button is inside Import section', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const importBtn = root.querySelector('[data-pkc-action="begin-import"]');
@@ -3550,7 +3575,7 @@ describe('Renderer', () => {
       multiSelectedLids: [],
       batchImportResult: null,
       collapsedFolders: [],
-      recentEntryRefLids: [],
+      recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -3751,7 +3776,7 @@ describe('Container-wide TEXTLOG export button', () => {
   it('shows TEXTLOGs button when container has textlog entries', () => {
     const state: AppState = {
       phase: 'ready', container: textlogContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
@@ -3762,7 +3787,7 @@ describe('Container-wide TEXTLOG export button', () => {
   it('hides TEXTLOGs button when container has no textlog entries', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
@@ -3772,7 +3797,7 @@ describe('Container-wide TEXTLOG export button', () => {
   it('shows TEXTLOGs button in readonly mode when textlog entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: textlogContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-textlogs-container"]');
@@ -3796,7 +3821,7 @@ describe('Container-wide TEXT export button', () => {
   it('shows TEXTs button when container has text entries', () => {
     const state: AppState = {
       phase: 'ready', container: textContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
@@ -3811,7 +3836,7 @@ describe('Container-wide TEXT export button', () => {
     };
     const state: AppState = {
       phase: 'ready', container: noTextContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
@@ -3821,7 +3846,7 @@ describe('Container-wide TEXT export button', () => {
   it('shows TEXTs button in readonly mode when text entries exist', () => {
     const state: AppState = {
       phase: 'ready', container: textContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-texts-container"]');
@@ -3856,7 +3881,7 @@ describe('Folder-scoped export button', () => {
   it('shows Export button on folder action bar when folder has TEXT/TEXTLOG descendants', () => {
     const state: AppState = {
       phase: 'ready', container: folderWithTextChildren,
-      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-folder"]');
@@ -3868,7 +3893,7 @@ describe('Folder-scoped export button', () => {
   it('hides Export button when folder has no TEXT/TEXTLOG descendants', () => {
     const state: AppState = {
       phase: 'ready', container: folderNoTextChildren,
-      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-folder"]');
@@ -3878,7 +3903,7 @@ describe('Folder-scoped export button', () => {
   it('shows Export button in readonly mode for folder with TEXT descendants', () => {
     const state: AppState = {
       phase: 'ready', container: folderWithTextChildren,
-      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'f1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const btn = root.querySelector('[data-pkc-action="export-folder"]');
@@ -3902,7 +3927,7 @@ describe('Action surface consolidation', () => {
   function makeState(overrides?: Partial<AppState>): AppState {
     return {
       phase: 'ready', container: textlogContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -3988,7 +4013,8 @@ describe('Action surface consolidation', () => {
   });
 
   it('Reset button moved to shell menu maintenance section', () => {
-    render(makeState(), root);
+    // pgc-207:shell menu は menuOpen=true 時のみ DOM build される(lazy build)
+    render(makeState({ menuOpen: true }), root);
     const resetBtn = root.querySelector('[data-pkc-action="clear-local-data"]');
     expect(resetBtn).not.toBeNull();
     const maintenance = resetBtn!.closest('[data-pkc-region="shell-menu-maintenance"]');
@@ -3999,7 +4025,7 @@ describe('Action surface consolidation', () => {
   });
 
   it('shell menu has Quick Help section', () => {
-    render(makeState(), root);
+    render(makeState({ menuOpen: true }), root);
     const help = root.querySelector('[data-pkc-region="shell-menu-help"]');
     expect(help).not.toBeNull();
     const items = help!.querySelectorAll('.pkc-shell-menu-help-item');
@@ -4007,7 +4033,7 @@ describe('Action surface consolidation', () => {
   });
 
   it('Quick Help mentions folder-export import and structure-not-restored caveat', () => {
-    render(makeState(), root);
+    render(makeState({ menuOpen: true }), root);
     const helpItems = root.querySelectorAll('.pkc-shell-menu-help-item');
     const importLine = Array.from(helpItems).find((li) =>
       li.textContent?.includes('インポート'),
@@ -4088,7 +4114,7 @@ describe('Folder UX Hardening', () => {
     selectedLid: null, editingLid: null, error: null, embedded: false,
     pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
     categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-    exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
   };
 
   it('shows tree with folder and child in sidebar', () => {
@@ -4363,7 +4389,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="sidebar"]')).not.toBeNull();
@@ -4377,7 +4403,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="sidebar"]')).not.toBeNull();
@@ -4391,7 +4417,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
@@ -4406,7 +4432,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
@@ -4421,7 +4447,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
@@ -4439,7 +4465,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
@@ -4474,7 +4500,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e3', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(stateTextlog, root);
     let actionBar = root.querySelector('[data-pkc-region="action-bar"]');
@@ -4514,7 +4540,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e3', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const actionBar = root.querySelector('[data-pkc-region="action-bar"]');
@@ -4545,7 +4571,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e3', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(stateTextlog, root);
     const cb = root.querySelector<HTMLInputElement>(
@@ -4584,7 +4610,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e3', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(
@@ -4598,7 +4624,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const meta = root.querySelector('[data-pkc-region="meta"]');
@@ -4613,7 +4639,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const createBtns = root.querySelectorAll('[data-pkc-action="create-entry"]');
@@ -4628,7 +4654,7 @@ describe('Three-Pane Layout', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     // Sidebar entries now show archetype emoji in the title, not in separate badges
@@ -4666,7 +4692,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const draggables = root.querySelectorAll('[data-pkc-draggable="true"]');
@@ -4682,7 +4708,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const dropTargets = root.querySelectorAll('[data-pkc-drop-target="true"]');
@@ -4698,7 +4724,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const note1 = root.querySelector('[data-pkc-lid="note1"][data-pkc-draggable]');
@@ -4712,7 +4738,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const rootDrop = root.querySelector('[data-pkc-drop-target="root"]');
@@ -4726,7 +4752,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const rootDrop = root.querySelector('[data-pkc-drop-target="root"]');
@@ -4739,7 +4765,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: 'Note', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     // In flat mode (filter active), draggable should not be set
@@ -4755,22 +4781,23 @@ describe('DnD + Context Menu Foundation', () => {
     expect(menu.style.top).toBe('200px');
 
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Move to Root (shown because hasParent=true),
-    // Markdown link, Markdown embed (Phase 1 step 5 rename).
-    expect(items.length).toBe(5);
+    // Edit, 別ウィンドウで開く (γ-A5-6), Delete, Move to Root (shown
+    // because hasParent=true), Markdown link, Markdown embed.
+    expect(items.length).toBe(6);
     expect(items[0]!.textContent).toContain('Edit');
-    expect(items[1]!.textContent).toContain('Delete');
-    expect(items[2]!.textContent).toContain('Root');
-    expect(items[3]!.textContent).toContain('Markdown link');
-    expect(items[4]!.textContent).toContain('Markdown embed');
+    expect(items[1]!.textContent).toContain('別ウィンドウで開く');
+    expect(items[2]!.textContent).toContain('Delete');
+    expect(items[3]!.textContent).toContain('Root');
+    expect(items[4]!.textContent).toContain('Markdown link');
+    expect(items[5]!.textContent).toContain('Markdown embed');
   });
 
   it('renderContextMenu hides Move to Root when no parent', () => {
     const menu = renderContextMenu('test-lid', 0, 0, false);
     const items = menu.querySelectorAll('.pkc-context-menu-item');
-    // Edit, Delete, Markdown link, Markdown embed
-    //   (Move to Root hidden, hasParent=false).
-    expect(items.length).toBe(4);
+    // Edit, 別ウィンドウで開く (γ-A5-6), Delete, Markdown link,
+    // Markdown embed (Move to Root hidden, hasParent=false).
+    expect(items.length).toBe(5);
     const texts = Array.from(items).map(i => i.textContent);
     expect(texts.some(t => t!.includes('Root'))).toBe(false);
     expect(texts.some(t => t!.includes('Markdown link'))).toBe(true);
@@ -4911,7 +4938,7 @@ describe('DnD + Context Menu Foundation', () => {
       selectedLid: 'note1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const moveSection = root.querySelector('[data-pkc-region="move-to-folder"]');
@@ -5035,7 +5062,7 @@ describe('Detached View Foundation', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const items = root.querySelectorAll('[data-pkc-action="select-entry"]');
@@ -5053,7 +5080,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -5068,7 +5095,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: true, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -5081,7 +5108,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -5095,7 +5122,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: 'e1', editingLid: 'e1', error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -5118,7 +5145,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: 'f1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -5133,7 +5160,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
@@ -5147,7 +5174,7 @@ describe('Persistent Drop Zone', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const attachBtn = root.querySelector('[data-pkc-action="create-entry"][data-pkc-archetype="attachment"]');
@@ -5177,7 +5204,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows view mode toggle bar with Detail / Calendar / Kanban / Filer / Graph / Launcher buttons', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5197,7 +5224,7 @@ describe('Todo Calendar Foundation', () => {
   it('marks active view mode button', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5210,7 +5237,7 @@ describe('Todo Calendar Foundation', () => {
   it('renders calendar view when viewMode is calendar', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5221,7 +5248,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows month and year in calendar title', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5233,7 +5260,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows prev/next navigation buttons', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5244,7 +5271,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows day-of-week headers', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5257,7 +5284,7 @@ describe('Todo Calendar Foundation', () => {
   it('renders todo items on their date cells', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5275,7 +5302,7 @@ describe('Todo Calendar Foundation', () => {
   it('shows archived todos when showArchived is true', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5287,7 +5314,7 @@ describe('Todo Calendar Foundation', () => {
   it('marks done todos with data-pkc-todo-status', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5299,7 +5326,7 @@ describe('Todo Calendar Foundation', () => {
   it('todo items have select-entry action', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5311,7 +5338,7 @@ describe('Todo Calendar Foundation', () => {
   it('does not show calendar view in detail mode', () => {
     const state: AppState = {
       phase: 'ready', container: calendarContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5330,7 +5357,7 @@ describe('Todo Calendar Foundation', () => {
       exportMode: null, exportMutability: null,
       readonly: false, lightSource: false, showArchived: false,
       viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4,
-      multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -5413,7 +5440,7 @@ describe('Todo Archive Foundation', () => {
   it('hides archived todos by default (showArchived: false)', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5426,7 +5453,7 @@ describe('Todo Archive Foundation', () => {
   it('shows archived todos when showArchived is true', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5437,7 +5464,7 @@ describe('Todo Archive Foundation', () => {
   it('shows Show Archived toggle when archived todos exist', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5451,7 +5478,7 @@ describe('Todo Archive Foundation', () => {
   it('does not show Show Archived toggle when no archived todos exist', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5462,7 +5489,7 @@ describe('Todo Archive Foundation', () => {
   it('marks archived todo with data-pkc-todo-archived in sidebar', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: true, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5477,7 +5504,7 @@ describe('Todo Archive Foundation', () => {
   it('non-todo entries are not affected by archive filter', () => {
     const state: AppState = {
       phase: 'ready', container: archivedContainer,
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -5505,7 +5532,7 @@ describe('Interaction Consistency & Guidance Layer', () => {
     selectedLid: null, editingLid: null, error: null, embedded: false,
     pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
     categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-    exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
   };
 
   const emptyContainer: Container = {
@@ -5682,7 +5709,7 @@ describe('Todo Kanban Foundation', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -5943,7 +5970,7 @@ describe('Todo View Interaction Consistency', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -6173,7 +6200,7 @@ describe('Todo Kanban Status Move Foundation', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -6391,7 +6418,7 @@ describe('Todo Kanban DnD Foundation', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -6605,7 +6632,7 @@ describe('Todo Calendar Date Move Foundation', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -6836,7 +6863,7 @@ describe('Todo Kanban → Calendar Cross-View DnD Foundation', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -7009,7 +7036,7 @@ describe('DnD Cleanup & Cancellation Robustness', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'kanban' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -7169,7 +7196,7 @@ describe('Todo Calendar → Kanban Cross-View DnD Foundation', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'calendar' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -7329,7 +7356,7 @@ describe('Calendar/Kanban Multi-Select Visual Feedback', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -7577,7 +7604,7 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -7660,7 +7687,8 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
 
   describe('CLEAR button safety', () => {
     it('renders Reset button with danger class in shell menu maintenance', () => {
-      render(baseState(), root);
+      // pgc-207:shell menu は menuOpen=true 時のみ DOM build される(lazy build)
+      render(baseState({ menuOpen: true }), root);
       const btn = root.querySelector('[data-pkc-action="clear-local-data"]');
       expect(btn).not.toBeNull();
       expect(btn!.textContent).toContain('Reset');
@@ -7671,7 +7699,7 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     });
 
     it('has descriptive title attribute', () => {
-      render(baseState(), root);
+      render(baseState({ menuOpen: true }), root);
       const btn = root.querySelector('[data-pkc-action="clear-local-data"]') as HTMLElement;
       expect(btn.getAttribute('title')).toContain('IndexedDB');
     });
@@ -7938,7 +7966,7 @@ describe('Sandbox Control UI in Meta Pane', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -8068,7 +8096,7 @@ describe('Light mode badge', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
-      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -8105,7 +8133,7 @@ describe('Light mode attachment create restriction', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
-      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -8142,7 +8170,7 @@ describe('Light mode detail pane notice', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: true, showArchived: false,
-      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -8202,7 +8230,7 @@ describe('Pane resize DOM selectors', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
@@ -8216,7 +8244,7 @@ describe('Pane resize DOM selectors', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const meta = root.querySelector('[data-pkc-region="meta"]');
@@ -8230,7 +8258,7 @@ describe('Pane resize DOM selectors', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const leftHandle = root.querySelector('[data-pkc-resize="left"]');
@@ -8245,7 +8273,7 @@ describe('Pane resize DOM selectors', () => {
       selectedLid: 'e1', editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="tray-left"]')).not.toBeNull();
@@ -8270,7 +8298,7 @@ describe('Shell Menu & Help Foundation (P2)', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     const menuBtn = root.querySelector('[data-pkc-action="toggle-shell-menu"]');
@@ -8278,18 +8306,22 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     expect(menuBtn!.textContent).toBe('⚙');
   });
 
-  it('renders shell menu panel (hidden by default)', () => {
+  it('renders shell menu panel when open(pgc-207 lazy build:menuOpen=true で contents 構築)', () => {
     const state: AppState = {
       phase: 'ready', container: mockContainer,
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
+      // pgc-207:shell menu の DOM contents は menuOpen=true 時のみ build される。
+      // この test は「menu items 表示」 を assert するため menuOpen を ON にする。
+      menuOpen: true,
     };
     render(state, root);
     const menu = root.querySelector('[data-pkc-region="shell-menu"]');
     expect(menu).not.toBeNull();
-    expect((menu as HTMLElement).style.display).toBe('none');
+    // pgc-207:menuOpen=true で表示 ON('' = visible)
+    expect((menu as HTMLElement).style.display).toBe('');
     // Overlay/card dialog structure
     expect(menu!.classList.contains('pkc-shell-menu-overlay')).toBe(true);
     expect(menu!.querySelector('.pkc-shell-menu-card')).not.toBeNull();
@@ -8311,7 +8343,7 @@ describe('Shell Menu & Help Foundation (P2)', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
     expect(root.querySelector('[data-pkc-region="shortcut-help"]')).toBeNull();
@@ -8323,7 +8355,7 @@ describe('Shell Menu & Help Foundation (P2)', () => {
       selectedLid: null, editingLid: null, error: null, embedded: false,
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
-      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], shortcutHelpOpen: true,
+      exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1, shortcutHelpOpen: true,
     };
     render(state, root);
     const overlay = root.querySelector('[data-pkc-region="shortcut-help"]');
@@ -8393,7 +8425,11 @@ describe('Shell Menu Data Maintenance (orphan asset cleanup UI)', () => {
     calendarYear: 2026,
     calendarMonth: 4,
     multiSelectedLids: [],
-    batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+    batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
+    // pgc-207:shell menu の contents は menuOpen=true 時のみ build される
+    // (lazy build)。本 describe の各 test は shell menu Data Maintenance /
+    // Storage Profile section を見るため default で menuOpen=true。
+    menuOpen: true,
     ...overrides,
   });
 
@@ -8585,7 +8621,7 @@ describe('Task completion badge', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -8741,7 +8777,7 @@ describe('Table of Contents (A-3, right pane)', () => {
       pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(),
       categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc',
       exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false,
-      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -8996,7 +9032,11 @@ describe('Storage Profile dialog (renderer)', () => {
     calendarMonth: 4,
     multiSelectedLids: [],
     batchImportResult: null,
-    collapsedFolders: [], recentEntryRefLids: [],
+    collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
+    // pgc-207:Storage Profile launch button は shell menu の Data
+    // Maintenance section にある。shell menu の contents は menuOpen=true
+    // 時のみ build される(lazy build)、本 describe の test は default ON。
+    menuOpen: true,
     ...overrides,
   });
 
@@ -9399,7 +9439,7 @@ describe('Sidebar scroll-into-view', () => {
       readonly: false, lightSource: false, showArchived: false,
       viewMode: 'detail' as const,
       calendarYear: 2026, calendarMonth: 4,
-      multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
   }
 
@@ -9551,7 +9591,7 @@ describe('FI-08.x — editor textarea and read-mode autolink (T-FBC-12, T-FBC-13
   it('T-FBC-12: edit mode textarea[data-pkc-field="body"].value stays plain URL (no <a>)', () => {
     const state: AppState = {
       phase: 'editing', container: urlContainer,
-      selectedLid: 'u1', editingLid: 'u1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'u1', editingLid: 'u1', error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -9567,7 +9607,7 @@ describe('FI-08.x — editor textarea and read-mode autolink (T-FBC-12, T-FBC-13
   it('T-FBC-13: read mode detail view renders bare URL as <a href>', () => {
     const state: AppState = {
       phase: 'ready', container: urlContainer,
-      selectedLid: 'u1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: 'u1', editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
     };
     render(state, root);
 
@@ -9614,7 +9654,7 @@ describe('Recent Entries Pane v1', () => {
   function makeState(overrides?: Partial<AppState>): AppState {
     return {
       phase: 'ready', container: makeContainer([]),
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }
@@ -9866,7 +9906,7 @@ describe('Saved Searches Pane v1', () => {
   function makeState(overrides?: Partial<AppState>): AppState {
     return {
       phase: 'ready', container: makeContainer([]),
-      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [],
+      selectedLid: null, editingLid: null, error: null, embedded: false, pendingOffers: [], importPreview: null, batchImportPreview: null, searchQuery: '', archetypeFilter: new Set(), categoricalPeerFilter: null, sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null, readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const, calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null, collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: -1,
       ...overrides,
     };
   }

@@ -140,6 +140,11 @@ export interface AstLink extends AstNodeBase {
   /** kind: external / entry / asset / permalink. */
   linkKind: 'external' | 'entry' | 'asset' | 'permalink';
   children: readonly AstInline[];
+  /**
+   * pgc-243:CommonMark `[text](url "title")` の title attribute、
+   * HTML `<a title>` と双方向可換に保持。未指定なら省略。
+   */
+  title?: string;
 }
 
 export interface AstCard extends AstNodeBase {
@@ -160,6 +165,11 @@ export interface AstImage extends AstNodeBase {
   kind: 'image';
   src: string;
   alt: string;
+  /**
+   * pgc-243:CommonMark `![alt](src "title")` の title attribute、
+   * HTML `<img title>` と双方向可換に保持。未指定なら省略。
+   */
+  title?: string;
 }
 
 export interface AstAutoRef extends AstNodeBase {
@@ -363,6 +373,48 @@ export interface AstSection extends AstNodeBase {
   children: readonly AstBlock[];
 }
 
+/**
+ * Block-level format wrapper(v4 §12 future、catalog #60、Q1-Q8 OK 取得済 2026-05-25)。
+ *
+ * `:::format{...}` formal / `:::.cls.cls\nbody\n:::` Tier 1 class chain / `:::red,bg-yellow\nbody\n:::`
+ * Tier 0 vocabulary、3 形式すべて本 node に正規化。inline `:text:bold,red:`(catalog #9)
+ * の block 対応物として、複数段落 / list / table / 他 directive 等任意 block を children に含める。
+ *
+ * AstSection との違い:
+ *   - AstSection.role は **semantic role**(note / warning / tip 等)で固定 CSS が当たる
+ *   - AstFormatBlock は **任意 user-defined class + vocabulary inline style** を持ち、
+ *     style 適用は (a) `styles` から `<div style="...">` direct apply、(b) `classes` から
+ *     user CSS rule 経由、の 2 経路。
+ *
+ * canonical 出力(Q6 simple → formal 寄せ):
+ *   `<div class="pkc-format-block <classes>" id="<id>" data-pkc-format-block style="..." data-pkc-<key>="<value>">`
+ *
+ * attrs 出力順(diff friendly、§1.4):
+ *   1. class(pkc-format-block + ABC sorted user classes)
+ *   2. id
+ *   3. data-pkc-format-block(marker)
+ *   4. style(vocabulary 経由の inline style)
+ *   5. data-pkc-indent / data-pkc-align(特殊解釈 key)
+ *   6. data-pkc-*(その他 kvs、key ABC 順)
+ */
+export interface AstFormatBlock extends AstNodeBase {
+  kind: 'format-block';
+  /** class 名(`.cls` form の集約、canonical ABC sorted)。 */
+  classes: readonly string[];
+  /** vocabulary 値 → style mapping(`color` / `background` / `font-size` / `font-weight` / `font-style` 等)。 */
+  styles?: Readonly<Record<string, string>>;
+  /** id(`#id` form)。 */
+  blockId?: string;
+  /** 数値 indent(1-10、`indent=N` form、`data-pkc-indent="N"` に出力)。 */
+  indent?: number;
+  /** align(`align=left|center|right|justify`、`data-pkc-align` に出力)。 */
+  align?: 'left' | 'center' | 'right' | 'justify';
+  /** その他 attrs(key ABC 順、`data-pkc-<key>` 出力)。 */
+  kvs?: Readonly<Record<string, string | boolean>>;
+  /** 内部 block 列(再帰 nest 可)。 */
+  children: readonly AstBlock[];
+}
+
 export interface AstIfBlock extends AstNodeBase {
   kind: 'if-block';
   format: string;
@@ -437,6 +489,7 @@ export type AstBlock =
   | AstBreak
   | AstFigure
   | AstSection
+  | AstFormatBlock
   | AstIfBlock
   | AstCommentBlock
   | AstBlank

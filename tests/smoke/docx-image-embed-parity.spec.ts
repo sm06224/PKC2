@@ -1,4 +1,10 @@
-/** PR-V22: docx export 経由で実際 container.assets から image が埋め込まれる. */
+/**
+ * PR-V22: docx export 経由で実際 container.assets から image が埋め込まれる.
+ *
+ * pgc-52(A1-4):`sidebar.mode` の default が 'filer' へ切替わったため、
+ * tree sidebar の `[data-pkc-region="entry-list"]` で entry を選択する
+ * 本 spec は `?pkc-flag=sidebar.mode=tree` で tree に pin する。
+ */
 import { test, expect, type Page } from '@playwright/test';
 import { bootReady } from './_helpers/boot-ready';
 
@@ -23,7 +29,7 @@ async function seedContainer(page: Page, container: Record<string, unknown>): Pr
 }
 
 test('Data > Word click で生成された .docx に image が embed されてる(media/ folder + <w:drawing>)', async ({ page }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
@@ -40,7 +46,7 @@ test('Data > Word click で生成された .docx に image が embed されて�
     ],
     relations: [], revisions: [], assets: { k1: PNG },
   });
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // src TEXT を選択

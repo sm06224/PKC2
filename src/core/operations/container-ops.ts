@@ -397,12 +397,21 @@ export function getLatestRevision(
 
 /**
  * Get the revision count for an entry.
+ *
+ * pgc-230:revisions が空配列のとき(typical fresh container)早期 return ──
+ * sidebar render で全 entry に対し getRevisionCount が呼ばれるため、c-1000+
+ * で revisions=0 でも N 回 filter(empty array) が走る無駄を構造的に除去。
  */
 export function getRevisionCount(
   container: Container,
   lid: string,
 ): number {
-  return container.revisions.filter((r) => r.entry_lid === lid).length;
+  if (container.revisions.length === 0) return 0;
+  let count = 0;
+  for (const r of container.revisions) {
+    if (r.entry_lid === lid) count++;
+  }
+  return count;
 }
 
 /**
@@ -494,6 +503,7 @@ const KNOWN_ARCHETYPES: ReadonlySet<ArchetypeId> = new Set<ArchetypeId>([
   'folder',
   'generic',
   'opaque',
+  'spreadsheet', // 領域 10-4 Phase 1(2026-05-28)
 ]);
 
 function isKnownArchetype(value: unknown): value is ArchetypeId {

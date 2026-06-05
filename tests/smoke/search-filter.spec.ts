@@ -46,7 +46,7 @@ test('search input filters sidebar entry list', async ({ page }) => {
     if (msg.type() === 'error') errors.push(`console.error: ${msg.text()}`);
   });
 
-  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 

@@ -63,6 +63,7 @@
 import type {
   AstAttrs,
   AstLayoutHint,
+  AstPosition,
   AstAutoRef,
   AstCitation,
   AstFootnoteRef,
@@ -76,6 +77,7 @@ import type {
   AstEmDot,
   AstEmphasis,
   AstFigure,
+  AstFormatBlock,
   AstIfBlock,
   AstInline,
   AstInlineCode,
@@ -429,6 +431,8 @@ function decomposeBlocks(
           }
         }
         if (closeIdx !== -1) {
+          // opener paragraph(`%%%`)の pos を保持して comment-block の pos に転記
+          const openerPos = block.pos;
           // 内部 block を text として fold(AstCommentBlock.source へ)
           const innerLines: string[] = [];
           for (const b of expanded.slice(i + 1, closeIdx)) {
@@ -440,6 +444,7 @@ function decomposeBlocks(
             kind: 'comment-block',
             source: innerLines.join('\n'),
           };
+          if (openerPos) node.pos = openerPos;
           out.push(node);
           i = closeIdx + 1;
           continue;
@@ -470,7 +475,8 @@ function decomposeBlocks(
             expanded.slice(i + 1, closeIdx),
             vars,
           );
-          const node = buildBlockNode(opener.role, opener.attrs, innerBlocks);
+          // opener paragraph(`:::role{...}` の行)の pos を block node に転記
+          const node = buildBlockNode(opener.role, opener.attrs, innerBlocks, block.pos);
           if (node) out.push(node);
           i = closeIdx + 1;
           continue;
@@ -478,7 +484,7 @@ function decomposeBlocks(
         // PR-W24 v3:closer 見つからず EOF まで到達 → 寛容 parse として残り全部を
         // content として吸収。spec L-tolerant「EOF までを内容として取り込む」。
         const innerBlocks = decomposeBlocks(expanded.slice(i + 1), vars);
-        const node = buildBlockNode(opener.role, opener.attrs, innerBlocks);
+        const node = buildBlockNode(opener.role, opener.attrs, innerBlocks, block.pos);
         if (node) out.push(node);
         i = expanded.length;
         continue;
@@ -570,6 +576,8 @@ function expandSingleLineBlocks(
         }
         const source = m[1]!;
         const node: AstCommentBlock = { kind: 'comment-block', source };
+        // 単一行 collapsed `%%% ... %%%` paragraph の pos を comment-block に転記
+        if (block.pos) node.pos = block.pos;
         out.push(node);
         lastEnd = m.index + m[0].length;
       }
@@ -615,7 +623,9 @@ function expandSingleLineBlocks(
       const innerBlocks = content.trim() === ''
         ? []
         : [makeParagraphFromText(content)];
-      const node = buildBlockNode(role, attrs, decomposeBlocks(innerBlocks, vars));
+      // single-line block(`:::role{...} content :::`)も含んでいる paragraph の
+      // pos を block node に転記。
+      const node = buildBlockNode(role, attrs, decomposeBlocks(innerBlocks, vars), block.pos);
       if (node) out.push(node);
       lastEnd = m.index + m[0].length;
     }
@@ -688,6 +698,11 @@ function buildBlockNode(
   role: string,
   attrs: AstAttrs | undefined,
   children: AstBlock[],
+  // 領域 10-3 IR 残課題(2026-05-28):opener paragraph の `pos` を thread して
+  // 構築 block の `pos` に転記し、render-html.ts の `sourceLineAttr` が
+  // `data-pkc-source-line` を block element に emit できるようにする。
+  // source-preview-sync が AST 経路でも markdown-it 経路と同じ精度で機能する。
+  pos?: AstPosition,
 ): AstBlock | null {
   // PR-V3(2026-05-14):layout hint を attrs から分離(semantic / layout 名前空間切り分け)
   const { layout, attrs: cleanAttrs } = extractLayoutHint(attrs);
@@ -697,6 +712,7 @@ function buildBlockNode(
       const node: AstSection = { kind: 'section', role: sectionRole, children };
       if (cleanAttrs && !isEmptyAttrs(cleanAttrs)) node.attrs = cleanAttrs;
       if (layout) node.layout = layout;
+      if (pos) node.pos = pos;
       return node;
     }
     case 'comment': {
@@ -705,6 +721,7 @@ function buildBlockNode(
         .map((b) => (b.kind === 'paragraph' ? inlinesToText(b.children) : ''))
         .join('\n');
       const node: AstCommentBlock = { kind: 'comment-block', source };
+      if (pos) node.pos = pos;
       return node;
     }
     case 'figure': {
@@ -773,12 +790,14 @@ function buildBlockNode(
       if (extractedCaption) node.caption = extractedCaption;
       if (cleanAttrs && !isEmptyAttrs(cleanAttrs)) node.attrs = cleanAttrs;
       if (layout) node.layout = layout;
+      if (pos) node.pos = pos;
       return node;
     }
     case 'if': {
       const format = (cleanAttrs?.kvs.format as string | undefined) ?? 'html';
       const node: AstIfBlock = { kind: 'if-block', format, children };
       if (layout) node.layout = layout;
+      if (pos) node.pos = pos;
       return node;
     }
     case 'quote': {
@@ -791,6 +810,7 @@ function buildBlockNode(
       const node: AstQuote = { kind: 'quote', children };
       if (Object.keys(citation).length > 0) node.citation = citation;
       if (layout) node.layout = layout;
+      if (pos) node.pos = pos;
       return node;
     }
     case 'paragraph': {
@@ -809,6 +829,7 @@ function buildBlockNode(
         const node: AstParagraph = { ...first };
         if (align) node.align = align;
         if (layout) node.layout = layout;
+        if (pos) node.pos = pos;
         return node;
       }
       return null;
@@ -822,6 +843,47 @@ function buildBlockNode(
       const node: AstBreak = roleAttr
         ? { kind: 'break', breakKind, role: roleAttr }
         : { kind: 'break', breakKind };
+      if (pos) node.pos = pos;
+      return node;
+    }
+    case 'format': {
+      // v4 §12(stack PR 4):block 装飾箱 formal `:::format{.cls #id key=v indent=N align=X}`。
+      // Q1 で `format` directive 名確定、Q6 simple → formal 寄せ canonical。
+      // Tier 0 vocabulary(`:::red,bg-yellow,1.2em`)+ Tier 1 class chain(`:::.cls.cls`)は
+      // stack PR 5-6 で parser 拡張、本 PR は formal `{...}` のみ。
+      const classes = cleanAttrs ? [...cleanAttrs.classes].sort() : [];
+      const blockId = cleanAttrs?.id;
+      // indent / align は特殊解釈 key、kvs から抽出
+      const indentRaw = cleanAttrs?.kvs.indent;
+      const indent = typeof indentRaw === 'string'
+        ? Math.max(1, Math.min(10, parseInt(indentRaw, 10) || 0)) || undefined
+        : undefined;
+      const alignRaw = cleanAttrs?.kvs.align;
+      const align: 'left' | 'center' | 'right' | 'justify' | undefined =
+        alignRaw === 'left' || alignRaw === 'center' || alignRaw === 'right' || alignRaw === 'justify'
+          ? alignRaw
+          : undefined;
+      // 残り kvs(indent / align 除外)
+      const remainingKvs: Record<string, string | boolean> = {};
+      if (cleanAttrs) {
+        for (const [k, v] of Object.entries(cleanAttrs.kvs)) {
+          if (k === 'indent' || k === 'align') continue;
+          remainingKvs[k] = v;
+        }
+      }
+      const node: AstFormatBlock = {
+        kind: 'format-block',
+        classes,
+        children,
+      };
+      if (blockId) node.blockId = blockId;
+      if (indent !== undefined) node.indent = indent;
+      if (align) node.align = align;
+      if (Object.keys(remainingKvs).length > 0) node.kvs = remainingKvs;
+      if (layout) {
+        (node as AstFormatBlock & { layout?: typeof layout }).layout = layout;
+      }
+      if (pos) node.pos = pos;
       return node;
     }
     default: {
@@ -829,6 +891,7 @@ function buildBlockNode(
       const node: AstSection = { kind: 'section', role, children };
       if (cleanAttrs && !isEmptyAttrs(cleanAttrs)) node.attrs = cleanAttrs;
       if (layout) node.layout = layout;
+      if (pos) node.pos = pos;
       return node;
     }
   }

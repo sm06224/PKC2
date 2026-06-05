@@ -4,67 +4,122 @@
   "scenario": "select-entry",
   "measures": [
     {
-      "name": "dispatch:SELECT_ENTRY:reduce",
-      "startTime": 703.7000000000116,
-      "duration": 0
+      "name": "dispatch:SELECT_ENTRY",
+      "startTime": 767.4000000003725,
+      "duration": 59.59999999962747
     },
     {
-      "name": "dispatch:SELECT_ENTRY",
-      "startTime": 703.7000000000116,
-      "duration": 503
+      "name": "dispatch:SELECT_ENTRY:reduce",
+      "startTime": 767.6000000005588,
+      "duration": 0.09999999962747097
     },
     {
       "name": "dispatch:SELECT_ENTRY:notify-state",
-      "startTime": 703.7999999999884,
-      "duration": 498.1000000000349
+      "startTime": 767.7000000001863,
+      "duration": 59
     },
     {
-      "name": "render:phase=ready",
-      "startTime": 708,
-      "duration": 491.0999999999767
+      "name": "render:scope=selection-only",
+      "startTime": 768.2000000001863,
+      "duration": 56.299999999813735
     },
     {
       "name": "render:sidebar",
-      "startTime": 729.2999999999884,
-      "duration": 76
-    },
-    {
-      "name": "filter:applyFilters",
-      "startTime": 734.2999999999884,
-      "duration": 0
-    },
-    {
-      "name": "render:sidebar:filter-pipeline",
-      "startTime": 734.2999999999884,
-      "duration": 0.5
-    },
-    {
-      "name": "render:sidebar:sort",
-      "startTime": 734.7999999999884,
-      "duration": 1
-    },
-    {
-      "name": "tree:buildTree",
-      "startTime": 735.7999999999884,
-      "duration": 6.7999999999883585
-    },
-    {
-      "name": "render:sidebar:tree-loop",
-      "startTime": 742.5999999999767,
-      "duration": 60.300000000046566
+      "startTime": 768.6000000005588,
+      "duration": 4.7999999998137355
     },
     {
       "name": "render:center",
-      "startTime": 806.2999999999884,
-      "duration": 7.100000000034925
+      "startTime": 778.9000000003725,
+      "duration": 5.2999999998137355
+    },
+    {
+      "name": "render:sidebar",
+      "startTime": 791.2000000001863,
+      "duration": 2.900000000372529
+    },
+    {
+      "name": "render:center",
+      "startTime": 794.2000000001863,
+      "duration": 3.099999999627471
     },
     {
       "name": "render:meta",
-      "startTime": 813.5,
-      "duration": 88.79999999998836
+      "startTime": 797.4000000003725,
+      "duration": 26.59999999962747
+    },
+    {
+      "name": "meta:startup",
+      "startTime": 798.2999999998137,
+      "duration": 11.900000000372529
+    },
+    {
+      "name": "meta:frontmatter",
+      "startTime": 810.2999999998137,
+      "duration": 0.10000000055879354
+    },
+    {
+      "name": "meta:toc",
+      "startTime": 810.4000000003725,
+      "duration": 0
+    },
+    {
+      "name": "meta:section-entry-tags",
+      "startTime": 810.5,
+      "duration": 0
+    },
+    {
+      "name": "meta:middle-sections",
+      "startTime": 810.5,
+      "duration": 10
+    },
+    {
+      "name": "meta:section-categorical-tag",
+      "startTime": 810.6000000005588,
+      "duration": 5.699999999254942
+    },
+    {
+      "name": "meta:section-move",
+      "startTime": 816.4000000003725,
+      "duration": 2.5
+    },
+    {
+      "name": "meta:section-desc-profile",
+      "startTime": 819,
+      "duration": 1.400000000372529
+    },
+    {
+      "name": "meta:history",
+      "startTime": 820.5,
+      "duration": 0.40000000037252903
+    },
+    {
+      "name": "meta:relations",
+      "startTime": 820.9000000003725,
+      "duration": 1.599999999627471
+    },
+    {
+      "name": "meta:linkIndex",
+      "startTime": 822.5,
+      "duration": 0
+    },
+    {
+      "name": "meta:renderLinkIndexSections",
+      "startTime": 822.7000000001863,
+      "duration": 0.900000000372529
+    },
+    {
+      "name": "meta:relation-create-form",
+      "startTime": 823.6000000005588,
+      "duration": 0.39999999944120646
+    },
+    {
+      "name": "meta:inspector",
+      "startTime": 824,
+      "duration": 0
     }
   ],
   "bootElapsedMs": -1,
-  "heapUsedMb": 35.57,
-  "capturedAt": "2026-04-28T20:03:05.924Z"
+  "heapUsedMb": 59.88,
+  "capturedAt": "2026-05-25T02:47:41.853Z"
 }

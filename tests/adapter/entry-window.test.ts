@@ -179,8 +179,11 @@ describe('Entry Window', () => {
       // renderMd is referenced from BOTH the tab-bar `showTab()` path
       // and the A-2 split editor's input listener — emitted in the
       // child script either way, so default archetype is fine.
+      // user direction 2026-05-28: live preview を hydrate 経路にしたため
+      // 子スクリプトの呼出 site は renderMdInto(el, src) で renderMd を内包する。
       const html = await openAndCapture();
-      expect(html).toContain('renderMd(src)');
+      expect(html).toContain('renderMdInto(document.getElementById');
+      expect(html).toContain('function renderMd(text)');
       expect(html).toContain('window.opener.pkcRenderMarkdown');
     });
 
@@ -188,7 +191,9 @@ describe('Entry Window', () => {
       const html = await openAndCapture();
       // showTab reads body-edit.value (current value), not a cached variable
       expect(html).toContain("var src = document.getElementById('body-edit').value");
-      expect(html).toContain("document.getElementById('body-preview').innerHTML = renderMd(src)");
+      // user direction 2026-05-28: live preview を hydrate 経路にした。renderMdInto は
+      // innerHTML 設定 + window.opener.pkcHydratePreviewMermaid 呼出を 1 つにまとめる。
+      expect(html).toContain("renderMdInto(document.getElementById('body-preview'), src)");
     });
   });
 

@@ -26,6 +26,7 @@
  */
 
 import { parseFrontmatter } from './frontmatter';
+import type { ListNumberMode } from './list-renumber';
 
 export type Writing = 'horizontal' | 'vertical';
 export type Direction = 'ltr' | 'rtl';
@@ -183,4 +184,47 @@ export function globalsToDataAttrs(globals: DocumentGlobals): Record<string, str
   if (globals.align) attrs['data-pkc-doc-align'] = globals.align;
   if (globals.layout) attrs['data-pkc-layout'] = globals.layout;
   return attrs;
+}
+
+/**
+ * 領域 8 Layer 3:frontmatter `heading-number` から見出しアウトライン番号
+ * の設定を抽出する(opt-in)。未指定 / false / 無効値なら `null`。
+ *
+ *   heading-number: true   → { start: 1 }
+ *   heading-number: on     → { start: 1 }
+ *   heading-number: 3      → { start: 3 }(数値 = 有効化 + L1 開始番号)
+ *
+ * caller(presenter)は全文 body(frontmatter 込み)を渡し、戻り値を
+ * `renderMarkdown` の `opts.headingNumber` へ渡す。
+ */
+export function extractHeadingNumberConfig(body: string): { start: number } | null {
+  if (!body) return null;
+  const raw = parseFrontmatter(body).meta['heading-number'];
+  if (raw === true || raw === 'true' || raw === 'on') return { start: 1 };
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 1) {
+    return { start: Math.floor(raw) };
+  }
+  if (typeof raw === 'string') {
+    const n = Number(raw.trim());
+    if (Number.isFinite(n) && n >= 1) return { start: Math.floor(n) };
+  }
+  return null;
+}
+
+/**
+ * 領域 8 Layer 1:frontmatter `list-number` から順序リストの採番モードを
+ * 抽出する。`uniform` で「全項目を開始番号へ統一(`1. 1. 1.`)」、それ以外 /
+ * 未指定は `sequential`(`1. 2. 3.` 連番、既定)。
+ *
+ *   list-number: uniform     → 'uniform'
+ *   list-number: sequential  → 'sequential'
+ *   (未指定 / 無効値)        → 'sequential'
+ *
+ * editor の Enter 採番 / format panel の採番ボタンが全文 body を渡す。
+ */
+export function extractListNumberMode(body: string): ListNumberMode {
+  if (!body) return 'sequential';
+  return parseFrontmatter(body).meta['list-number'] === 'uniform'
+    ? 'uniform'
+    : 'sequential';
 }

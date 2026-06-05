@@ -182,6 +182,152 @@ export function parseBlockDirectiveOpen(
 }
 
 /**
+ * v4 §12 stack PR 5:Tier 1 class chain simple `:::.cls.cls(#id)?` 形寛容パース。
+ *
+ * 6 variation を全て BlockDirectiveAttrs に正規化:
+ *
+ *   :::.highlight.important              ← packed(最短)
+ *   ::: .highlight .important            ← space 区切り
+ *   ::: {.highlight .important}          ← Pandoc fenced div 互換
+ *   ::: highlight                        ← 単 class(`.` 省略可)
+ *   :::.highlight#myid                   ← class + id packed
+ *   ::: .highlight #myid                 ← space + id
+ *
+ * 全 variation で `name='format'` 相当として扱うが、本関数は **attrs のみ** を返す。
+ * 呼び出し側(`processFormatBlocks`)で format directive として処理する。
+ *
+ * 戻り値 null は「Tier 1 形ではない」 = 既存 `parseBlockDirectiveOpen` で処理する形。
+ */
+export function parseTier1FormatOpen(line: string): BlockDirectiveAttrs | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith(':::')) return null;
+  const rest = trimmed.slice(3); // after :::
+  if (rest.length === 0) return null;
+
+  // Variant: brace `:::{.cls .cls #id ...}` or `::: {...}`
+  const braceMatch = /^\s*\{([^}]*)\}\s*$/.exec(rest);
+  if (braceMatch) {
+    const inner = braceMatch[1]!.trim();
+    if (!inner) return null;
+    const attrs = parseBlockDirectiveAttrs(inner);
+    if (attrs.classes.length > 0 || attrs.id) return attrs;
+    return null;
+  }
+
+  // Variant: packed `:::.cls.cls#id` (rest[0] === '.')
+  if (rest[0] === '.') {
+    return parsePackedTier1Attrs(rest);
+  }
+
+  // Variant: space-separated `::: .cls .cls #id` or `::: bareCls`
+  if (rest[0] === ' ' || rest[0] === '\t') {
+    const tokens = rest.trim().split(/\s+/);
+    if (tokens.length === 0) return null;
+    const attrs: BlockDirectiveAttrs = { id: undefined, classes: [], kvs: {} };
+    for (const t of tokens) {
+      if (t.length === 0) continue;
+      if (t.startsWith('.')) {
+        const cls = t.slice(1);
+        if (!/^[A-Za-z_][\w-]*$/.test(cls)) return null;
+        attrs.classes.push(cls);
+      } else if (t.startsWith('#')) {
+        const id = t.slice(1);
+        if (!/^[A-Za-z_][\w-]*$/.test(id)) return null;
+        if (attrs.id) return null; // 重複 id
+        attrs.id = id;
+      } else if (/^[A-Za-z_][\w-]*$/.test(t)) {
+        // bare class(dot 省略)
+        attrs.classes.push(t);
+      } else {
+        return null; // 未知 token
+      }
+    }
+    if (attrs.classes.length > 0 || attrs.id) return attrs;
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * v4 §16 Q8(user direction 2026-05-25):block directive value-only 寛容パース。
+ *
+ * 4 directive 限定で `key=` 省略 + value 直書きを accept、value から key を推論:
+ *
+ *   :::section{intro}        → role=intro(任意 role 文字列)
+ *   :::section{appendix}     → role=appendix
+ *   :::if{html}              → format=html
+ *   :::toc{2}                → depth=2(integer 1-6)
+ *   :::quote{"夏目漱石"}     → author="夏目漱石"(quoted string)
+ *
+ * 戻り値:`{key, value}` 推論成功 / null 推論不能(directive 対象外 or 形式不一致)。
+ * 既存 explicit key=value form は parseBlockDirectiveAttrs で正常 parse される。
+ *
+ * 6 directive(`:::break` / `:::list` / `:::heading` / `:::code` / `:::blank` /
+ * `:::paragraph`)は **対象外**(既存 simple 形 `+++` / `- T` / `## T` / ` ```ts ``` ` /
+ * `_3` / `__T` で覆われ済のため、value-only の追加 utility が薄い)。
+ */
+export function inferQ8ValueOnlyKey(
+  directiveName: string,
+  inner: string,
+): { key: string; value: string } | null {
+  const keyMap: Record<string, string> = {
+    section: 'role',
+    if: 'format',
+    toc: 'depth',
+    quote: 'author',
+  };
+  const key = keyMap[directiveName];
+  if (!key) return null;
+  const trimmed = inner.trim();
+  if (!trimmed) return null;
+  // double-quoted string
+  const dq = /^"([^"]*)"$/.exec(trimmed);
+  if (dq) return { key, value: dq[1]! };
+  // single-quoted string
+  const sq = /^'([^']*)'$/.exec(trimmed);
+  if (sq) return { key, value: sq[1]! };
+  // bare number(integer or float)
+  if (/^[0-9]+(\.[0-9]+)?$/.test(trimmed)) return { key, value: trimmed };
+  // bare keyword(`[A-Za-z_][\w-]*`、空白 / `=` / 特殊 char なし)
+  if (/^[A-Za-z_][\w-]*$/.test(trimmed)) return { key, value: trimmed };
+  return null;
+}
+
+function parsePackedTier1Attrs(rest: string): BlockDirectiveAttrs | null {
+  // rest starts with '.' or '#'
+  // Format: (.cls)+ (#id)? (順序不問だが id は 1 個まで)
+  const attrs: BlockDirectiveAttrs = { id: undefined, classes: [], kvs: {} };
+  let i = 0;
+  while (i < rest.length) {
+    if (rest[i] === '.') {
+      i++;
+      let j = i;
+      while (j < rest.length && rest[j] !== '.' && rest[j] !== '#') j++;
+      if (j === i) return null; // empty class
+      const cls = rest.slice(i, j);
+      if (!/^[A-Za-z_][\w-]*$/.test(cls)) return null;
+      attrs.classes.push(cls);
+      i = j;
+    } else if (rest[i] === '#') {
+      i++;
+      let j = i;
+      while (j < rest.length && rest[j] !== '.') j++;
+      if (j === i) return null; // empty id
+      const id = rest.slice(i, j);
+      if (!/^[A-Za-z_][\w-]*$/.test(id)) return null;
+      if (attrs.id) return null; // 重複 id
+      attrs.id = id;
+      i = j;
+    } else {
+      return null; // 想定外の char
+    }
+  }
+  if (attrs.classes.length === 0 && !attrs.id) return null;
+  return attrs;
+}
+
+/**
  * `:::` 単独行が directive close か判定。
  *
  * `:::` 単独 + 前後 whitespace のみなら true。

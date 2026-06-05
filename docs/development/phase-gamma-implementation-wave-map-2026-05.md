@@ -76,11 +76,26 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 
 ## §2 Phase γ-C wave 詳細(format panel ワープロ化)
 
-### §2.1 γ-C1:desktop 固定 panel + Font group + 段落 group(7 PR)
+> **【2026-05-20 訂正:scrap-and-build】** 本 §2 初版は「desktop 固定
+> panel を **新設**」前提だったが、実際は `src/adapter/ui/format-panel.ts`
+> (選択追従 floating 書式 panel、14 button、本番稼働中)が既存。user 判断
+> で **scrap-and-build**(既存 floating panel を破棄 → desktop 固定 ribbon
+> を建て直し)に方針確定。stack PR-pgc-01 で本訂正。変更点:
+> (1) C1-1 を「`format_panel.desktop_fixed_enabled` 新設」から
+>     「**旧 format-panel.ts を scrap + 新 ribbon 骨格 build**」に再定義、
+>     flag は旧 `editor.format_panel_enabled` を引き継ぐ(`format_panel.*`
+>     多段 flag 案は破棄)。
+> (2) Font group の bold / italic / strike / code、段落の heading /
+>     quote、list の bullet は **旧 panel に実装済の `wrapInline` /
+>     `prefixLines` を再利用** するため、各 PR の budget は下振れる。
+> (3) stack 番号は PR-pgc-NN(main 着地せず stack を積む運用、2026-05-20
+>     user 指示)。下表の C1-NN は論理 wave、実 PR は pgc-NN に対応。
+
+### §2.1 γ-C1:scrap-and-build + Font group + 段落 group(7 PR)
 
 | PR | scope | Tier 0 flag | budget |
 |---|---|---|---|
-| C1-1 | `FORMAT_OPERATIONS` registry + desktop 固定 panel 骨格(空 panel + 6 group 折りたたみ枠)| `format_panel.desktop_fixed_enabled` 導入(default OFF)| +1.5 KB js / +1 KB css |
+| C1-1 | **旧 `format-panel.ts` を scrap**(floating panel / `mountFormatPanel` / 旧 CSS 破棄)+ **新 desktop 固定 ribbon 骨格**(6 group 折りたたみ枠)を同 file に build | 旧 `editor.format_panel_enabled` を新 panel が引き継ぐ | +0.5 KB js / +0 KB css(scrap 相殺)|
 | C1-2 | Font group — bold / italic / strike / code toggle(`**X**` / `*X*` / `~~X~~` / `` `X` ``)| `format_panel.font_group_enabled` 導入 | +1 KB js |
 | C1-3 | Font group — 文字色 / 背景色 popup(`:X:red:` / `==[red]X==`)| - | +1 KB js / +0.5 KB css |
 | C1-4 | Font group — font-size / font-family popup(`:X:lg:` / `:X:mono:`、attr 合成 contract §4.4)| - | +1 KB js |
@@ -182,6 +197,50 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 **累積**:+5.8 KB js / +2.4 KB css。
 **前提**:A1-2 は **OQ-A-3(sidebar tree port の範囲)** 合意が必須。
 
+**実装記録(2026-05-20、stack pgc-32〜)**:filer モード sidebar
+(`sidebar.mode='filer'` → `renderSidebarAsFiler`)は領域 10-6 で **実装
+済**。A1-1 が新設を想定する flag `shell.sidebar_mode_default` は既存
+`sidebar.mode` と機能重複のため導入しない(γ-A3 / format-panel と同じく
+既存資産が spec を上回る事例)。`pgc-32` で filer モード sidebar の
+active test 被覆 0 件を解消(happy-dom 8 + Playwright parity 1)。
+user direction「filer モードを機能強化して続行」を受け、tree-mode 比で
+minimal だった filer-mode sidebar の機能強化を開始:`pgc-33` で entry の
+folder 間 **drag-and-drop 移動**(action-binder 汎用 DnD 機構を再利用、
+happy-dom 12 + Playwright parity 1)、`pgc-34` で **UX 完成度向上**
+(item 数表示 / 操作ヒント / 空スコープ案内の改善、happy-dom 5)、`pgc-35`
+で **per-folder 絞り込み検索**(`sidebarFilerQuery`、happy-dom 11 +
+Playwright parity 1)、`pgc-36` で **multi-select + 一括操作バー**
+(`buildFilerMultiActionBar` 再利用、happy-dom 7 + Playwright parity 1)。
+これで filer-mode sidebar は DnD・絞り込み検索・multi-select を獲得した
+が、tree sidebar の検索系(検索窓・hide-buckets・archetype filter・saved
+searches・advanced filters・unreferenced-attachments filter・recent-
+entries pane)は未移植のまま。
+
+**A1-4 default 切替は `pgc-37` で一旦着地したが `pgc-41` で revert**:
+pgc-37 で `sidebar.mode` の default を `'tree'` → `'filer'` に切替えた
+ものの、user 指摘(2026-05-20「左 pane を不完全なファイラーにした /
+ツリー表示の検索オプションが無くなった / 機能ダウンしすぎ」)の通り、
+上記検索系を欠く filer を default にしたのは明確な機能ダウンだった。
+**A1-2(filer への tree 機能移植)/ A1-3(navigation parity)が未達の
+まま A1-4(default 切替)を実施した手順ミス**。pgc-41 で default を
+`'tree'` に戻し、filer は `sidebar.mode=filer` の opt-in に復帰。pgc-37
+で入れた tree-sidebar test 22 ファイルの明示 `sidebar.mode=tree` 固定
+(+ smoke 12 spec)は無害なため保持。A1-4 の再実施は A1-2/A1-3(検索系
+の filer 移植)完了が前提。A1-5 deprecated marker も同様に保留。詳細は
+shell spec §4.5。
+
+**pgc-46〜52 で A1-2/A1-3/A1-4 完了**(2026-05-21):pgc-46〜51 で tree
+sidebar の検索系 7 機能(検索窓 / archetype filter / color filter /
+4 toggle filter / Recent pane / Saved Searches)を filer へ全面移植 ──
+A1-2/A1-3(検索系の filer 移植)達成。前提が揃ったため **pgc-52 で
+A1-4 を再挑戦**、`sidebar.mode` の default を `'tree'` → `'filer'` に
+再切替した。pgc-37 で入れた tree-sidebar test の `sidebar.mode=tree`
+固定が pgc-41 revert 後も保持されていたため、default 反転で破壊された
+既存 test は 1 件のみ(default 値そのものを assert する filer-mode
+test)で、本 PR 内で新 default 仕様へ更新済。filer は tree と検索能力
+同等に到達しており A1-4 は機能ダウンではない。A1-5 deprecated marker
+は引き続き保留。
+
 ### §4.2 γ-A2:編集 mode 3 分割(10 PR)
 
 | PR | scope | Tier 0 flag | budget |
@@ -199,6 +258,19 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 
 **累積**:+9.6 KB js / +3.5 KB css。
 **前提**:A2-2 は **OQ-A-1(Overlay 精度)** 合意が必須。
+
+**実装記録(2026-05-20、stack PR-pgc-27〜)**:A2-1(foundation)を
+`pgc-27`、A2-2(picker UI + window 配線)を `pgc-28`、A2-3(localStorage
+永続化)を `pgc-29` で着地。本 stack は γ-A1(sidebar)より先に γ-A2
+(編集 mode)から着手(両 sub-wave は独立、editMode foundation は
+sidebar に非依存)。A2-1 着手時に 3 mode(`overlay` / `split` /
+`window`)を **編集 surface 軸のみ**(`editMode: 'inline' | 'window'`)
+に精緻化 — `split` は inline 内 sub-layout、透過 overlay は OQ-A-1 UX
+不確実で deferred。詳細は shell spec §2.5〜§2.7。flag は
+`shell.edit_mode_enabled`(boolean gate)1 本に集約。**γ-A2 は picker /
+window 配線 / 永続化が揃い機能的に完了**:per-archetype default(A2-6)
++ mode 別 keyboard shortcut(A2-7)は 2-mode model で不採用 / 不要、
+flag default ON 切替(A2-10)は user 判断に委ねる。
 
 ### §4.3 γ-A3:マルチウィンドウ(11 PR)
 
@@ -218,6 +290,25 @@ CLAUDE.md Wave §1「1 wave あたり 30〜50 PR で打ち止め」に従い、6
 
 **累積**:+15 KB js。
 **前提**:A3-1 は **OQ-A-2**、A3-4 は **OQ-A-4**、A3-7 は **OQ-A-5** 合意が必須。
+
+**実装記録(2026-05-20、stack pgc-30〜31)**:A3-4(main reload guard)を
+`pgc-30` で先行着地。reload guard は子 window の有無を entry-window.ts の
+`getOpenEntryWindowLids()` で参照でき、A3-1 の `editingLid → editingLids`
+Set 化(state machine 全体 + 多数 test に波及する大規模 refactor)に
+依存しないため先行できた。flag は shell spec §3.2 に合わせ
+`shell.main_reload_guard`(本表旧表記 `shell.main_navigation_only` は
+A3-8「main = navigation 専用」側の概念)、γ-A stack 方針で default OFF
+出荷。
+
+**γ-A3 closeout(pgc-31)**:`entry-window.ts`(約 2977 行)を本表の
+A3-1〜A3-11 と突き合わせる audit を実施。**複数 child window 同時 /
+parent→child live refresh / postMessage protocol(8 type)/ 競合検知 /
+close-crash recovery はすべて実装済**と確認。本 sub-wave は format-panel
+(γ-C)と同様、wave map が「新規実装」前提で書かれていたが既存資産が
+spec を上回っていた。**γ-A3 は reload guard(pgc-30)着地で機能的に
+完了**:A3-1 の `editingLids` Set 化は consumer 不在で見送り(YAGNI)、
+A3-6 競合 3-pane diff は spec §3.5 で deferred、A3-8 は γ-A1 に統合。
+詳細は shell spec §3.6。
 
 ### §4.4 γ-A4:旧 sidebar 完全 removal(4 PR、v3.0 lineup 合流)
 
@@ -407,7 +498,13 @@ Phase γ 完了時に `docs/development/archived/phase-beta/` へ一括 archive
 | 2026-05-19 | PR #482(PR-β2)merge:Group B 右ペイン特化 spec 着地 |
 | 2026-05-19 | PR #483(PR-β3)merge:Group C 書式機能 spec 着地 |
 | 2026-05-19 | **本書起こし(PR-β4)**:Phase γ 実装 wave map。9 sub-wave(γ-C1〜C3 / γ-B1〜B3 / γ-A1〜A4)を 68 PR に PR-by-PR 分解、3 merge train 構成、budget 推移試算(完了時 1934 / 175 KB)、visual parity test 9 件、20 OQ の wave gating checklist、CLAUDE.md Wave §1〜§11 の Phase γ 適用表。**本書着地で Phase β 設計 wave 完了** |
-| TBD | 20 OQ 合意 → Phase γ-C1 着手判断 |
+| 2026-05-19 | PR #484(PR-β4)merge:Phase γ 実装 wave map 着地 |
+| 2026-05-20 | user 判断:20 OQ 暫定回答を全承認、Phase γ-C1 着手。以後は **main 着地せず stack 運用**(PR-pgc-NN) |
+| 2026-05-20 | **訂正(stack PR-pgc-01)**:γ-C 着手準備中に既存 `format-panel.ts`(選択追従 floating 書式 panel、本番稼働中)を発見。§2 を scrap-and-build に再定義(C1-1 = 旧 panel scrap + 新 ribbon build、flag は `editor.format_panel_enabled` 引き継ぎ)。詳細は [`phase-beta-group-c-format-panel-spec-2026-05.md`](./phase-beta-group-c-format-panel-spec-2026-05.md) 訂正 notice |
+| 2026-05-20 | **Phase γ-C1 実装(stack PR-pgc-02〜08、main 着地せず stack 運用)**:pgc-02 scrap-and-build 骨格 + 14 op / pgc-03 font-size・family picker / pgc-04 文字色・背景色 picker / pgc-05 段落 align / pgc-06 表挿入 / pgc-07 挿入(ruby / 区切り線)/ pgc-08 CHANGELOG + doc 同期。固定 format ribbon = 6 group / operation 19 種 / value picker 5 種。検索 group・表の行列編集・justify は後続(CHANGELOG v2.3.0 §Phase γ-C1 参照)|
+| 2026-05-20 | **Phase γ-C 続行(stack PR-pgc-09〜14)**:pgc-09 検索 launcher / pgc-10 表行編集(pipe-table-edit.ts pure parser 新設)/ pgc-11 表列編集 / pgc-12 表セル整列 / pgc-13 リスト・番号拡充 / pgc-14 doc 同期。固定 ribbon = operation 28 種 / picker 6 種 / launcher 1 種。採番正規化(領域 8 待ち)・justify(renderer 対応待ち)を残す |
+| 2026-05-20 | **Phase γ-B 実装(stack PR-pgc-15〜26)**:γ-B1 YAML graphical editor(serialize / 編集 form / field-type / warnings、pgc-15〜18)/ γ-B2 graph relation wire editor(edit mode / wire drag / kind popup / CREATE_RELATION / Shift+drag 退避 / multi-select 一括 / visual parity test、pgc-19〜24)/ γ-B3 meta pane mode tabs(pgc-25)/ doc 同期(pgc-26)。すべて flag gate。Group B 完了。詳細は CHANGELOG v2.3.0 §Phase γ-B |
+| TBD | Phase γ-C 残(採番正規化 / justify)、γ-A wave(shell 再構成)|
 
 ---
 
