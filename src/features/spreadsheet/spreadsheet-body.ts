@@ -1059,13 +1059,22 @@ function buildChartXml(chart: ChartConfig, evaluated: string[][], sheetName: str
     return '';
   })();
 
+  // user 報告 2026-06-05「直ってない」 fix:
+  // category column の値が **数値だったら `<c:numRef>` を使う**(strRef 指定で
+  // 数値 cell を参照すると Excel が型不一致で chart 描画 skip)。
+  // start row 以降の category column の値を 1 件 sniff して判定。
+  const catSampleVal = (evaluated[start]?.[chart.xCol] ?? '').trim();
+  const isNumericCat = catSampleVal !== '' && /^-?[0-9.]+$/.test(catSampleVal);
+  const catRefTag = isNumericCat ? 'c:numRef' : 'c:strRef';
+
   const seriesXml = chart.yCols.map((yc, idx) => {
     const yColLetter = colIndexToLetter(yc);
     const yRange = `${quotedSheet}!$${yColLetter}$${dataStart}:$${yColLetter}$${dataEnd}`;
     const seriesNameRef = `${quotedSheet}!$${yColLetter}$1`;
     return `<c:ser><c:idx val="${idx}"/><c:order val="${idx}"/>`
       + `<c:tx><c:strRef><c:f>${seriesNameRef}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${xlsxEscape(colIndexToLetter(yc))}</c:v></c:pt></c:strCache></c:strRef></c:tx>`
-      + `<c:cat><c:strRef><c:f>${xRange}</c:f></c:strRef></c:cat>`
+      + `<c:spPr><a:ln><a:prstDash val="solid"/></a:ln></c:spPr>`
+      + `<c:cat><${catRefTag}><c:f>${xRange}</c:f></${catRefTag}></c:cat>`
       + `<c:val><c:numRef><c:f>${yRange}</c:f></c:numRef></c:val>`
       + `</c:ser>`;
   }).join('');
@@ -1138,7 +1147,8 @@ export function buildXlsxFiles(body: SpreadsheetBody, sheetName: string = 'Sheet
       const ref = `${colIndexToLetter(c)}${r + 1}`;
       const isNum = /^-?[0-9.]+$/.test(v.trim()) && v.trim() !== '';
       if (isNum) {
-        cells.push(`<c r="${ref}"><v>${xlsxEscape(v.trim())}</v></c>`);
+        // `t="n"` を明示(openpyxl 流儀、Excel が型推論せず確実に numeric 認識)
+        cells.push(`<c r="${ref}" t="n"><v>${xlsxEscape(v.trim())}</v></c>`);
       } else {
         cells.push(`<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xlsxEscape(v)}</t></is></c>`);
       }
@@ -1146,13 +1156,25 @@ export function buildXlsxFiles(body: SpreadsheetBody, sheetName: string = 'Sheet
     sheetRows.push(`<row r="${r + 1}">${cells.join('')}</row>`);
   }
 
-  // Sheet XML(chart 有り無しで `<drawing>` element 切替)
+  // Sheet XML(openpyxl 互換構造、user 報告 2026-06-05「直ってない」 fix):
+  // - `<dimension ref="A1:..."/>` 必須:Excel が data 範囲を pre-compute する hint
+  // - `<sheetViews><sheetView>` 必須:default view config が無いと chart も含めて
+  //   「sheet が初期化されていない」 扱いで Excel が描画 skip
+  // - 数値 cell は `t="n"` 属性を明示
+  // - `<pageMargins>` 必須(古い Excel 互換、新版でも openpyxl は出している)
+  const dimRef = sheetRows.length === 0
+    ? 'A1'
+    : `A1:${colIndexToLetter(Math.max(0, cols - 1))}${sheetRows.length}`;
   const drawingRef = charts.length > 0 ? '<drawing r:id="rId1"/>' : '';
   const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<dimension ref="${dimRef}"/>
+<sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="15"/>
 <sheetData>
 ${sheetRows.join('\n')}
 </sheetData>
+<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
 ${drawingRef}
 </worksheet>`;
 
