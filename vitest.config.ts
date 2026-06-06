@@ -14,6 +14,7 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     environment: 'node',
     globals: false,
+    setupFiles: ['tests/setup-globals.ts'],
     coverage: {
       // v8 instrumentation — Node-builtin, no external runtime
       // beyond `@vitest/coverage-v8` (added 2026-05-03 with the

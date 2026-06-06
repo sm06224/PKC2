@@ -103,7 +103,7 @@ describe('FI-03 Phase 2 — T-TIP06 observer teardown on re-render', () => {
       constructor() {}
       observe() {}
       unobserve() {}
-      disconnect() { disconnectSpy(); }
+      disconnect() { (disconnectSpy as () => void)(); }
       takeRecords() { return []; }
       root = null;
       rootMargin = '';
