@@ -1,3 +1,7 @@
+> 🔒 **凍結(2026-06-06、L4 #775)**:本 doc は「機能を足す」系の計画 / tracking で、現在のプライム・ディレクティブ「機能を足さない・削る/選る/着陸」と両立しないため **frozen**。**正本は [`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md)**、保全台帳は GitHub Issue #776。参照のみ、再開には user の明示 go が要る。
+
+---
+
 # Phase β PR-β1:Group A 統合 spec — shell 再構成(2026-05-19)
 
 **Status**:docs-only spec(PR-β1、Phase β の Group A 詳細設計)

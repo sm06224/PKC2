@@ -1,3 +1,7 @@
+> 🔒 **凍結(2026-06-06、L4 #775)**:本 doc は「機能を足す」系の計画 / tracking で、現在のプライム・ディレクティブ「機能を足さない・削る/選る/着陸」と両立しないため **frozen**。**正本は [`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md)**、保全台帳は GitHub Issue #776。参照のみ、再開には user の明示 go が要る。
+
+---
+
 # PKC2 v3.x architecture proposals(2026-05-18 user 提案)
 
 **Status**:議論段階(docs-only、実装 wave 未着手)
