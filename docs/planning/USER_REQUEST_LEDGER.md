@@ -237,6 +237,8 @@ container 並立 UI 要求) / H-9(P2P / WebRTC 同期要望 = D-3 wave 起こし
 
 ### 3.6 `docs/development/INDEX.md` CANDIDATE 節の保留候補
 
+> 🔒 **凍結(2026-06-06、L4 #775)**:本節の deferred 群は GitHub Issue [#776 frozen backlog](https://github.com/sm06224/PKC2/issues/776) に移行・保全済。live tracking は GitHub Issues が正本、本節は参照のみ。方針は `../development/v3-consolidation-and-direction-2026-06.md`。
+
 **2026-05-14 trigger 再評価（v2.3.x stack PR-V9 / C3）**: 7 件全項目について
 trigger 条件の現状を確認 → いずれも v2.3.0 release 後の新規 user 報告 / 痛みは
 発生しておらず deferred 継続。`領域 10-1 entry-window split editor 同期スクロール`

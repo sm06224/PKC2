@@ -125,7 +125,7 @@ file ベース tracking を GitHub Issues に移行(§5)。**以後の live trac
 
 label 体系:`epic` / `lane:perf` / `lane:curation` / `lane:arch-v3` / `lane:process` / `type:design` / `type:debt` / `frozen`。
 
-archive 予定(#775):roadmap / ledger §3.6 / INDEX CANDIDATE / 凍結 Phase β・γ 一式。
+archive 実施済(#775、2026-06-06):roadmap / v3-proposals / Phase β plan + 3 group spec / Phase γ wave map の **7 dev doc に凍結バナー前置**、ledger §3.6 に supersede note、INDEX の該当行に `🔒 凍結(#776)` マーカー付与。物理 move は cross-reference 全断リスクのため見送り、**in-place 凍結 + active 一覧からの視覚分離**で実施(`check:docs` green 維持)。
 
 ## §7 役割契約(2026-06-06 確認)
 
