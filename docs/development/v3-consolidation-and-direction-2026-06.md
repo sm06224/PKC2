@@ -111,6 +111,22 @@ user 要望: **ファイルベース issue 管理 → GitHub Issues**、doc を�
 
 ---
 
+## §6.1 GitHub Issues 移行済み(2026-06-06)
+
+file ベース tracking を GitHub Issues に移行(§5)。**以後の live tracking は Issues が正本**、本書は不変な方針 anchor として残す。
+
+| Epic | レーン | 子 issue |
+|---|---|---|
+| **#762** | L1 もっさり/着陸 | #766 perf wave 着陸 / #767 bundle 5MB 引き算 audit / #768 full re-render 局所化 |
+| **#763** | L2 curation/subtract | #769 #760 keep/drop 仕分け / #770 50 PR stack close 棚卸し |
+| **#764** | L3 arch-v3 設計(設計のみ)| #771 OPFS adapter / #772 PKC-Extensions host / #773 workspace + container 分離 |
+| **#765** | L4 process | #774 CLAUDE.md スリム化 / #775 doc archive |
+| **#776** | 🔒 frozen backlog | roadmap 領域 1–10 + ledger §3.6 を保全(参照のみ)|
+
+label 体系:`epic` / `lane:perf` / `lane:curation` / `lane:arch-v3` / `lane:process` / `type:design` / `type:debt` / `frozen`。
+
+archive 予定(#775):roadmap / ledger §3.6 / INDEX CANDIDATE / 凍結 Phase β・γ 一式。
+
 ## §7 役割契約(2026-06-06 確認)
 
 - **user(統括)**: 優先度判断、merge 判断、機能の go/no-go。「考え始めると機能が溢れる」ため、
