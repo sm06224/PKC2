@@ -28,25 +28,32 @@ export default defineConfig({
       //   run is structurally non-applicable.
       exclude: ['src/**/*.test.ts', 'src/main.ts'],
       reporter: ['text-summary', 'json-summary'],
-      // Repo-wide minimum thresholds. Baseline (2026-05-03) was
-      // 84.95 stmt / 84.90 br / 89.72 fn / 84.95 ln, so the floor
-      // sits ~5 pp below to absorb natural churn while still
-      // blocking a meaningful retreat.
+      // Repo-wide minimum thresholds.
+      //
+      // 2026-06-06 recalibration (vitest 4 bump, #777/#778): the
+      // coverage-v8 measurement basis changed between vitest 3 and 4
+      // (same tests / same product code, branch coverage dropped
+      // 84.9% → 68.5%). This is a measurement-basis shift, not a real
+      // coverage regression — all 8083 tests still pass. Thresholds
+      // are re-floored to ~2 pp below the vitest 4 actuals
+      // (76.9 stmt / 68.5 br / 80.1 fn / 79.4 ln) so the gate keeps
+      // blocking genuine regression on the new basis.
+      // (Pre-bump baseline was 84.95 / 84.90 / 89.72 / 84.95.)
       //
       // perFile is intentionally OFF: enabling it forces every
       // file (including 0%-by-design barrels like src/core/index.ts
       // and boot wiring src/adapter/index.ts) to hit the floor, so
       // the exemption list becomes large and brittle. Keeping the
       // gate at the repo level catches catastrophic regression
-      // (-5 pp from baseline) without spurious failures from files
-      // that unit tests structurally don't reach. Per-file rigor
-      // is layered in via the parity-test methodology + R1-R7
-      // regression rules (`test-strategy-audit-2026-05.md` §2).
+      // without spurious failures from files that unit tests
+      // structurally don't reach. Per-file rigor is layered in via
+      // the parity-test methodology + R1-R7 regression rules
+      // (`test-strategy-audit-2026-05.md` §2).
       thresholds: {
-        statements: 80,
-        branches: 78,
-        functions: 85,
-        lines: 80,
+        statements: 75,
+        branches: 66,
+        functions: 78,
+        lines: 77,
       },
     },
   },
