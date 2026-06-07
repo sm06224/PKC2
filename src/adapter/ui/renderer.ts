@@ -79,8 +79,35 @@ import { syncTextToTextlogModalFromState } from './text-to-textlog-modal';
 import { syncLinkMigrationDialogFromState } from './link-migration-dialog';
 import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
-import { parseTodoBody, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
+import { parseTodoBody as parseTodoBodyRaw, formatTodoDate, isTodoPastDue } from './todo-presenter';
+import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
+import type { TodoBody } from '../../features/todo/todo-body';
+import type { AttachmentBody } from './attachment-presenter';
+
+// #766 perf re-impl(pgc-241/242 を現 main に fresh 再実装): parseTodoBody /
+// parseAttachmentBody は内部で JSON.parse(O(L))を実行し、sidebar / filer /
+// detail render の hot path で per-entry に複数 site から呼ばれる。entry ref を
+// optional key に取り WeakMap で memoize する。container は immutable update なので
+// 編集された entry は新 ref になり cache は自動 invalidate(明示 cleanup 不要)。
+// entry 未指定の呼出は raw parser に delegate するため後方互換は完全。
+const todoBodyMemo = new WeakMap<Entry, TodoBody>();
+function parseTodoBody(body: string, entry?: Entry): TodoBody {
+  if (!entry) return parseTodoBodyRaw(body);
+  const cached = todoBodyMemo.get(entry);
+  if (cached) return cached;
+  const parsed = parseTodoBodyRaw(body);
+  todoBodyMemo.set(entry, parsed);
+  return parsed;
+}
+const attachmentBodyMemo = new WeakMap<Entry, AttachmentBody>();
+function parseAttachmentBody(body: string, entry?: Entry): AttachmentBody {
+  if (!entry) return parseAttachmentBodyRaw(body);
+  const cached = attachmentBodyMemo.get(entry);
+  if (cached) return cached;
+  const parsed = parseAttachmentBodyRaw(body);
+  attachmentBodyMemo.set(entry, parsed);
+  return parsed;
+}
 import { deriveDisplayFilename } from './image-optimize/paste-optimization';
 import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { pad2 } from '../../features/datetime/datetime-format';
@@ -3121,7 +3148,7 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   // its open/closed state via `state.advancedFiltersOpen` so it
   // survives the next dispatch's full-shell rebuild.
   const hasArchivedTodo = allEntries.some(
-    (e) => e.archetype === 'todo' && parseTodoBody(e.body).archived,
+    (e) => e.archetype === 'todo' && parseTodoBody(e.body, e).archived,
   );
   const hasAttachment = allEntries.some((e) => e.archetype === 'attachment');
   const bucketTitles = new Set(Object.values(ARCHETYPE_SUBFOLDER_NAMES));
@@ -3384,7 +3411,7 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   if (!state.showArchived) {
     filtered = filtered.filter((e) => {
       if (e.archetype !== 'todo') return true;
-      return !parseTodoBody(e.body).archived;
+      return !parseTodoBody(e.body, e).archived;
     });
   }
   // Hide entries inside auto-bucket folders (ASSETS / TODOS) from
@@ -4164,7 +4191,7 @@ function renderEntryItem(
 
   // Todo status indicator
   if (entry.archetype === 'todo') {
-    const todo = parseTodoBody(entry.body);
+    const todo = parseTodoBody(entry.body, entry);
     const statusBadge = createElement('span', 'pkc-todo-status-badge');
     statusBadge.setAttribute('data-pkc-todo-status', todo.status);
     statusBadge.textContent = todo.status === 'done' ? '[x]' : '[ ]';
@@ -6433,7 +6460,7 @@ function hydrateAppIconAssetOptions(view: HTMLElement, container: Container): vo
   const imageAttachments: { assetKey: string; label: string }[] = [];
   for (const e of container.entries) {
     if (e.archetype !== 'attachment') continue;
-    const ea = parseAttachmentBody(e.body);
+    const ea = parseAttachmentBody(e.body, e);
     if (!ea.asset_key) continue;
     if (!ea.mime?.startsWith('image/')) continue;
     if (container.assets[ea.asset_key] == null) continue;
@@ -6495,7 +6522,7 @@ function renderLauncherView(state: AppState): HTMLElement {
     // asset_key を持つ image attachment の MIME を逆引き
     for (const e of state.container?.entries ?? []) {
       if (e.archetype !== 'attachment') continue;
-      const ea = parseAttachmentBody(e.body);
+      const ea = parseAttachmentBody(e.body, e);
       if (ea.asset_key === assetKey && ea.mime?.startsWith('image/')) {
         return `data:${ea.mime};base64,${base64}`;
       }
@@ -6505,7 +6532,7 @@ function renderLauncherView(state: AppState): HTMLElement {
   const registered: { lid: string; name: string; iconText: string; iconImageUrl: string | null }[] = [];
   for (const entry of state.container?.entries ?? []) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.registered_as_app !== true) continue;
     if (classifyPreviewType(att.mime) !== 'html') continue;
     const iconImageUrl = att.app_icon_asset_key
@@ -8112,7 +8139,7 @@ function renderMetaPaneImpl(
 
   // Sandbox control section for HTML attachments
   if (entry.archetype === 'attachment') {
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (isHtml(att.mime) || isSvg(att.mime)) {
       const sandboxSection = createElement('div', 'pkc-sandbox-control');
       sandboxSection.setAttribute('data-pkc-region', 'sandbox-control');
@@ -9507,7 +9534,7 @@ export function buildAssetMimeMap(container: Container): Record<string, string> 
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.asset_key && att.mime) {
       map[att.asset_key] = att.mime;
     }
@@ -9525,7 +9552,7 @@ export function buildAssetNameMap(container: Container): Record<string, string> 
   const map: Record<string, string> = {};
   for (const entry of container.entries) {
     if (entry.archetype !== 'attachment') continue;
-    const att = parseAttachmentBody(entry.body);
+    const att = parseAttachmentBody(entry.body, entry);
     if (att.asset_key && att.name) {
       map[att.asset_key] = deriveDisplayFilename(att.name, att.mime);
     }
@@ -10411,7 +10438,7 @@ export function renderDetachedPanel(entry: Entry, container: Container | null): 
  */
 function renderDetachedAttachment(entry: Entry, container: Container | null): HTMLElement {
   const root = createElement('div', 'pkc-detached-attachment');
-  const att = parseAttachmentBody(entry.body);
+  const att = parseAttachmentBody(entry.body, entry);
 
   if (!att.name) {
     const empty = createElement('div', 'pkc-attachment-empty');

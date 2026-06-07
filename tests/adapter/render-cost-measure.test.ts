@@ -102,6 +102,28 @@ describe('render-cost characterization (L1 #768)', () => {
     }, 30000);
   }
 
+  // L1 #766: parseTodoBody は entry ref keyed の WeakMap で memoize される。
+  // container は immutable update なので、編集された entry は新 ref になり cache が
+  // 自動 invalidate されることを保証する(QUICK_UPDATE_ENTRY フローで stale な status
+  // を描かないこと = consumer 観測点の parity)。
+  it('memoized parseTodoBody invalidates on entry-ref change (no stale render)', () => {
+    const c1: Container = {
+      meta: { container_id: 'm', title: 'M', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schema_version: 1 },
+      entries: [{ lid: 't1', title: 'Task', body: JSON.stringify({ status: 'open', description: 'x' }), archetype: 'todo', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }],
+      relations: [], revisions: [], assets: {},
+    };
+    render(baseState(c1, 't1'), root);
+    expect(root.querySelector('.pkc-todo-status-badge')?.getAttribute('data-pkc-todo-status')).toBe('open');
+
+    // QUICK_UPDATE_ENTRY 相当: 新 container + 新 entry オブジェクト(status done)。
+    const c2: Container = {
+      ...c1,
+      entries: [{ ...c1.entries[0]!, body: JSON.stringify({ status: 'done', description: 'x' }) }],
+    };
+    render(baseState(c2, 't1'), root);
+    expect(root.querySelector('.pkc-todo-status-badge')?.getAttribute('data-pkc-todo-status')).toBe('done');
+  });
+
   it('reports the cost table + per-row scaling (the localization basis)', () => {
     // eslint-disable-next-line no-console
     console.log('\n=== L1 #768 full-render cost (happy-dom; wall-clock is indicative only) ===');
