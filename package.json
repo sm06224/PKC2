@@ -43,6 +43,7 @@
     "bench:summarise": "tsx build/scripts/bench-summarise.ts",
     "bench": "npm run bench:fixtures && npm run build && npm run bench:run && npm run bench:summarise",
     "size-budget": "node build/check-bundle-size.cjs",
+    "audit:bundle": "node build/scripts/bundle-audit.mjs",
     "check:manual": "node build/check-manual-integrity.cjs",
     "check:doc-orphans": "node build/check-doc-orphans.cjs",
     "check:doc-deadlinks": "node build/check-doc-deadlinks.cjs",
