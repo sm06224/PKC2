@@ -98,6 +98,7 @@ import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, clampMenuToViewport } from './renderer';
+import { getFilterIndexes } from './filter-cache';
 import {
   isSelectionModeActive as isTextlogSelectionModeActive,
   getActiveSelectionLid as getActiveTextlogSelectionLid,
@@ -8320,7 +8321,7 @@ function formatAssetReference(entry: Entry): string {
  */
 function resolveAttachmentData(lid: string, dispatcher: Dispatcher): { data: string; mime: string; name: string } | null {
   const state = dispatcher.getState();
-  const entry = state.container?.entries.find((e) => e.lid === lid);
+  const entry = state.container ? getFilterIndexes(state.container).entryByLid.get(lid) : undefined;
   if (!entry || entry.archetype !== 'attachment') return null;
 
   const att = parseAttachmentBody(entry.body);
@@ -8513,7 +8514,9 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     // Read sandbox_allow from the entry body for HTML previews.
     // Fallback chain: per-entry override → container default → strict.
     const state = dispatcher.getState();
-    const entryForPreview = state.container?.entries.find((e) => e.lid === lid);
+    const entryForPreview = state.container
+      ? getFilterIndexes(state.container).entryByLid.get(lid)
+      : undefined;
     const entryAllow = entryForPreview
       ? parseAttachmentBody(entryForPreview.body).sandbox_allow
       : undefined;
