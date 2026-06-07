@@ -17,8 +17,16 @@
  *          :::admonition{type=X
  *               title=Y}              → :::section{role=X} + ## Y + PKC2011
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderMarkdown } from '@features/markdown/markdown-render';
+
+// vitest 4: `vi.spyOn` returns the existing spy without clearing its call
+// history, so spies created in `beforeEach` leak prior-test calls across the
+// suite. Restore originals after each test so every `vi.spyOn(console, …)`
+// below starts from a clean function (matches vitest 3.x behaviour here).
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('PR-2L tolerant alias — inline 4 critical', () => {
   let infoSpy: ReturnType<typeof vi.spyOn>;

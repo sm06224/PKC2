@@ -4,6 +4,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { checkForUpdate, getStoredVersion, clearStoredVersion } from '@adapter/platform/version-check';
 
+// vitest 4: `spyFetch()` resolves the spy to
+// `MockInstance<never>`, dropping `.mockResolvedValue` / `.mockRejectedValue`.
+// Spy on `fetch` properly and widen to a generic mock so the partial
+// `Response` literals below stay accepted (same runtime behaviour).
+const spyFetch = () =>
+  vi.spyOn(globalThis, 'fetch') as unknown as ReturnType<typeof vi.fn>;
+
 const STORAGE_KEY = 'pkc2.last-known-version';
 
 function makeStorage(initial: Record<string, string> = {}) {
@@ -44,7 +51,7 @@ describe('checkForUpdate — iOS Safari hard reload version-check', () => {
   it('初回起動:Last-Modified 取得して storage に保存、toast は出ない', async () => {
     const storage = makeStorage();
     const onUpdate = vi.fn();
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as never).mockResolvedValue({
+    const fetchMock = spyFetch().mockResolvedValue({
       ok: true,
       headers: new Headers({ 'last-modified': 'Sat, 10 May 2026 12:00:00 GMT' }),
     } as unknown as Response);
@@ -59,7 +66,7 @@ describe('checkForUpdate — iOS Safari hard reload version-check', () => {
   it('同値:toast は出ない、storage 値そのまま', async () => {
     const storage = makeStorage({ [STORAGE_KEY]: 'Sat, 10 May 2026 12:00:00 GMT' });
     const onUpdate = vi.fn();
-    vi.spyOn(globalThis, 'fetch' as never).mockResolvedValue({
+    spyFetch().mockResolvedValue({
       ok: true,
       headers: new Headers({ 'last-modified': 'Sat, 10 May 2026 12:00:00 GMT' }),
     } as unknown as Response);
@@ -73,7 +80,7 @@ describe('checkForUpdate — iOS Safari hard reload version-check', () => {
   it('異値:toast 表示 + storage 値更新', async () => {
     const storage = makeStorage({ [STORAGE_KEY]: 'Fri, 09 May 2026 10:00:00 GMT' });
     const onUpdate = vi.fn();
-    vi.spyOn(globalThis, 'fetch' as never).mockResolvedValue({
+    spyFetch().mockResolvedValue({
       ok: true,
       headers: new Headers({ 'last-modified': 'Sat, 10 May 2026 12:00:00 GMT' }),
     } as unknown as Response);
@@ -97,7 +104,7 @@ describe('checkForUpdate — iOS Safari hard reload version-check', () => {
     });
     const storage = makeStorage();
     const onUpdate = vi.fn();
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as never);
+    const fetchMock = spyFetch();
 
     await checkForUpdate({ storage, onUpdate });
 
@@ -113,7 +120,7 @@ describe('checkForUpdate — iOS Safari hard reload version-check', () => {
     });
     const storage = makeStorage();
     const onUpdate = vi.fn();
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as never);
+    const fetchMock = spyFetch();
 
     await checkForUpdate({ storage, onUpdate });
 
@@ -124,7 +131,7 @@ describe('checkForUpdate — iOS Safari hard reload version-check', () => {
   it('fetch reject(ネットワーク不通)→ silent skip、storage 不変', async () => {
     const storage = makeStorage({ [STORAGE_KEY]: 'old' });
     const onUpdate = vi.fn();
-    vi.spyOn(globalThis, 'fetch' as never).mockRejectedValue(new Error('network'));
+    spyFetch().mockRejectedValue(new Error('network'));
 
     await expect(checkForUpdate({ storage, onUpdate })).resolves.toBeUndefined();
     expect(onUpdate).not.toHaveBeenCalled();
@@ -134,7 +141,7 @@ describe('checkForUpdate — iOS Safari hard reload version-check', () => {
   it('Last-Modified ヘッダー無し → 何もしない', async () => {
     const storage = makeStorage({ [STORAGE_KEY]: 'old' });
     const onUpdate = vi.fn();
-    vi.spyOn(globalThis, 'fetch' as never).mockResolvedValue({
+    spyFetch().mockResolvedValue({
       ok: true,
       headers: new Headers({}),
     } as unknown as Response);
@@ -148,7 +155,7 @@ describe('checkForUpdate — iOS Safari hard reload version-check', () => {
   it('response.ok=false → silent skip', async () => {
     const storage = makeStorage();
     const onUpdate = vi.fn();
-    vi.spyOn(globalThis, 'fetch' as never).mockResolvedValue({
+    spyFetch().mockResolvedValue({
       ok: false,
       headers: new Headers({ 'last-modified': 'Sat, 10 May 2026 12:00:00 GMT' }),
     } as unknown as Response);
