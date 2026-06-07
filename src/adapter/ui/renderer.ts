@@ -5040,12 +5040,14 @@ function renderFilerTrashTable(state: AppState): HTMLElement {
 function resolveFilerScope(state: AppState): Entry | null {
   const lid = state.selectedLid;
   if (!lid || !state.container) return null;
-  const entry = state.container.entries.find((e) => e.lid === lid);
+  const { entryByLid } = getFilterIndexes(state.container);
+  const entry = entryByLid.get(lid);
   if (!entry) return null;
   if (entry.archetype === 'folder') return entry;
   const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, lid);
-  if (ancestors.length === 0) return null;
-  return state.container.entries.find((e) => e.lid === ancestors[0]) ?? null;
+  const nearest = ancestors[0];
+  if (!nearest) return null;
+  return entryByLid.get(nearest) ?? null;
 }
 
 /**
@@ -5134,9 +5136,10 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
   ];
   if (scope && state.container) {
     const ancestors = getAncestorFolderLids(state.container.relations, state.container.entries, scope.lid);
+    const { entryByLid } = getFilterIndexes(state.container);
     // ancestors are nearest-first; reverse to get root-to-current order.
     for (const aLid of ancestors.slice().reverse()) {
-      const a = state.container.entries.find((e) => e.lid === aLid);
+      const a = entryByLid.get(aLid);
       if (a) trail.push({ label: a.title || a.lid, lid: a.lid });
     }
     trail.push({ label: scope.title || scope.lid, lid: scope.lid, isCurrent: true });
