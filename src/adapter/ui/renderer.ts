@@ -949,7 +949,9 @@ function renderMobileHeader(state: AppState): HTMLElement {
     bar.appendChild(backBtn);
 
     const selectedTitle =
-      state.container?.entries.find((e) => e.lid === state.selectedLid)?.title ?? '';
+      (state.selectedLid && state.container
+        ? getFilterIndexes(state.container).entryByLid.get(state.selectedLid)
+        : undefined)?.title ?? '';
     const titleEl = createElement('span', 'pkc-mobile-header-title');
     titleEl.textContent = truncate(selectedTitle || '(untitled)', 28);
     bar.appendChild(titleEl);
@@ -2516,8 +2518,8 @@ function renderExportImportInline(state: AppState): HTMLElement {
   // .textlog.zip, batch bundle = .texts.zip / .textlogs.zip /
   // .mixed.zip / .folder-export.zip).
 
-  const selectedEntry = state.selectedLid
-    ? state.container?.entries.find((e) => e.lid === state.selectedLid)
+  const selectedEntry = state.selectedLid && state.container
+    ? getFilterIndexes(state.container).entryByLid.get(state.selectedLid)
     : undefined;
 
   // --- Group 1: Share (standalone HTML, openable without PKC2) ---
@@ -4447,7 +4449,9 @@ function renderCenterImpl(state: AppState): HTMLElement {
   const canEdit = state.phase === 'ready' && !state.readonly;
 
   // Show About when: explicitly selected OR no user entries exist
-  const aboutEntry = state.container?.entries.find((e) => e.lid === ABOUT_LID);
+  const aboutEntry = state.container
+    ? getFilterIndexes(state.container).entryByLid.get(ABOUT_LID)
+    : undefined;
   const showAbout = selected?.archetype === 'system-about'
     || (userEntries.length === 0 && !selected && aboutEntry);
   if (showAbout) {
@@ -9612,7 +9616,7 @@ function renderFolderContents(folder: Entry, container: Container): HTMLElement 
  */
 function resolveContextFolder(state: AppState): Entry | null {
   if (!state.selectedLid || !state.container) return null;
-  const selected = state.container.entries.find((e) => e.lid === state.selectedLid);
+  const selected = getFilterIndexes(state.container).entryByLid.get(state.selectedLid);
   if (!selected) return null;
 
   if (selected.archetype === 'folder') return selected;
@@ -9982,7 +9986,7 @@ function renderAboutCredits(
 
 function findSelectedEntry(state: AppState): Entry | null {
   if (!state.selectedLid || !state.container) return null;
-  return state.container.entries.find((e) => e.lid === state.selectedLid) ?? null;
+  return getFilterIndexes(state.container).entryByLid.get(state.selectedLid) ?? null;
 }
 
 /**

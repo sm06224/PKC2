@@ -175,4 +175,24 @@ describe('filter-cache (PR #189)', () => {
     expect(b.backlinkCounts).not.toBe(a.backlinkCounts);
     expect(b.connectedLids).not.toBe(a.connectedLids);
   });
+
+  // ── #766 pgc-238: entryByLid render-path index ──
+  it('#766: entryByLid maps every entry by lid (parity with entries.find)', () => {
+    const c = makeContainer();
+    const idx = getFilterIndexes(c);
+    for (const e of c.entries) {
+      // O(1) Map.get must return the exact same object reference the
+      // O(N) entries.find render path used to return.
+      expect(idx.entryByLid.get(e.lid)).toBe(c.entries.find((x) => x.lid === e.lid));
+    }
+    expect(idx.entryByLid.get('does-not-exist')).toBeUndefined();
+  });
+
+  it('#766: entryByLid is cached by container ref and invalidates on ref change', () => {
+    const c1 = makeContainer();
+    const a = getFilterIndexes(c1);
+    expect(getFilterIndexes(c1).entryByLid).toBe(a.entryByLid); // same ref → cached
+    const c2: Container = { ...c1 };
+    expect(getFilterIndexes(c2).entryByLid).not.toBe(a.entryByLid); // ref change → rebuilt
+  });
 });

@@ -28,6 +28,7 @@
  */
 
 import type { Container } from '../../core/model/container';
+import type { Entry } from '../../core/model/record';
 import { collectDescendantLids, getStructuralParent } from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
@@ -63,6 +64,14 @@ export interface FilterIndexes {
    * outside this set).
    */
   connectedLids: ReadonlySet<string>;
+  /**
+   * pgc-238 (#766): every entry keyed by lid. This Map is already
+   * built internally for the `bucketChildLids` relation walk, so
+   * exposing it is free. Render-path lookups (selected entry / About
+   * / context folder) use `entryByLid.get(lid)` — O(1) — instead of
+   * `entries.find((e) => e.lid === lid)` — O(N) per call.
+   */
+  entryByLid: ReadonlyMap<string, Entry>;
 }
 
 let cachedContainer: Container | null = null;
@@ -87,7 +96,8 @@ function buildIndexes(container: Container): FilterIndexes {
   // whose `from` is a bucket-titled folder. O(R) instead of N × O(R)
   // (= per-entry getStructuralParent walk, the pre-PR-189 path).
   const bucketChildLids = new Set<string>();
-  const entryByLid = new Map(container.entries.map((e) => [e.lid, e]));
+  const entryByLid = new Map<string, Entry>();
+  for (const e of container.entries) entryByLid.set(e.lid, e);
   for (const rel of container.relations) {
     if (rel.kind !== 'structural') continue;
     const parent = entryByLid.get(rel.from);
@@ -113,6 +123,7 @@ function buildIndexes(container: Container): FilterIndexes {
     unreferencedAttachmentLids,
     backlinkCounts,
     connectedLids,
+    entryByLid,
   };
 }
 
