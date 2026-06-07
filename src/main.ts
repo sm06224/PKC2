@@ -10,6 +10,7 @@ import {
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render } from './adapter/ui/renderer';
 import { computeRenderScope } from './adapter/ui/render-scope';
+import { getFilterIndexes } from './adapter/ui/filter-cache';
 import type { AppState } from './adapter/state/app-state';
 import { createLocationNavTracker } from './adapter/ui/location-nav';
 import { preferredEditFocusSelector } from './adapter/ui/edit-focus';
@@ -258,7 +259,7 @@ async function boot(): Promise<void> {
     // this branch on the same tick.
     if (!continuity.focus && state.phase === 'editing') {
       const editingEntry = state.editingLid && state.container
-        ? state.container.entries.find((e) => e.lid === state.editingLid) ?? null
+        ? getFilterIndexes(state.container).entryByLid.get(state.editingLid) ?? null
         : null;
       const bodyFieldSelector = preferredEditFocusSelector(editingEntry?.archetype);
       const target =
