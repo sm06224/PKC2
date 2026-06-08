@@ -160,7 +160,7 @@ export const shellSplitViewEnabled = defineFlag<boolean>(
 // 等)は全て不変。OFF で従来どおり 5 個ボタンを inline 表示。
 export const shellNewButtonPickerEnabled = defineFlag<boolean>(
   'shell.new_button_picker_enabled',
-  true,
+  false,
   {
     category: 'shell',
     description:

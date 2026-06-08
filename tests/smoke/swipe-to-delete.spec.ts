@@ -35,7 +35,7 @@ test.describe('swipe-to-delete (touch only)', () => {
       .click();
     await page.locator('[data-pkc-field="title"]').first().fill(title);
     await page.locator('.pkc-mobile-header [data-pkc-action="commit-edit"]').click();
-    await page.locator('[data-pkc-action="mobile-back"]').click();
+    await page.locator('.pkc-mobile-header [data-pkc-action="go-back"]').click();
   }
 
   async function swipeRow(page: Page, deltaPx: number) {
