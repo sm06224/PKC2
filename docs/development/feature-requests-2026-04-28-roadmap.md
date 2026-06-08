@@ -27,7 +27,13 @@ User direction(原文):
 本 doc は受信した要望を 7 領域に分類し、サイズ / 依存 / 提案順を整理。
 各項目は将来 PR を切るときの起点にする。
 
-## 領域 1: 履歴ナビゲーション(back/forward + Alt+←/→)
+## 領域 1: 履歴ナビゲーション(back/forward + Alt+←/→) ✅ **完了済**(2026-05-28 audit 確認)
+
+### Status
+
+PR #197(2026-04-28)+ pgc-54 / 55 で着地済。`src/adapter/ui/nav-history.ts` が AppState `navHistory` / `navIndex` を browser `history.pushState` / `popstate` と双方向 sync、`keymap-binder.ts:170-171` の `Alt+ArrowLeft` / `Alt+ArrowRight` shortcut + マウス button 4 / 5(`auxclick` hook)で同 popstate 経路を 1 本通す(分岐なし、ループなし)。`SELECT_ENTRY` / view-mode 変更 / NAVIGATE_TO_LOCATION で push、`GO_BACK` / `GO_FORWARD` で index 移動。
+
+### 旧記録(参考)
 
 ### 要望
 - ブラウザの戻る / 進むボタンで PKC 内部のパンくずリスト(navigation
@@ -56,7 +62,7 @@ User direction(原文):
   (現状の SELECT_ENTRY と同じ)
 - breadcrumb UI(meta pane)から発生する nav も history に乗るか
 
-### サイズ: 中(reducer + main.ts hook + UI)
+### サイズ: 中(reducer + main.ts hook + UI) — **完了済**(2026-05-28 audit)
 
 ---
 
@@ -96,7 +102,20 @@ Phase α #A4 として 2026-05-19 に「既に done」を確認、本書を clos
 
 ---
 
-## 領域 3: .md / .txt ファイル attach の解決提案
+## 領域 3: .md / .txt ファイル attach の解決提案 ✅ **完了済**(2026-05-28 audit 確認)
+
+### Status
+
+attachment archetype → TEXT entry 変換経路は着地済。`attachment-presenter.ts` で `isTextConvertibleAttachment(body)` 判定 + `pkc-attachment-convert-text` ボタンを meta pane に表示、`action-binder.ts:9564` の `convertAttachmentEntryToText(lid, dispatcher)` が `decodeAttachmentText` 経由で text body を取り出し EDIT_BEGUN として新 TEXT entry 化。複数選択 bulk 変換も `action-binder.ts:9640` で着地済(`for ... continue` 経路)。
+
+`.md` / `.txt` を attach する経路はそのまま attachment 保存(現状互換維持)、その後 convert button で textentry へ昇格する flow が定着。drop 時の自動分岐 modal は未実装だが、user 報告 / 痛みは v2.3.0 後発生していないため deferred。
+
+### 残課題(deferred)
+
+- drop 時の「TEXT として開く / 添付として保存」分岐 modal は未実装。convert button が着地して以降の user 報告ゼロ、必要性が薄いため寝かせ。
+- TEXTLOG entry への変換は未実装(textentry 経路のみ)。textlog conversion 用 parser は別 wave 必要。
+
+### 旧記録(参考)
 
 ### 要望
 - マークダウン添付に対して、TEXT entry / TEXTLOG entry への変換提案
@@ -123,7 +142,7 @@ Phase α #A4 として 2026-05-19 に「既に done」を確認、本書を clos
 - ユーザーが「この .md は単なる添付」と意図する場合の opt-out が必要
 - import 経路を経るので大きなテキストファイルの memory 影響を再考
 
-### サイズ: 中 ~ 大(分岐 UI + 変換 reducer + 既存 import 経路統合)
+### サイズ: 中 ~ 大(分岐 UI + 変換 reducer + 既存 import 経路統合)— **TEXT 変換経路は完了済**(2026-05-28 audit)
 
 ---
 
@@ -208,7 +227,7 @@ Desktop では完動するが、**iPhone 実機で `(` 打鍵すると `((`
 | 項目 | Status |
 |---|---|
 | キーボードスクロール bug | ✅ **完了**(PR #476、Phase α #A3、2026-05-19):slash-menu / asset-picker / asset-autocomplete の 3 popover で active item を popover 内部のみ scroll させる正しい挙動に修正 |
-| 編集支援コマンド拡充 | 🔄 **未着手**(別 wave 候補) |
+| 編集支援コマンド拡充 | ✅ **完了**(2026-05-28、user 督促):command palette に 19 件追加(inline wrap 5 + line-prefix / block 14)。`tests/adapter/command-palette-editor-format.test.ts` 16 件 case matrix で動作確認 |
 
 ### 要望
 - 編集支援コマンドの拡充(現在の slash menu / quick action の拡張)
@@ -256,7 +275,30 @@ Desktop では完動するが、**iPhone 実機で `(` 打鍵すると `((`
   取り出す機能**(strip-dialect 経路)。dialect 構文を CommonMark に
   落とす変換器。
 
-### 現状
+### Status(2026-05-28 audit)
+
+reform-2026-05 Phase 1〜2 + wave-10-2 + v4 stack 13 PR + post-release hotfix 群を経て、本領域は **大半が着地済**。下記表は 2026-04-28 当時の「未対応」 → 2026-05-28 時点の実装状況の対応表。
+
+| 機能 | 2026-04-28 status | 2026-05-28 status | 実装箇所 |
+|---|---|---|---|
+| underline | 未対応 | ✅ Tier 0 vocabulary `:T:underline:` / `:::underline,...` (catalog #9 + 領域 v4) | `inline-role-parser.ts` + `parseVocabularyTokensToStyles` |
+| 折りたたみ見出し | 未対応 | ✅ `+++ summary` block(catalog #1)+ heading-fold(`<details>` 自動 wrap top-level)| `heading-fold.ts` + `processBlankLineMarkers` |
+| 画像 size / 位置 | 未対応 | ✅ inline attr(`![](src){.w-200 .center}`)+ format-block 内配置 | markdown-it-attrs + AstFormatBlock |
+| 罫線 / `---` | 未対応 | ✅ CommonMark thematic break + `:::page-break` formal directive | markdown-it 標準 + AstPageBreak |
+| 改ページ | 未対応 | ✅ `:::page-break` / `:::break` formal + `AstPageBreak` | AST + docx export 連動 |
+| テキスト align | 未対応 | ✅ 4 形(`||left` / `=||right` 等の行頭 align prefix + `:::align{align=...}`)| `preprocessAlignPrefix` + AstAlignBlock |
+| caption | 未対応 | ✅ `:::figure` formal directive(`processFigureBlocks`)+ AstFigureCaption | `processFigureBlocks` + AstFigure |
+| ハイライト | 未対応 | ✅ `==text==` + `==[red]text==` color highlight | inline-role + color highlight plugin |
+| ルビ | 未対応 | ✅ `[[ruby:漢字|かんじ]]` | inline-role-parser |
+| 上付き / 下付き | 未対応 | ✅ `:sup:[2]` / `:sub:[H₂O]` formal inline role | inline-role-parser |
+| 数式 | 未対応 | ✅ `$E=mc^2$` / `$$...$$` KaTeX | markdown-it-mathjax 系 |
+| 脚注 | 未対応 | ✅ `[^a]` + `[^a]: ...` native | markdown-it-footnote |
+| 段組 layout | 未対応 | ✅ `layout: a4-2col` frontmatter + Word docx export 段組組版 | `extractDocumentGlobals` + `export-docx.ts` |
+| 装飾箱 wrapper | 未対応 | ✅ v4 `:::format{...}` 3 形式(formal / Tier 0 vocab / Tier 1 class)| AstFormatBlock + markdown-render preprocessor |
+
+**残機能(Phase 2 / IR 後)**:track changes / glossary archetype / spreadsheet embed / 用語集 lint / variables 高度操作。これらは領域 10-3 IR 導入後に再開予定。
+
+### 旧記録(参考)
 
 emphasis 系の現状(markdown-it 標準):
 
@@ -266,12 +308,12 @@ emphasis 系の現状(markdown-it 標準):
 | `*italic*` / `_italic_` | `<em>italic</em>` ✓ |
 | `__double__` | `<strong>double</strong>` (CommonMark 規定で strong)|
 | `~~strike~~` | `<s>strike</s>` ✓ |
-| underline | **未対応** — CommonMark に存在しない |
+| underline | **着地済(2026-05-28 audit)**(`:T:underline:` / `:::underline`) |
 
 - markdown-it ベース。標準の markdown 構文 + 一部 plugin
-- 折りたたみ見出しは現在 unsupported
-- 画像 size/位置は unsupported
-- 下線、罫線、改ページ、テキスト align、caption 全て未対応
+- 折りたたみ見出しは現在 unsupported → **着地済(2026-05-28 audit)**(`+++` + heading-fold)
+- 画像 size/位置は unsupported → **着地済(2026-05-28 audit)**
+- 下線、罫線、改ページ、テキスト align、caption 全て未対応 → **全件着地済(2026-05-28 audit)**
 
 ### 設計指針(2026-04-28 改訂)
 
@@ -354,7 +396,7 @@ PR 順:
 - PKC1 互換 / GFM 互換のバランス
 - 各拡張は 1 PR ずつ切るのが安全
 
-### サイズ: 大(複数 PR、想定 6-10 PR)
+### サイズ: 大(複数 PR、想定 6-10 PR)— **Phase 1+2 着地済**(2026-05-28 audit、reform-2026-05 + wave-10-2 + v4 stack で実装完了)
 
 ---
 
@@ -399,9 +441,11 @@ PR 順:
 
 ---
 
-## 領域 8: 番号体系 — 順序リスト + 章節項アウトライン番号(未決定)
+## 領域 8: 番号体系 — 順序リスト + 章節項アウトライン番号(Layer 1〜3 完了)
 
-**Status**: 未決定 / 凍結中(2026-04-29 ユーザー判断で保留)
+**Status**: Layer 1 + Layer 2 + Layer 3 完了(v2.3.x stack pgc-65 / pgc-66、
+2026-05-21)。残りは Layer 3 → Word docx export 経路でのアウトライン番号
+1:1 写像(PR-D)のみ ── docx export wave(reform-2026-05)合流時に実施。
 
 ### 要望
 
@@ -432,13 +476,13 @@ PR 順:
 
 ### 3 層スケール設計案
 
-| Layer | 範囲 | 複雑度 |
-|---|---|---|
-| **Layer 1** | 平坦な順序リストの auto-renumber + uniform-one toggle(`1. 2. 3.` 連続 / `1. 1. 1.` 統一 を選択) | 小 |
-| **Layer 2** | ネストした順序リストの indent-aware 再採番(同 indent 内のみ連続、深い indent は独立カウンタ) | 小 ~ 中 |
-| **Layer 3** | 見出しベースの章節項アウトライン番号(`# 1.` / `## 1.1` / `### 1.2.1`)。Word/PPT export と直結 | 大 |
+| Layer | 範囲 | 複雑度 | 状態 |
+|---|---|---|---|
+| **Layer 1** | 平坦な順序リストの auto-renumber + uniform-one toggle(`1. 2. 3.` 連続 / `1. 1. 1.` 統一 を選択) | 小 | **完了**(pgc-66) |
+| **Layer 2** | ネストした順序リストの indent-aware 再採番(同 indent 内のみ連続、深い indent は独立カウンタ) | 小 ~ 中 | **完了**(pgc-66、Layer 1 と同一 scan で同時実装) |
+| **Layer 3** | 見出しベースの章節項アウトライン番号(`# 1.` / `## 1.1` / `### 1.2.1`)。Word/PPT export と直結 | 大 | **完了**(pgc-65、案 C ── レンダラ前置、frontmatter opt-in) |
 
-### Layer 3 の方式分岐(未決)
+### Layer 3 の方式分岐(決定済 ── 案 C)
 
 | 案 | source | レンダリング | strip 容易性 | Word 写像 |
 |---|---|---|---|---|
@@ -447,16 +491,26 @@ PR 順:
 | C | A/B ハイブリッド + `{# 1.}` 風アンカーで上書き許容 | 既定 B、必要時 A | ◎ | ◎ |
 
 設計原則(領域 6)— 1:1 写像 / strip 可 / forward-compat — を満たすのは
-B / C。デフォルト B、将来 C へ拡張という路線が妥当だが**判断は保留**。
+B / C。**案 C を採用**(2026-05、ユーザー判断「オプトインとし、手書きも
+許容、開始番号指定可能とする」)── pgc-65 で実装。既定はレンダラ前置
+(B 相当)、手書き番号(`# 5. …`)はレンダラが尊重(A 相当)、両者は
+位置基準カウンタで混在可。
 
-### 想定スコープ刻み(未確定)
+### 想定スコープ刻み(進捗)
 
-- PR-A: Layer 1 平坦 auto-renumber + uniform-one toggle(編集支援)
-- PR-B: Layer 2 ネスト対応(同じ scan 関数を indent-aware 化)
-- PR-C: Layer 3 案 B レンダラ(プリプロセッサ、container 設定で
-  on/off)
+- ~~PR-A: Layer 1 平坦 auto-renumber + uniform-one toggle(編集支援)~~
+  **完了**(pgc-66、`list-renumber.ts` + `handleEditorEnter` 配線 +
+  format panel 採番ボタン)
+- ~~PR-B: Layer 2 ネスト対応(同じ scan 関数を indent-aware 化)~~
+  **完了**(pgc-66、PR-A と同一 scan で同時実装。`findRuns` が深い
+  indent を素通し → 上位連続、ネストは独立 run)
+- ~~PR-C: Layer 3 レンダラ(プリプロセッサ)~~ **完了**(pgc-65、案 C ──
+  既定 B 相当のレンダラ前置 + 手書き番号尊重、frontmatter opt-in)
 - PR-D: Layer 3 → Word docx export 経路でのアウトライン番号 1:1 写像
-- PR-E: strip-dialect 関数で番号も剥がせるように
+  ── docx export wave(reform-2026-05)合流時に実施。**未着手**
+- ~~PR-E: strip-dialect 関数で番号も剥がせるように~~ **不要**(案 C は
+  source に番号を実体化しない → strip 対象が存在しない。順序リストの
+  `1. 2. 3.` は素の CommonMark のため strip 不要)
 
 ### 依存 / 注意
 
@@ -471,12 +525,14 @@ B / C。デフォルト B、将来 C へ拡張という路線が妥当だが**�
 
 ### サイズ: 大(複数 PR、設計合意 → 実装で 2 段階)
 
-### 再開時の判断ポイント
+### 再開時の判断ポイント(すべて解決済)
 
-1. Layer 1 だけ先行で実装するか、Layer 3 含めて方針合意してから
-   実装するか
-2. Layer 3 は案 B(プリプロセッサ)/ 案 C(ハイブリッド)どちらか
-3. container 設定への露出か、frontmatter 駆動か
+1. ~~Layer 1 だけ先行か、Layer 3 含め方針合意してからか~~ → Layer 3
+   を先に着地(pgc-65)、続けて Layer 1 + 2(pgc-66)。
+2. ~~Layer 3 は案 B / 案 C どちらか~~ → 案 C(pgc-65)。
+3. ~~container 設定への露出か、frontmatter 駆動か~~ → frontmatter 駆動
+   (`heading-number` / `list-number`)。document 単位で設定が export に
+   同伴し、heading-number / list-number で一貫。
 
 ---
 
@@ -579,20 +635,39 @@ CSS architecture redesign wave(領域 9)着地後にドキュメンテーショ�
 
 **戦略的な前段作業**。HTML / word / ppt 三系統のレンダリングが現在は経路バラバラ(html は markdown-it 経由、export 系は別 path)。AST レベルの「PKC document IR」を定義して、HTML レンダラ / word renderer / ppt renderer / strip-dialect が同じ IR を入力にするよう統合。
 
-**Status(2026-05-05)**: audit draft 起こし済み(`docs/development/intermediate-representation-audit.md`)。領域 10-1 hotfix-5 を契機に、行レベル sync 不能の根本理由整理 + IR 経由でしか解けない問題の明文化が完了。Q1〜Q7 オープンクエスチョン待ち、user 方針合意後 Phase 1 spec へ。業界事例調査(audit §5)で「IR 真面目運用は Codebraid Preview のみ、ROI は限定的」「markdown-it token 直接利用 vs IR 専用層」の設計判断が必要、と判明。
+**Status(2026-05-28 audit)**: **大半着地済**。`src/core/ast/`(`AstDocument` 型定義 + 全 AST node kind)+ `src/features/ast/`(decompose / canonicalize / render-html / render-markdown / parse-html / render-docx / render-pptx 13 ファイル landing)で IR と全方向の writer / reader が稼働中。reform-2026-05 Phase 1〜2 で markdown 方言の input が安定、v4 stack 13 PR で `AstFormatBlock` を含む装飾箱まで網羅。Word docx + PPT pptx export は AST 経由で footnote / role callout / quote attribution / figure caption / format wrapper まで native 出力(Wave Z.2)。
 
-サイズ: 大(独立 wave、~3 ヶ月)。前提:
-- (a) 領域 6 markdown 方言の正規化(IR の input 形式が安定してから着手)
-- (b) IR spec 起こし(audit doc 完了、spec doc 起こし待ち)
-- (c) HTML renderer を IR 経由に切替(現状の markdown-it path は維持しつつ adapter 層を挟む)
-- (d) word / ppt renderer を IR から起こす(extension 経由、後述 10-5)
-- (e) 領域 10-1 を IR 上で再構築(Phase 4)— 行レベル sync を諦めずに済むかの再評価
+**残課題(Phase 2 以降)**:
+- (a) HTML renderer を AST 経由に統一(現状は markdown-it 経由 + AST 経由の 2 系統並列、4 経路 byte-equivalent round-trip parity test で同等性確認済)
+- (b) 行レベル source-line sync を AST に thread(現状 sourceLineAnchors は markdown-it token.map 直接、AST 経路には未 thread)
+- (c) 領域 10-5 PKC-extension 連携で IR payload を export(`record.offer.ir` 等の新 method 仕様化)
+- (d) 領域 10-1 hotfix-5 残:IR 経由での行レベル sync 再評価
 
-### 10-4: スプレッドシートエントリ(新 archetype)
+サイズ: 大(独立 wave、~3 ヶ月)→ **大半着地、残課題は Phase 2 以降の polish 群**。
 
-新 archetype `spreadsheet`(または類似名)。Container schema に追加、body は表形式 JSON。renderer 専用 presenter で grid UI。CSV / xlsx import / export を含むかは別議論。
+### 旧記録(参考、Phase 1 着地前 2026-05-05 時点)
 
-サイズ: 大(spec → reducer → renderer → editor → import/export、~5+ PR)。前提: archetype 拡張の影響(import / export / textlog 等から参照する場合の link 経路)。
+audit draft 起こし済み(`docs/development/intermediate-representation-audit.md`)。領域 10-1 hotfix-5 を契機に、行レベル sync 不能の根本理由整理 + IR 経由でしか解けない問題の明文化が完了。Q1〜Q7 オープンクエスチョン待ち、user 方針合意後 Phase 1 spec へ。業界事例調査(audit §5)で「IR 真面目運用は Codebraid Preview のみ、ROI は限定的」「markdown-it token 直接利用 vs IR 専用層」の設計判断が必要、と判明。
+
+前提:
+- (a) 領域 6 markdown 方言の正規化(IR の input 形式が安定してから着手)→ **2026-05-28:reform Phase 1+2 + v4 で着地**
+- (b) IR spec 起こし(audit doc 完了、spec doc 起こし待ち)→ **2026-05-28:`docs/spec/ast-commutative-ir.md` + `docs/spec/public-ast-api-for-ai.md` 起こし済**
+- (c) HTML renderer を IR 経由に切替(現状の markdown-it path は維持しつつ adapter 層を挟む)→ **2026-05-28:AST 経路 + markdown-it 経路 2 系統並列、parity test で同等性確認済**
+- (d) word / ppt renderer を IR から起こす(extension 経由、後述 10-5)→ **2026-05-28:`render-docx.ts` + `render-pptx.ts` で AST → docx/pptx 直接 export 着地済**
+- (e) 領域 10-1 を IR 上で再構築(Phase 4)— 行レベル sync を諦めずに済むかの再評価 → **未着手**(残)
+
+### 10-4: スプレッドシートエントリ(新 archetype) 🔄 **Phase 1 着地済**(2026-05-28、user direction #4)
+
+新 archetype `spreadsheet`。Container schema に追加、body は `{ rows: string[][] }` JSON。renderer 専用 presenter で grid UI。CSV / xlsx import / export を含むかは別議論。
+
+**Status(2026-05-29)**:
+- Phase 1 ✅ 完了(2026-05-28):archetype 追加 + MVP body schema(`SpreadsheetBody`) + read-only HTML table view + TSV(tab-separated)textarea editor + JSON ⇔ TSV round-trip。`src/features/spreadsheet/spreadsheet-body.ts` + `src/adapter/ui/spreadsheet-presenter.ts` + main.ts wire + ArchetypeId Record completeness。
+- Phase 2 ✅ 完了(2026-05-29):cell-by-cell grid editor / Tab+Enter cell navigation / `+ 行` `+ 列` toolbar button / TSV ⇄ Grid 双方向 toggle。23 件 case matrix。
+- Phase 3 ✅ Paste import 完了(2026-05-29):cell へ CSV / TSV / 改行のみ の貼付で grid auto-fill(focus 位置から流し込み、range 超過は自動拡張)。`parseCsvToBody`(RFC 4180 サブセット)+ `detectPasteAsSpreadsheet`(auto-detect)+ `applyPasteAtCell`(presenter)。31 件 case matrix。
+- Phase 3 🔄 残:xlsx I/O(library 依存、別 PR)/ formula sub-set(SUM / AVG 等)。
+- 残課題(未着手):column resize / row delete / multi-cell selection / single-cell focus 高度化。
+
+サイズ: 大(~5+ PR)→ **Phase 1 完了、Phase 2/3 残**。前提: archetype 拡張の影響(import / export / textlog 等から参照する場合の link 経路)── Phase 1 では additive のみ、既存経路は不変。
 
 ### 10-5: PKC-Message 拡張 + IR を PKC-extension に渡す機構
 
@@ -637,7 +712,15 @@ PKC2 単一 HTML 内に複数の「アプリ」(別目的の view / mode)を切�
 
 ### 10-8: Sandbox iframe ワークスペースコントローラ / マルチウィンドウコントローラ
 
-attachment sandbox(既存)の延長で、複数 iframe を「workspace」として束ねる controller。または OS native のマルチウィンドウを管理する controller。詳細仕様は user 議論待ち。
+attachment sandbox(既存)の延長で、複数 iframe を「workspace」として束ねる controller。または OS native のマルチウィンドウを管理する controller。
+
+**Status 更新(2026-05-22)**:マルチウィンドウは v3 提案 #4 として既に
+spec 化 + 基盤実装済。`phase-beta-group-a-shell-spec-2026-05.md` §3 が設計、
+γ-A3(子 window / 複数同時 / `main-reload-guard.ts` / 競合検知)が機能的に
+完了。VSCode 級拡張(window role / layout 保存 / 競合 diff / window 間
+移動)は `multi-window-vscode-extension-spec-2026-05.md` で spec 化済、
+実装は Phase γ-A5。本 §10-8 の「詳細仕様は user 議論待ち」は解消済。
+sandbox iframe を「workspace」として束ねる別解釈は依然 vision 段階。
 
 サイズ: 大(spec audit が必要)。前提: 既存 sandbox / detached window / postMessage transport の整理。
 

@@ -21,11 +21,12 @@ import {
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
 import { exposeAstApi } from './adapter/public-ast-api';
+// user bug 2026-05-28:MW(entry-window)からの screenshot paste も asset 埋め込み化。
+import { exposePasteApi } from './adapter/ui/expose-paste-api';
 import {
   installBootReadySignal,
   signalBootReady,
 } from './adapter/boot-ready-signal';
-import { mountFormatPanel } from './adapter/ui/format-panel';
 import { installWcagResolverRuntime, applyWcagResolverNow } from './adapter/ui/wcag-runtime';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
@@ -38,8 +39,15 @@ import {
   flashEntry,
 } from './adapter/ui/action-binder';
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
+import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
+import { registerBuiltinKeymaps } from './adapter/ui/keymap-binder';
+import { wireTabStrip, restoreTabState } from './adapter/ui/tab-strip';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
+import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
+import { wireWindowLayoutRestore } from './adapter/ui/window-layout-restore-prompt';
+import { getOpenEntryWindowLids, setEntryWindowsChangedListener, setEntryWindowCurrentContainer } from './adapter/ui/entry-window';
+import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
 import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
 import {
@@ -53,6 +61,7 @@ import {
   loadCollapsedFolders,
   saveCollapsedFolders,
 } from './adapter/platform/folder-prefs';
+import { loadEditMode } from './adapter/platform/edit-mode-prefs';
 import { readPkcData, chooseBootSource, finalizeChooserChoice } from './adapter/platform/pkc-data-source';
 import { showBootSourceChooser } from './adapter/ui/boot-source-chooser';
 import {
@@ -98,6 +107,8 @@ import { formPresenter } from './adapter/ui/form-presenter';
 import { attachmentPresenter } from './adapter/ui/attachment-presenter';
 import { folderPresenter } from './adapter/ui/folder-presenter';
 import { textlogPresenter } from './adapter/ui/textlog-presenter';
+// 領域 10-4 spreadsheet archetype Phase 1(2026-05-28、user direction #4)
+import { spreadsheetPresenter } from './adapter/ui/spreadsheet-presenter';
 import { applyExternalPermalinkOnBoot } from './adapter/ui/external-permalink-receive';
 import { setLinkMigrationDialogDispatcher } from './adapter/ui/link-migration-dialog';
 import type { Dispatcher } from './adapter/state/dispatcher';
@@ -152,6 +163,8 @@ async function boot(): Promise<void> {
   registerPresenter('attachment', attachmentPresenter);
   registerPresenter('folder', folderPresenter);
   registerPresenter('textlog', textlogPresenter);
+  // 領域 10-4 spreadsheet archetype Phase 1(2026-05-28、user direction #4)
+  registerPresenter('spreadsheet', spreadsheetPresenter);
 
   // 1. Dispatcher
   const dispatcher = createDispatcher();
@@ -291,6 +304,8 @@ async function boot(): Promise<void> {
     // explicit `beginLogEdit` focus win because it runs before
     // this branch on the same tick.
     if (!continuity.focus && state.phase === 'editing') {
+      // pgc-240:filter-cache の entryByLid Map で O(1) lookup ── onState
+      // listener は毎 render 後に走るため hot path、O(N) walk を解消。
       const editingEntry = state.editingLid && state.container
         ? getFilterIndexes(state.container).entryByLid.get(state.editingLid) ?? null
         : null;
@@ -362,6 +377,13 @@ async function boot(): Promise<void> {
   // view-pane HTML and Source textarea are never touched.
   wireEntryWindowLiveRefresh(dispatcher);
 
+  // pgc-96(audit pgc-77 Gap-15):entry-window の `currentContainerRef` を
+  // dispatcher の state.container 変化に追従させる。features 層 DOM op
+  // (expandTransclusions + hydrateCardPlaceholders)を S4 全 render path で
+  // parent 側完成 HTML に inject するため、最新 container reference を
+  // module-local に流し込む。
+  dispatcher.onState((s) => setEntryWindowCurrentContainer(s.container));
+
   // 2c. Entry-window view-body rerender wiring.
   //
   // Companion of the Preview wiring above. Same trigger
@@ -393,8 +415,78 @@ async function boot(): Promise<void> {
   // `docs/development/entry-window-title-live-refresh-v1.md`.
   wireEntryWindowTitleRefresh(dispatcher);
 
+  // 2d-2. Entry-window monitor refresh wiring (γ-A5-2). Whenever the
+  // container's `entries` identity changes, every open monitor window
+  // (TOC etc.) gets a fresh derived-data push via `pushMonitorUpdate`.
+  // See `src/adapter/ui/entry-window-monitor-refresh.ts`.
+  wireEntryWindowMonitorRefresh(dispatcher);
+
+  // 2d-3. Window layout restore prompt (γ-A5-4). On the first ready
+  // state, if `shell.window_layout_persist` is on and a saved layout
+  // exists, offer to reopen the previous session's viewer / monitor
+  // windows. See `src/adapter/ui/window-layout-restore-prompt.ts`.
+  wireWindowLayoutRestore(dispatcher, document.body);
+
+  // 2e. main reload guard (Phase γ-A3 A3-4). When child entry-windows
+  // are open, `beforeunload` raises the browser-native confirm so a
+  // stray main reload / close does not silently drop in-progress child
+  // edits. flag-gated (`shell.main_reload_guard`, default OFF); no-op
+  // when the flag is off or no children are open. See
+  // `src/adapter/ui/main-reload-guard.ts` + shell spec §3.2.
+  installMainReloadGuard(getOpenEntryWindowLids);
+
+  // 2f. Phase γ-A3:child entry-window の open/close を state machine へ
+  // 同期する。window を開閉するたび現在の全 lid を `SYS_SYNC_CHILD_WINDOWS`
+  // で dispatch → `AppState.childWindowLids` が更新され、renderer の
+  // indicator と `BEGIN_EDIT` の二重編集 guard が機能する。これにより
+  // state machine が multi-window を「前提」として扱う。
+  setEntryWindowsChangedListener(() => {
+    dispatcher.dispatch({
+      type: 'SYS_SYNC_CHILD_WINDOWS',
+      lids: getOpenEntryWindowLids(),
+    });
+  });
+
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
+
+  // 3-CP. Command Palette POC(vscode-grade-overhaul-2026-05 MASTER.md §4.1、
+  // pgc-80):Tier 0 flag `shell.command_palette_enabled` で gate(default
+  // OFF)、`Ctrl+Shift+P` / `F1` で起動。bootstrap として PKC2 の基本 command
+  // を `registerBuiltinCommands(dispatcher)` で登録。
+  registerBuiltinCommands(dispatcher);
+
+  // 3-KM. Keymap registry(MASTER.md §4.6、pgc-82):Tier 0 flag
+  // `shell.keymap_registry_enabled` で gate(default OFF)、Alt+1〜6 で view
+  // 切替 / F12 で Flags Inspector / Ctrl+K Ctrl+S で shortcuts 一覧 等の
+  // fresh chord を登録。既存 shortcut は不変。
+  registerBuiltinKeymaps();
+
+  // 3-TS-R. pgc-86 restore(MASTER.md §4.3):本処理は **wireTabStrip より
+  // 先に** 登録して、SYS_INIT_COMPLETE で container が ready になった
+  // 最初の 1 回に restoreTabState を走らせる ── wireTabStrip の onState が
+  // 「openTabs が空」 を LS に書き出して saved 状態を上書きする前に restore
+  // が読む順序を確保する(listener 登録順 = 発火順、stateListeners.forEach)。
+  {
+    let restoredOnce = false;
+    const offRestore = dispatcher.onState((s) => {
+      if (restoredOnce) return;
+      if (!s.container) return;
+      restoredOnce = true;
+      const restoredActive = restoreTabState(s.container);
+      offRestore();
+      if (restoredActive) {
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: restoredActive });
+      }
+    });
+  }
+
+  // 3-TS. Tab strip(MASTER.md §4.3、pgc-85):Tier 0 flag `shell.tabs_enabled`
+  // で gate(default OFF)。本 wiring は always-on で `ENTRY_SELECTED` を
+  // listen して open 履歴を保持(flag OFF 時は描画されないだけで state は
+  // 育つ)── ON にした瞬間既存履歴が tab strip に出る。
+  // **本 wiring は restore より後に登録する**(上記 3-TS-R 参照)。
+  wireTabStrip(dispatcher);
 
   // 3a. Global caret-row indicator (always on, sync-independent).
   // Paints a subtle marker at the focused textarea's caret row
@@ -413,11 +505,12 @@ async function boot(): Promise<void> {
   // に設置。他の AI(DevTools console / iframe / postMessage caller)から
   // markdown text を AST / Pandoc JSON に変換できる経路を提供。
   exposeAstApi();
+  // user bug 2026-05-28:entry-window から `window.opener.PKC.pasteAttachment` で
+  // parent dispatcher に paste 動線を通すための API。MW screenshot paste fix。
+  exposePasteApi(dispatcher);
 
-  // PR-2JJ v2(2026-05-13、PR #432 stack):編集画面 選択部 追従の PKC MD
-  // フォーマットパネルを install。Tier 0 flag `editor.format_panel_enabled`
-  // (default ON)で完全 off 切替可能、panel の × button で session 中の hide。
-  mountFormatPanel();
+  // 編集モード固定 format ribbon(Group C、Phase γ-C)は renderer.ts の
+  // renderEditor() が描画する。旧 floating panel の global mount は scrap 済。
 
   // reform-2026-05 Phase 3 PR-2T(2026-05-12):WCAG コントラスト探索 runtime。
   // Tier 0 flag `theme.wcag_auto_shift`(default ON)/ `theme.wcag_target_ratio`
@@ -538,18 +631,31 @@ async function boot(): Promise<void> {
   mountNavHistory(dispatcher);
 
   // 7. Export handler: when phase becomes 'exporting', run export (async for compression)
+  //
+  // pgc-205 (user 報告 2026-05-24「エクスポート導線が壊れたままだ」):
+  // listener は phase==='exporting' の間に発生した **任意の他 dispatch**
+  // (SET_THEME / TOGGLE_MENU 等、phase guard 無し reducer)で再 fire し、
+  // 多重 exportContainerAsHtml を triggering(同 container を 2-3 個
+  // ダウンロード)していた。`exportInFlight` guard で BEGIN_EXPORT →
+  // SYS_FINISH_EXPORT/SYS_ERROR の 1 サイクル内は 1 回のみ実行する。
+  let exportInFlight = false;
   dispatcher.onState((state) => {
-    if (state.phase === 'exporting' && state.container) {
+    if (state.phase === 'exporting' && state.container && !exportInFlight) {
+      exportInFlight = true;
       const mode = state.exportMode ?? 'full';
       const mutability = state.exportMutability ?? 'editable';
-      exportContainerAsHtml(state.container, { mode, mutability }).then((result) => {
-        if (result.success) {
-          console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
-          dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
-        } else {
-          dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
-        }
-      });
+      exportContainerAsHtml(state.container, { mode, mutability })
+        .then((result) => {
+          if (result.success) {
+            console.log(`[PKC2] Exported (${mode}/${mutability}): ${result.filename} (${(result.size / 1024).toFixed(1)} KB)`);
+            dispatcher.dispatch({ type: 'SYS_FINISH_EXPORT' });
+          } else {
+            dispatcher.dispatch({ type: 'SYS_ERROR', error: `Export failed: ${result.error}` });
+          }
+        })
+        .finally(() => {
+          exportInFlight = false;
+        });
     }
   });
 
@@ -804,6 +910,7 @@ async function boot(): Promise<void> {
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        restoreEditModeFromStorage(dispatcher);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         if (chosen.lightSource) {
           console.log('[PKC2] Light export detected — IDB save suppressed');
@@ -830,6 +937,7 @@ async function boot(): Promise<void> {
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        restoreEditModeFromStorage(dispatcher);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
       }
@@ -850,6 +958,7 @@ async function boot(): Promise<void> {
         maybeIngestSnapshotFromUrl(dispatcher);
         installBookmarkletPkcMessageBridge(dispatcher, registry);
         restoreCollapsedFoldersForContainer(dispatcher, container);
+        restoreEditModeFromStorage(dispatcher);
         applyExternalPermalinkOnBoot(dispatcher, container, undefined, { root });
         return;
       }
@@ -883,6 +992,20 @@ function restoreSettingsFromContainer(
   );
   const settings = resolveSettingsPayload(entry?.body);
   dispatcher.dispatch({ type: 'RESTORE_SETTINGS', settings });
+}
+
+/**
+ * Phase γ-A2 (A2-3, 2026-05-20): after SYS_INIT_COMPLETE, restore the
+ * persisted editMode (inline / window) from localStorage and dispatch
+ * SET_EDIT_MODE. No-op when nothing is stored — the reducer's
+ * undefined default resolves to inline (= legacy behavior), so a
+ * first-ever boot stays fully backward-compatible. editMode is a
+ * viewer-local preference (localStorage, not container), mirroring
+ * `restoreCollapsedFoldersForContainer`. See `edit-mode-prefs.ts`.
+ */
+function restoreEditModeFromStorage(dispatcher: Dispatcher): void {
+  const mode = loadEditMode();
+  if (mode) dispatcher.dispatch({ type: 'SET_EDIT_MODE', mode });
 }
 
 /**

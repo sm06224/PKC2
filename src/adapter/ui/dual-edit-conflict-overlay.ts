@@ -26,6 +26,8 @@
  */
 
 import type { AppState, DualEditConflictState } from '../state/app-state';
+import { diffRows } from '../../features/diff/line-diff';
+import { shellConflictDiffViewEnabled } from './shell-flags';
 
 const REGION = 'dual-edit-conflict';
 
@@ -72,7 +74,9 @@ export function syncDualEditConflictOverlay(
   // the DOM is left untouched between copy presses.
   if (activeOverlay === null || activeConflictLid !== desired.lid) {
     if (activeOverlay !== null) unmount();
-    mount(root, desired);
+    const currentBody =
+      state.container?.entries.find((e) => e.lid === desired.lid)?.body ?? '';
+    mount(root, desired, currentBody);
   }
 }
 
@@ -86,7 +90,11 @@ export function closeDualEditConflictOverlay(): void {
   if (activeOverlay !== null) unmount();
 }
 
-function mount(root: HTMLElement, conflict: DualEditConflictState): void {
+function mount(
+  root: HTMLElement,
+  conflict: DualEditConflictState,
+  currentBody: string,
+): void {
   // Reuse the existing overlay CSS tokens (pkc-text-replace-*) — this
   // matches the boot-source-chooser's approach and avoids introducing
   // a new class namespace.
@@ -119,6 +127,13 @@ function mount(root: HTMLElement, conflict: DualEditConflictState): void {
     appendRow(info, '現在の更新時刻', conflict.currentUpdatedAt);
   }
   card.appendChild(info);
+
+  // γ-A5-5:競合 diff view(flag ON 時)── 現 container body と自分の
+  // draft の 2-pane 行 diff。merge editor ではなく「差を見て discard /
+  // branch を選ぶ」ための読み取り専用表示(spec §5.2)。
+  if (shellConflictDiffViewEnabled()) {
+    card.appendChild(buildConflictDiffPane(currentBody, conflict.draft.body));
+  }
 
   const actions = document.createElement('div');
   actions.className = 'pkc-text-replace-actions';
@@ -168,6 +183,53 @@ function appendRow(dl: HTMLElement, k: string, v: string): void {
   dd.textContent = v;
   dl.appendChild(dt);
   dl.appendChild(dd);
+}
+
+/**
+ * γ-A5-5:2-pane 行 diff の DOM を組む(左 = 現 container body、右 = 自分の
+ * draft)。`diffRows` 純関数の結果を行ごとに描画するだけ ── merge 操作は
+ * 持たない読み取り専用 view。
+ */
+function buildConflictDiffPane(
+  currentBody: string,
+  draftBody: string,
+): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pkc-conflict-diff';
+  wrap.setAttribute('data-pkc-region', 'dual-edit-conflict-diff');
+
+  const head = document.createElement('div');
+  head.className = 'pkc-conflict-diff-head';
+  const hl = document.createElement('span');
+  hl.textContent = '現在の内容(他セッション)';
+  const hr = document.createElement('span');
+  hr.textContent = '自分の編集';
+  head.appendChild(hl);
+  head.appendChild(hr);
+  wrap.appendChild(head);
+
+  const body = document.createElement('div');
+  body.className = 'pkc-conflict-diff-body';
+  for (const row of diffRows(currentBody, draftBody)) {
+    const r = document.createElement('div');
+    r.className = 'pkc-conflict-diff-row';
+
+    const left = document.createElement('div');
+    left.className = 'pkc-conflict-diff-cell';
+    left.setAttribute('data-op', row.op === 'add' ? 'empty' : row.op);
+    left.textContent = row.left ?? '';
+
+    const right = document.createElement('div');
+    right.className = 'pkc-conflict-diff-cell';
+    right.setAttribute('data-op', row.op === 'del' ? 'empty' : row.op);
+    right.textContent = row.right ?? '';
+
+    r.appendChild(left);
+    r.appendChild(right);
+    body.appendChild(r);
+  }
+  wrap.appendChild(body);
+  return wrap;
 }
 
 function unmount(): void {

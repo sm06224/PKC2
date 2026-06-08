@@ -3,9 +3,12 @@
 useDefault = true
 
 [allowlist]
-description = "PKC2 false positives - localStorage keys are not secrets"
+description = "PKC2 false positives - localStorage keys / test fixtures are not secrets"
 paths = [
   '''docs/development/pane-state-persistence\.md''',
   '''docs/development/import-export-surface-audit\.md''',
   '''src/adapter/platform/pane-prefs\.ts''',
+  # pgc-130 wave-δ #6:test asset_key 'abc123def456ghi' は test fixture
+  # ── attachment body の構造を verify する目的の dummy 文字列。
+  '''tests/adapter/inspector-style-attachment\.test\.ts''',
 ]

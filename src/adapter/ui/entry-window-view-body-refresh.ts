@@ -70,6 +70,7 @@ import {
 import { extractEntryReferences } from '../../features/entry-ref/extract-entry-refs';
 import {
   getOpenEntryWindowLids,
+  getOpenViewerWindowLids,
   pushViewBodyUpdate,
 } from './entry-window';
 
@@ -97,7 +98,12 @@ export function wireEntryWindowViewBodyRefresh(dispatcher: Dispatcher): () => vo
     // needed.
     if (!assetsChanged && !entriesChanged) return;
 
-    const openLids = getOpenEntryWindowLids();
+    // γ-A5:editor window と viewer window の両方を対象にする。viewer
+    // のみ開いているときも host entry の変更を反映させる(spec §3.4)。
+    // `pushViewBodyUpdate` は lid を受けて editor / viewer 両投する。
+    const openLids = [
+      ...new Set([...getOpenEntryWindowLids(), ...getOpenViewerWindowLids()]),
+    ];
     if (openLids.length === 0) return;
 
     for (const lid of openLids) {

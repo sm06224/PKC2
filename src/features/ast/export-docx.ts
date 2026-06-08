@@ -970,6 +970,16 @@ function blockToDocxElements(block: AstBlock, ctx: ExportContext): Array<Paragra
     }
     case 'opaque-block':
       return [new Paragraph({ children: [new TextRun({ text: block.original })] })];
+    case 'format-block': {
+      // v4 §12(stack PR 3、types only):children をそのまま flatten、装飾は inline style
+      // 未対応(docx native styling は別 wave 想定)。
+      const elements: Array<Paragraph | Table> = [];
+      for (const child of block.children) {
+        const result = blockToDocxElements(child, ctx);
+        for (const el of result) elements.push(el);
+      }
+      return elements;
+    }
     default: {
       const _exhaustive: never = block;
       void _exhaustive;

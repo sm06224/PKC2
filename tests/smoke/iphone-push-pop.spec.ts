@@ -28,7 +28,7 @@ test.describe('iPhone shell (pointer:coarse + 375 px)', () => {
 
   test('list → drawer → create → edit → save → detail → back', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/pkc2.html');
+    await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
     const root = page.locator('#pkc-root');
     await bootReady(page);
 
@@ -105,7 +105,7 @@ test.describe('iPhone shell (pointer:coarse + 375 px)', () => {
         JSON.stringify({ sidebar: true, meta: true }),
       );
     });
-    await page.goto('/pkc2.html');
+    await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
     const root = page.locator('#pkc-root');
     await bootReady(page);
     await expect(root).toHaveAttribute('data-pkc-mobile-page', 'list');
@@ -123,7 +123,7 @@ test.describe('iPhone shell (pointer:coarse + 375 px)', () => {
 
   test('mobile-back during editing cancels the edit before popping', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/pkc2.html');
+    await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
     const root = page.locator('#pkc-root');
     await bootReady(page);
 
@@ -154,7 +154,7 @@ test.describe('desktop fallback (no touch + narrow window)', () => {
 
   test('Full HD user shrinking the window past 640 px keeps desktop chrome', async ({ page }) => {
     await page.setViewportSize({ width: 600, height: 800 });
-    await page.goto('/pkc2.html');
+    await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
     await bootReady(page);
 
     // Mobile header MUST be hidden — only the desktop header is

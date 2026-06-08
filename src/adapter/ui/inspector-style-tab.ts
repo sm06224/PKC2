@@ -1,0 +1,351 @@
+// Inspector Style tab content(MASTER.md §6.3、pgc-118 wave-γ #18)。
+//
+// pgc-109 で scaffold した Inspector の Style tab(placeholder のみ)に
+// **読み取り専用 style metrics**(archetype / 文字数 / 行数 / heading 数 /
+// frontmatter style globals)を表示する section を入れる。
+//
+// 本格的な per-entry theme override(MASTER §6.3 Style tab の最終目標)は
+// 後続 PR で。本 PR は user が「今 entry の構造 / size を一望できる」
+// view-level metrics を入れて Style tab を機能化(Coming soon placeholder
+// を脱却)。
+//
+// meta-pane-inspector.ts の Style tab `visibleRegions` に
+// `inspector-style-metrics` を追加 + `renderMetaPaneImpl` 経路から本
+// helper を call して flag ON 時に Style section を inject する。
+
+import type { Entry } from '../../core/model/record';
+import type { Container } from '../../core/model/container';
+import { extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
+import { extractDocumentGlobals } from '../../features/markdown/document-globals';
+import { parseTextlogBody } from '../../features/textlog/textlog-body';
+import { parseTodoBody, isTodoPastDue, formatTodoDate } from '../../features/todo/todo-body';
+import { computeSubtaskStats } from '../../features/todo/todo-subtask';
+import { parseAttachmentBody } from './attachment-presenter';
+import { parseFormBody } from './form-presenter';
+import { getStructuralChildren } from '../../features/relation/tree';
+
+export function buildInspectorStyleSection(entry: Entry, container?: Container | null): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'pkc-inspector-style';
+  section.setAttribute('data-pkc-region', 'inspector-style-metrics');
+
+  const heading = document.createElement('div');
+  heading.className = 'pkc-inspector-style-heading';
+  heading.textContent = '🎨 Style metrics';
+  section.appendChild(heading);
+
+  const dl = document.createElement('dl');
+  dl.className = 'pkc-inspector-style-dl';
+
+  // archetype + icon
+  addRow(dl, 'Archetype', `${archetypeIcon(entry.archetype)} ${entry.archetype}`);
+
+  // body metrics
+  const body = entry.body ?? '';
+  const titleLen = (entry.title ?? '').length;
+  const bodyLen = body.length;
+  const lineCount = body === '' ? 0 : body.split('\n').length;
+  const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length;
+
+  addRow(dl, 'Title length', `${titleLen} chars`);
+  addRow(dl, 'Body length', `${bodyLen} chars`);
+  addRow(dl, 'Body lines', `${lineCount}`);
+  addRow(dl, 'Body words', `${wordCount}`);
+
+  // pgc-132 wave-δ #8(MASTER.md §7 form):form 専用 metrics ──
+  // 現 form schema は fixed 3 fields(name / note / checked)、dynamic
+  // schema ではない。filled fields 数 + 各 field の状態 / 長さを表示。
+  if (entry.archetype === 'form') {
+    try {
+      const form = parseFormBody(entry.body ?? '');
+      const filled = [form.name.trim() !== '', form.note.trim() !== '', form.checked].filter(Boolean).length;
+      // pgc-159 wave-δ #25:filled fields 数を todo subtask 同流儀で
+      // progress bar visualize(pgc-152 renderProgressBar 再利用)。form の
+      // 全 fields 3 件のうち何件 filled かが 1 目でわかる、checklist 風 UX。
+      const pct = Math.round((filled / 3) * 100);
+      addRowHtml(dl, 'Form fields', `${filled} / 3 filled(${pct}%)`, renderProgressBar(filled, 3));
+      addRow(dl, 'Name', form.name.trim() === '' ? '(empty)' : `${form.name.length} chars`);
+      addRow(dl, 'Note', form.note.trim() === '' ? '(empty)' : `${form.note.length} chars`);
+      addRow(dl, 'Checked', form.checked ? '✓ true' : '✗ false');
+    } catch {
+      addRow(dl, 'Form metadata', '(parse error)');
+    }
+  }
+
+  // pgc-131 wave-δ #7(MASTER.md §7 folder):folder 専用 metrics ──
+  // 直接子の件数 / archetype 内訳 / 最終子更新時刻。folder の活動状態を
+  // 一目で確認、organize / curation / clean-up workflow の判断材料。
+  if (entry.archetype === 'folder' && container) {
+    try {
+      const children = getStructuralChildren(container.relations, container.entries, entry.lid);
+      addRow(dl, 'Direct children', `${children.length} total`);
+      if (children.length > 0) {
+        // archetype 内訳
+        const byArch: Record<string, number> = {};
+        for (const c of children) {
+          byArch[c.archetype] = (byArch[c.archetype] ?? 0) + 1;
+        }
+        const breakdown = Object.entries(byArch)
+          .sort((a, b) => b[1] - a[1])
+          .map(([arch, n]) => `${archetypeIcon(arch)} ${arch}: ${n}`)
+          .join(' · ');
+        addRow(dl, 'By archetype', breakdown);
+        // 最終子更新
+        const latestIso = children
+          .map((c) => c.updated_at)
+          .reduce((a, b) => (a > b ? a : b), '');
+        if (latestIso) addRow(dl, 'Latest child update', formatIso(latestIso));
+      }
+    } catch {
+      addRow(dl, 'Folder metadata', '(parse error)');
+    }
+  }
+
+  // pgc-130 wave-δ #6(MASTER.md §7 attachment):attachment 専用 metrics
+  // ── name / MIME / size / asset_key / sandbox / app launcher 登録状態。
+  // 添付ファイルの実体情報を一目で確認、HTML attachment の sandbox 設定や
+  // App Launcher への登録状況も view できる。
+  if (entry.archetype === 'attachment') {
+    try {
+      const att = parseAttachmentBody(entry.body ?? '');
+      addRow(dl, 'Filename', att.name || '(unnamed)');
+      addRow(dl, 'MIME type', att.mime);
+      if (typeof att.size === 'number') {
+        addRow(dl, 'File size', formatBytes(att.size));
+      }
+      if (att.asset_key) {
+        // asset_key は長いので 12 文字 + ellipsis で表示
+        const truncated = att.asset_key.length > 12
+          ? `${att.asset_key.slice(0, 12)}…`
+          : att.asset_key;
+        addRow(dl, 'Asset key', truncated);
+      } else if (att.data) {
+        addRow(dl, 'Storage', 'legacy (inline base64)');
+      }
+      if (att.sandbox_allow && att.sandbox_allow.length > 0) {
+        addRow(dl, 'Sandbox allow', att.sandbox_allow.join(' / '));
+      }
+      if (att.registered_as_app) {
+        addRow(dl, 'App Launcher', '🚀 registered');
+      }
+    } catch {
+      addRow(dl, 'Attachment metadata', '(parse error)');
+    }
+  }
+
+  // pgc-129 wave-δ #5(MASTER.md §7 todo):todo 専用 metrics ──
+  // status / description 長さ / due date / overdue 判定 / archived。単独
+  // entry の状況を一目で確認、kanban / calendar の row click から飛んで
+  // 詳細を見るための breath-check の動線。
+  if (entry.archetype === 'todo') {
+    try {
+      const todo = parseTodoBody(entry.body ?? '');
+      addRow(dl, 'Status', todo.status === 'done' ? '✓ done' : '○ open');
+      addRow(dl, 'Description length', `${todo.description.length} chars`);
+      if (todo.date) {
+        const past = isTodoPastDue(todo);
+        const dateStr = formatTodoDate(todo.date);
+        addRow(dl, 'Due date', past ? `⚠ ${dateStr}(overdue)` : dateStr);
+      } else {
+        addRow(dl, 'Due date', '—');
+      }
+      if (todo.archived) {
+        addRow(dl, 'Archived', '📦 yes');
+      }
+      // pgc-152 wave-δ #21(handoff §3.3 todo completion graph):
+      // todo description 内の inline subtask(`- [ ]` / `- [x]`)を
+      // 集計、N/M done(P%)を Inspector に表示。pgc-150 で導入した
+      // todo-subtask helper を再利用、subtask 0 件 entry には row 出さず
+      // ノイズなし。
+      const subs = computeSubtaskStats(todo.description ?? '');
+      if (subs.total > 0) {
+        const pct = Math.round((subs.done / subs.total) * 100);
+        const bar = renderProgressBar(subs.done, subs.total);
+        addRowHtml(dl, 'Subtasks', `${subs.done} / ${subs.total} done(${pct}%)`, bar);
+      }
+    } catch {
+      addRow(dl, 'Todo metadata', '(parse error)');
+    }
+  }
+
+  // pgc-128 wave-δ #4(MASTER.md §7 textlog):textlog 専用 metrics ──
+  // 全 log 件数 / 今日の log 件数 / 直近 log 時刻 / important flag 件数 を
+  // 表示。markdown metrics(下)とは別 section にする(text と textlog の
+  // 違いを user に明示)。
+  if (entry.archetype === 'textlog') {
+    try {
+      const tl = parseTextlogBody(entry.body ?? '');
+      const total = tl.entries.length;
+      // 今日の log 件数(local timezone の今日)
+      const today = formatLocalYmd(new Date());
+      const todayCount = tl.entries.filter((e) => formatLocalYmd(new Date(e.createdAt)) === today).length;
+      // 直近 log の時刻(createdAt 降順 sort せず、配列の最後を使う ──
+      // 通常 append で末尾が最新だが、念のため max を取る)
+      const latestIso = tl.entries.length === 0
+        ? ''
+        : tl.entries
+            .map((e) => e.createdAt)
+            .reduce((a, b) => (a > b ? a : b), '');
+      const importantCount = tl.entries.filter((e) => e.flags.includes('important')).length;
+      addRow(dl, 'Log entries', `${total} total`);
+      addRow(dl, 'Today\'s logs', `${todayCount}`);
+      addRow(dl, 'Latest log', latestIso ? formatIso(latestIso) : '—');
+      if (importantCount > 0) {
+        addRow(dl, 'Important flagged', `${importantCount} / ${total}`);
+      }
+    } catch {
+      addRow(dl, 'Log entries', '(parse error)');
+    }
+  }
+
+  // markdown-specific metrics(text / textlog 限定)
+  if (entry.archetype === 'text' || entry.archetype === 'textlog') {
+    try {
+      const headings = extractHeadingsFromMarkdown(body);
+      const byLevel: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      for (const h of headings) byLevel[h.level] = (byLevel[h.level] ?? 0) + 1;
+      const levelStr = [1, 2, 3, 4, 5]
+        .map((l) => `H${l}:${byLevel[l] ?? 0}`)
+        .filter((s) => !s.endsWith(':0'))
+        .join(' / ') || '(none)';
+      addRow(dl, 'Headings', `${headings.length} total · ${levelStr}`);
+    } catch {
+      addRow(dl, 'Headings', '(parse error)');
+    }
+
+    // frontmatter document globals(writing / direction / align / layout)
+    try {
+      const globals = extractDocumentGlobals(body);
+      const lines: string[] = [];
+      if (globals.writing) lines.push(`writing: ${globals.writing}`);
+      if (globals.direction) lines.push(`direction: ${globals.direction}`);
+      if (globals.align) lines.push(`align: ${globals.align}`);
+      if (globals.layout) lines.push(`layout: ${globals.layout}`);
+      if (lines.length === 0) lines.push('(none — using defaults)');
+      addRow(dl, 'Frontmatter style', lines.join(' · '));
+      if (globals.warnings.length > 0) {
+        addRow(dl, 'Style warnings', `${globals.warnings.length} (see frontmatter validation)`);
+      }
+    } catch {
+      addRow(dl, 'Frontmatter style', '(parse error)');
+    }
+  }
+
+  // timestamps(常に出す)
+  addRow(dl, 'Created', formatIso(entry.created_at));
+  addRow(dl, 'Updated', formatIso(entry.updated_at));
+
+  // pgc-197 wave-α' #20:revision count を表示(container があり、>0 件のみ)。
+  // History tab(pgc-181 で diff viewer 着地)とは別 surface ── Style tab
+  // は単に「この entry が何回 snapshot されたか」 の情報的 metric。
+  if (container) {
+    const revCount = container.revisions.filter((r) => r.entry_lid === entry.lid).length;
+    if (revCount > 0) {
+      addRow(dl, 'Revisions', `${revCount}`);
+    }
+  }
+
+  section.appendChild(dl);
+
+  const note = document.createElement('div');
+  note.className = 'pkc-inspector-style-note';
+  note.textContent = 'Per-entry theme override(色 / font / margin)は wave-γ 後続 PR で実装予定。';
+  section.appendChild(note);
+
+  return section;
+}
+
+function addRow(dl: HTMLElement, label: string, value: string): void {
+  const dt = document.createElement('dt');
+  dt.className = 'pkc-inspector-style-dt';
+  dt.textContent = label;
+  dl.appendChild(dt);
+  const dd = document.createElement('dd');
+  dd.className = 'pkc-inspector-style-dd';
+  dd.textContent = value;
+  dl.appendChild(dd);
+}
+
+/**
+ * pgc-152:subtask progress 等、value + extra HTML(progress bar 等)を
+ * 一行に並べる variant。extra は dd の append child として add。
+ * text content は addRow 同等、extra は visual element として独立。
+ */
+function addRowHtml(
+  dl: HTMLElement,
+  label: string,
+  value: string,
+  extra: HTMLElement,
+): void {
+  const dt = document.createElement('dt');
+  dt.className = 'pkc-inspector-style-dt';
+  dt.textContent = label;
+  dl.appendChild(dt);
+  const dd = document.createElement('dd');
+  dd.className = 'pkc-inspector-style-dd';
+  const span = document.createElement('span');
+  span.textContent = value;
+  dd.appendChild(span);
+  dd.appendChild(extra);
+  dl.appendChild(dd);
+}
+
+/**
+ * pgc-152:subtask completion graph 用 SVG progress bar。done / total
+ * から fill 比率を計算、視覚的に「あとどれくらい」 が一目でわかる。
+ * theme var(`--c-accent`、`--c-border`)に追従、Light / Dark / CRT
+ * いずれでも見える。
+ */
+function renderProgressBar(done: number, total: number): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'pkc-inspector-progress-bar';
+  wrap.setAttribute('data-pkc-progress-done', String(done));
+  wrap.setAttribute('data-pkc-progress-total', String(total));
+  const fill = document.createElement('div');
+  fill.className = 'pkc-inspector-progress-fill';
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  fill.style.width = `${pct}%`;
+  fill.setAttribute('data-pkc-progress-percent', String(pct));
+  wrap.appendChild(fill);
+  return wrap;
+}
+
+function archetypeIcon(arch: string): string {
+  switch (arch) {
+    case 'text':       return '📝';
+    case 'textlog':    return '📋';
+    case 'todo':       return '☑';
+    case 'attachment': return '📎';
+    case 'folder':     return '📁';
+    case 'form':       return '📋';
+    default:           return '○';
+  }
+}
+
+function formatIso(iso: string): string {
+  if (!iso) return '—';
+  return iso.slice(0, 19).replace('T', ' ');
+}
+
+/**
+ * pgc-130:byte 数を human-readable に整形(KB / MB / GB)。1024 base。
+ */
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/**
+ * pgc-128:local timezone での yyyy-mm-dd 整形。`new Date().toISOString()`
+ * は UTC 表記なので、user の「今日」と一致させるには local Date を直接読む。
+ */
+function formatLocalYmd(d: Date): string {
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}

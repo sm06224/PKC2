@@ -162,9 +162,19 @@ const BUDGETS = [
   //    として外だししていく方針です」
   // → 単一 HTML 哲学を維持しつつ、5 MB を本体限界とする方針確定。
   //   超過する viewer / heavy lib は PKC-extension(領域 10-5)へ分離。
-  //   個別上限を bundle.js 4.5 MB + bundle.css 0.5 MB に分配し、合算で
-  //   5 MB ぴったりに収まるよう設定。
-  { file: 'dist/bundle.js', maxBytes: 4608 * 1024 },  // 4.5 MB (was 1.5 MB)
+  //
+  // pgc-203 wave-α' polish #24(2026-05-24、user 直接指示「ビルトイン
+  // マーメイドに対応して」)で **mermaid.js v11 を built-in 化** ──
+  // bundle.js が ~5 MB に膨らむ(mermaid 本体 ~3 MB)。user の「5 MB
+  // 分水嶺、超過なら PKC-extension」 方針との衝突を honest に記録:
+  //
+  //   - bundle.js cap を 4.5 → 5.5 MB に bump(mermaid built-in 維持)
+  //   - bundle.css は 0.5 MB のまま、合計 6 MB cap = 5 MB 分水嶺超過 1 MB
+  //   - **追って判断**:user 同意で本値維持 or mermaid を PKC-extension
+  //     (領域 10-5、未着手)に分離 or `editor.mermaid_render_enabled`
+  //     default OFF のまま運用(本セッションでは OFF、bundle 物理サイズ
+  //     のみ膨らむ)
+  { file: 'dist/bundle.js', maxBytes: 5632 * 1024 },  // 5.5 MB (was 4.5 MB、pgc-203 で mermaid 取込)
   { file: 'dist/bundle.css', maxBytes: 512 * 1024 },  // 0.5 MB (was 130 KB)
 ];
 

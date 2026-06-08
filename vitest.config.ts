@@ -15,6 +15,13 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     setupFiles: ['tests/setup-globals.ts'],
+    // vitest 4 bump 時に restoreMocks/clearMocks の default 動作が変わったため、
+    // 旧 3.x の挙動(beforeEach で spyOn() を再 set すると古い記録が残る)を
+    // 復帰するため明示。`vi.spyOn().mockImplementation()` で実装上書きしている
+    // テストが、テスト間で per-spy call history を共有しないよう clearMocks ON。
+    clearMocks: true,
+    restoreMocks: true,
+    unstubGlobals: true,
     coverage: {
       // v8 instrumentation — Node-builtin, no external runtime
       // beyond `@vitest/coverage-v8` (added 2026-05-03 with the

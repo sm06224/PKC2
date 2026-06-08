@@ -10,6 +10,13 @@ import { createDispatcher as _createRawDispatcher } from '@adapter/state/dispatc
 import { render } from '@adapter/ui/renderer';
 import type { Container } from '@core/model/container';
 import type { SavedSearch } from '@core/model/saved-search';
+import { setContainerFlagSource } from '@adapter/flags';
+
+// pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
+// tree sidebar の構造を検証する本 suite は tree mode に固定する。
+beforeEach(() => {
+  setContainerFlagSource({ 'sidebar.mode': 'tree' });
+});
 
 function mkContainer(saved: SavedSearch[] = []): Container {
   return {
@@ -177,11 +184,13 @@ describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
 
   it('Slice F-4: quick-save does NOT prompt the user (dispatch is synchronous)', () => {
     const dispatcher = setup();
-    const promptSpy = vi.spyOn(window, 'prompt');
+    // happy-dom 20 で window.prompt 未実装のため stubGlobal で生成
+    const promptSpy = vi.fn();
+    vi.stubGlobal('prompt', promptSpy);
     try {
       root.querySelector<HTMLElement>('[data-pkc-action="quick-save-search"]')!.click();
     } finally {
-      promptSpy.mockRestore();
+      vi.unstubAllGlobals();
     }
     expect(promptSpy).not.toHaveBeenCalled();
     const saved = dispatcher.getState().container!.meta.saved_searches ?? [];
@@ -222,19 +231,16 @@ describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
       ]),
     );
 
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('New Name');
+    const promptSpy = vi.fn(() => 'New Name');
+    vi.stubGlobal('prompt', promptSpy);
     let calls: unknown[];
     try {
       root.querySelector<HTMLElement>(
         '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
       )!.click();
-      // Snapshot the spy call list BEFORE `mockRestore` runs in
-      // the finally block — vitest clears the recorded calls when
-      // the mock is restored, so any assertion that runs after it
-      // would see zero invocations.
       calls = [...promptSpy.mock.calls];
     } finally {
-      promptSpy.mockRestore();
+      vi.unstubAllGlobals();
     }
 
     expect(calls).toEqual([['保存検索の新しい名前:', 'Old Name']]);
@@ -249,26 +255,26 @@ describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
 
   it('rename ✏ prompt cancel (null) does not dispatch', () => {
     const dispatcher = setup(mkContainer([mkSaved('me', 'Old')]));
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null);
+    vi.stubGlobal('prompt', vi.fn(() => null));
     try {
       root.querySelector<HTMLElement>(
         '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
       )!.click();
     } finally {
-      promptSpy.mockRestore();
+      vi.unstubAllGlobals();
     }
     expect(dispatcher.getState().container!.meta.saved_searches![0]!.name).toBe('Old');
   });
 
   it('rename ✏ empty / whitespace name is a silent no-op', () => {
     const dispatcher = setup(mkContainer([mkSaved('me', 'Old')]));
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('   ');
+    vi.stubGlobal('prompt', vi.fn(() => '   '));
     try {
       root.querySelector<HTMLElement>(
         '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
       )!.click();
     } finally {
-      promptSpy.mockRestore();
+      vi.unstubAllGlobals();
     }
     expect(dispatcher.getState().container!.meta.saved_searches![0]!.name).toBe('Old');
   });

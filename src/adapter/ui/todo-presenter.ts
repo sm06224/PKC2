@@ -15,6 +15,7 @@ import {
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
 import { getFormatLocale } from './format-context';
+import { textTodoSubtaskEnabled } from './shell-flags';
 
 // Re-export from features layer so existing adapter-internal consumers keep working.
 export { parseTodoBody, serializeTodoBody, formatTodoDate, isTodoPastDue };
@@ -193,6 +194,22 @@ function renderTodoDescription(
         entries,
         currentContainerId: currentContainerId ?? '',
       });
+    }
+    // pgc-150 wave-δ #19(handoff §3.3):flag ON 時、markdown-render が
+    // 既に出力した `<input type="checkbox" data-pkc-task-index="N">` を
+    // interactive 化 ── data-pkc-action / data-pkc-lid を inject すれば
+    // action-binder の toggle-todo-subtask handler が発火する。`disabled`
+    // が付いていれば除去(markdown-it 既定では `disabled` なしのため通常
+    // no-op だが防衛的)。
+    if (textTodoSubtaskEnabled()) {
+      const checkboxes = desc.querySelectorAll<HTMLInputElement>('input.pkc-task-checkbox[data-pkc-task-index]');
+      for (const cb of Array.from(checkboxes)) {
+        cb.setAttribute('data-pkc-action', 'toggle-todo-subtask');
+        cb.setAttribute('data-pkc-lid', entry.lid);
+        cb.removeAttribute('disabled');
+        cb.disabled = false;
+        cb.classList.add('pkc-todo-subtask-interactive');
+      }
     }
     return desc;
   }

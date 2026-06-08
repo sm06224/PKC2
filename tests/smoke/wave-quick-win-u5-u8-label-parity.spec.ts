@@ -17,7 +17,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { bootReady } from './_helpers/boot-ready';
 
 async function bootWithSeed(page: Page): Promise<void> {
-  await page.goto('/pkc2.html', { waitUntil: 'load' });
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree', { waitUntil: 'load' });
   await bootReady(page);
 
   // 単一 folder を seed → filer view + graph view を開ける状態に。

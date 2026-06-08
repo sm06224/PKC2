@@ -13,6 +13,11 @@ export type ArchetypeId =
   | 'folder'
   | 'generic'
   | 'opaque'
+  // 領域 10-4 spreadsheet archetype Phase 1(2026-05-28、user direction #4):
+  // 表形式 entry。body は JSON `{ rows: string[][] }`(MVP scope、各 cell は
+  // string)。Phase 1 では view only(read-only HTML table)+ TSV-like
+  // textarea editor。CSV import / xlsx I/O は Phase 2 以降。
+  | 'spreadsheet'
   | 'system-about'
   | 'system-settings'
   | 'system-flags';
