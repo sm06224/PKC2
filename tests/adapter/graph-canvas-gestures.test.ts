@@ -17,6 +17,7 @@ import {
   installGraphCanvasGestures,
   resetGraphCanvasZoom,
   bindGraphCanvas,
+  setGraphEditMode,
   __getGraphCanvasViewForTest,
   type GraphCanvasPayload,
 } from '@adapter/ui/graph-canvas';
@@ -240,5 +241,181 @@ describe('graph canvas gestures (PR-H G16 parity)', () => {
     // = exp(0.35) ≈ 1.419。重複 install されていなければ 1×。
     const ratio = after / before;
     expect(ratio).toBeCloseTo(Math.exp(0.35), 2);
+  });
+});
+
+describe('graph canvas wire drag (Phase γ-B2-2)', () => {
+  let canvas: HTMLCanvasElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    canvas = makeCanvas(960, 600);
+    installGraphCanvasGestures(canvas);
+    setGraphEditMode('view');
+  });
+
+  afterEach(() => {
+    setGraphEditMode('view');
+    document.body.innerHTML = '';
+  });
+
+  function md(x: number, y: number): void {
+    const ev = new Event('mousedown', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'button', { value: 0 });
+    Object.defineProperty(ev, 'clientX', { value: x });
+    Object.defineProperty(ev, 'clientY', { value: y });
+    canvas.dispatchEvent(ev);
+  }
+  function mmove(x: number, y: number): void {
+    const ev = new Event('mousemove', { bubbles: true });
+    Object.defineProperty(ev, 'clientX', { value: x });
+    Object.defineProperty(ev, 'clientY', { value: y });
+    window.dispatchEvent(ev);
+  }
+  function mup(x: number, y: number): void {
+    const ev = new Event('mouseup', { bubbles: true });
+    Object.defineProperty(ev, 'clientX', { value: x });
+    Object.defineProperty(ev, 'clientY', { value: y });
+    window.dispatchEvent(ev);
+  }
+
+  it('edit mode: node から drag で prototype line(wireSource/wireTarget)が立つ', () => {
+    bindGraphCanvas(
+      canvas,
+      mkPayload(960, 600, [
+        { id: 'n1', x: 100, y: 100 },
+        { id: 'n2', x: 300, y: 100 },
+      ]),
+    );
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('edit');
+
+    md(100, 100);
+    mmove(200, 110);
+
+    const v = __getGraphCanvasViewForTest(canvas)!;
+    expect(v.wireSource).toBe('n1');
+    expect(v.wireTarget).not.toBeNull();
+    expect(v.wireTarget).not.toBeUndefined();
+  });
+
+  it('edit mode: mouseup で wire drag state が reset される', () => {
+    bindGraphCanvas(canvas, mkPayload(960, 600, [{ id: 'n1', x: 100, y: 100 }]));
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('edit');
+
+    md(100, 100);
+    mmove(200, 100);
+    mup(200, 100);
+
+    const v = __getGraphCanvasViewForTest(canvas)!;
+    expect(v.wireSource == null).toBe(true);
+  });
+
+  it('edit mode: drop が別 node 上なら pkc-graph-wire-drop を発行', () => {
+    bindGraphCanvas(
+      canvas,
+      mkPayload(960, 600, [
+        { id: 'n1', x: 100, y: 100 },
+        { id: 'n2', x: 300, y: 100 },
+      ]),
+    );
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('edit');
+    let dropDetail: { source: string; target: string } | null = null;
+    canvas.addEventListener('pkc-graph-wire-drop', (ev) => {
+      dropDetail = (ev as CustomEvent).detail as {
+        source: string;
+        target: string;
+      };
+    });
+
+    md(100, 100);
+    mmove(300, 100);
+    mup(300, 100);
+
+    expect(dropDetail).not.toBeNull();
+    expect(dropDetail!.source).toBe('n1');
+    expect(dropDetail!.target).toBe('n2');
+  });
+
+  it('edit mode: drop が空白なら wire-drop event は出ない', () => {
+    bindGraphCanvas(canvas, mkPayload(960, 600, [{ id: 'n1', x: 100, y: 100 }]));
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('edit');
+    let fired = false;
+    canvas.addEventListener('pkc-graph-wire-drop', () => {
+      fired = true;
+    });
+
+    md(100, 100);
+    mmove(500, 400);
+    mup(500, 400);
+
+    expect(fired).toBe(false);
+  });
+
+  it('edit mode + Shift+drag は wire でなく node-drag に退避', () => {
+    bindGraphCanvas(
+      canvas,
+      mkPayload(960, 600, [
+        { id: 'n1', x: 100, y: 100 },
+        { id: 'n2', x: 300, y: 100 },
+      ]),
+    );
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('edit');
+
+    md(100, 100);
+    const mm = new Event('mousemove', { bubbles: true });
+    Object.defineProperty(mm, 'clientX', { value: 200 });
+    Object.defineProperty(mm, 'clientY', { value: 100 });
+    Object.defineProperty(mm, 'shiftKey', { value: true });
+    window.dispatchEvent(mm);
+
+    const v = __getGraphCanvasViewForTest(canvas)!;
+    expect(v.wireSource == null).toBe(true);
+    expect(v.dragLid).toBe('n1');
+
+    mup(200, 100);
+  });
+
+  it('view mode: wire drag は起きず従来の node-drag のまま', () => {
+    bindGraphCanvas(
+      canvas,
+      mkPayload(960, 600, [
+        { id: 'n1', x: 100, y: 100 },
+        { id: 'n2', x: 300, y: 100 },
+      ]),
+    );
+    const v0 = __getGraphCanvasViewForTest(canvas)!;
+    v0.scale = 1;
+    v0.tx = 0;
+    v0.ty = 0;
+    setGraphEditMode('view');
+
+    md(100, 100);
+    mmove(200, 100);
+
+    const v = __getGraphCanvasViewForTest(canvas)!;
+    expect(v.wireSource == null).toBe(true);
+    expect(v.dragLid).toBe('n1');
+
+    mup(200, 100);
   });
 });

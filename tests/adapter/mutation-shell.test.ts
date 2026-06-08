@@ -11,6 +11,13 @@ import { formPresenter } from '@adapter/ui/form-presenter';
 import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
+import { setContainerFlagSource } from '@adapter/flags';
+
+// pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
+// tree sidebar の構造を検証する本 suite は tree mode に固定する。
+beforeEach(() => {
+  setContainerFlagSource({ 'sidebar.mode': 'tree' });
+});
 
 const mockContainer: Container = {
   meta: {
@@ -370,6 +377,9 @@ describe('Mutation → Shell integration', () => {
 
     const select = addForm!.querySelector<HTMLSelectElement>('[data-pkc-field="tag-target"]');
     expect(select).not.toBeNull();
+    // pgc-226:tag-target select は lazy populate なので options は初期 placeholder のみ。
+    // user mousedown(capture-phase handler)で populate されるので test 側で simulate。
+    select!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
     select!.value = 'e2';
 
     // Click add button

@@ -15,8 +15,32 @@
  */
 
 import type { Entry } from '../../core/model/record';
+import type { Container } from '../../core/model/container';
 import { renderMarkdown } from '../../features/markdown/markdown-render';
-import { extractTocFromEntry, renderStaticTocHtml } from '../../features/markdown/markdown-toc';
+// pgc-96(audit pgc-77 Gap-15):S4 全 render path に features 層 DOM op
+// (expandTransclusions + hydrateCardPlaceholders)を parent 完成 HTML 経路
+// で挿入する。inline script からは features 層を呼べないため、parent 側で
+// markdown HTML を一旦 detached DOM 化 → DOM op → outerHTML serialize の
+// chain を回し、push する HTML 文字列に完成形を込める(canvas 前方互換、
+// multi-window spec §11.3)。
+import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
+import { hydrateMermaidPlaceholders } from './mermaid-renderer';
+// pgc-97(audit pgc-77 Gap-14):S4 全 path で heading-fold が機能していな
+// かった(features 層 op 未連動)。pgc-96 で導入した injectFeaturesDomOps
+// pipeline に applyHeadingFold を追加し、center pane(S1)と同 contract に。
+import { applyHeadingFold } from '../../features/markdown/heading-fold';
+// pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 全 render path に frontmatter
+// strip + extractVars + extractHeadingNumberConfig を thread して
+// canonical S1 と一致させる。これまで raw frontmatter が `<hr>+text+<hr>`
+// として漏れ、{{vars.x}} は literal、見出し番号は付かない状態だった。
+import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
+import {
+  extractHeadingNumberConfig,
+  extractDocumentGlobals,
+  globalsToDataAttrs,
+} from '../../features/markdown/document-globals';
+import { extractTocFromEntry, renderStaticTocHtml, extractHeadingsFromMarkdown } from '../../features/markdown/markdown-toc';
 import { formatLogTimestampWithSeconds } from '../../features/textlog/textlog-body';
 import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import {
@@ -33,6 +57,15 @@ import {
 import { parseFormBody, formPresenter } from './form-presenter';
 import { textlogPresenter } from './textlog-presenter';
 import { todoPresenter } from './todo-presenter';
+import { spreadsheetPresenter, renderSpreadsheetEmbedBody } from './spreadsheet-presenter';
+import { shellWindowRolesEnabled, shellWindowLayoutPersistEnabled, shellEntryWindowSplitDefaultOffEnabled, shellEntryWindowChromeEnabled } from './shell-flags';
+import type { DiffRow } from '../../features/diff/line-diff';
+import {
+  readWindowLayout,
+  upsertWindowLayout,
+  removeWindowLayout,
+  type WindowLayoutEntry,
+} from '../platform/window-layout-store';
 
 /**
  * Expose renderMarkdown on the parent window so child windows
@@ -60,6 +93,122 @@ import { todoPresenter } from './todo-presenter';
  * has arrived. It is cleared on child close.
  */
 const previewResolverContexts = new Map<string, AssetResolutionContext>();
+
+/**
+ * pgc-96(audit pgc-77 Gap-15):S4 render path で features 層 DOM op を
+ * 完成 HTML に込めるため、現在の container reference を module-local に
+ * 保持する。wireEntryWindowFeaturesDom(dispatcher)が `dispatcher.onState`
+ * で最新値を流し込む。
+ */
+let currentContainerRef: Container | null = null;
+export function setEntryWindowCurrentContainer(c: Container | null): void {
+  currentContainerRef = c;
+}
+
+/**
+ * pgc-96 helper:rendered HTML 文字列に対して **features 層 DOM op を
+ * inject** して outerHTML を返す。container が無いとき(boot 前等)は
+ * pass-through。inline script から features 層を呼べない S4 child window の
+ * 制約を、parent 側で完成 HTML を build して push 経路で代用する流儀。
+ *
+ * pgc-98(audit pgc-77 Gap-8):任意 `raw` 引数で source body 全文を
+ * 受け取れる。raw に frontmatter `writing` / `direction` / `align` /
+ * `layout` が含まれているとき、output HTML を `<div data-pkc-writing="…"
+ * dir="…" data-pkc-doc-align="…" data-pkc-layout="…">…</div>` で wrap する
+ * (canonical S1 detail-presenter は `.pkc-md-rendered` 自身に attribute を
+ * 載せるが、S4 では `#body-view` の innerHTML を経由するため、attribute を
+ * 載せられる新規 wrapper を 1 段追加する。CSS は entry-window inline CSS で
+ * `.pkc-md-rendered > div[data-pkc-writing]` 系で消費する)。
+ */
+function injectFeaturesDomOps(
+  html: string,
+  hostLid: string,
+  container: Container | null,
+  raw?: string,
+): string {
+  if (typeof document === 'undefined') return html;
+  if (!html) return html;
+  let inner = html;
+  if (container) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    const containerId = container.meta?.container_id ?? '';
+    try {
+      expandTransclusions(tmp, {
+        entries: container.entries,
+        assets: container.assets,
+        mimeByKey: buildAssetMimeMapLocal(container),
+        nameByKey: buildAssetNameMapLocal(container),
+        hostLid,
+      });
+      hydrateCardPlaceholders(tmp, {
+        entries: container.entries,
+        currentContainerId: containerId,
+      });
+      // user direction 2026-05-28「プレビューにおいて負荷を増幅させずに HTML レンダー
+      // と mermaid レンダーを有効化」── pgc-203 wave-α' polish #24 の known
+      // limitation を解消。parent の detached tmp div で hydrate しても async SVG
+      // 完了前に serialize されて child window に渡らないため、parent 側は呼ばず、
+      // child 側で `window.opener.pkcHydratePreviewMermaid(element)` を innerHTML
+      // 設定後に呼ぶ動線に変更(L75 / L270 と同じ exposed function pattern)。
+      // mermaid renderer 内の cross-document compat(ph.ownerDocument 経由)+
+      // source→svg cache(同 source なら mermaid.render skip)で負荷増幅を抑制。
+      // pgc-97(audit pgc-77 Gap-14):S1 / S2 と同様に native <details> で
+      // top-level 見出しを折りたためるように。pure DOM 操作なので entries 有無
+      // に依らず無条件で適用(detail-presenter.ts:139 と同 contract)。
+      applyHeadingFold(tmp);
+    } catch (e) {
+      if (typeof console !== 'undefined') {
+        console.warn('[entry-window] features DOM op failed:', e);
+      }
+      return html;
+    }
+    inner = tmp.innerHTML;
+  }
+  // pgc-98:document globals(writing / direction / align / layout)を
+  // wrapper div へ反映。raw が無い path(per-log textlog 等、文書 frontmatter
+  // を持たない)は wrap せず素通し。
+  if (raw) {
+    const globals = extractDocumentGlobals(raw);
+    const attrEntries = Object.entries(globalsToDataAttrs(globals));
+    if (attrEntries.length > 0 || globals.direction) {
+      const wrapper = document.createElement('div');
+      for (const [k, v] of attrEntries) wrapper.setAttribute(k, v);
+      if (globals.direction === 'rtl' || globals.direction === 'ltr') {
+        wrapper.setAttribute('dir', globals.direction);
+      }
+      wrapper.innerHTML = inner;
+      inner = wrapper.outerHTML;
+    }
+  }
+  return inner;
+}
+
+// renderer.ts の buildAssetMimeMap / buildAssetNameMap は同 module export
+// あり(rendered-viewer.ts も使用、L54)。entry-window から直 import すると
+// 循環参照になりかねないため、ここでは inline で同等関数を持つ。
+function buildAssetMimeMapLocal(container: Container): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const e of container.entries) {
+    if (e.archetype !== 'attachment') continue;
+    try {
+      const body = e.body ? (JSON.parse(e.body) as { asset_key?: string; mime?: string }) : null;
+      if (body && body.asset_key && body.mime) out[body.asset_key] = body.mime;
+    } catch { /* ignore */ }
+  }
+  return out;
+}
+function buildAssetNameMapLocal(container: Container): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const e of container.entries) {
+    if (e.archetype !== 'attachment') continue;
+    try {
+      const body = e.body ? (JSON.parse(e.body) as { asset_key?: string; name?: string }) : null;
+      if (body && body.asset_key && body.name) out[body.asset_key] = body.name;
+    } catch { /* ignore */ }
+  }
+  return out;
+}
 
 /**
  * Render a textarea body string as the entry-window preview, running
@@ -92,17 +241,127 @@ function renderEntryPreview(
   // sync logic が target を見失う。center pane の split editor preview
   // も同じ option を使う(`detail-presenter.ts` の initial render +
   // action-binder.ts の `updateTextEditPreview`)。
+  //
+  // pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 split editor preview path も
+  // canonical S1 と同じ前処理を入れる ── frontmatter strip + vars 展開 +
+  // headingNumber config。raw frontmatter の漏れ / {{vars.x}} literal /
+  // 見出し番号未付与 を解消。
   const ctx = overrideCtx ?? previewResolverContexts.get(lid);
-  if (ctx && text && hasAssetReferences(text)) {
-    const resolved = resolveAssetReferences(text, ctx);
-    return renderMarkdown(resolved, { sourceLineAnchors: true });
+  const raw = text ?? '';
+  const vars = extractVars(raw);
+  const stripped = parseFrontmatter(raw).body;
+  const headingNumber = extractHeadingNumberConfig(raw);
+  // pgc-96(audit pgc-77 Gap-15):currentContainerId 連動 + features DOM
+  // op を完成 HTML に inject(parent 経路で実行、child 側 inline script は
+  // 受け取り済 HTML をそのまま展開)。
+  const containerId = currentContainerRef?.meta?.container_id ?? '';
+  const opts = { sourceLineAnchors: true, vars, headingNumber, currentContainerId: containerId };
+  let html: string;
+  if (ctx && stripped && hasAssetReferences(stripped)) {
+    const resolved = resolveAssetReferences(stripped, ctx);
+    html = renderMarkdown(resolved, opts);
+  } else {
+    html = renderMarkdown(stripped, opts);
   }
-  return renderMarkdown(text ?? '', { sourceLineAnchors: true });
+  // pgc-98(audit pgc-77 Gap-8):raw を thread して document globals
+  // (writing / direction / align / layout)を wrapper に反映。
+  return injectFeaturesDomOps(html, lid, currentContainerRef, raw);
 }
 (window as unknown as Record<string, unknown>).pkcRenderEntryPreview = renderEntryPreview;
 
+/**
+ * user direction 2026-05-28「プレビューにおいて負荷を増幅させずに HTML レンダーと
+ * mermaid レンダーを有効化」── child window の inline script から
+ * `window.opener.pkcHydratePreviewMermaid(element)` で呼び、child の DOM 要素
+ * 内の `.pkc-mermaid-placeholder` を SVG 化する。
+ *
+ * 設計:
+ * - mermaid renderer の `hydrateMermaidPlaceholders` は `ph.ownerDocument`
+ *   経由で cross-document に対応済(L131 mermaid-renderer.ts)。child element
+ *   を渡せば child document 内に SVG を inject する。
+ * - source → SVG cache は parent module-local。child preview の連続更新で
+ *   同 source が何度も placeholder として現れても 2 回目以降は cache hit で
+ *   mermaid.render を skip(負荷を増幅させない)。
+ * - fire-and-forget(child は SVG 完了を待たず次の input を処理可能)。
+ *
+ * 呼出側(child inline script):
+ *   var preview = document.getElementById('body-preview');
+ *   preview.innerHTML = renderMd(src);
+ *   if (window.opener && window.opener.pkcHydratePreviewMermaid) {
+ *     window.opener.pkcHydratePreviewMermaid(preview);
+ *   }
+ */
+function pkcHydratePreviewMermaid(el: unknown): void {
+  if (!el || typeof (el as HTMLElement).querySelectorAll !== 'function') return;
+  void hydrateMermaidPlaceholders(el as HTMLElement);
+}
+(window as unknown as Record<string, unknown>).pkcHydratePreviewMermaid = pkcHydratePreviewMermaid;
+
 /** Track open child windows to prevent duplicates. */
 const openWindows = new Map<string, Window>();
+
+/**
+ * γ-A5(multi-window-vscode-extension-spec §3):viewer role の子 window
+ * 一覧。editor の `openWindows` とは **別 Map** で管理するため、同じ entry
+ * を editor と viewer の両方で同時に開ける。既存 editor 機構(`openWindows`
+ * / reload guard / 競合検知)には一切影響しない。
+ */
+const viewerWindows = new Map<string, Window>();
+
+/**
+ * γ-A5(multi-window-vscode-extension-spec §3.3):monitor role の子 window
+ * 一覧。monitor は特定 entry の編集ではなく container 由来のライブ panel
+ * (現状は `toc` = 本文見出しアウトライン)を表示する。key は `${kind}:${lid}`。
+ */
+export type MonitorKind = 'toc';
+
+interface MonitorWindowEntry {
+  win: Window;
+  kind: MonitorKind;
+  lid: string;
+}
+
+const monitorWindows = new Map<string, MonitorWindowEntry>();
+
+/** monitor panel の 1 行(level = 見出し深さ、text = 表示文字列)。 */
+export interface MonitorItem {
+  level: number;
+  text: string;
+}
+
+/** monitor へ派生データを push する postMessage type。 */
+export const ENTRY_WINDOW_MONITOR_UPDATE_MSG = 'pkc-monitor-update';
+
+/**
+ * Phase γ-A3:child window の open/close を state machine へ通知する
+ * listener。main.ts が boot 時に登録し、`SYS_SYNC_CHILD_WINDOWS` dispatch
+ * へ配線する。`openEntryWindow`(open 時)と close-poll(close 検知時)が
+ * `notifyWindowsChanged` を呼び、AppState.childWindowLids を同期させる。
+ */
+let windowsChangedListener: (() => void) | null = null;
+
+export function setEntryWindowsChangedListener(cb: (() => void) | null): void {
+  windowsChangedListener = cb;
+}
+
+function notifyWindowsChanged(): void {
+  if (windowsChangedListener) windowsChangedListener();
+}
+
+/**
+ * Phase γ-A3:既に開いている child window を front へ focus する。
+ * action-binder の `triggerEdit` から、同一 entry の inline 編集要求を
+ * 「その window へ切替える」挙動に振り替えるために呼ぶ。window が無ければ
+ * `false` を返す。
+ */
+export function focusEntryWindow(lid: string): boolean {
+  const child = openWindows.get(lid);
+  if (child && !child.closed) {
+    child.focus();
+    return true;
+  }
+  return false;
+}
 
 /**
  * Return the set of lids for which an entry-window child is currently
@@ -125,6 +384,108 @@ export function getOpenEntryWindowLids(): string[] {
     if (!child.closed) lids.push(lid);
   }
   return lids;
+}
+
+/**
+ * γ-A5:現在開いている viewer role の子 window の lid 一覧。
+ * view-body live-refresh(`wireEntryWindowViewBodyRefresh`)が editor と
+ * viewer の両方へ push するために参照する。
+ */
+export function getOpenViewerWindowLids(): string[] {
+  const lids: string[] = [];
+  for (const [lid, child] of viewerWindows) {
+    if (!child.closed) lids.push(lid);
+  }
+  return lids;
+}
+
+/**
+ * γ-A5:monitor kind に応じて entry から派生データを計算する。
+ * `toc` は本文の見出しアウトライン。
+ */
+function deriveMonitorItems(kind: MonitorKind, entry: Entry): MonitorItem[] {
+  if (kind === 'toc') {
+    return extractHeadingsFromMarkdown(entry.body).map((h) => ({
+      level: h.level,
+      text: h.text,
+    }));
+  }
+  return [];
+}
+
+/**
+ * γ-A5:現在開いている monitor 一覧(kind + 対象 lid)。monitor refresh
+ * 配線が container 変更時に再計算 → push するために参照する。
+ */
+export function getOpenMonitorTargets(): { kind: MonitorKind; lid: string }[] {
+  const out: { kind: MonitorKind; lid: string }[] = [];
+  for (const m of monitorWindows.values()) {
+    if (!m.win.closed) out.push({ kind: m.kind, lid: m.lid });
+  }
+  return out;
+}
+
+/**
+ * γ-A5:monitor window へ最新の派生データを push する(spec §3.3)。
+ * 描画済み HTML ではなく **データ**(`MonitorItem[]`)を送り、子側 inline
+ * script が描画する(spec §11.3 ── canvas 前方互換のためデータ経路)。
+ */
+export function pushMonitorUpdate(
+  kind: MonitorKind,
+  lid: string,
+  entry: Entry,
+): boolean {
+  const m = monitorWindows.get(`${kind}:${lid}`);
+  if (!m || m.win.closed) return false;
+  m.win.postMessage(
+    {
+      type: ENTRY_WINDOW_MONITOR_UPDATE_MSG,
+      kind,
+      items: deriveMonitorItems(kind, entry),
+    },
+    '*',
+  );
+  return true;
+}
+
+/**
+ * γ-A5-4:保存済み layout から viewer / monitor window を再オープンする
+ * (spec §4.3)。editor は復元対象外 ── 参照系の viewer / monitor のみ
+ * (editor 復元は onSave 等の callback 配線が要るため A5-4 scope 外)。
+ *
+ * 戻り値 = 復元試行後もまだ開いていない window 数。0 なら全復元成功、
+ * >0 は browser popup blocker 等で開けなかった分(呼び出し側が再クリック
+ * を促す)。entry が container から消えている layout 項目は skip(pending
+ * にも数えない)。同じ window が既に開いていれば dedup focus され、open
+ * 済み判定に入るため再クリックは安全に冪等。
+ */
+export function restoreWindowLayout(entries: Entry[]): number {
+  const layout = readWindowLayout().filter(
+    (e) => e.role === 'viewer' || e.role === 'monitor',
+  );
+  for (const item of layout) {
+    const entry = entries.find((e) => e.lid === item.lid);
+    if (!entry) continue;
+    if (item.role === 'viewer') {
+      openViewerWindow(entry);
+    } else {
+      openMonitorWindow((item.monitorKind ?? 'toc') as MonitorKind, entry);
+    }
+  }
+  const openViewers = new Set(getOpenViewerWindowLids());
+  const openMonitors = new Set(
+    getOpenMonitorTargets().map((t) => `${t.kind}:${t.lid}`),
+  );
+  let pending = 0;
+  for (const item of layout) {
+    if (!entries.some((e) => e.lid === item.lid)) continue;
+    if (item.role === 'viewer') {
+      if (!openViewers.has(item.lid)) pending++;
+    } else if (!openMonitors.has(`${item.monitorKind ?? 'toc'}:${item.lid}`)) {
+      pending++;
+    }
+  }
+  return pending;
 }
 
 /**
@@ -324,15 +685,37 @@ export function pushViewBodyUpdate(
   lid: string,
   resolvedBody: string,
 ): boolean {
-  const child = openWindows.get(lid);
-  if (!child || child.closed) return false;
-  const html =
-    renderMarkdown(resolvedBody || '') ||
+  // γ-A5:同じ lid の editor window と viewer window の両方へ push する。
+  // どちらの child も `buildWindowHtml` 由来の同一 `#body-view` を持つため
+  // 同じ message で再描画でき、editor 保存 → viewer 反映(spec §3.4)が
+  // この両投で成立する。
+  const targets: Window[] = [];
+  const editor = openWindows.get(lid);
+  if (editor && !editor.closed) targets.push(editor);
+  const viewer = viewerWindows.get(lid);
+  if (viewer && !viewer.closed) targets.push(viewer);
+  if (targets.length === 0) return false;
+  // pgc-91(audit pgc-77 Gap-6 + Gap-7):resolvedBody は asset 解決済だが、
+  // frontmatter は raw のまま残るので strip + extractVars + headingNumber
+  // を canonical S1 と同様に thread。
+  // pgc-96(audit pgc-77 Gap-15):features 層 DOM op を parent 完成 HTML
+  // に inject(child は inline script から features 層を呼べないため)。
+  const raw = resolvedBody || '';
+  const vars = extractVars(raw);
+  const stripped = parseFrontmatter(raw).body;
+  const headingNumber = extractHeadingNumberConfig(raw);
+  const containerId = currentContainerRef?.meta?.container_id ?? '';
+  let html =
+    renderMarkdown(stripped, { vars, headingNumber, currentContainerId: containerId }) ||
     '<em style="color:var(--c-muted)">(empty)</em>';
-  child.postMessage(
-    { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
-    '*',
-  );
+  // pgc-98(audit pgc-77 Gap-8):raw を thread して document globals 反映。
+  html = injectFeaturesDomOps(html, lid, currentContainerRef, raw);
+  for (const child of targets) {
+    child.postMessage(
+      { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
+      '*',
+    );
+  }
   return true;
 }
 
@@ -380,11 +763,12 @@ export function pushTitleUpdate(
  *   - No append area, no flag-toggle / copy-anchor buttons — the
  *     entry-window view pane is read-oriented; in-place mutation
  *     happens via the edit pane (structured editor).
- *   - Asset-reference resolution is NOT applied here. The entry-window
- *     rendered viewer has historically rendered TEXTLOG as raw
- *     markdown; Slice 4-A preserves that behavior rather than
- *     introducing new asset semantics. Asset support for TEXTLOG
- *     rendered viewer is a separate concern.
+ *
+ * pgc-211 (audit pgc-77 Gap-9 resolved):per-log の asset reference
+ * resolution を S2 `buildTextlogBodyHtml` と equivalent な流儀で実装。
+ * `![](asset:K)` / `[label](asset:K)` を currentContainerRef の assets /
+ * mime / name map で resolve(canonical path 一致)。container 不在 / asset
+ * 参照無しなら no-op で従来挙動を維持。
  */
 function buildTextlogViewBodyHtml(lid: string, body: string): string {
   const stubEntry: Entry = {
@@ -415,7 +799,31 @@ function buildTextlogViewBodyHtml(lid: string, body: string): string {
       const importantAttr = log.flags.includes('important')
         ? ' data-pkc-log-important="true"'
         : '';
-      const bodyHtml = renderMarkdown(log.bodySource || '') || '';
+      // pgc-91(audit pgc-77 Gap-6):per-log の bodySource にも frontmatter
+      // strip + extractVars を thread(canonical S1 textlog-presenter の
+      // per-log path と一致、`textlog-presenter.ts:477-484` を参照)。
+      // pgc-96(audit pgc-77 Gap-15):features 層 DOM op を per-log にも
+      // inject(transclusion / card は log 内本文にも出現しうる)。
+      const logRaw = log.bodySource || '';
+      const logVars = extractVars(logRaw);
+      const logStripped = parseFrontmatter(logRaw).body;
+      const containerId = currentContainerRef?.meta?.container_id ?? '';
+      // pgc-211 (audit pgc-77 Gap-9): per-log の asset reference を resolve。
+      // canonical S2 `rendered-viewer.ts` `buildTextlogBodyHtml` L1176 と
+      // 同流儀。currentContainerRef から assets / mime / name map を build
+      // して `resolveAssetReferences` に渡す。container 不在 / asset 参照
+      // 無しなら no-op で従来挙動を維持(後方互換完全)。
+      let logToRender = logStripped;
+      if (currentContainerRef && logStripped && hasAssetReferences(logStripped)) {
+        const assetCtx = {
+          assets: currentContainerRef.assets,
+          mimeByKey: buildAssetMimeMapLocal(currentContainerRef),
+          nameByKey: buildAssetNameMapLocal(currentContainerRef),
+        };
+        logToRender = resolveAssetReferences(logStripped, assetCtx);
+      }
+      let bodyHtml = renderMarkdown(logToRender, { vars: logVars, currentContainerId: containerId }) || '';
+      bodyHtml = injectFeaturesDomOps(bodyHtml, lid, currentContainerRef);
       parts.push(
         `<article class="pkc-textlog-log" id="log-${escapeForAttr(log.id)}" data-pkc-log-id="${escapeForAttr(log.id)}" data-pkc-lid="${escapeForAttr(lid)}"${importantAttr}>`,
         `<header class="pkc-textlog-log-header">`,
@@ -549,6 +957,8 @@ export function openEntryWindow(
   if (!child) return;
 
   openWindows.set(entry.lid, child);
+  // Phase γ-A3:state machine へ window open を同期。
+  notifyWindowsChanged();
 
   // Register the edit-mode Preview resolver context so the child's
   // `pkcRenderEntryPreview(lid, text)` call can resolve asset
@@ -585,6 +995,22 @@ export function openEntryWindow(
       }
       return;
     }
+    if (e.data.type === 'pkc-open-viewer') {
+      // γ-A5:editor window の「別窓プレビュー」ボタン → viewer role の
+      // 子 window を分離する(spec §3.4 / §6.1)。flag OFF なら
+      // `openViewerWindow` 側で no-op。
+      openViewerWindow(entry, lightSource, assetContext, onDownloadAsset);
+      return;
+    }
+    if (e.data.type === 'pkc-open-monitor') {
+      // γ-A5:editor window の「TOC 別窓」ボタン → monitor role の子 window。
+      if (e.data.kind === 'toc') openMonitorWindow('toc', entry);
+      return;
+    }
+    if (e.data.type === 'pkc-window-geometry') {
+      handleGeometryMessage(e.data);
+      return;
+    }
   }
   window.addEventListener('message', handleMessage);
 
@@ -607,17 +1033,217 @@ export function openEntryWindow(
       openWindows.delete(entry.lid);
       previewResolverContexts.delete(entry.lid);
       window.removeEventListener('message', handleMessage);
+      if (shellWindowLayoutPersistEnabled()) removeWindowLayout('editor', entry.lid);
+      // Phase γ-A3:state machine へ window close を同期。
+      notifyWindowsChanged();
     }
   }, 500);
 }
 
 /**
- * Notify a child window of a conflict.
+ * γ-A5(multi-window-vscode-extension-spec §3):entry を **viewer role**
+ * (読み取り専用)の別 window で開く。
+ *
+ * editor window(`openEntryWindow` / `openWindows`)とは独立した
+ * `viewerWindows` Map で管理するため、同じ entry を editor + viewer で
+ * 同時に開ける。viewer は `buildWindowHtml` を `readonly = true` で呼ぶ
+ * ── Edit ボタン / 自動編集開始は既存の readonly 経路で抑止される。
+ * entry が保存されると `pushViewBodyUpdate`(editor + viewer 両投)で
+ * viewer の `#body-view` が再描画される(spec §3.4「真のマルチウィンドウ」)。
+ *
+ * `shell.window_roles` flag が OFF のときは **no-op**(完全後方互換)。
+ * viewer は未保存編集を持たないため reload guard(`notifyWindowsChanged`)
+ * には連動させない。
  */
-export function notifyConflict(lid: string, message: string): void {
+export function openViewerWindow(
+  entry: Entry,
+  lightSource = false,
+  assetContext?: EntryWindowAssetContext,
+  onDownloadAsset?: (assetKey: string) => void,
+): void {
+  if (!shellWindowRolesEnabled()) return;
+
+  const existing = viewerWindows.get(entry.lid);
+  if (existing && !existing.closed) {
+    existing.focus();
+    return;
+  }
+
+  const child = window.open(
+    '',
+    `pkc-viewer-${entry.lid}`,
+    'width=720,height=600,menubar=no,toolbar=no',
+  );
+  if (!child) return;
+
+  viewerWindows.set(entry.lid, child);
+
+  child.document.open();
+  child.document.write(buildWindowHtml(entry, true, lightSource, assetContext, false));
+  child.document.close();
+
+  function handleMessage(e: MessageEvent): void {
+    if (e.source !== child) return;
+    if (!e.data) return;
+    if (e.data.type === 'pkc-entry-download-asset') {
+      if (typeof e.data.assetKey === 'string' && onDownloadAsset) {
+        onDownloadAsset(e.data.assetKey);
+      }
+    }
+    if (e.data.type === 'pkc-window-geometry') {
+      handleGeometryMessage(e.data);
+    }
+  }
+  window.addEventListener('message', handleMessage);
+
+  const pollClose = setInterval(() => {
+    if (typeof window === 'undefined') {
+      clearInterval(pollClose);
+      return;
+    }
+    if (child!.closed) {
+      clearInterval(pollClose);
+      viewerWindows.delete(entry.lid);
+      window.removeEventListener('message', handleMessage);
+      if (shellWindowLayoutPersistEnabled()) removeWindowLayout('viewer', entry.lid);
+    }
+  }, 500);
+}
+
+/**
+ * γ-A5(spec §3):monitor role の子 window を開く。現状は `toc`(本文見出し
+ * アウトラインのライブ panel)。editor / viewer の `openWindows` /
+ * `viewerWindows` とは別の `monitorWindows` Map で管理する。`shell.window_roles`
+ * flag が OFF のときは no-op(完全後方互換)。
+ */
+export function openMonitorWindow(kind: MonitorKind, entry: Entry): void {
+  if (!shellWindowRolesEnabled()) return;
+
+  const key = `${kind}:${entry.lid}`;
+  const existing = monitorWindows.get(key);
+  if (existing && !existing.win.closed) {
+    existing.win.focus();
+    return;
+  }
+
+  const child = window.open(
+    '',
+    `pkc-monitor-${kind}-${entry.lid}`,
+    'width=320,height=560,menubar=no,toolbar=no',
+  );
+  if (!child) return;
+
+  monitorWindows.set(key, { win: child, kind, lid: entry.lid });
+
+  child.document.open();
+  child.document.write(buildMonitorHtml(kind, entry, deriveMonitorItems(kind, entry)));
+  child.document.close();
+
+  function handleMessage(e: MessageEvent): void {
+    if (e.source !== child) return;
+    if (e.data && e.data.type === 'pkc-window-geometry') {
+      handleGeometryMessage(e.data);
+    }
+  }
+  window.addEventListener('message', handleMessage);
+
+  const pollClose = setInterval(() => {
+    if (typeof window === 'undefined') {
+      clearInterval(pollClose);
+      return;
+    }
+    if (child!.closed) {
+      clearInterval(pollClose);
+      monitorWindows.delete(key);
+      window.removeEventListener('message', handleMessage);
+      if (shellWindowLayoutPersistEnabled()) removeWindowLayout('monitor', entry.lid, kind);
+    }
+  }, 500);
+}
+
+/**
+ * γ-A5:monitor window の HTML を組む。テーマ CSS 変数を親から引き継ぎ、
+ * inline script が `pkc-monitor-update` を受けて panel を再描画する。初期
+ * データは HTML へ JSON literal で埋め込む(`<` は `\\u003c` へ escape し
+ * inline script の閉じ漏れを防ぐ)。
+ */
+function buildMonitorHtml(
+  kind: MonitorKind,
+  entry: Entry,
+  items: MonitorItem[],
+): string {
+  const heading = kind === 'toc' ? `TOC — ${entry.title}` : 'Monitor';
+  const initialJson = JSON.stringify(items).replace(/</g, '\\u003c');
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeForAttr(heading)}</title>
+<style>
+:root {
+${getParentCssVars()}
+}
+* { box-sizing: border-box; }
+body { margin:0; font-family:var(--font-sans); background:var(--c-bg); color:var(--c-fg); }
+.pkc-monitor-head { padding:8px 12px; border-bottom:1px solid var(--c-border); font-weight:600; font-size:13px; position:sticky; top:0; background:var(--c-bg); }
+#monitor-panel { padding:6px 2px; }
+.pkc-monitor-item { padding:3px 8px; font-size:13px; line-height:1.5; color:var(--c-body-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pkc-monitor-empty { padding:14px 12px; color:var(--c-muted); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="pkc-monitor-head">${escapeForAttr(heading)}</div>
+<div id="monitor-panel"></div>
+<script>
+var monitorKind = ${escapeForScript(kind)};
+function renderMonitor(items) {
+  var panel = document.getElementById('monitor-panel');
+  panel.textContent = '';
+  if (!items || items.length === 0) {
+    var empty = document.createElement('div');
+    empty.className = 'pkc-monitor-empty';
+    empty.textContent = '(見出しなし)';
+    panel.appendChild(empty);
+    return;
+  }
+  for (var i = 0; i < items.length; i++) {
+    var row = document.createElement('div');
+    row.className = 'pkc-monitor-item';
+    row.style.paddingLeft = (8 + (items[i].level - 1) * 14) + 'px';
+    row.textContent = items[i].text;
+    panel.appendChild(row);
+  }
+}
+window.addEventListener('message', function (e) {
+  if (e.data && e.data.type === 'pkc-monitor-update' && e.data.kind === monitorKind) {
+    renderMonitor(e.data.items);
+  }
+});
+renderMonitor(${initialJson});
+${shellWindowLayoutPersistEnabled() ? geometryReportScript('monitor', entry.lid, kind) : ''}
+</script>
+</body>
+</html>`;
+}
+
+/**
+ * Notify a child window of a conflict.
+ *
+ * γ-A5-5 §5.3:`diff`(`DiffRow[]`)を渡すと子 window が banner の下に
+ * 2-pane 行 diff を描画する。HTML ではなくデータを送る(canvas 前方互換、
+ * spec §11.3)。
+ */
+export function notifyConflict(
+  lid: string,
+  message: string,
+  diff?: DiffRow[],
+): void {
   const child = openWindows.get(lid);
   if (child && !child.closed) {
-    child.postMessage({ type: 'pkc-entry-conflict', message }, '*');
+    child.postMessage(
+      { type: 'pkc-entry-conflict', message, diff: diff ?? null },
+      '*',
+    );
   }
 }
 
@@ -631,6 +1257,52 @@ function escapeForAttr(text: string): string {
 
 function escapeForScript(text: string): string {
   return JSON.stringify(text);
+}
+
+/**
+ * γ-A5-3:子 window 内に仕込む geometry 報告 IIFE。load / resize / blur /
+ * beforeunload で自 window の screenX/Y/outerW/H を親へ postMessage し、
+ * 親が `window-layout-store` へ保存する(spec §4)。`<script>` の中身として
+ * 埋め込む(タグは含まない)。flag OFF のときは builder 側で埋め込まない。
+ */
+function geometryReportScript(
+  role: string,
+  lid: string,
+  monitorKind: string | null,
+): string {
+  return `
+(function () {
+  function pkcReportGeo() {
+    if (!window.opener) return;
+    try {
+      window.opener.postMessage({
+        type: 'pkc-window-geometry',
+        role: ${escapeForScript(role)},
+        lid: ${escapeForScript(lid)},
+        monitorKind: ${monitorKind === null ? 'null' : escapeForScript(monitorKind)},
+        geometry: {
+          screenX: window.screenX, screenY: window.screenY,
+          outerWidth: window.outerWidth, outerHeight: window.outerHeight
+        }
+      }, '*');
+    } catch (e) { /* opener gone */ }
+  }
+  window.addEventListener('load', pkcReportGeo);
+  window.addEventListener('resize', pkcReportGeo);
+  window.addEventListener('blur', pkcReportGeo);
+  window.addEventListener('beforeunload', pkcReportGeo);
+})();`;
+}
+
+/**
+ * γ-A5-3:子 window から届いた `pkc-window-geometry` message を layout
+ * store へ反映する。flag OFF なら no-op。`upsertWindowLayout` が shape を
+ * 検証するため、不正 message は store 側で弾かれる。
+ */
+function handleGeometryMessage(data: unknown): void {
+  if (!shellWindowLayoutPersistEnabled()) return;
+  if (!data || typeof data !== 'object') return;
+  upsertWindowLayout(data as WindowLayoutEntry);
 }
 
 /**
@@ -715,6 +1387,14 @@ function renderViewBody(
       // click handler relies on.
       return buildTextlogViewBodyHtml(entry.lid, entry.body);
     }
+    case 'spreadsheet': {
+      // user direction 2026-06-03:multi-window の閲覧 view body は embed
+      // builder を使う(toolbar を含まない、popup window は parent の
+      // dispatcher と離れているため action button が機能しない)。
+      const el = renderSpreadsheetEmbedBody(entry);
+      syncDomPropertiesToHtml(el);
+      return el.outerHTML;
+    }
     default: {
       // Text / generic: use the pre-resolved body when the parent
       // provided one, so that `![](asset:…)` embeds and
@@ -727,8 +1407,25 @@ function renderViewBody(
       // ElementForLine` が target 0 件で no-op していた。text archetype
       // は popup でも split editor (entry.archetype === 'text' で確定)
       // なので、anchor を常時 emit して sync を機能させる。
-      return renderMarkdown(source || '', { sourceLineAnchors: true })
-        || '<em style="color:var(--c-muted)">(empty)</em>';
+      //
+      // pgc-91(audit pgc-77 Gap-6 + Gap-7):S4 view body 初期 render path
+      // にも frontmatter strip + extractVars + headingNumber を thread。
+      // canonical S1 と同経路。
+      // pgc-96(audit pgc-77 Gap-15):features 層 DOM op を inject。
+      const raw = source || '';
+      const vars = extractVars(raw);
+      const stripped = parseFrontmatter(raw).body;
+      const headingNumber = extractHeadingNumberConfig(raw);
+      const containerId = currentContainerRef?.meta?.container_id ?? '';
+      let html = renderMarkdown(stripped, {
+        sourceLineAnchors: true,
+        vars,
+        headingNumber,
+        currentContainerId: containerId,
+      });
+      // pgc-98(audit pgc-77 Gap-8):raw を thread して document globals 反映。
+      html = injectFeaturesDomOps(html, entry.lid, currentContainerRef, raw);
+      return html || '<em style="color:var(--c-muted)">(empty)</em>';
     }
   }
 }
@@ -951,6 +1648,20 @@ function buildWindowHtml(
   startEditing = false,
 ): string {
   const escapedTitle = escapeForAttr(entry.title || '');
+  // pgc-141 wave-δ #15:archetype → icon の inline 表(child window は
+  // module graph を持たないため hardcoded、`adapter/ui/renderer.ts` の
+  // archetypeIcon と同じ map を mirror)。
+  const entryArchetypeIcon = (arch: string): string => {
+    switch (arch) {
+      case 'text':       return '📝';
+      case 'textlog':    return '📋';
+      case 'todo':       return '☑';
+      case 'attachment': return '📎';
+      case 'folder':     return '📁';
+      case 'form':       return '📋';
+      default:           return '○';
+    }
+  };
   const renderedBody = renderViewBody(entry, lightSource, assetContext);
   // Static TOC HTML for TEXT / TEXTLOG — the extractor returns `[]`
   // for other archetypes so this is just `''` there. Every anchor
@@ -969,18 +1680,26 @@ function buildWindowHtml(
   // mirrors the center pane TEXT editor (A-2, 2026-04-14). All other
   // non-structured archetypes (attachment / folder / generic / opaque)
   // keep the existing Source/Preview tab bar.
-  const structuredArchetypes = new Set(['textlog', 'todo', 'form']);
+  const structuredArchetypes = new Set(['textlog', 'todo', 'form', 'spreadsheet']);
   const useStructuredEditor = structuredArchetypes.has(entry.archetype);
   // A-2 (USER_REQUEST_LEDGER S-13): live split editor for TEXT only.
   // Reuses the center pane `.pkc-text-split-editor` grid. tab bar is
   // hidden when this is on; preview updates as the user types.
-  const useSplitEditor = entry.archetype === 'text';
+  //
+  // pgc-140 wave-δ #14(user bug report 2026-05-24「マルチウィンドウ時の
+  // Split View は不要とは言えないがデフォではない」):flag ON 時は text
+  // でも split を default OFF にし、従来 Source / Preview tab bar を出す
+  // (user 側で split したい場合は別途 toggle で復活、本 PR は default
+  // 切替のみ実装)。
+  const useSplitEditor = entry.archetype === 'text' && !shellEntryWindowSplitDefaultOffEnabled();
   let editorBodyHtml = '';
   if (useStructuredEditor) {
     const presenterMap: Record<string, { renderEditorBody: (e: Entry) => HTMLElement }> = {
       textlog: textlogPresenter,
       todo: todoPresenter,
       form: formPresenter,
+      // user direction 2026-06-02「マルチウィンドウの編集画面もできてない」 fix
+      spreadsheet: spreadsheetPresenter,
     };
     const presenter = presenterMap[entry.archetype];
     if (presenter) {
@@ -1227,6 +1946,49 @@ body {
   font-weight: 600;
 }
 
+/* ── Built-in mermaid placeholder + rendered + error(pgc-203 wave-α'
+   polish #24、S4 mirror in pgc-204 wave-α' polish #25 Gap-13 closure):
+   base.css の .pkc-mermaid-* 4 rule を S4 inline style にも mirror、
+   3 surface(S1 / S2 / S4)CSS parity 完備。editor.mermaid_render_enabled
+   ON 時、entry-window で開いた entry にも mermaid fence の SVG render が
+   styled で表示される。 */
+.pkc-mermaid-placeholder {
+  display: block;
+  margin: var(--space-3) 0;
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+  background: var(--c-bg);
+}
+.pkc-mermaid-source {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--c-surface);
+  color: var(--c-fg-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-x: auto;
+}
+.pkc-mermaid-rendered {
+  display: block;
+  margin: var(--space-3) 0;
+  padding: var(--space-2);
+  text-align: center;
+  background: var(--c-bg);
+}
+.pkc-mermaid-rendered svg {
+  max-width: 100%;
+  height: auto;
+}
+.pkc-mermaid-error {
+  margin: 0 0 var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(229, 62, 62, 0.12);
+  color: var(--c-fg);
+  border-left: 3px solid #e53e3e;
+  font-size: var(--fs-sm);
+}
+
 /* ── Task list polish: hanging indent + completed styling.
    Mirrors base.css .pkc-md-rendered task rules so the popped entry
    window renders task lists identically to the main pane. */
@@ -1391,6 +2153,44 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
   background: var(--c-hover);
 }
 
+/* pgc-141 wave-δ #15:slim sticky header(user bug report 2026-05-24)。
+   body[data-pkc-chrome="true"] 内に sticky で居座る、scroll で隠れない。
+   archetype icon + title + container lid を 1 行で表示、視覚ノイズ抑制。
+   z-index で conflict-banner / pending-notice より上に。 */
+body[data-pkc-chrome="true"] .pkc-window-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--c-accent-dim);
+  background: var(--c-surface);
+  font-size: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  flex-shrink: 0;
+  user-select: none;
+}
+body[data-pkc-chrome="true"] .pkc-window-header-archetype {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+body[data-pkc-chrome="true"] .pkc-window-header-title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--c-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body[data-pkc-chrome="true"] .pkc-window-header-container {
+  font-size: 0.7rem;
+  color: var(--c-fg-dim, #888);
+  font-family: var(--font-mono);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
 /* ── Action bar (mirrors center pane) ── */
 .pkc-action-bar {
   display: flex; align-items: center; gap: 0.35rem;
@@ -1431,12 +2231,437 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 .pkc-btn-primary:hover { opacity: 0.9; box-shadow: 0 0 10px rgba(51,255,102,0.3); }
 .pkc-btn-primary:active { transform: scale(0.96); }
 
+/* ── pgc-93(audit pgc-77 Gap-13 cat-1):S4 critical PKC dialect CSS
+   mirror Phase 1 ── :::section / :::details / :::figure / :::quote。
+   base.css 該当 rule を popup standalone HTML 用に hardcode 色で再現。
+   color は base.css と同じ fallback 値 + var(--c-accent) 等を一部使用。
+   2026-05-23 wave-β #4 で S4 critical の chunk-1 を解消。 */
+/* :::section{role=tip/warning/...} callout(reform-2026-05 PR-2F)*/
+.pkc-md-rendered .pkc-section-callout {
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+  border-left: 4px solid #6b7280;
+  background: rgba(0, 0, 0, 0.02);
+}
+.pkc-md-rendered .pkc-section-callout > :first-child { margin-top: 0; }
+.pkc-md-rendered .pkc-section-callout > :last-child { margin-bottom: 0; }
+.pkc-md-rendered .pkc-section-summary  { border-left-color: #6b7280; background: rgba(107, 114, 128, 0.08); }
+.pkc-md-rendered .pkc-section-info     { border-left-color: #2563eb; background: rgba(37, 99, 235, 0.08); }
+.pkc-md-rendered .pkc-section-note     { border-left-color: #2563eb; background: rgba(37, 99, 235, 0.06); }
+.pkc-md-rendered .pkc-section-tip      { border-left-color: #16a34a; background: rgba(22, 163, 74, 0.08); }
+.pkc-md-rendered .pkc-section-important{ border-left-color: #9333ea; background: rgba(147, 51, 234, 0.08); }
+.pkc-md-rendered .pkc-section-warning  { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.08); }
+.pkc-md-rendered .pkc-section-caution  { border-left-color: #d97706; background: rgba(217, 119, 6, 0.08); }
+.pkc-md-rendered .pkc-section-danger   { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.08); }
+/* L-1 section break — role 別装飾(reform PR-2H)*/
+.pkc-md-rendered .pkc-section-break {
+  border: none;
+  margin: 1.5em 0;
+  height: 1px;
+  background: #d1d5db;
+}
+.pkc-md-rendered .pkc-section-break[data-pkc-role="cover"],
+.pkc-md-rendered .pkc-section-break[data-pkc-role="section"] {
+  height: 0;
+  border-top: 1px solid #d1d5db;
+  border-bottom: 1px solid #d1d5db;
+  padding-top: 0.4em;
+  margin: 2em 0;
+}
+.pkc-md-rendered .pkc-section-break[data-pkc-role="body"] {
+  background: transparent;
+  border-top: 1px dashed #9ca3af;
+  height: 0;
+}
+/* :::details 折りたたみ block(領域 6)*/
+.pkc-md-rendered .pkc-details {
+  margin: 0.5em 0;
+  padding: 0.4em 0.7em;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.02);
+}
+.pkc-md-rendered .pkc-details > summary.pkc-details-summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: #1f2937;
+  padding: 0.2em 0;
+  user-select: none;
+}
+.pkc-md-rendered .pkc-details > summary.pkc-details-summary:hover {
+  color: #2563eb;
+}
+.pkc-md-rendered .pkc-details[open] > summary.pkc-details-summary {
+  margin-bottom: 0.4em;
+}
+/* :::figure / :::table / :::equation caption + 採番(L-7、reform PR-D前)*/
+.pkc-md-rendered .pkc-fig {
+  margin: 1em 0;
+  padding: 0;
+  border: none;
+}
+.pkc-md-rendered .pkc-fig-caption {
+  margin-top: 0.4em;
+  font-size: 0.9em;
+  color: #6b7280;
+  text-align: center;
+}
+.pkc-md-rendered .pkc-fig-ref {
+  text-decoration: none;
+  color: #2563eb;
+}
+.pkc-md-rendered .pkc-fig-ref:hover {
+  text-decoration: underline;
+}
+/* :::quote{author=...} 引用 block(reform PR-D)*/
+.pkc-md-rendered blockquote.pkc-quote-citation {
+  background: rgba(0, 0, 0, 0.03);
+  border-left: 4px solid #4a90e2;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+}
+.pkc-md-rendered blockquote.pkc-quote-citation::after {
+  content: attr(data-pkc-quote-author) " (" attr(data-pkc-quote-year) ")";
+  display: block;
+  text-align: end;
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+.pkc-md-rendered blockquote.pkc-quote-citation:not([data-pkc-quote-author])::after {
+  content: "";
+  display: none;
+}
+
+/* ── pgc-94(audit pgc-77 Gap-13 cat-2):S4 critical PKC dialect CSS
+   mirror Phase 2 ── blank-line marker / em-dot / variable-undefined /
+   hallucination-warning / tolerant alias / html-render fence。
+   Viewer popup(rendered-viewer.ts L432-540)mirror を S4 entry-window に
+   も持ってくる。base.css 該当 rule を hardcode 色で再現。 */
+/* L-2 inline 修飾(highlight / ruby / em-dot)*/
+.pkc-md-rendered mark {
+  background: #fff59d;
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 2px;
+}
+.pkc-md-rendered ruby rt {
+  font-size: 0.6em;
+  color: #6b7280;
+}
+.pkc-md-rendered em.pkc-em-dot {
+  font-style: normal;
+  -webkit-text-emphasis: dot;
+  text-emphasis: dot;
+  -webkit-text-emphasis-position: over right;
+  text-emphasis-position: over right;
+}
+/* L-9 段落先頭 1 字下げ */
+.pkc-md-rendered p[data-pkc-indent="1"] { text-indent: 1em; }
+/* L-5 行頭 align prefix */
+.pkc-md-rendered p[data-pkc-align="center"] { text-align: center; }
+.pkc-md-rendered p[data-pkc-align="end"]    { text-align: end;    }
+.pkc-md-rendered p[data-pkc-align="start"]  { text-align: start;  }
+.pkc-md-rendered p[data-pkc-align="right"]  { text-align: right;  }
+.pkc-md-rendered p[data-pkc-align="left"]   { text-align: left;   }
+/* L-8 blank-line marker(_ / _N、1em x N の余白)*/
+.pkc-md-rendered .pkc-blank-line {
+  --pkc-blank-line-h: 1em;
+  height: calc(var(--pkc-blank-line-h) * 1);
+}
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="2"]  { height: calc(var(--pkc-blank-line-h) * 2);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="3"]  { height: calc(var(--pkc-blank-line-h) * 3);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="4"]  { height: calc(var(--pkc-blank-line-h) * 4);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="5"]  { height: calc(var(--pkc-blank-line-h) * 5);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="6"]  { height: calc(var(--pkc-blank-line-h) * 6);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="7"]  { height: calc(var(--pkc-blank-line-h) * 7);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="8"]  { height: calc(var(--pkc-blank-line-h) * 8);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="9"]  { height: calc(var(--pkc-blank-line-h) * 9);  }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="10"] { height: calc(var(--pkc-blank-line-h) * 10); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="11"] { height: calc(var(--pkc-blank-line-h) * 11); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="12"] { height: calc(var(--pkc-blank-line-h) * 12); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="13"] { height: calc(var(--pkc-blank-line-h) * 13); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="14"] { height: calc(var(--pkc-blank-line-h) * 14); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="15"] { height: calc(var(--pkc-blank-line-h) * 15); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="16"] { height: calc(var(--pkc-blank-line-h) * 16); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="17"] { height: calc(var(--pkc-blank-line-h) * 17); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="18"] { height: calc(var(--pkc-blank-line-h) * 18); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="19"] { height: calc(var(--pkc-blank-line-h) * 19); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="20"] { height: calc(var(--pkc-blank-line-h) * 20); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="21"] { height: calc(var(--pkc-blank-line-h) * 21); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="22"] { height: calc(var(--pkc-blank-line-h) * 22); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="23"] { height: calc(var(--pkc-blank-line-h) * 23); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="24"] { height: calc(var(--pkc-blank-line-h) * 24); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="25"] { height: calc(var(--pkc-blank-line-h) * 25); }
+/* pgc-204 wave-α' polish #25(Gap-13 closure):base.css に存在する 26-29 /
+   35 / 45 を S4 inline mirror。base.css と完全 parity に。 */
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="26"] { height: calc(var(--pkc-blank-line-h) * 26); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="27"] { height: calc(var(--pkc-blank-line-h) * 27); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="28"] { height: calc(var(--pkc-blank-line-h) * 28); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="29"] { height: calc(var(--pkc-blank-line-h) * 29); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="30"] { height: calc(var(--pkc-blank-line-h) * 30); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="35"] { height: calc(var(--pkc-blank-line-h) * 35); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="40"] { height: calc(var(--pkc-blank-line-h) * 40); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="45"] { height: calc(var(--pkc-blank-line-h) * 45); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-count="50"] { height: calc(var(--pkc-blank-line-h) * 50); }
+.pkc-md-rendered .pkc-blank-line[data-pkc-blank-capped]::before {
+  content: '⚠ _' attr(data-pkc-blank-capped) ' (上限 cap)';
+  display: block;
+  font-size: 0.75em;
+  color: #8b6f47;
+  background: rgba(255, 200, 0, 0.08);
+  padding: 0.15em 0.5em;
+  border-left: 2px solid rgba(180, 130, 0, 0.4);
+  margin-bottom: 0.3em;
+  font-family: monospace;
+}
+/* M-7 未定義 variable 警告 */
+.pkc-md-rendered .pkc-variable-undefined {
+  color: #b91c1c;
+  text-decoration: underline dotted;
+  text-decoration-color: #b91c1c;
+  cursor: help;
+}
+/* PR-2K hallucination 警告 block */
+.pkc-md-rendered .pkc-warning-hallucination-block {
+  background-color: #fef3c7;
+  color: #92400e;
+  border-left: 3px solid #d97706;
+  padding: 0.5em 0.75em;
+  margin: 0.5em 0;
+  border-radius: 2px;
+  cursor: help;
+}
+/* PR-2L+2O tolerant alias mirror */
+.pkc-md-rendered .pkc-lead {
+  font-size: 1.05em;
+  font-weight: 500;
+  color: #1f2937;
+}
+.pkc-md-rendered .pkc-attribution {
+  display: block;
+  text-align: right;
+  font-size: 0.85em;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 0.25em;
+}
+.pkc-md-rendered .pkc-tolerant-spacing {
+  height: calc(1em * var(--pkc-blank-count, 1));
+}
+.pkc-md-rendered .pkc-align-hint {
+  display: none;
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-lead {
+  border-bottom: 1px dotted #9ca3af;
+  cursor: help;
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-attribution {
+  cursor: help;
+}
+html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
+  display: inline-block;
+  font-size: 0.75em;
+  color: #1d4ed8;
+  background-color: #dbeafe;
+  padding: 0 0.3em;
+  border-radius: 2px;
+  cursor: help;
+  user-select: none;
+}
+/* PR-2M html-render fence iframe */
+.pkc-md-rendered .pkc-html-render {
+  display: block;
+  width: 100%;
+  border: 0;
+  margin: 0.75em 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+/* ── pgc-95(audit pgc-77 Gap-13 cat-3):S4 critical PKC dialect CSS
+   mirror Phase 3 ── transclusion 9 件 + heading-fold + embed-blocked /
+   todo-embed chrome remaining。Viewer popup(rendered-viewer.ts L541-
+   591)mirror を S4 entry-window に porting。 */
+/* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み)*/
+.pkc-transclusion {
+  border-left: 3px solid #4a90e2;
+  background: rgba(74, 144, 226, 0.04);
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+  margin: 0.5rem 0;
+}
+.pkc-transclusion-header {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px dashed #d1d5db;
+}
+.pkc-transclusion-source { color: #6b7280; text-decoration: none; }
+.pkc-transclusion-source::before { content: '↪ '; color: #6b7280; }
+.pkc-transclusion-source:hover { color: #4a90e2; text-decoration: underline; }
+.pkc-transclusion-body > :first-child { margin-top: 0; }
+.pkc-transclusion-body > :last-child { margin-bottom: 0; }
+.pkc-transclusion-fallback { color: #6b7280; font-style: italic; }
+/* transclusion-broken(target 不在 fallback marker)*/
+.pkc-md-rendered .pkc-transclusion-broken {
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.06);
+  padding: 0 0.3em;
+  border-radius: 3px;
+  font-style: italic;
+}
+/* transclusion-document(textlog 等の document 経由 embed)*/
+.pkc-md-rendered .pkc-transclusion-document {
+  border: 1px solid #d8d2c2;
+  border-radius: 4px;
+  background: #fbf9f1;
+  padding: 0.35rem 0.6rem;
+  margin: 0.5rem 0;
+}
+/* transclusion-fallback-link(fallback link 装飾)*/
+.pkc-md-rendered .pkc-transclusion-fallback-link {
+  color: #4a90e2;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+/* transclusion-log(個別 log 行内 timestamp)*/
+.pkc-md-rendered .pkc-transclusion-log .pkc-textlog-timestamp {
+  color: #6b7280;
+}
+/* embed-blocked(blocked / cycle marker)*/
+.pkc-embed-blocked {
+  display: inline-block;
+  color: #6b7280;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px dashed rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  padding: 0 0.35em;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+  font-style: normal;
+}
+/* todo-embed-meta(todo を embed した時の meta 行)*/
+.pkc-todo-embed-meta {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+  font-size: 0.9em;
+  color: #6b7280;
+}
+.pkc-todo-embed-status { font-family: var(--font-mono); }
+.pkc-todo-embed-status[data-pkc-todo-status="done"] { color: #4a90e2; }
+/* heading-fold(領域 6 折りたたみ見出し)*/
+.pkc-md-rendered .pkc-heading-fold { margin: 0.5rem 0 0; }
+.pkc-md-rendered .pkc-heading-fold-summary { cursor: pointer; }
+.pkc-md-rendered .pkc-heading-fold-summary > :first-child {
+  display: inline;
+  margin: 0;
+}
+/* pgc-98(audit pgc-77 Gap-8):document globals(writing / direction /
+   align / layout)S4 inline CSS mirror。canonical S1 base.css は
+   .pkc-md-rendered 自身に attr を載せるが、S4 は #body-view 配下に
+   wrapper div[data-pkc-writing="…" dir="…"] を 1 段挿入する経路
+   (injectFeaturesDomOps が wrap)。.pkc-md-rendered > div[data-pkc-*]
+   selector で消費し、base.css と同等の rendering 効果。 */
+.pkc-md-rendered > div[data-pkc-writing="vertical"] { writing-mode: vertical-rl; }
+.pkc-md-rendered > div[data-pkc-writing="vertical"][dir="ltr"] { writing-mode: vertical-lr; }
+.pkc-md-rendered > div[data-pkc-doc-align="left"]   { text-align: left; }
+.pkc-md-rendered > div[data-pkc-doc-align="right"]  { text-align: right; }
+.pkc-md-rendered > div[data-pkc-doc-align="center"] { text-align: center; }
+/* layout(用紙サイズ + 段組):screen 表示で用紙幅 center + column-count */
+.pkc-md-rendered > div[data-pkc-layout] {
+  max-width: var(--pkc-page-w, 21cm);
+  margin: 1rem auto;
+  padding: 1.5cm 1.8cm;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+.pkc-md-rendered > div[data-pkc-layout^="a4-"]     { --pkc-page-w: 21cm; }
+.pkc-md-rendered > div[data-pkc-layout^="b5-"]     { --pkc-page-w: 17.6cm; }
+.pkc-md-rendered > div[data-pkc-layout^="letter-"] { --pkc-page-w: 21.59cm; }
+.pkc-md-rendered > div[data-pkc-layout^="legal-"]  { --pkc-page-w: 21.59cm; }
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] {
+  column-count: 2; column-gap: 0.8cm; column-rule: 1px solid #e5e7eb;
+}
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] {
+  column-count: 3; column-gap: 0.6cm; column-rule: 1px solid #e5e7eb;
+}
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] h1,
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] h2,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] h1,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] h2 { column-span: all; }
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] figure,
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] table,
+.pkc-md-rendered > div[data-pkc-layout$="-2col"] pre,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] figure,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] table,
+.pkc-md-rendered > div[data-pkc-layout$="-3col"] pre { break-inside: avoid; }
+@media print {
+  .pkc-md-rendered > div[data-pkc-layout^="a4-"]     { width: 21cm; }
+  .pkc-md-rendered > div[data-pkc-layout^="b5-"]     { width: 17.6cm; }
+  .pkc-md-rendered > div[data-pkc-layout^="letter-"] { width: 21.59cm; }
+  .pkc-md-rendered > div[data-pkc-layout^="legal-"]  { width: 21.59cm; }
+  .pkc-md-rendered > div[data-pkc-layout] {
+    margin: 0; box-shadow: none; border-radius: 0; padding: 0;
+  }
+  .pkc-md-rendered > div[data-pkc-layout$="-2col"],
+  .pkc-md-rendered > div[data-pkc-layout$="-3col"] {
+    column-rule: none;
+  }
+}
+/* footnote chrome(wave-Z markdown-it-footnote)*/
+.pkc-md-rendered .pkc-footnote-ref {
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+}
+.pkc-md-rendered .pkc-footnote-ref a {
+  color: var(--c-accent);
+  text-decoration: none;
+  padding: 0 0.15em;
+}
+.pkc-md-rendered .pkc-footnote-ref a::before { content: "["; }
+.pkc-md-rendered .pkc-footnote-ref a::after { content: "]"; }
+.pkc-md-rendered .pkc-footnote-ref a:hover { text-decoration: underline; }
+.pkc-md-rendered .pkc-citation {
+  font-style: italic;
+  color: var(--c-muted);
+  cursor: help;
+  padding: 0 0.1em;
+  border-bottom: 1px dotted var(--c-accent-dim);
+}
+.pkc-md-rendered .pkc-citation:hover {
+  color: var(--c-fg);
+  border-bottom-color: var(--c-accent);
+}
+
 /* ── Conflict banner ── */
 .pkc-conflict-banner {
   display: none; background: var(--c-danger); color: #fff;
   padding: 0.4rem 0.75rem; font-size: 0.8rem; margin: 0.5rem 0;
   border-radius: var(--radius);
 }
+/* γ-A5-5 §5.3:競合 banner の下に出す 2-pane 行 diff(子 window 自前描画)。 */
+.pkc-conflict-diff {
+  display: none; margin: 0.5rem 0; border: 1px solid var(--c-border);
+  border-radius: var(--radius); max-height: 12rem; overflow-y: auto;
+  font-family: var(--font-mono); font-size: 0.72rem;
+}
+.pkc-conflict-diff-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
+.pkc-conflict-diff-cell {
+  padding: 1px 6px; white-space: pre-wrap; word-break: break-word; min-height: 1.3em;
+}
+.pkc-conflict-diff-cell[data-op="del"] { background: color-mix(in srgb, var(--c-danger) 22%, transparent); }
+.pkc-conflict-diff-cell[data-op="add"] { background: color-mix(in srgb, var(--c-success) 22%, transparent); }
+.pkc-conflict-diff-cell[data-op="empty"] { background: var(--c-hover); }
 
 /* ── Pending view-refresh notice ──
    Shown when a parent → child view-body rerender was received while
@@ -1686,9 +2911,18 @@ ${readonly ? '.pkc-task-checkbox { pointer-events: none; cursor: default; opacit
 .pkc-form-check-label { font-size: 0.85rem; cursor: pointer; }
 </style>
 </head>
-<body>
+<body${shellEntryWindowChromeEnabled() ? ' data-pkc-chrome="true"' : ''}>
+  ${shellEntryWindowChromeEnabled() ? `<!-- pgc-141 wave-δ #15:slim sticky header(scroll で隠れない)。
+       archetype icon + entry title + container 由来を常駐表示、user の
+       場所感を保つ。 -->
+  <header class="pkc-window-header" data-pkc-region="window-header">
+    <span class="pkc-window-header-archetype">${entryArchetypeIcon(entry.archetype)}</span>
+    <span class="pkc-window-header-title" id="window-header-title">${escapedTitle}</span>
+    <span class="pkc-window-header-container" title="Container">${escapeForHtml(entry.lid)}</span>
+  </header>` : ''}
   <!-- Conflict banner (hidden by default) -->
   <div class="pkc-conflict-banner" id="conflict-banner"></div>
+  <div class="pkc-conflict-diff" id="conflict-diff"></div>
   <!-- Pending view-refresh notice (hidden by default) -->
   <div class="pkc-pending-view-notice" id="pending-view-notice" style="display:none">View refresh pending &mdash; will apply on save or cancel.</div>
   <!-- Pending title-refresh notice (hidden by default) -->
@@ -1751,6 +2985,8 @@ ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</di
   <!-- Fixed action bar at bottom (mirrors center pane) -->
   <div class="pkc-action-bar" id="action-bar">
     ${readonly ? '' : '<button class="pkc-btn" id="btn-edit" onclick="enterEdit()">✏️ Edit</button>'}
+    ${!readonly && shellWindowRolesEnabled() ? '<button class="pkc-btn" id="btn-viewer" onclick="openViewerWin()" title="このエントリを読み取り専用の別ウィンドウで開く(編集保存で反映)">🔍 別窓プレビュー</button>' : ''}
+    ${!readonly && shellWindowRolesEnabled() ? '<button class="pkc-btn" id="btn-toc-monitor" onclick="openTocMonitor()" title="このエントリの見出しアウトラインを別ウィンドウで常時表示">📑 TOC 別窓</button>' : ''}
     <button class="pkc-btn-primary" id="btn-save" style="display:none" onclick="saveEntry()">💾 Save</button>
     <button class="pkc-btn" id="btn-cancel" style="display:none" onclick="cancelEdit()">Cancel</button>
     <span class="pkc-action-bar-status" id="bar-status"></span>
@@ -1846,9 +3082,69 @@ if (useSplitEditor) {
     if (pkcSplitPreviewTimer) clearTimeout(pkcSplitPreviewTimer);
     pkcSplitPreviewTimer = setTimeout(function() {
       var src = document.getElementById('body-edit').value;
-      document.getElementById('body-preview').innerHTML = renderMd(src);
+      renderMdInto(document.getElementById('body-preview'), src);
       pkcRefreshSyncMarker();
     }, 100);
+  });
+
+  /* user bug 報告 2026-05-28: MW screenshot paste fix.
+   * entry-window は独立 document のため main window の paste listener は到達しない。
+   * child 内で paste catch → window.opener.PKC.pasteAttachment(payload) 経由で
+   * parent dispatcher に PASTE_ATTACHMENT を投げる。asset 化 + textarea への
+   * ![name](asset:KEY) marker 挿入で main window と同じ UX を提供する。 */
+  document.getElementById('body-edit').addEventListener('paste', function(e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    var imageItem = null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && items[i].type.indexOf('image/') === 0) {
+        imageItem = items[i];
+        break;
+      }
+    }
+    if (!imageItem) return; /* 非 image は default 動作(text/plain 等)に任せる */
+    var file = imageItem.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    var reader = new FileReader();
+    reader.onload = function() {
+      var dataUrl = reader.result;
+      if (typeof dataUrl !== 'string') return;
+      var commaIdx = dataUrl.indexOf(',');
+      var base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : '';
+      var ext = (file.type.split('/')[1] || 'png').split(';')[0];
+      var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      var name = 'screenshot-' + ts + '.' + ext;
+      var assetKey = 'att-mw-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      if (window.opener && window.opener.PKC && typeof window.opener.PKC.pasteAttachment === 'function') {
+        try {
+          window.opener.PKC.pasteAttachment({
+            name: name,
+            mime: file.type,
+            size: file.size,
+            assetKey: assetKey,
+            assetData: base64,
+            contextLid: lid
+          });
+        } catch (err) {
+          console.warn('[PKC2] MW paste forward failed:', err);
+        }
+      } else {
+        console.warn('[PKC2] window.opener.PKC.pasteAttachment unavailable, MW paste skipped');
+        return;
+      }
+      /* 挿入は paste 経路と同じ: cursor 位置に ![name](asset:KEY) を splice */
+      var ta = document.getElementById('body-edit');
+      var ref = '![' + name + '](asset:' + assetKey + ')';
+      var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+      var end = ta.selectionEnd != null ? ta.selectionEnd : start;
+      ta.value = ta.value.slice(0, start) + ref + ta.value.slice(end);
+      var newCursor = start + ref.length;
+      ta.selectionStart = newCursor;
+      ta.selectionEnd = newCursor;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    reader.readAsDataURL(file);
   });
 
   /* ─────────────────────────────────────────────────────────────
@@ -2710,6 +4006,47 @@ function closeEntryWindow() {
   }
 }
 
+/* γ-A5: 別窓プレビュー(viewer role)を分離する。parent が openViewerWindow
+ * を呼ぶ。flag OFF のときは btn-viewer 自体が描画されないため到達しない。 */
+function openViewerWin() {
+  if (window.opener) {
+    window.opener.postMessage({ type: 'pkc-open-viewer', lid: lid }, '*');
+  }
+}
+
+/* γ-A5: TOC 別窓(monitor role)を開く。parent が openMonitorWindow を呼ぶ。 */
+function openTocMonitor() {
+  if (window.opener) {
+    window.opener.postMessage({ type: 'pkc-open-monitor', kind: 'toc', lid: lid }, '*');
+  }
+}
+
+/* γ-A5-5 §5.3: 競合 banner の下に 2-pane 行 diff を自前描画する。
+ * diff(DiffRow[])は parent が computeして postMessage で渡す(データ経路)。 */
+function renderConflictDiff(diff) {
+  var box = document.getElementById('conflict-diff');
+  if (!box) return;
+  box.textContent = '';
+  if (!diff || !diff.length) { box.style.display = 'none'; return; }
+  for (var i = 0; i < diff.length; i++) {
+    var r = diff[i];
+    var row = document.createElement('div');
+    row.className = 'pkc-conflict-diff-row';
+    var L = document.createElement('div');
+    L.className = 'pkc-conflict-diff-cell';
+    L.setAttribute('data-op', r.op === 'add' ? 'empty' : r.op);
+    L.textContent = r.left == null ? '' : r.left;
+    var R = document.createElement('div');
+    R.className = 'pkc-conflict-diff-cell';
+    R.setAttribute('data-op', r.op === 'del' ? 'empty' : r.op);
+    R.textContent = r.right == null ? '' : r.right;
+    row.appendChild(L);
+    row.appendChild(R);
+    box.appendChild(row);
+  }
+  box.style.display = '';
+}
+
 function enterEdit() {
   currentMode = 'edit';
   document.getElementById('view-pane').style.display = 'none';
@@ -2725,7 +4062,7 @@ function enterEdit() {
    * while the user was still in view mode. */
   if (useSplitEditor) {
     var src = document.getElementById('body-edit').value;
-    document.getElementById('body-preview').innerHTML = renderMd(src);
+    renderMdInto(document.getElementById('body-preview'), src);
   } else if (!useStructuredEditor) {
     showTab('source');
   }
@@ -2766,7 +4103,7 @@ function showTab(tab) {
   } else {
     /* Re-render markdown from the CURRENT textarea value */
     var src = document.getElementById('body-edit').value;
-    document.getElementById('body-preview').innerHTML = renderMd(src);
+    renderMdInto(document.getElementById('body-preview'), src);
     document.getElementById('body-edit').style.display = 'none';
     document.getElementById('body-preview').style.display = '';
     document.getElementById('tab-preview').setAttribute('data-pkc-active', 'true');
@@ -2805,6 +4142,19 @@ function renderMd(text) {
   /* Fallback: plain text with HTML escaping */
   var escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return '<pre>' + escaped + '</pre>';
+}
+
+/* user direction 2026-05-28: プレビューにおいて負荷を増幅させずに mermaid
+ * レンダーを有効化。child の preview element に innerHTML を流し込んだ後、
+ * parent の pkcHydratePreviewMermaid(element) を呼んで cross-document に
+ * SVG hydrate を走らせる。fire-and-forget(SVG 完了は次 frame 以降)+
+ * parent 側 source→svg cache で連続更新時の負荷増幅を抑制。
+ * HTML render iframe は HTML 文字列に含まれて自己完結するため別途 hydrate 不要。 */
+function renderMdInto(el, text) {
+  el.innerHTML = renderMd(text);
+  if (window.opener && typeof window.opener.pkcHydratePreviewMermaid === 'function') {
+    try { window.opener.pkcHydratePreviewMermaid(el); } catch (_e) { /* parent closed / xorigin */ }
+  }
 }
 
 function saveEntry() {
@@ -2847,6 +4197,7 @@ window.addEventListener('message', function(e) {
     var banner = document.getElementById('conflict-banner');
     banner.textContent = e.data.message;
     banner.style.display = '';
+    renderConflictDiff(e.data.diff);
   }
   if (e.data && e.data.type === 'pkc-entry-update-preview-ctx') {
     /*
@@ -2869,7 +4220,7 @@ window.addEventListener('message', function(e) {
        * scratch div) is updated.
        */
       var src = document.getElementById('body-edit').value;
-      document.getElementById('body-preview').innerHTML = renderMd(src);
+      renderMdInto(document.getElementById('body-preview'), src);
     }
   }
   if (e.data && e.data.type === 'pkc-entry-update-view-body') {
@@ -2971,6 +4322,7 @@ if (useStructuredEditor && entryArchetype === 'textlog') {
   });
 }
 ${!readonly && startEditing ? "/* Auto-enter edit mode on open */\nenterEdit();" : ''}
+${shellWindowLayoutPersistEnabled() ? geometryReportScript(readonly ? 'viewer' : 'editor', entry.lid, null) : ''}
 </script>
 </body>
 </html>`;

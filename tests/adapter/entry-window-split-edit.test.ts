@@ -129,7 +129,9 @@ describe('A-2 — entry window TEXT split editor', () => {
     const html = await openAndCapture('text');
     expect(html).toContain('var useSplitEditor = true');
     expect(html).toContain("document.getElementById('body-edit').addEventListener('input'");
-    expect(html).toContain("document.getElementById('body-preview').innerHTML = renderMd(src)");
+    // user direction 2026-05-28: live preview を hydrate 経路にした。renderMdInto は
+    // innerHTML 設定 + window.opener.pkcHydratePreviewMermaid 呼出を 1 つにまとめる。
+    expect(html).toContain("renderMdInto(document.getElementById('body-preview'), src)");
   });
 
   it('TEXTLOG archetype keeps the structured editor (A-2 only affects TEXT)', async () => {

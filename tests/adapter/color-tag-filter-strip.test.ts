@@ -6,6 +6,13 @@ import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 import { render } from '@adapter/ui/renderer';
 import { type AppState } from '@adapter/state/app-state';
+import { setContainerFlagSource } from '@adapter/flags';
+
+// pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
+// tree sidebar の構造を検証する本 suite は tree mode に固定する。
+beforeEach(() => {
+  setContainerFlagSource({ 'sidebar.mode': 'tree' });
+});
 
 /**
  * Color tag simple search UI — chip strip render contract.
@@ -50,6 +57,8 @@ function mkState(container: Container, overrides?: Partial<AppState>): AppState 
     phase: 'ready',
     container,
     selectedLid: null,
+    navHistory: [],
+    navIndex: -1,
     editingLid: null,
     error: null,
     embedded: false,

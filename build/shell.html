@@ -10,7 +10,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
   <title>PKC2</title>
   {{FAVICON_LINK}}
-  <style id="pkc-styles">{{STYLES}}</style>
+  {{MANIFEST_LINK}}
+  <!-- pkc-styles: loader が gzip 展開した CSS を流し込む。空で先置きして
+       pkc-theme との適用順(base → theme overrides)を固定する。 -->
+  <style id="pkc-styles"></style>
   <style id="pkc-theme">/* theme overrides */</style>
 </head>
 <body>
@@ -20,6 +23,38 @@
 
   <script id="pkc-meta" type="application/json">{{META}}</script>
 
-  <script id="pkc-core">{{CORE}}</script>
+  <!-- CSS / JS 本体は gzip+base64 で埋め込み、初期ダウンロードサイズを
+       圧縮する(pgc-53)。下の pkc-loader が展開して DOM へ注入する。 -->
+  <script id="pkc-css-gz" type="application/octet-stream">{{STYLES_GZ}}</script>
+  <script id="pkc-core-gz" type="application/octet-stream">{{CORE_GZ}}</script>
+
+  <script id="pkc-loader">
+  /* pgc-53 minimal loader — 生で書く唯一の関数。
+     base64 → gunzip(ネイティブ DecompressionStream、ライブラリ不使用)→
+     注入。pkc-styles は head 先置き要素へ流し込み、pkc-core は実行のため
+     新規 <script> として生成・append する。 */
+  (async function () {
+    function gunzip(id) {
+      var b64 = document.getElementById(id).textContent.trim();
+      var bin = atob(b64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var stream = new Blob([bytes]).stream()
+        .pipeThrough(new DecompressionStream('gzip'));
+      return new Response(stream).text();
+    }
+    try {
+      document.getElementById('pkc-styles').textContent =
+        await gunzip('pkc-css-gz');
+      var script = document.createElement('script');
+      script.id = 'pkc-core';
+      script.textContent = await gunzip('pkc-core-gz');
+      document.body.appendChild(script);
+    } catch (e) {
+      document.getElementById('pkc-root').textContent =
+        'PKC2 の読み込みに失敗しました: ' + ((e && e.message) || e);
+    }
+  })();
+  </script>
 </body>
 </html>

@@ -305,6 +305,16 @@ function blockToPandoc(node: AstBlock): PandocNode {
           node.source,
         ],
       };
+    case 'format-block':
+      // v4 §12(stack PR 3、types only):Pandoc Div として children を含める。
+      // 装飾の Pandoc attribute mapping は別 wave で対応。
+      return {
+        t: 'Div',
+        c: [
+          [node.blockId ?? '', ['pkc-format-block', ...node.classes], []],
+          node.children.map((c) => blockToPandoc(c)),
+        ],
+      };
     default: {
       const _exhaustive: never = node;
       void _exhaustive;

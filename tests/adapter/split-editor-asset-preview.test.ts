@@ -50,6 +50,8 @@ function makeEditingState(container: Container, selectedLid: string): AppState {
     phase: 'editing',
     container,
     selectedLid,
+    navHistory: [],
+    navIndex: -1,
     editingLid: selectedLid,
     error: null,
     embedded: false,

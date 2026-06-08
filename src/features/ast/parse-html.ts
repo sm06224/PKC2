@@ -77,6 +77,7 @@ import type {
   AstEmphasis,
   AstFigure,
   AstHeading,
+  AstFormatBlock,
   AstIfBlock,
   AstImage,
   AstInline,
@@ -269,6 +270,59 @@ function parseBlockElement(el: HTMLElement): AstBlock | null {
         const children = parseBlockChildren(Array.from(el.childNodes));
         return { kind: 'if-block', format, children } as AstIfBlock;
       }
+      // v4 §12 stack PR 9:pkc-format-block を AstFormatBlock に逆 parse
+      if (el.classList.contains('pkc-format-block')) {
+        // classes(pkc-format-block を除く ABC sorted)
+        const classes = Array.from(el.classList)
+          .filter((c) => c !== 'pkc-format-block')
+          .sort((a, b) => a.localeCompare(b));
+        // id
+        const blockId = el.id || undefined;
+        // data-pkc-indent
+        const indentRaw = el.getAttribute('data-pkc-indent');
+        const indent = indentRaw ? parseInt(indentRaw, 10) : undefined;
+        // data-pkc-align
+        const alignRaw = el.getAttribute('data-pkc-align');
+        const align: 'left' | 'center' | 'right' | 'justify' | undefined =
+          alignRaw === 'left' || alignRaw === 'center' || alignRaw === 'right' || alignRaw === 'justify'
+            ? alignRaw
+            : undefined;
+        // style 属性 → styles(各 CSS prop:value を抽出)
+        const styleAttr = el.getAttribute('style');
+        let styles: Record<string, string> | undefined;
+        if (styleAttr) {
+          styles = {};
+          for (const decl of styleAttr.split(';')) {
+            const colon = decl.indexOf(':');
+            if (colon < 0) continue;
+            const k = decl.slice(0, colon).trim();
+            const v = decl.slice(colon + 1).trim();
+            if (k && v) styles[k] = v;
+          }
+          if (Object.keys(styles).length === 0) styles = undefined;
+        }
+        // 残り data-pkc-* attrs(format-block / indent / align 除外)を kvs に
+        const kvs: Record<string, string | boolean> = {};
+        for (const a of Array.from(el.attributes)) {
+          if (!a.name.startsWith('data-pkc-')) continue;
+          const key = a.name.slice('data-pkc-'.length);
+          if (key === 'format-block' || key === 'indent' || key === 'align') continue;
+          // boolean attr(値なし)= true、それ以外は string
+          kvs[key] = a.value === '' ? true : a.value;
+        }
+        const children = parseBlockChildren(Array.from(el.childNodes));
+        const node: AstFormatBlock = {
+          kind: 'format-block',
+          classes,
+          children,
+        };
+        if (styles) node.styles = styles;
+        if (blockId) node.blockId = blockId;
+        if (indent !== undefined && Number.isFinite(indent)) node.indent = indent;
+        if (align) node.align = align;
+        if (Object.keys(kvs).length > 0) node.kvs = kvs;
+        return node;
+      }
       // Generic div → opaque-block(lossless preserve)
       return {
         kind: 'opaque-block',
@@ -321,6 +375,15 @@ function parseBlockChildrenOrInlineFallback(nodes: ChildNode[]): AstBlock[] {
 
 function parseTable(el: HTMLElement): AstTable {
   const rows: AstTableRow[] = [];
+  // pgc-243:GFM table column alignment は `<th style="text-align:X">` で
+  // legacy markdown-it が emit する。最初に見つかる完全 row の cell style を
+  // header 行と同じ位置で抽出して、AstTable.align(双方向可換)に転記。
+  let columnAlign: Array<'left' | 'right' | 'center' | null> | null = null;
+  const extractAlign = (cellEl: HTMLElement): 'left' | 'right' | 'center' | null => {
+    const style = cellEl.getAttribute('style') ?? '';
+    const m = /text-align:\s*(left|right|center)/.exec(style);
+    return (m?.[1] ?? null) as 'left' | 'right' | 'center' | null;
+  };
   // happy-dom DOMParser だと HTMLTableElement の `tHead` / `tBodies` プロパティが
   // 期待通り設置されないことがあるので、`querySelector(:scope > thead)` 経路で
   // 明示的に取り出す(child element 限定で nested <table> を踏まない)。
@@ -332,13 +395,17 @@ function parseTable(el: HTMLElement): AstTable {
     for (const tr of Array.from(parent.children)) {
       if (tr.tagName.toLowerCase() !== 'tr') continue;
       const cells: AstTableCell[] = [];
+      const rowAlign: Array<'left' | 'right' | 'center' | null> = [];
       for (const cellEl of Array.from(tr.children)) {
         cells.push({
           kind: 'table-cell',
           children: parseInlineChildren(Array.from(cellEl.childNodes)),
         } as AstTableCell);
+        rowAlign.push(extractAlign(cellEl as HTMLElement));
       }
       rows.push({ kind: 'table-row', isHeader, cells } as AstTableRow);
+      // pgc-243:最初に column 数が一致する row(typically header)の alignment を採用
+      if (!columnAlign && rowAlign.length > 0) columnAlign = rowAlign;
     }
   };
   const thead = directChild('thead');
@@ -350,6 +417,7 @@ function parseTable(el: HTMLElement): AstTable {
     for (const tr of Array.from(el.children)) {
       if (tr.tagName.toLowerCase() !== 'tr') continue;
       const cells: AstTableCell[] = [];
+      const rowAlign: Array<'left' | 'right' | 'center' | null> = [];
       let allTh = true;
       for (const cellEl of Array.from(tr.children)) {
         if (cellEl.tagName.toLowerCase() !== 'th') allTh = false;
@@ -357,12 +425,19 @@ function parseTable(el: HTMLElement): AstTable {
           kind: 'table-cell',
           children: parseInlineChildren(Array.from(cellEl.childNodes)),
         } as AstTableCell);
+        rowAlign.push(extractAlign(cellEl as HTMLElement));
       }
       rows.push({ kind: 'table-row', isHeader: firstRow && allTh, cells } as AstTableRow);
+      if (!columnAlign && rowAlign.length > 0) columnAlign = rowAlign;
       firstRow = false;
     }
   }
-  return { kind: 'table', rows };
+  const node: AstTable = { kind: 'table', rows };
+  // pgc-243:全列 null(alignment 未指定)なら省略、明示 1 件でもあれば保持。
+  if (columnAlign && columnAlign.some((a) => a !== null)) {
+    node.align = columnAlign;
+  }
+  return node;
 }
 
 // ── Inline 解析 ──────────────────────────────────────────
@@ -458,19 +533,28 @@ function parseInlineElement(el: HTMLElement): AstInline | null {
       }
       const linkKindMatch = /pkc-link-([\w-]+)/.exec(cls);
       const linkKind = (linkKindMatch?.[1] ?? 'external') as AstLink['linkKind'];
-      return {
+      const node: AstLink = {
         kind: 'link',
         href,
         linkKind,
         children: parseInlineChildren(Array.from(el.childNodes)),
-      } as AstLink;
+      };
+      // pgc-243:HTML `<a title>` を AST に保持(双方向可換)。
+      const title = el.getAttribute('title');
+      if (title) node.title = title;
+      return node;
     }
-    case 'img':
-      return {
+    case 'img': {
+      const node: AstImage = {
         kind: 'image',
         src: el.getAttribute('src') ?? '',
         alt: el.getAttribute('alt') ?? '',
-      } as AstImage;
+      };
+      // pgc-243:HTML `<img title>` を AST に保持(双方向可換)。
+      const title = el.getAttribute('title');
+      if (title) node.title = title;
+      return node;
+    }
     case 'cite': {
       // pkc-citation `<cite class="pkc-citation" data-pkc-cite-id="X">`
       const id = el.getAttribute('data-pkc-cite-id');

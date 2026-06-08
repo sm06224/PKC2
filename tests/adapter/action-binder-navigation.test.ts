@@ -585,6 +585,9 @@ describe('ActionBinder — Storage Profile dialog', () => {
     const dispatcher = createDispatcher();
     dispatcher.onState((state) => render(state, root));
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+    // pgc-207:setup の名前通り menu を open する(shell menu の Storage
+    // Profile launch button は menu closed 時は build されない lazy build)。
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     render(dispatcher.getState(), root);
     cleanup = bindActions(root, dispatcher);
     return { dispatcher };
@@ -630,11 +633,19 @@ describe('ActionBinder — Storage Profile dialog', () => {
   });
 
   it('reopening after close rebuilds a fresh overlay (no stale node)', () => {
-    setupWithMenuOpen();
-    const launch = () =>
+    const { dispatcher } = setupWithMenuOpen();
+    // pgc-207:show-storage-profile は内部で CLOSE_MENU を dispatch する。
+    // 再 launch するには再度 menu を open する必要がある(lazy build:
+    // menu closed では launch button が DOM に build されない)。
+    const launch = () => {
+      // menu が closed なら open する
+      if (!dispatcher.getState().menuOpen) {
+        dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+      }
       root
         .querySelector<HTMLElement>('[data-pkc-action="show-storage-profile"]')!
         .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    };
     const close = () =>
       root
         .querySelector<HTMLElement>('[data-pkc-action="close-storage-profile"]')!
@@ -655,11 +666,9 @@ describe('ActionBinder — Storage Profile dialog', () => {
   // whose re-render did `root.innerHTML = ''` and wiped the overlay
   // on the same tick (cluster A).
   it('overlay survives CLOSE_MENU re-render after show-storage-profile', () => {
+    // pgc-207:setupWithMenuOpen は menu を open する。下記の redundant
+    // TOGGLE_MENU は削除(setup の時点で menu open 済)。
     const { dispatcher } = setupWithMenuOpen();
-    // Open the shell menu first so the subsequent CLOSE_MENU actually
-    // flips state (and therefore triggers the re-render that used to
-    // wipe the ad-hoc overlay).
-    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     expect(dispatcher.getState().menuOpen).toBe(true);
 
     root
@@ -716,6 +725,10 @@ describe('ActionBinder — Storage Profile dialog', () => {
     const dispatcher = createDispatcher();
     dispatcher.onState((state) => render(state, root));
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: csvContainer });
+    // pgc-207:storage profile launch button は shell menu 内で build される
+    // (lazy build:menuOpen=false 時は menu DOM 空)。test で button query
+    // するため menu を open する。
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     render(dispatcher.getState(), root);
     cleanup = bindActions(root, dispatcher);
 
@@ -780,6 +793,8 @@ describe('ActionBinder — Storage Profile dialog', () => {
     const dispatcher = createDispatcher();
     dispatcher.onState((state) => render(state, root));
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: emptyContainer });
+    // pgc-207:storage profile launch button は shell menu 内 lazy build。
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     render(dispatcher.getState(), root);
     cleanup = bindActions(root, dispatcher);
     root
@@ -834,6 +849,8 @@ describe('ActionBinder — Storage Profile dialog', () => {
     const dispatcher = createDispatcher();
     dispatcher.onState((state) => render(state, root));
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: c });
+    // pgc-207:storage profile launch button は shell menu 内 lazy build。
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     render(dispatcher.getState(), root);
     cleanup = bindActions(root, dispatcher);
     return dispatcher;

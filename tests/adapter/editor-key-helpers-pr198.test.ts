@@ -121,6 +121,45 @@ describe('handleEditorEnter — indent + list continuation', () => {
   });
 });
 
+describe('handleEditorEnter — 領域 8 ordered-list auto-renumber', () => {
+  it('mid-list Enter renumbers the items below (重複番号を防ぐ)', () => {
+    ta.value = '1. a\n2. b';
+    setCursor(4); // end of "1. a"
+    expect(handleEditorEnter(ta)).toBe(true);
+    expect(ta.value).toBe('1. a\n2. \n3. b');
+    expect(ta.selectionStart).toBe(8); // after "2. " on the fresh line
+  });
+
+  it('heals a gapped list on Enter (4. → 3.)', () => {
+    ta.value = '1. a\n4. b';
+    setCursor(4);
+    expect(handleEditorEnter(ta)).toBe(true);
+    expect(ta.value).toBe('1. a\n2. \n3. b');
+  });
+
+  it('renumbers multi-digit markers below (10. → 11.)', () => {
+    ta.value = '9. a\n10. b';
+    setCursor(4); // end of "9. a"
+    expect(handleEditorEnter(ta)).toBe(true);
+    expect(ta.value).toBe('9. a\n10. \n11. b');
+  });
+
+  it('frontmatter list-number: uniform → 全項目を 1 に統一する', () => {
+    const fm = '---\nlist-number: uniform\n---\n';
+    ta.value = `${fm}1. a\n2. b`;
+    setCursor(fm.length + 4); // end of "1. a"
+    expect(handleEditorEnter(ta)).toBe(true);
+    expect(ta.value).toBe(`${fm}1. a\n1. \n1. b`);
+  });
+
+  it('appending at the list end keeps a clean sequence', () => {
+    ta.value = '1. a\n2. b';
+    setCursor(ta.value.length); // end of "2. b"
+    expect(handleEditorEnter(ta)).toBe(true);
+    expect(ta.value).toBe('1. a\n2. b\n3. ');
+  });
+});
+
 describe('handleEditorBracketOpen — pair completion', () => {
   it('inserts ()  with cursor between for (', () => {
     ta.value = 'foo';

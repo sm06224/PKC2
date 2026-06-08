@@ -62,6 +62,7 @@ import {
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import { parseTodoBody, formatTodoDate } from '../../features/todo/todo-body';
 import { getFormatLocale, getFormatTimeZone } from './format-context';
+import { renderSpreadsheetEmbedBody } from './spreadsheet-presenter';
 
 /**
  * Archetypes that can be expanded as embed targets. Other archetypes
@@ -77,6 +78,7 @@ const EMBEDDABLE_ARCHETYPES: ReadonlySet<string> = new Set([
   'text',
   'textlog',
   'todo',
+  'spreadsheet',
 ]);
 
 export interface TransclusionContext {
@@ -136,7 +138,13 @@ export function expandTransclusions(
 
   for (const ph of placeholders) {
     const ref = ph.getAttribute('data-pkc-embed-ref') ?? '';
-    const replacement = buildReplacement(ref, ctx);
+    const alt = ph.getAttribute('data-pkc-embed-alt') ?? '';
+    // user direction 2026-06-03「シームレス埋め込みとシームレスじゃない埋め込み」
+    // fix:alt が `seamless` で始まる(`![seamless](entry:LID)` 等)場合は
+    // section ヘッダー / source backlink / chrome を全て省いた素の body のみを
+    // 返す。それ以外は従来通り section ヘッダー付き。
+    const seamless = /^\s*seamless\b/.test(alt);
+    const replacement = buildReplacement(ref, ctx, { seamless });
     ph.replaceWith(replacement);
   }
 
@@ -155,7 +163,11 @@ export function expandTransclusions(
 
 // ── Internal helpers ──────────────────────────────────
 
-function buildReplacement(ref: string, ctx: TransclusionContext): HTMLElement {
+interface BuildOptions {
+  seamless?: boolean;
+}
+
+function buildReplacement(ref: string, ctx: TransclusionContext, opts: BuildOptions = {}): HTMLElement {
   const parsed = parseEntryRef(ref);
   if (parsed.kind === 'invalid') {
     return blockedPlaceholder(ref, 'invalid');
@@ -197,7 +209,7 @@ function buildReplacement(ref: string, ctx: TransclusionContext): HTMLElement {
     return linkFallback(ref, 'archetype', target.archetype);
   }
 
-  return buildEmbedSection(parsed, target, ref, ctx);
+  return buildEmbedSection(parsed, target, ref, ctx, opts);
 }
 
 function buildEmbedSection(
@@ -208,27 +220,30 @@ function buildEmbedSection(
   target: Entry,
   ref: string,
   ctx: TransclusionContext,
+  opts: BuildOptions = {},
 ): HTMLElement {
   const section = document.createElement('section');
   section.className = 'pkc-transclusion';
+  if (opts.seamless) section.classList.add('pkc-transclusion-seamless');
   section.setAttribute('data-pkc-embed-source', ref);
   section.setAttribute('data-pkc-embed-kind', parsed.kind);
+  if (opts.seamless) section.setAttribute('data-pkc-embed-seamless', 'true');
 
-  // Header with source backlink — clicking it navigates to the source
-  // entry (same routing as any other entry: link).
-  const header = document.createElement('header');
-  header.className = 'pkc-transclusion-header';
-
-  const backlink = document.createElement('a');
-  backlink.className = 'pkc-transclusion-source';
-  backlink.href = ref;
-  backlink.setAttribute('data-pkc-action', 'navigate-entry-ref');
-  backlink.setAttribute('data-pkc-entry-ref', ref);
-  // Label: "<title> · <sub-label>" where sub-label is "log/<id>" etc.
-  // when the embed is a fragment, and just the title for a whole entry.
-  backlink.textContent = makeSourceLabel(target, parsed);
-  header.appendChild(backlink);
-  section.appendChild(header);
+  // user direction 2026-06-03「シームレス埋め込みとシームレスじゃない埋め込み」 fix:
+  // seamless モードでは source backlink ヘッダーを出さない(本文だけシームレスに
+  // 埋まる)。CSS 側でも `.pkc-transclusion-seamless` で border / padding を削除。
+  if (!opts.seamless) {
+    const header = document.createElement('header');
+    header.className = 'pkc-transclusion-header';
+    const backlink = document.createElement('a');
+    backlink.className = 'pkc-transclusion-source';
+    backlink.href = ref;
+    backlink.setAttribute('data-pkc-action', 'navigate-entry-ref');
+    backlink.setAttribute('data-pkc-entry-ref', ref);
+    backlink.textContent = makeSourceLabel(target, parsed);
+    header.appendChild(backlink);
+    section.appendChild(header);
+  }
 
   // Mark the section with the target archetype so CSS / tests can
   // target TODO-specific styling without parsing the body.
@@ -283,6 +298,16 @@ function renderEntryEmbed(
       return;
     }
     renderTextlogSections(body, doc.sections, target.lid, ctx);
+    return;
+  }
+
+  // 領域 10-4 Phase 4(2026-06-03):spreadsheet 埋め込みは専用 embed body
+  // builder で render(toolbar / export button を除外、table + chart のみ)。
+  // user direction「不要なボタンが表示される / チャートもレンダリングされてない」 fix。
+  if (target.archetype === 'spreadsheet') {
+    const el = renderSpreadsheetEmbedBody(target);
+    body.classList.add('pkc-spreadsheet-embed');
+    while (el.firstChild) body.appendChild(el.firstChild);
     return;
   }
 

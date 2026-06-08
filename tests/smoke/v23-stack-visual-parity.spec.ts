@@ -51,7 +51,7 @@ async function seedContainer(
 test('PR-V5 visual parity: launcher tile に image icon が見えている座標で element_from_point が <img> を返す', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   const container = {
@@ -101,7 +101,7 @@ test('PR-V5 visual parity: launcher tile に image icon が見えている座標
     },
   };
   await seedContainer(page, container);
-  await page.goto('/pkc2.html?app=launcher');
+  await page.goto('/pkc2.html?app=launcher&pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   const tile = page.locator('.pkc-launcher-tile').first();
@@ -135,7 +135,7 @@ test('PR-V5 visual parity: launcher tile に image icon が見えている座標
 test('PR-V8 visual parity: 中央 pane で textlog log を scroll すると対応 TOC ボタンが highlight される', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // 30 件の log を持つ textlog を seed。各 log は固有 ID を持つ。
@@ -169,7 +169,7 @@ test('PR-V8 visual parity: 中央 pane で textlog log を scroll すると対�
     assets: {},
   };
   await seedContainer(page, container);
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // sidebar の entry-list に scope して 1 件に絞る(recent と重複するため)
@@ -217,73 +217,162 @@ test('PR-V8 visual parity: 中央 pane で textlog log を scroll すると対�
   await page.screenshot({ path: 'test-results/pr-v8-toc-viewport-parity.png', fullPage: true });
 });
 
-test('PR-V10 visual parity: format panel × close → reload 後も非表示が維持される', async ({
+test('Group C visual parity: 固定 format ribbon が編集モードで常駐し B が選択を wrap する', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // text create + 編集モードへ
   await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
   await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
 
+  // 固定 format ribbon が編集モードで常駐表示される(旧 floating panel と
+  // 違い、選択追従ではなく編集面の上部に常駐)
+  const panel = page.locator('[data-pkc-region="format-panel"]');
+  await expect(panel).toBeVisible({ timeout: 3_000 });
+
+  // 6 group + 28 operation button + 6 value picker + 1 launcher が描画されている
+  await expect(panel.locator('[data-pkc-region="format-panel-group"]')).toHaveCount(6);
+  await expect(panel.locator('[data-pkc-format-label]')).toHaveCount(28);
+  await expect(panel.locator('[data-pkc-picker]')).toHaveCount(6);
+  await expect(panel.locator('[data-pkc-launcher]')).toHaveCount(1);
+
+  // textarea に text を入れて選択
   const body = page.locator('textarea.pkc-editor-body[data-pkc-field="body"]').first();
-  await body.fill('Hello format panel persistence test');
+  await body.fill('Hello ribbon');
   await body.evaluate((ta: HTMLTextAreaElement) => {
     ta.setSelectionRange(0, 5);
     ta.focus();
   });
-  await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')));
 
-  // 1 回目:panel が出る
+  // B button を実 OS click で叩く → 選択範囲が ** で wrap される
+  const boldBtn = panel.locator('[data-pkc-format-label="B"]');
+  const box = await boldBtn.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) throw new Error('B button no box');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(100);
+
+  const value = await body.inputValue();
+  expect(value).toBe('**Hello** ribbon');
+
+  // font-size picker:trigger を実 OS click で開き、L option を click すると
+  // 選択範囲が simple-inline :text:lg: で wrap される
+  await body.evaluate((ta: HTMLTextAreaElement) => {
+    ta.setSelectionRange(10, 16); // "ribbon"
+    ta.focus();
+  });
+  const sizeTrigger = panel.locator('[data-pkc-picker="font-size"] summary');
+  const triggerBox = await sizeTrigger.boundingBox();
+  expect(triggerBox).not.toBeNull();
+  if (!triggerBox) throw new Error('font-size trigger no box');
+  await page.mouse.click(
+    triggerBox.x + triggerBox.width / 2,
+    triggerBox.y + triggerBox.height / 2,
+  );
+  await page.waitForTimeout(80);
+
+  const lgOption = panel.locator(
+    '[data-pkc-picker="font-size"] [data-pkc-picker-value="lg"]',
+  );
+  const optionBox = await lgOption.boundingBox();
+  expect(optionBox).not.toBeNull();
+  if (!optionBox) throw new Error('lg option no box');
+  await page.mouse.click(
+    optionBox.x + optionBox.width / 2,
+    optionBox.y + optionBox.height / 2,
+  );
+  await page.waitForTimeout(100);
+  expect(await body.inputValue()).toBe('**Hello** :ribbon:lg:');
+
+  // text-color swatch:既存 :ribbon:lg: に red を合成 → :ribbon:lg,red:
+  await body.evaluate((ta: HTMLTextAreaElement) => {
+    ta.setSelectionRange(10, 21); // ":ribbon:lg:"
+    ta.focus();
+  });
+  const colorTrigger = panel.locator('[data-pkc-picker="text-color"] summary');
+  const colorBox = await colorTrigger.boundingBox();
+  expect(colorBox).not.toBeNull();
+  if (!colorBox) throw new Error('text-color trigger no box');
+  await page.mouse.click(
+    colorBox.x + colorBox.width / 2,
+    colorBox.y + colorBox.height / 2,
+  );
+  await page.waitForTimeout(80);
+
+  const redSwatch = panel.locator(
+    '[data-pkc-picker="text-color"] [data-pkc-picker-value="red"]',
+  );
+  const swatchBox = await redSwatch.boundingBox();
+  expect(swatchBox).not.toBeNull();
+  if (!swatchBox) throw new Error('red swatch no box');
+  await page.mouse.click(
+    swatchBox.x + swatchBox.width / 2,
+    swatchBox.y + swatchBox.height / 2,
+  );
+  await page.waitForTimeout(100);
+  expect(await body.inputValue()).toBe('**Hello** :ribbon:lg,red:');
+
+  await page.screenshot({ path: 'test-results/group-c-format-ribbon-parity.png' });
+});
+
+test('Group C visual parity: 固定 format ribbon は editor scroll 後も上端に常駐する', async ({
+  page,
+}) => {
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
+  await bootReady(page);
+
+  await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
+  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
+
   const panel = page.locator('[data-pkc-region="format-panel"]');
   await expect(panel).toBeVisible({ timeout: 3_000 });
 
-  // × close button を実 OS click で叩く
-  const close = panel.locator('.pkc-format-panel-close');
-  const closeBox = await close.boundingBox();
-  expect(closeBox).not.toBeNull();
-  if (!closeBox) throw new Error('close button no box');
-  await page.mouse.click(closeBox.x + closeBox.width / 2, closeBox.y + closeBox.height / 2);
-  await page.waitForTimeout(100);
+  // 「常駐」契約の core は position: sticky。computed style を直接確認。
+  await expect(panel).toHaveCSS('position', 'sticky');
 
-  // panel hidden を確認 + localStorage に persist されている
-  await expect(panel).not.toBeVisible();
-  const dismissed = await page.evaluate(() => localStorage.getItem('pkc2.formatPanelDismissed'));
-  expect(dismissed).toBe('true');
+  // editor 本文 textarea を十分 tall にして center pane(.pkc-center-content、
+  // overflow-y:auto)を scroll 可能にする。
+  await page
+    .locator('textarea.pkc-editor-body[data-pkc-field="body"]')
+    .first()
+    .evaluate((ta: HTMLTextAreaElement) => {
+      ta.style.height = '1800px';
+    });
 
-  // reload して fresh module load を simulate
-  await page.reload();
-  await bootReady(page);
+  // setup 健全性:center pane が実際に scroll 可能になった。
+  const scroller = page.locator('.pkc-center-content');
+  const scrollable = await scroller.evaluate(
+    (el) => el.scrollHeight > el.clientHeight + 50,
+  );
+  expect(scrollable).toBe(true);
 
-  // 編集 mode に戻る
-  await page.click('[data-pkc-action="create-entry"][data-pkc-archetype="text"]');
-  await page.waitForSelector('#pkc-root[data-pkc-phase="editing"]');
-  const body2 = page.locator('textarea.pkc-editor-body[data-pkc-field="body"]').first();
-  await body2.fill('Second session test');
-  await body2.evaluate((ta: HTMLTextAreaElement) => {
-    ta.setSelectionRange(0, 6);
-    ta.focus();
-  });
-  await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')));
-  await page.waitForTimeout(200);
+  const yBefore = (await panel.boundingBox())?.y ?? -1;
+  expect(yBefore).toBeGreaterThanOrEqual(0);
 
-  // panel が出ないことを確認
-  const panel2 = page.locator('[data-pkc-region="format-panel"]');
-  // panel 要素が存在しても display:none/visibility:hidden で見えない
-  const visible = await panel2.isVisible().catch(() => false);
-  expect(visible).toBe(false);
+  // 実 OS wheel event で center content を下方向へ scroll。
+  await page.mouse.move(400, 360);
+  await page.mouse.wheel(0, 1000);
+  await page.waitForTimeout(150);
 
-  await page.screenshot({ path: 'test-results/pr-v10-format-panel-persist.png' });
+  // setup 健全性:center pane が実際に動いた。
+  const scrolledTop = await scroller.evaluate((el) => el.scrollTop);
+  expect(scrolledTop).toBeGreaterThan(100);
 
-  // cleanup:dismissed 状態を解除しないと他 test が壊れるので localStorage clear
-  await page.evaluate(() => localStorage.removeItem('pkc2.formatPanelDismissed'));
+  // 本題:scroll 後も ribbon は viewport 内に残る(sticky)。旧 static 実装なら
+  // ribbon は viewport 上端より上へ消え、toBeInViewport / y>=0 が fail する。
+  await expect(panel).toBeInViewport();
+  const yAfter = (await panel.boundingBox())?.y ?? -1;
+  expect(yAfter).toBeGreaterThanOrEqual(0);
+
+  await page.screenshot({ path: 'test-results/group-c-format-ribbon-sticky-parity.png' });
 });
 
 test('PR-V6 visual parity: derived-branches link を real click すると branch entry に SELECT_ENTRY', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   const now = '2026-05-14T00:00:00.000Z';
@@ -332,7 +421,7 @@ test('PR-V6 visual parity: derived-branches link を real click すると branch
     assets: {},
   };
   await seedContainer(page, container);
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // source entry を選択
@@ -385,7 +474,7 @@ test('PR-V6 visual parity: derived-branches link を real click すると branch
 test('PR-V14 visual parity: branch tree が多階層 nested で見える(depth 0/1 + guide marker)', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // 多階層 provenance:root → b1 / b2、b1 → b1a / b1b
@@ -419,7 +508,7 @@ test('PR-V14 visual parity: branch tree が多階層 nested で見える(depth 0
     assets: {},
   };
   await seedContainer(page, container);
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   // entry-list 内の root を click
   await page

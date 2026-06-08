@@ -157,6 +157,19 @@ function normalizeBlock(block: AstBlock): unknown {
         sourceFormat: block.sourceFormat,
         original: block.original.trim(),
       };
+    case 'format-block':
+      // v4 §12(stack PR 3、types only):classes / styles / blockId / indent / align / kvs
+      // を含めた semantic hash。canonical attrs 順で文字列化。
+      return {
+        kind: 'format-block',
+        classes: [...block.classes].sort(),
+        styles: block.styles ? { ...block.styles } : undefined,
+        blockId: block.blockId,
+        indent: block.indent,
+        align: block.align,
+        kvs: block.kvs ? { ...block.kvs } : undefined,
+        children: block.children.map((c) => normalizeBlock(c)),
+      };
     default: {
       const _exhaustive: never = block;
       void _exhaustive;

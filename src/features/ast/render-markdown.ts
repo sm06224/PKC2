@@ -448,6 +448,47 @@ function renderBlock(block: AstBlock, mode: 'gfm' | 'pkc'): string {
       const cap = block.caption ? `\n\n*${renderInlines(block.caption, mode)}*` : '';
       return inner + cap;
     }
+    case 'format-block': {
+      // v4 §12 stack PR 8(canonicalize Q6 simple → formal 寄せ):
+      // AstFormatBlock を canonical formal `:::format{.cls .cls #id key=v ...}` で
+      // markdown 出力。Tier 0/1 simple 形は実装側 fixture として保持されるが
+      // canonicalize default(Q6)は formal 寄せ(diff friendly、IR canonical 一意)。
+      if (mode === 'pkc') {
+        const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
+        const attrParts: string[] = [];
+        // classes(ABC sorted、`.cls` 形、canonical Q6 / diff friendly §1.4)
+        const sortedClasses = [...block.classes].sort((a, b) => a.localeCompare(b));
+        for (const cls of sortedClasses) attrParts.push(`.${cls}`);
+        // id
+        if (block.blockId) attrParts.push(`#${block.blockId}`);
+        // indent / align(特殊解釈 key)
+        if (block.indent !== undefined) attrParts.push(`indent=${block.indent}`);
+        if (block.align) attrParts.push(`align=${block.align}`);
+        // styles を vocabulary form として再復元 → comma 区切り(Q6 で formal 寄せだが
+        // styles は inline style 用のため vocabulary token を attrParts に展開)
+        if (block.styles) {
+          const styleEntries = Object.entries(block.styles).sort(([a], [b]) => a.localeCompare(b));
+          for (const [k, v] of styleEntries) {
+            // style key=value を `data-pkc-style-<key>=<v>` として attach、または
+            // 単純 token vocabulary 形に逆変換(`color=red` 等)
+            // canonical decision:`style="..."` 直書き禁止のため、key=value 形で保持
+            attrParts.push(`${k.replace(/[^A-Za-z0-9_-]/g, '-')}=${JSON.stringify(v)}`);
+          }
+        }
+        // 他 kvs(indent/align 既処理、ABC 順)
+        if (block.kvs) {
+          const kvsEntries = Object.entries(block.kvs).sort(([a], [b]) => a.localeCompare(b));
+          for (const [k, v] of kvsEntries) {
+            if (v === true) attrParts.push(k);
+            else if (v !== false) attrParts.push(`${k}=${JSON.stringify(v)}`);
+          }
+        }
+        return `:::format{${attrParts.join(' ')}}\n\n${inner}\n\n:::`;
+      }
+      // GFM:format-block は class / style 情報を保持しないため、children のみ出力。
+      // user-side CSS は GFM consumer で効かない、装飾は失われる。
+      return block.children.map((b) => renderBlock(b, mode)).join('\n\n');
+    }
     case 'section': {
       if (mode === 'pkc') {
         const inner = block.children.map((b) => renderBlock(b, mode)).join('\n\n');
@@ -653,8 +694,13 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
     }
     case 'link': {
       const text = renderInlines(node.children, mode);
+      // pgc-243:title が在れば CommonMark `"title"` 構文で markdown に復元、
+      // 双方向可換性を保証。title 内の `"` は `\"` で escape。
+      const titleSuffix = node.title
+        ? ` "${node.title.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+        : '';
       // entry / asset / permalink は PKC では pkc:// scheme で復元
-      return `[${text}](${node.href})`;
+      return `[${text}](${node.href}${titleSuffix})`;
     }
     case 'card': {
       const text = renderInlines(node.children, mode);
@@ -669,8 +715,13 @@ function renderInline(node: AstInline, mode: 'gfm' | 'pkc'): string {
       }
       return `[${text}](${node.ref})`;
     }
-    case 'image':
-      return `![${escapeText(node.alt)}](${node.src})`;
+    case 'image': {
+      // pgc-243:title が在れば CommonMark `"title"` 構文で復元(双方向可換)。
+      const titleSuffix = node.title
+        ? ` "${node.title.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+        : '';
+      return `![${escapeText(node.alt)}](${node.src}${titleSuffix})`;
+    }
     case 'auto-ref':
       // PR-2JJ v2 hotfix(2026-05-13):PKC mode は formal form `[@id]`、
       // GFM mode は plain `@id`(GFM consumer は brackets 解釈しないので)。

@@ -146,6 +146,14 @@ export const BUILD_FEATURES: readonly string[] = [
   'export',
 ] as const;
 
+// Runtime 依存の listing は `build/about-entry-builder.ts` が package.json
+// から自動抽出(name / version / license)、About panel の `Runtime Dependencies`
+// table に表示。本 file での重複 hardcode は撤去(2026-06-03、user direction
+// 「依存の管理してくださいね、about掲載されるようにしなきゃいけないし、
+// サプライチェーンリスク把握しなきゃいけない」 への対応:**single source of
+// truth は package.json**、About が build-time に拾うので新 dep 追加時に
+// 別 file を更新する手間がない)。
+
 /**
  * Backward-compatibility alias. Pre-PR-B' (2026-04-26) call sites
  * imported `CAPABILITIES`. Kept as a re-export so out-of-tree

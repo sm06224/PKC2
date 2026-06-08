@@ -21,8 +21,13 @@
  * IME guards live at the call site (`event.isComposing`); these
  * helpers assume non-IME input.
  *
- * Pure DOM helpers — no dispatcher / state coupling.
+ * Pure DOM helpers — no dispatcher / state coupling. (Importing pure
+ * `features/markdown` functions keeps that property — no dispatcher /
+ * AppState touched.)
  */
+
+import { extractListNumberMode } from '@features/markdown/document-globals';
+import { renumberOrderedListRunAt } from '@features/markdown/list-renumber';
 
 /**
  * Auto-pair character → matching closer. `'` (apostrophe) is
@@ -86,6 +91,39 @@ function spliceText(
 }
 
 /**
+ * Replace `ta.value` with `newValue` using the smallest possible
+ * `setRangeText` splice: the common prefix / suffix are kept untouched
+ * so the change is a single undo step and undo history outside the
+ * changed region survives. Used by the ordered-list renumber path,
+ * where one Enter both inserts a line and rewrites the run's numbers.
+ */
+function applyMinimalEdit(
+  ta: HTMLTextAreaElement,
+  newValue: string,
+  caret: number,
+): void {
+  const old = ta.value;
+  if (old !== newValue) {
+    const minLen = Math.min(old.length, newValue.length);
+    let p = 0;
+    while (p < minLen && old.charCodeAt(p) === newValue.charCodeAt(p)) p++;
+    let s = 0;
+    while (
+      s < minLen - p &&
+      old.charCodeAt(old.length - 1 - s) === newValue.charCodeAt(newValue.length - 1 - s)
+    ) {
+      s++;
+    }
+    if (typeof ta.setRangeText === 'function') {
+      ta.setRangeText(newValue.slice(p, newValue.length - s), p, old.length - s, 'preserve');
+    } else {
+      ta.value = newValue;
+    }
+  }
+  ta.selectionStart = ta.selectionEnd = caret;
+}
+
+/**
  * Handle Enter: indent maintenance + list continuation + escape.
  *
  * Cases:
@@ -146,8 +184,9 @@ export function handleEditorEnter(ta: HTMLTextAreaElement): boolean {
 
   // Continue: \n + indent (+ marker) (+ empty checkbox if previous had one).
   let next = '\n' + indent;
+  const isOrdered = marker !== undefined && /^\d+\./.test(marker);
   if (marker) {
-    if (/^\d+\./.test(marker)) {
+    if (isOrdered) {
       const num = parseInt(marker, 10);
       next += `${num + 1}. `;
     } else {
@@ -156,6 +195,22 @@ export function handleEditorEnter(ta: HTMLTextAreaElement): boolean {
     if (checkbox) {
       next += '[ ] ';
     }
+  }
+
+  // Ordered list: after inserting the continuation, renumber the whole
+  // run so a mid-list Enter (or an earlier line delete) never leaves
+  // duplicate / gapped numbers (領域 8 Layer 1 / 2). sequential vs
+  // uniform follows the document's frontmatter `list-number`.
+  if (isOrdered) {
+    const inserted = value.slice(0, start) + next + value.slice(start);
+    const r = renumberOrderedListRunAt(
+      inserted,
+      start + next.length,
+      extractListNumberMode(value),
+    );
+    applyMinimalEdit(ta, r.text, r.caret);
+    notifyInput(ta);
+    return true;
   }
 
   spliceText(ta, start, start, next, 'end');

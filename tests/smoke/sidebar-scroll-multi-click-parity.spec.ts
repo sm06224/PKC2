@@ -74,7 +74,7 @@ async function settleRAF(page: Page, n: number = 2): Promise<void> {
 test('PR-XX scenario A: 5 sequential clicks at deep scroll preserve scrollTop', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   await seedFlatEntries(page, 200);
   await page.reload();
@@ -120,7 +120,7 @@ test('PR-XX scenario A: 5 sequential clicks at deep scroll preserve scrollTop', 
 test('PR-XX scenario B: clicking near viewport bottom edge preserves scroll', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   await seedFlatEntries(page, 100);
   await page.reload();
@@ -157,7 +157,7 @@ test('PR-XX scenario B: clicking near viewport bottom edge preserves scroll', as
 test('PR-XX scenario C: filer-mode → detail-mode switch via entry click preserves scroll', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   await seedFlatEntries(page, 100);
   await page.reload();
@@ -217,7 +217,7 @@ test('PR-XX scenario C: filer-mode → detail-mode switch via entry click preser
 test('PR-XX scenario D: drift = 0 after 10 alternating arrow-down + click cycles', async ({
   page,
 }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
   await seedFlatEntries(page, 200);
   await page.reload();

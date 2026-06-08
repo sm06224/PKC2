@@ -73,6 +73,20 @@ export function registerAssetPickerCallback(
   assetPickerCallback = cb;
 }
 
+/**
+ * pgc-143 wave-δ #17(user bug report 2026-05-24「エントリリンクを
+ * 貼りやすくする動線」):entry picker callback。slash command `/entry`
+ * から発火、entry を選んで `[title](entry:lid)` markdown link を挿入する。
+ * assetPickerCallback と同流儀(action-binder が register、cycle 回避)。
+ */
+let entryPickerCallback: ((ctx: SlashCommandContext) => void) | null = null;
+
+export function registerEntryPickerCallback(
+  cb: ((ctx: SlashCommandContext) => void) | null,
+): void {
+  entryPickerCallback = cb;
+}
+
 export const SLASH_COMMANDS: SlashCommand[] = [
   // ── Date / time ──
   { id: 'date', label: '/date — yyyy/MM/dd', insert: () => formatDate() },
@@ -114,6 +128,50 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     onSelect: (ctx) => {
       if (assetPickerCallback) assetPickerCallback(ctx);
     },
+  },
+  // pgc-143 wave-δ #17:entry link 挿入動線(user bug report 2026-05-24
+  // 「エントリリンクを貼りやすくする動線も欲しい」)。`/entry` で entry
+  // picker を開き、選択 entry の `[title](entry:lid)` markdown link を挿入。
+  // 既存 `[[` autocomplete / `copy-entry-ref` context menu と並行動線。
+  {
+    id: 'entry',
+    label: '/entry — Insert link to another entry',
+    onSelect: (ctx) => {
+      if (entryPickerCallback) entryPickerCallback(ctx);
+    },
+  },
+
+  // ── PKC-Markdown 拡張記法(領域 5)── AST 対応済の記法のみ。
+  //    syntax は tests/features/ast/fixtures/full-pkc-fixture.md 準拠。
+  //    inline wrap 系は caret をマーカー間に、block 系は本文行に落とす。
+  { id: 'highlight', label: '/highlight — ==marked==', insert: '====', cursorOffset: 2 },
+  { id: 'emdot', label: '/emdot — ^^圏点^^(emphasis dots)', insert: '^^^^', cursorOffset: 2 },
+  { id: 'sup', label: '/sup — :sup:[superscript]', insert: ':sup:[]', cursorOffset: 6 },
+  { id: 'ruby', label: '/ruby — [[ruby:漢字|かな]]', insert: '[[ruby:漢字|かな]]' },
+  { id: 'footnote', label: '/footnote — [^1] footnote reference', insert: '[^1]' },
+  {
+    id: 'note',
+    label: '/note — :::section note callout',
+    insert: ':::section{role=note}\n\n:::',
+    cursorOffset: 22,
+  },
+  {
+    id: 'warning',
+    label: '/warning — :::section warning callout',
+    insert: ':::section{role=warning}\n\n:::',
+    cursorOffset: 25,
+  },
+  {
+    id: 'tip',
+    label: '/tip — :::section tip callout',
+    insert: ':::section{role=tip}\n\n:::',
+    cursorOffset: 21,
+  },
+  {
+    id: 'figure',
+    label: '/figure — :::figure with caption',
+    insert: ':::figure{id=fig-1}\n\n:::',
+    cursorOffset: 20,
   },
 ];
 

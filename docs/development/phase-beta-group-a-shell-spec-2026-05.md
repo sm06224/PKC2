@@ -249,6 +249,90 @@ PR #475 + #477 で baseline 済(再発防止規約は規約 doc に反映済)。
 - backward compat:Tier 0 flag `editor.mode_legacy = false`(default)で
   3 mode 経路を有効化、`= true` で旧 detail-edit + Split View に完全戻し
 
+### §2.5 γ-A2 実装での mode model 精緻化(2026-05-20、γ-A2 A2-1 着手時)
+
+編集 mode は wave map §4.2 の **γ-A2**(sub-wave、A2-1〜A2-10)。本 §2.5
+は A2-1(foundation)着手時の model 精緻化記録。
+
+§2.1 の 3 mode(`overlay` / `split` / `window`)は **2 軸を 1 列に潰して**
+いた:**編集 surface**(中央ペイン内 vs 子 window)と **中央ペイン内の
+layout**(plain / split-preview / 透過 overlay)。`split` は `window` の
+peer ではなく、中央ペイン編集の sub-layout に過ぎない。
+
+γ-A2 foundation では surface 軸のみを `AppState.editMode` として model
+化する:
+
+| `editMode` | 意味 | 既存実装との関係 |
+|---|---|---|
+| `'inline'`(default、undefined 含む)| 中央ペイン内編集(従来 detail-edit + Split View を包含)| 現状そのまま |
+| `'window'` | 専用 entry-window(子 window)編集 | `openEntryWindow` 拡張 |
+
+中央ペイン内の layout(split-preview ON/OFF、透過 overlay)は **直交した
+別 concern** として後段で扱う。透過 Overlay は §8 OQ-A-1 で UX 不確実と
+されているため、`editMode` enum には含めず deferred とする。
+
+foundation の構成要素(γ-A2 A2-1、本 PR):
+
+- `AppState.editMode?: 'inline' | 'window'`(runtime state のみ、§6.3
+  schema 不変は維持)
+- `SET_EDIT_MODE` action + reducer(`reduceReady` 内、純粋 state mutation)
+- Tier 0 flag `shell.edit_mode_enabled`(default `false`、OFF で従来の
+  inline 編集のみ = 完全後方互換)
+
+UI / wiring(mode 選択 trigger、entry-window への分岐)は後続 A2 PR で
+接続。§5.2 の `editor.mode_*` 系 flag は 3-mode 経路を採る場合の予約で
+あり、γ-A2 foundation は `shell.edit_mode_enabled` 1 本で gate する。
+
+### §2.6 γ-A2 A2-2:picker + window 配線(2026-05-20、pgc-28)
+
+A2-1 foundation の `editMode` を user-facing にする slice。
+
+- **picker UI**:center pane 下部の action bar(`renderActionBar`)に
+  inline / window の 2-button picker(`data-pkc-region="edit-mode-picker"`)。
+  flag `shell.edit_mode_enabled` ON かつ編集可能 entry 選択時のみ表示。
+  picker click → `SET_EDIT_MODE` dispatch → re-render で active 遷移。
+- **window 配線**:✏️ Edit button / `Ctrl+E` / `Enter` の 3 編集トリガを
+  action-binder の `triggerEdit(lid, target)` 共通経路に集約。`flag ON
+  かつ editMode==='window'` のとき `BEGIN_EDIT`(inline 編集)に入らず
+  `openEntryWindow`(既存の子 window 経路、double-click と同一)へ分岐。
+- **後方互換**:flag OFF / `editMode` が `'inline'` or undefined のときは
+  従来通り `BEGIN_EDIT`。picker も非表示。
+
+§2.2 の keyboard shortcut 体系(`Cmd/Ctrl+Shift+E` 等の mode 別 shortcut)
+と §2.3 の localStorage 永続化は後続 A2 PR。本 slice は editMode を runtime
+state として保持するのみ(reload で inline に戻る)。
+
+### §2.7 γ-A2 A2-3:editMode 永続化(2026-05-20、pgc-29)
+
+§2.6 で「reload で inline に戻る」とした runtime-only 制約を解消する slice。
+
+- **persistence module**:`src/adapter/platform/edit-mode-prefs.ts`
+  (`loadEditMode` / `saveEditMode`)。localStorage key は `pkc2.editMode`、
+  値は `'inline'` / `'window'` の文字列そのもの。
+- **write**:action-binder の `set-edit-mode` handler が user の picker
+  選択時に `saveEditMode(mode)` を呼ぶ(boot restore の dispatch は
+  handler を通らないので user 操作のみ永続化される)。
+- **read**:main.ts の `restoreEditModeFromStorage` が SYS_INIT_COMPLETE
+  後に `loadEditMode()` → 非 null なら `SET_EDIT_MODE` を dispatch。
+  `restoreSettings` / `restoreCollapsedFolders` と同じ boot-restore pattern。
+
+§2.3 の key 名は当初 `pkc2.editMode.default`(3-mode + per-archetype
+override `pkc2.editMode.byArchetype` 前提)だったが、§2.5 の 2-mode
+surface model では per-archetype override を採らないため単一 key
+`pkc2.editMode` に簡約した。
+
+editMode は **viewer-local preference**:`container.meta` には書かず、
+export / import に不参加、device 間同期なし(§6.3 / `folder-prefs.ts` と
+同方針)。localStorage 不可環境では runtime state のみ(reload で inline)
+= 完全後方互換。
+
+**γ-A2 の到達点**:foundation(A2-1)+ picker / window 配線(A2-2)+
+永続化(A2-3)で編集 mode 選択は機能的に完了。A2-6 per-archetype default
+は §2.5 の方針で不採用、A2-7 mode 別 keyboard shortcut は picker + 既存
+`Ctrl+E`(triggerEdit 経由で editMode 尊重)で充足のため不要。A2-10 の
+flag default ON 切替は user 判断に委ねる(本 stack では
+`shell.edit_mode_enabled` は OFF のまま)。
+
 ---
 
 ## §3 提案 #4 マルチウィンドウ + main 遷移抑制
@@ -316,6 +400,49 @@ Tier 0 flag:`shell.multi_window = true`(default OFF、Phase γ-A3 で ON
 実装難易度:**高**、Phase γ-A4 まで遅延可。Phase γ-A3 では「2 child 同時
 編集禁止 + 検知 dialog」で済ませる選択肢あり(後述 §8 OQ-A-3)。
 
+### §3.6 γ-A3 実装記録(2026-05-20、stack pgc-30〜)
+
+**A3-4 main reload guard(pgc-30)**:`src/adapter/ui/main-reload-guard.ts`
+新設。`installMainReloadGuard(getOpenWindowLids)` が `beforeunload`
+listener を張り、`shouldGuardReload`(flag ON かつ子 window ≥ 1)なら
+`preventDefault` + `returnValue` で browser native の確認を出す。子
+window 一覧は entry-window.ts の既存 `getOpenEntryWindowLids` を main.ts
+から **注入**(adapter/ui 内の循環 import 回避 + テスト容易性)。
+
+flag は `shell.main_reload_guard`。§3.2 / §5.2 は default ON を想定して
+いたが、γ-A stack は **全 flag OFF 出荷**(opt-in するまで完全 no-op、
+stack ごと close しても安全)の方針に統一しているため default OFF で
+出荷する。採用時に user が ON に切り替える(§5.2 表も false に更新済)。
+
+`editingLid → editingLids` の Set 化(§3.4、A3-1)は state machine 全体
++ 多数 test に波及する大規模 refactor。reload guard(A3-4)は子 window
+の有無を `getOpenEntryWindowLids()` で参照できれば足り、§3.4 の Set 化に
+依存しないため先行着地した。
+
+**γ-A3 既存能力 audit(2026-05-20、pgc-31)**:wave map §4.3 の
+A3-1〜A3-11 を `entry-window.ts`(約 2977 行)+ main.ts wiring と突き
+合わせた結果、multi-window 基盤は **大半が実装済** と判明した。
+
+| 能力 | 状態 | 根拠 |
+|---|---|---|
+| 複数 child window 同時(別 lid)| 実装済 | `openWindows` Map(entry-window.ts:105)、dedup は per-lid のみ |
+| parent → child live refresh | 実装済 | `pushPreviewContextUpdate` / `pushViewBodyUpdate` / `pushTitleUpdate` + `wireEntryWindow*` 3 本(main.ts)|
+| postMessage protocol | 実装済 | 8 message type(`pkc-entry-init` / `-save` / `-saved` / `-conflict` / `-update-{preview-ctx,view-body,title}` / `-task-toggle` / `-download-asset`)|
+| 競合検知 | 実装済 | `handleDblClickAction` onSave の `updated_at !== openedAt` → `notifyConflict`(`pkc-entry-conflict`)|
+| child close / crash recovery | 実装済 | 500ms `setInterval` poll で `child.closed` 検知 → `openWindows.delete`(entry-window.ts:600-611)|
+| reload guard | **pgc-30 で着地** | `main-reload-guard.ts`(本 §3.6 上記)|
+| AppState の child-window 集約 | 未(不要)| reload guard は `getOpenEntryWindowLids()` を直接参照、`editingLids` 集約の consumer が存在しない |
+
+**結論**:γ-A3 は **機能的に完了**。A3-1(`editingLid → editingLids`
+Set 化)は consumer 不在のため着手しない(YAGNI / CLAUDE.md「No
+premature abstraction」。§3.4 は将来 consumer が出現した時点で再評価)。
+A3-6 の競合解決は **検知**まで実装済で、spec §3.5 の 3-pane diff UI への
+格上げは §3.5 自身が「難易度 高、γ-A4 まで遅延可」と明記しており
+deferred。A3-8(main = navigation 専用)は §4 の sidebar / filer 再編と
+同一概念のため γ-A1 で扱う。wave map §4.3 の 11 PR 内訳は γ-A3 が「ほぼ
+新規実装」だった前提で書かれていたが、実際は format-panel(§γ-C)と
+同様に既存資産が spec を上回っていた。
+
 ---
 
 ## §4 提案 #5 ファイラ統合 + 左ペイン廃止
@@ -365,6 +492,129 @@ detail view で開く場合の挙動制御として有効)。
 entry のクリック挙動は **filer に navigate**(folderDetailAsFiler の意味
 が薄まる)。flag の default を `true` に変更検討は Phase γ-A2 で再評価。
 
+### §4.5 γ-A1 実装記録(2026-05-20、stack pgc-32〜)
+
+**filer モード sidebar の現状**:`sidebar.mode = 'filer'`(`sidebar-flags.ts`、
+領域 10-6 ζ'' Phase 4 follow-up で導入済)で左ペインを filer-explorer 化
+する `renderSidebarAsFiler` が **既に実装済**。wave map §4.1 A1-1 が新設を
+想定する `shell.sidebar_mode_default` は既存 `sidebar.mode` と機能重複の
+ため **導入しない**(γ-A3 / format-panel と同じく既存資産が spec を上回る
+事例)。
+
+**pgc-32 品質固め**:`renderSidebarAsFiler` は shipped 機能ながら active
+test 被覆が皆無だった。clickable な navigation surface(CLAUDE.md §5 で
+visual parity test 必須)に対し:
+
+- `tests/adapter/sidebar-filer-mode.test.ts`(happy-dom 8 件):flag gate /
+  root scope 列挙 / item 属性 / folder scope ナビゲーション / nav-up /
+  active marker / click→SELECT_ENTRY→再 scope(Phase 8 順序性)/ 空状態
+- `tests/smoke/sidebar-filer-mode.spec.ts`(Playwright parity 1 件):実 OS
+  click で sidebar item 選択遷移
+
+pgc-32 は src 変更なし(既存実装は test で正当性確認、bug 0)。
+
+**pgc-33 drag-and-drop**(user direction「filer モードを機能強化して
+続行」、2026-05-20):filer-mode sidebar は tree-mode 比で機能が minimal
+だったため、parity 向けの機能強化を開始。第 1 弾は **entry の folder 間
+DnD 移動**:
+
+- `renderSidebarAsFiler` の item に `draggable` / `data-pkc-draggable`、
+  folder item + nav-up に `data-pkc-drop-target`(nav-up は root sentinel
+  なら `root`)を付与
+- DnD 機構は action-binder の汎用 `handleDragStart` / `handleDragOver` /
+  `handleDrop`(`data-pkc-draggable` / `data-pkc-drop-target` を見て
+  structural relation を付け替える)を **再利用** — 新規 handler 不要
+- drag 状態の CSS も既存の `[data-pkc-dragging]` / `[data-pkc-drag-over]`
+  属性 selector が自動適用 — 新規 CSS 不要
+- `tests/adapter/sidebar-filer-dnd.test.ts`(happy-dom 12 件、case
+  matrix)+ `tests/smoke/sidebar-filer-dnd.spec.ts`(Playwright parity 1
+  件、実 OS `dragTo`)
+
+**pgc-34 UX 完成度向上**:filer-mode sidebar の表示 UX を tree-mode 並に
+仕上げる:
+
+- header に現スコープの **item 数**(`data-pkc-region="filer-sidebar-count"`)
+- item がある時の **操作ヒント**「ドラッグで移動 · ダブルクリックで別窓」
+  (pgc-33 の DnD 着地で「ドラッグで移動」が意味を持つ)
+- **空スコープ案内の改善**:従来「(empty)」→ root は「項目がありません」、
+  folder は「このフォルダは空です」。空 folder でも list に nav-up を残し
+  戻る導線を確保(従来は root の空のみ案内、scoped 空は無案内だった)
+
+`renderSidebarAsFiler` +20 行、CSS は count / hint / label ellipsis。
+非対話の表示要素のため Playwright parity は不要(対話のある click =
+pgc-32 / drag = pgc-33 は parity 済)、`sidebar-filer-mode.test.ts` に
+happy-dom 5 件追加。
+
+**pgc-35 per-folder 検索**:filer-mode sidebar に現フォルダ内の絞り込み
+検索窓を追加。
+
+- `AppState.sidebarFilerQuery` + `SET_SIDEBAR_FILER_QUERY`。center filer
+  の subtree 検索 `filerSearchQuery` とは **別概念** — sidebar は現スコープ
+  の direct children を title 部分一致で絞る per-folder filter
+- 検索窓は `data-pkc-field="sidebar-filer-search"` を持ち、render-continuity
+  helper が full re-render を跨いで focus + caret を復元(filer-search と
+  同じ機構)。IME 合成中は `searchImeComposing` で dispatch skip
+- 一致なしは `data-pkc-region="filer-sidebar-no-match"` の案内、検索窓は
+  残し query 解除導線を確保
+- `tests/adapter/sidebar-filer-search.test.ts`(happy-dom 11 件)+
+  `tests/smoke/sidebar-filer-search.spec.ts`(Playwright parity 1 件)
+
+**pgc-36 multi-select + 一括操作バー**:filer-mode sidebar に multi-select
+の視覚マーク + 一括操作バーを追加。
+
+- multi-select の **state**(Ctrl/Shift+click)は select-entry handler が
+  `data-pkc-action="select-entry"` 要素に対し既に汎用処理済 — filer item
+  も同 action を持つため state は元から動作していた。本 PR は欠けていた
+  **UI**(視覚マーク + バー)を補完
+- `multiSelectedLids` の item に `data-pkc-multi-selected="true"`(global
+  CSS rule が自動適用)
+- `multiSelectedLids.length > 0` のとき center filer / graph と共通の
+  `buildFilerMultiActionBar` を描画(`viewCtx` に `'sidebar'` を追加)。
+  一括 Delete / folder 移動 / tag / color / relation が sidebar から実行可
+- 新規 CSS 不要(`[data-pkc-multi-selected]` global + `.pkc-multi-action-bar`
+  flex-wrap を再利用)
+- `tests/adapter/sidebar-filer-multiselect.test.ts`(happy-dom 7 件)+
+  `tests/smoke/sidebar-filer-multiselect.spec.ts`(Playwright parity 1 件、
+  実 OS Ctrl+click)
+
+これで filer-mode sidebar は navigation / 選択 / multi-select + 一括操作 /
+DnD 移動 / 絞り込み検索 / item 数 / 操作ヒントが揃い、audit が挙げた
+critical gap(DnD・multi-select)を解消、**tree-mode と実用上同等の
+management 能力**に到達。entry metadata badge(backlink / orphan /
+copy-link)は nice-to-have として後続候補。
+
+**A1-4 default 切替は `pgc-37` で一旦着地したが `pgc-41` で revert**。
+pgc-37 で `sidebar.mode` の default を `'tree'` → `'filer'` へ切替えた
+ものの、user 指摘(2026-05-20「左 pane を不完全なファイラーにした /
+ツリー表示の検索オプションが無くなった / 機能ダウンしすぎ」)の通り、
+filer sidebar は tree sidebar の検索系(検索窓・hide-buckets・archetype
+filter・saved searches・advanced filters・unreferenced-attachments
+filter・recent-entries pane)を欠いており、default 化は機能ダウンだった。
+**A1-2(filer への tree 機能移植)/ A1-3(navigation parity)が未達の
+まま A1-4 を実施した手順ミス**。pgc-41 で default を `'tree'` に戻し、
+filer は `sidebar.mode=filer` の opt-in に復帰。pgc-37 で入れた
+tree-sidebar test 22 ファイルの明示 `sidebar.mode=tree` 固定(+ smoke
+12 spec)は無害なため保持する。A1-4 の再実施は A1-2/A1-3(検索系の
+filer 移植)完了が前提。A1-5 deprecated marker も保留。
+
+**pgc-46〜51 で A1-2/A1-3(検索系の filer 移植)完了**(2026-05-21):
+revert 理由だった 7 機能を filer へ移植 ── pgc-46(global 検索化)/
+pgc-47(full-text + archetype filter)/ pgc-48(color filter strip)/
+pgc-49(⚙ Filters disclosure:showArchived / treeHideBuckets /
+searchHideBuckets / unreferenced の 4 toggle、tree と共有 helper
+`renderAdvancedFiltersPanel` 化)/ pgc-50(Recent Entries Pane)/
+pgc-51(Saved Searches Pane、query 軸を `searchQuery` ↔
+`sidebarFilerQuery` で reducer reconcile)。filer は search / archetype /
+color / 4 toggle / Recent / Saved Searches を獲得し tree と検索能力
+同等に到達。
+
+**pgc-52 で A1-4 再挑戦**(2026-05-21):A1-2/A1-3 完了で前提が揃った
+ため `sidebar.mode` の default を `'tree'` → `'filer'` へ再切替。pgc-37
+の tree-sidebar test 固定(`sidebar.mode=tree`)が pgc-41 revert 後も
+保持されていたため、default 反転による既存 test 破壊は 1 件のみ
+(`sidebar-filer-mode.test.ts` の default 値 assert)、本 PR で新 default
+仕様へ更新。A1-5 deprecated marker は引き続き保留。
+
 ---
 
 ## §5 migration plan + Tier 0 flag 一覧
@@ -382,10 +632,11 @@ entry のクリック挙動は **filer に navigate**(folderDetailAsFiler の意
 
 | flag key | type | default | scope |
 |---|---|---|---|
+| `shell.edit_mode_enabled` | bool | `false` | 編集モード選択(inline / window)を有効化(γ-A2 foundation、§2.5)|
 | `editor.mode_legacy` | bool | `false` | 3 mode 経路の無効化(旧 detail-edit + Split View に戻す)|
 | `editor.mode_default` | string | `'split'` | 新規 3 mode のうち初期値 |
 | `editor.mode_by_archetype` | object | `{}` | per-archetype override(`{ text: 'overlay', ... }`)|
-| `shell.main_reload_guard` | bool | `true` | main reload 抑制 ON/OFF |
+| `shell.main_reload_guard` | bool | `false` | main reload 抑制 ON/OFF(spec §3.2 は ON 想定、γ-A stack 全 flag OFF 方針で出荷時 OFF、§3.6 参照)|
 | `shell.multi_window` | bool | `false` | 複数 child window 許可 |
 | `shell.sidebar_mode_default` | string | `'tree'`(γ-A1 で `'filer'` に切替)| sidebar 初期 mode |
 | `shell.sidebar_deprecated_marker` | bool | `false`(γ-A2 で `true`)| Beta marker 表示 |

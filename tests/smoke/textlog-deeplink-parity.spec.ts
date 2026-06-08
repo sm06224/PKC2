@@ -1,4 +1,10 @@
-/** PR-V20 user audit: TEXTLOG log-level deep link が機能するか smoke。 */
+/**
+ * PR-V20 user audit: TEXTLOG log-level deep link が機能するか smoke。
+ *
+ * pgc-52(A1-4):`sidebar.mode` の default が 'filer' へ切替わったため、
+ * tree sidebar の `[data-pkc-region="entry-list"]` で entry を選択する
+ * 本 spec は `?pkc-flag=sidebar.mode=tree` で tree に pin する。
+ */
 import { test, expect, type Page } from '@playwright/test';
 import { bootReady } from './_helpers/boot-ready';
 
@@ -24,7 +30,7 @@ async function seedContainer(page: Page, container: Record<string, unknown>): Pr
 
 test('TEXTLOG log click on copy-link button copies entry:<lid>#... reference', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // 3 件 log を持つ textlog を seed
@@ -39,7 +45,7 @@ test('TEXTLOG log click on copy-link button copies entry:<lid>#... reference', a
     entries: [{ lid: 'tl-1', title: 'TLOG', archetype: 'textlog', body: JSON.stringify({ entries: logs }), created_at: now, updated_at: now }],
     relations: [], revisions: [], assets: {},
   });
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // CI flake fix v2 (2026-05-17):前回(PR #455)の「entry-list region 待ち
@@ -69,7 +75,7 @@ test('TEXTLOG log click on copy-link button copies entry:<lid>#... reference', a
 });
 
 test('entry: link to textlog log scrolls the article into view', async ({ page }) => {
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // 1 textlog + 1 text entry が text entry に log link を含む
@@ -88,7 +94,7 @@ test('entry: link to textlog log scrolls the article into view', async ({ page }
     ],
     relations: [], revisions: [], assets: {},
   });
-  await page.goto('/pkc2.html');
+  await page.goto('/pkc2.html?pkc-flag=sidebar.mode=tree');
   await bootReady(page);
 
   // CI flake fix v2 (2026-05-17):同上 — direct descendant locator + 30s

@@ -49,13 +49,20 @@ beforeEach(() => {
   };
 });
 
-function setup() {
+function setup(options: { openMenu?: boolean } = { openMenu: true }) {
   const dispatcher = createDispatcher();
   const events: DomainEvent[] = [];
   dispatcher.onEvent((e) => events.push(e));
   dispatcher.onState((state) => render(state, root));
 
   dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
+  // pgc-207:shell menu の contents は menuOpen=true 時のみ build される
+  // (lazy build)。本 file の test 群は ほぼ全て shell menu Settings v1
+  // 全 UI を queryする。setup default で menu open、明示的に open/close
+  // 挙動を test する場合は { openMenu: false } を渡して制御する。
+  if (options.openMenu !== false) {
+    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+  }
   render(dispatcher.getState(), root);
   cleanup = bindActions(root, dispatcher);
 
@@ -474,22 +481,24 @@ describe('WCAG contrast ratio display', () => {
 
 describe('menu open state', () => {
   it('TOGGLE_MENU opens the menu overlay', () => {
-    const { dispatcher } = setup();
+    // pgc-207:default で menu open になったので、ここは {openMenu: false}
+    // で明示 closed start し、TOGGLE_MENU で open する流れを test する。
+    const { dispatcher } = setup({ openMenu: false });
     dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     const menu = root.querySelector<HTMLElement>('[data-pkc-region="shell-menu"]');
     expect(menu!.style.display).not.toBe('none');
   });
 
   it('CLOSE_MENU closes the menu', () => {
+    // pgc-207:setup default で menu open → CLOSE_MENU で閉じる流れに変更。
     const { dispatcher } = setup();
-    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     dispatcher.dispatch({ type: 'CLOSE_MENU' });
     expect(dispatcher.getState().menuOpen).toBe(false);
   });
 
   it('settings change does NOT close the menu', () => {
+    // pgc-207:setup default で menu open。
     const { dispatcher } = setup();
-    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
     dispatcher.dispatch({ type: 'SET_BORDER_COLOR', color: '#aabbcc' });
     expect(dispatcher.getState().menuOpen).toBe(true);
   });
@@ -567,22 +576,20 @@ describe('background color propagation (D6)', () => {
 
 describe('menu card structure (D7)', () => {
   it('menu card is rendered inside overlay', () => {
-    const { dispatcher } = setup();
-    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    // pgc-207:setup default で menu open(下記の冗長 TOGGLE_MENU を削除)。
+    setup();
     const card = root.querySelector<HTMLElement>('.pkc-shell-menu-card');
     expect(card).not.toBeNull();
   });
 
   it('menu card contains multiple sections', () => {
-    const { dispatcher } = setup();
-    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    setup();
     const sections = root.querySelectorAll('.pkc-shell-menu-section');
     expect(sections.length).toBeGreaterThanOrEqual(5);
   });
 
   it('menu heading and close button exist for grid span', () => {
-    const { dispatcher } = setup();
-    dispatcher.dispatch({ type: 'TOGGLE_MENU' });
+    setup();
     const heading = root.querySelector<HTMLElement>('.pkc-shell-menu-heading');
     const close = root.querySelector<HTMLElement>('.pkc-shell-menu-close');
     expect(heading).not.toBeNull();

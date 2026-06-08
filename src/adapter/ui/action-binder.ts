@@ -13,12 +13,17 @@ import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
 import { runDebugReportDump } from './debug-report-button';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
+import { toggleSubtaskAt } from '../../features/todo/todo-subtask';
+import { setTextlogSearchQuery, toggleTextlogImportanceOnly } from './textlog-presenter';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
 import {
   toggleLogFlag,
   deleteLogEntry,
 } from '../../features/textlog/textlog-body';
-import { collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType } from './attachment-presenter';
+import {
+  collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType,
+  isTextConvertibleAttachment, decodeAttachmentText,
+} from './attachment-presenter';
 import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
@@ -36,7 +41,8 @@ import {
   isMediaViewerOpen,
 } from './media-viewer';
 import { openImagePreview } from './image-preview';
-import { resetGraphCanvasZoom } from './graph-canvas';
+import { resetGraphCanvasZoom, setGraphEditMode } from './graph-canvas';
+import { openRelationKindPopup } from './relation-kind-popup';
 import {
   enhanceTable,
   sortColumn,
@@ -73,9 +79,11 @@ import { exportContainerAsHtml } from '../platform/exporter';
 import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
+import { getAvailableTagTargets } from '../../features/relation/tag-selector';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { htmlForRichCopy } from '../../features/markdown/rich-copy-transform';
 import { extractVars, parseFrontmatter as parseLivePreviewFrontmatter } from '../../features/markdown/frontmatter';
+import { extractHeadingNumberConfig } from '../../features/markdown/document-globals';
 import {
   syncPreviewToCaret,
   syncCaretToPreview,
@@ -93,12 +101,12 @@ import {
 import { htmlPasteToMarkdown } from './html-paste-to-markdown';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
+import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/frontmatter';
 import { openTextReplaceDialog } from './text-replace-dialog';
 import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, clampMenuToViewport } from './renderer';
-import { getFilterIndexes } from './filter-cache';
 import {
   isSelectionModeActive as isTextlogSelectionModeActive,
   getActiveSelectionLid as getActiveTextlogSelectionLid,
@@ -112,6 +120,17 @@ import {
   isTextlogPreviewModalOpen,
 } from './textlog-preview-modal';
 import { textlogToText } from '../../features/textlog/textlog-to-text';
+// user bug 2026-05-27 hotfix:大量 log textlog の変換は Web Worker + chunk 進捗 +
+// abort 対応(`textlog-to-text-worker-client.ts`)。小サイズは sync、大きいときは
+// worker boot。
+import { convertTextlogToTextAsync } from './textlog-to-text-worker-client';
+import {
+  openTextlogConversionProgress,
+  updateTextlogConversionProgress,
+  closeTextlogConversionProgress,
+} from './textlog-conversion-progress';
+// user direction 2026-05-28:blob URL を含む markdown text の paste で asset 化 + rewrite。
+import { rewriteBlobUrlsToAssets, hasBlobUrlImageMarkdown } from './paste-blob-url-rewrite';
 import {
   getTextToTextlogCommitData,
   isTextToTextlogModalOpen,
@@ -123,8 +142,33 @@ import {
   formatStorageProfileCsv,
   storageProfileCsvFilename,
 } from '../../features/asset/storage-profile';
-import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, type EntryWindowAssetContext } from './entry-window';
+import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
+import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled, shellContextMenuUniversalEnabled, shellEditorFooterWordcountEnabled, textTextlogLogSearchEnabled } from './shell-flags';
+import { estimateReadTimeMinutes, formatReadTime } from './editor-footer-wordcount';
+import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
+import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
+import { handleKeymapKeydown } from './keymap-binder';
+import { handleEditorFormatShortcut } from './editor-format-shortcuts';
+import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
+import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
+import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab } from './tab-strip';
+import { toggleSplitView } from './split-view';
+import { setActivityBarActiveTab, toggleActivityBarSide } from './activity-bar';
+import { setActivitySearchQuery } from './activity-search-tab';
+import { setMetaPaneInspectorActiveTab } from './meta-pane-inspector';
+import { toggleFormatPanelVisible } from './format-panel-visibility';
+import { diffRows } from '../../features/diff/line-diff';
+import { saveEditMode } from '../platform/edit-mode-prefs';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+// user direction 2026-05-28「プレビューにおいて負荷を増幅させずに HTML レンダーと
+// mermaid レンダーを有効化」── Split View edit preview の post-markdown hydration。
+// detail-presenter L122-145 と同じ pattern で transclusion / card / mermaid / heading-fold
+// を呼び、500ms debounce が既存負荷ガード、mermaid renderer 内 source-string cache が
+// 同一 source の再 render を skip。
+import { expandTransclusions } from './transclusion';
+import { hydrateCardPlaceholders } from './card-hydrator';
+import { hydrateMermaidPlaceholders } from './mermaid-renderer';
+import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { parseEntryRef } from '../../features/entry-ref/entry-ref';
 import { parsePortablePkcReference } from '../../features/link/permalink';
 import { dateKey } from '../../features/calendar/calendar-data';
@@ -153,6 +197,7 @@ import {
   handleSlashMenuKeydown,
   getSlashTriggerStart,
   registerAssetPickerCallback,
+  registerEntryPickerCallback,
 } from './slash-menu';
 import {
   closeAssetPicker,
@@ -169,7 +214,7 @@ import {
   openAssetAutocomplete,
   updateAssetAutocompleteQuery,
 } from './asset-autocomplete';
-import { checkAssetDuplicate } from './asset-dedupe';
+import { checkAssetDuplicate, findDuplicateAssetKey } from './asset-dedupe';
 import {
   closeEntryRefAutocomplete,
   handleEntryRefAutocompleteKeydown,
@@ -306,6 +351,80 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  // pgc-99 wave-γ #1(MASTER.md §6.1):`+ New` popover の open/close 管理。
+  // color picker と同流儀(DOM-side state、render 越境せず)。
+  let newPickerOpenPopover: HTMLElement | null = null;
+  let newPickerOpenTrigger: HTMLElement | null = null;
+  function closeNewPicker(): void {
+    if (newPickerOpenPopover) {
+      newPickerOpenPopover.setAttribute('data-pkc-open', 'false');
+      // pgc-106 hotfix:fixed positioning に切替えた inline style を
+      // clear(次回 open まで position 計算は走らせない)。
+      newPickerOpenPopover.style.position = '';
+      newPickerOpenPopover.style.top = '';
+      newPickerOpenPopover.style.left = '';
+      newPickerOpenPopover.style.right = '';
+      newPickerOpenPopover = null;
+    }
+    if (newPickerOpenTrigger) {
+      newPickerOpenTrigger.setAttribute('aria-expanded', 'false');
+      newPickerOpenTrigger = null;
+    }
+    document.removeEventListener('click', handleNewPickerOutsideClick, true);
+    document.removeEventListener('keydown', handleNewPickerKeydown, true);
+  }
+  function openNewPicker(wrap: HTMLElement, popover: HTMLElement, trigger: HTMLElement): void {
+    closeNewPicker();
+    popover.setAttribute('data-pkc-open', 'true');
+    trigger.setAttribute('aria-expanded', 'true');
+    newPickerOpenPopover = popover;
+    newPickerOpenTrigger = trigger;
+    document.addEventListener('click', handleNewPickerOutsideClick, true);
+    document.addEventListener('keydown', handleNewPickerKeydown, true);
+    // pgc-106 hotfix(user bug report 2026-05-23):`+ New` popover が画面外
+    // に描画される問題への修正。元実装は `position: absolute; right: 0;
+    // top: calc(100% + 4px)` で `.pkc-new-picker-wrap` を anchor にしていた
+    // が、header layout の flex-wrap + 親 element の位置依存で viewport
+    // 範囲外に出るケースが発生していた。color picker(L498-526)と同流儀
+    // で **fixed positioning + viewport-safe horizontal anchor** に切替:
+    //   - top:trigger button の bottom 直下 + 4px
+    //   - 横:trigger の right で右寄せ、左端 8px 未満になるなら trigger
+    //          の left に左寄せ、それでも 8px 未満なら 8px に固定
+    const rect = trigger.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = `${rect.bottom + 4}px`;
+    popover.style.right = 'auto';
+    // popover の width を測るために一旦表示してから anchor 計算する。
+    // display:flex は data-pkc-open="true" で既に効いているので offsetWidth
+    // が valid な値を返す。
+    const popoverWidth = popover.offsetWidth;
+    const rightAnchored = rect.right - popoverWidth;
+    if (rightAnchored >= 8) {
+      popover.style.left = `${rightAnchored}px`;
+    } else {
+      popover.style.left = `${Math.max(rect.left, 8)}px`;
+    }
+    // 1st menu item に focus(キーボード操作対応)
+    const first = popover.querySelector<HTMLButtonElement>('button.pkc-new-picker-row:not([disabled])');
+    if (first) first.focus();
+    // `wrap` は CSS anchor 用にこの helper でだけ参照する(parameter として
+    // 受けて型 narrowing しておく)。
+    void wrap;
+  }
+  function handleNewPickerOutsideClick(e: Event): void {
+    const t = e.target;
+    if (!(t instanceof Node)) return;
+    if (newPickerOpenPopover && newPickerOpenPopover.contains(t)) return;
+    if (newPickerOpenTrigger && newPickerOpenTrigger.contains(t)) return;
+    closeNewPicker();
+  }
+  function handleNewPickerKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeNewPicker();
+    }
+  }
+
   // ── iPhone push/pop shell drawer (2026-04-26) ──
   // The hamburger ☰ in the mobile header opens a sheet of create
   // / Data / Settings actions so the desktop header chrome does
@@ -343,10 +462,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       createLabel.textContent = 'Create';
       createSection.appendChild(createLabel);
 
+      // user direction 2026-06-03「iPhone 側の導線ないね」 fix:mobile drawer
+      // の create section に spreadsheet を追加(desktop の picker / + New と同様)。
       const archetypes: { arch: string; label: string }[] = [
         { arch: 'text', label: '📝 Text' },
         { arch: 'textlog', label: '📋 Log' },
         { arch: 'todo', label: '☑ Todo' },
+        { arch: 'spreadsheet', label: '🧮 Sheet' },
         { arch: 'attachment', label: '📎 File' },
         { arch: 'folder', label: '📁 Folder' },
       ];
@@ -824,6 +946,87 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     }
   }
 
+  // pgc-222:tag-target / relation-target select の lazy options populate handler。
+  // pgc-227:move-target にも拡張。
+  // renderer は `<option>` を render-time に build せず placeholder のみ。
+  // user が select を click した時に capture-phase で intercept、
+  // container.entries から N options を build して append。
+  // mark `data-pkc-lazy-populated="true"` で二度走を防ぐ。
+  function handleLazyTagTargetPopulate(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const t = e.target;
+    if (!(t instanceof HTMLSelectElement)) return;
+    const lazyKind = t.getAttribute('data-pkc-lazy-options');
+    if (lazyKind !== 'tag-target' && lazyKind !== 'relation-target' && lazyKind !== 'move-target') return;
+    if (t.getAttribute('data-pkc-lazy-populated') === 'true') return;
+    const fromLid = t.getAttribute('data-pkc-from-lid');
+    if (!fromLid) return;
+    const state = dispatcher.getState();
+    if (!state.container) return;
+    const userEntries = state.container.entries.filter((entry) => !entry.lid.startsWith('__'));
+    let available: { lid: string; title: string }[];
+    let currentParentLid: string | null = null;
+    if (lazyKind === 'tag-target') {
+      const ents = getAvailableTagTargets(state.container.relations, userEntries, fromLid);
+      available = ents.map((e) => ({ lid: e.lid, title: e.title }));
+    } else if (lazyKind === 'relation-target') {
+      // relation-target:fromLid 以外の全 user entries(getUserEntries 相当)
+      available = userEntries
+        .filter((entry) => entry.lid !== fromLid)
+        .map((e) => ({ lid: e.lid, title: e.title }));
+    } else {
+      // move-target(pgc-227):folder archetype の entry で、自分自身と
+      // 自分の descendants を除外。descendant 判定は structural relation walk。
+      const descendants = new Set<string>();
+      const collectDescendants = (lid: string): void => {
+        for (const r of state.container!.relations) {
+          if (r.kind === 'structural' && r.from === lid && !descendants.has(r.to)) {
+            descendants.add(r.to);
+            collectDescendants(r.to);
+          }
+        }
+      };
+      collectDescendants(fromLid);
+      available = userEntries
+        .filter((e) => e.archetype === 'folder' && e.lid !== fromLid && !descendants.has(e.lid))
+        .map((e) => ({ lid: e.lid, title: e.title }));
+      currentParentLid = t.getAttribute('data-pkc-current-parent-lid');
+    }
+    // 同 DocumentFragment pattern(pgc-217/218):N appendChild → 1 appendChild。
+    const frag = document.createDocumentFragment();
+    for (const ent of available) {
+      const opt = document.createElement('option');
+      opt.value = ent.lid;
+      const title = ent.title || `(${ent.lid})`;
+      opt.textContent = title.length > 32 ? title.slice(0, 31) + '…' : title;
+      opt.title = title;
+      if (lazyKind === 'move-target' && currentParentLid === ent.lid) {
+        opt.selected = true;
+      }
+      frag.appendChild(opt);
+    }
+    t.appendChild(frag);
+    t.setAttribute('data-pkc-lazy-populated', 'true');
+    // placeholder option の textContent を「(クリックで読込)」 →
+    // 短い canonical label に戻す(populate 済を示す)。
+    // pgc-226:available=0 のとき「(候補無し)」 表示で「Add 押せるが何も起きない」
+    // false positive を user に明示。
+    const placeholder = t.querySelector<HTMLOptionElement>('option[value=""]');
+    if (placeholder) {
+      if (available.length === 0) {
+        if (lazyKind === 'tag-target') placeholder.textContent = '+ Tag (候補無し)';
+        else if (lazyKind === 'relation-target') placeholder.textContent = '-- 候補無し --';
+        else placeholder.textContent = currentParentLid ? '↑ Root level' : '(root)';
+      } else if (lazyKind === 'tag-target') {
+        placeholder.textContent = '+ Tag';
+      } else if (lazyKind === 'relation-target') {
+        placeholder.textContent = '-- Target --';
+      }
+      // move-target は populate 後も placeholder text を保つ(currentParent
+      // 表示の「↑ Root level」「(root)」 が user の現在地理解に有用)。
+    }
+  }
+
   function handleDetailsMenuMouseDown(e: MouseEvent): void {
     if (e.button !== 0) return;
     const t = e.target;
@@ -915,6 +1118,39 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       { start: ctx.replaceStart, end: ctx.replaceEnd },
       candidates,
       ctx.root,
+    );
+  });
+
+  // pgc-143 wave-δ #17(user bug report 2026-05-24「エントリリンクを
+  // 貼りやすくする動線」):/entry slash command の callback ── slash
+  // command が選択されたら `/entry` 文字列を消去して `[[` を残し、
+  // openEntryRefAutocomplete を発火(既存 `[[` autocomplete と同 path)。
+  registerEntryPickerCallback((ctx) => {
+    const state = dispatcher.getState();
+    const container = state.container;
+    if (!container) return;
+    // /entry 文字列を空に置換(autocomplete 用に `[[` を挿入する代わりに、
+    // direct picker 表示で 1 step 動線)
+    const before = ctx.textarea.value.slice(0, ctx.replaceStart);
+    const after = ctx.textarea.value.slice(ctx.replaceEnd);
+    const insertion = '[[';
+    ctx.textarea.value = before + insertion + after;
+    const caret = ctx.replaceStart + insertion.length;
+    ctx.textarea.setSelectionRange(caret, caret);
+    ctx.textarea.focus();
+    // autocomplete を 直接 open(`[[` の直後位置 = autocomplete bracketStart)
+    const currentLid = state.editingLid;
+    const filtered = container.entries.filter(
+      (e) => isUserEntry(e) && e.lid !== currentLid,
+    );
+    const candidates = reorderByRecentFirst(filtered, state.recentEntryRefLids);
+    openEntryRefAutocomplete(
+      ctx.textarea,
+      ctx.replaceStart,  // `[[` の開始位置
+      '',                // query は空 from start
+      candidates,
+      ctx.root,
+      'bracket',
     );
   });
 
@@ -1104,6 +1340,217 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         closeColorPicker();
         break;
       }
+      case 'toggle-split-view': {
+        // pgc-89(MASTER.md §4.3 / §5.5):center pane を 2 半に split。
+        // flag OFF なら force OFF で no-op。re-render は SYS_SYNC で強制。
+        toggleSplitView('right');
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        break;
+      }
+      case 'scroll-to-heading': {
+        // pgc-103 wave-γ #5(MASTER.md §4.5):Activity Bar の Outline tab
+        // 内の見出しを click 時、center pane の該当 heading anchor に
+        // scroll する。`data-pkc-heading-slug` attr で slug を引き、
+        // `#<slug>` の element を center pane root から探す。
+        e.preventDefault();
+        e.stopPropagation();
+        const slug = target.getAttribute('data-pkc-heading-slug');
+        if (!slug) break;
+        // markdown-render は heading に `id="<slug>"` を立てる(`renderMarkdown`
+        // の anchor 拡張)。center pane root を起点に query、見つからない
+        // なら document 全体から fallback。
+        const center = root.querySelector('[data-pkc-region="center"]')
+          ?? root.querySelector('.pkc-center');
+        const target0 = center?.querySelector(`#${CSS.escape(slug)}`)
+          ?? document.getElementById(slug);
+        if (target0 instanceof HTMLElement) {
+          target0.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        break;
+      }
+      case 'toggle-format-panel': {
+        // pgc-110 wave-γ #11(MASTER.md §6.4):editor の Format panel
+        // を表示 / 非表示で flip。module-local state を反転 → SYS_SYNC で
+        // 再描画(format panel が出現 / 消失)。
+        e.preventDefault();
+        e.stopPropagation();
+        toggleFormatPanelVisible();
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        break;
+      }
+      case 'select-meta-pane-tab': {
+        // pgc-109 wave-γ #10(MASTER.md §6.3):Inspector tab strip の
+        // tab を切替。module-local state を更新 → SYS_SYNC で再描画。
+        // 不正 tab id は no-op(防衛的)。
+        e.preventDefault();
+        e.stopPropagation();
+        const tab = target.getAttribute('data-pkc-meta-pane-tab');
+        if (
+          tab === 'properties' || tab === 'references' || tab === 'history'
+        ) {
+          setMetaPaneInspectorActiveTab(tab);
+          const st = dispatcher.getState();
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        }
+        break;
+      }
+      case 'toggle-textlog-importance-only': {
+        // pgc-157 wave-δ #24:textlog presenter の「⭐ Only important」
+        // toggle。module-local state を反転 + SYS_SYNC で再描画。
+        e.preventDefault();
+        e.stopPropagation();
+        const targetLid = target.getAttribute('data-pkc-lid');
+        if (!targetLid) break;
+        toggleTextlogImportanceOnly(targetLid);
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        break;
+      }
+      case 'toggle-activity-bar-side': {
+        // pgc-116 wave-γ #16(MASTER.md §6.2 後続):Activity Bar の
+        // left / right を flip。module-local state を反転 + SYS_SYNC で
+        // 再描画(activity bar が main の先頭 / 末尾に切替わる)。
+        e.preventDefault();
+        e.stopPropagation();
+        toggleActivityBarSide();
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        break;
+      }
+      case 'select-activity-tab': {
+        // pgc-102 wave-γ #4(MASTER.md §6.2):Activity Bar の tab を切替。
+        // module-local state を更新して SYS_SYNC_CHILD_WINDOWS で再描画
+        // 強制(state.selectedLid 等は変えないが activity bar / sidebar の
+        // 表示が切替わる)。tab id 不明な場合は no-op。
+        //
+        // pgc-136 wave-δ #10(user bug report 2026-05-24):click 視覚
+        // feedback。target に `data-pkc-just-clicked="true"` を立て、
+        // 150ms 後に削除 ── 「押されたが反応しない」体感事故を防ぐ。
+        // 同 attr で CSS animation が短い flash(accent bg)を再生する。
+        // ※ render 走行で button が再生成されるため、setTimeout 経由の
+        //   `target.removeAttribute` は最新 button(同 id の tab)を再 query
+        //   して removeAttribute する(古い node が detached でも問題ない)。
+        e.preventDefault();
+        e.stopPropagation();
+        const tab = target.getAttribute('data-pkc-activity-tab');
+        if (
+          tab === 'explorer' || tab === 'search' || tab === 'outline'
+          || tab === 'relations' || tab === 'recent' || tab === 'pinned'
+        ) {
+          setActivityBarActiveTab(tab);
+          const st = dispatcher.getState();
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+          // 再描画で button が再生成されるため、attr set は **再描画後**
+          // に新 button を再 query して set する(synchronous render path
+          // が完了した直後 = この行のすぐ次)。150ms 後に再 query して
+          // 削除(animation 終了)。
+          const tabId = tab;
+          const fresh = root.querySelector<HTMLElement>(
+            `[data-pkc-action="select-activity-tab"][data-pkc-activity-tab="${tabId}"]`,
+          );
+          if (fresh) fresh.setAttribute('data-pkc-just-clicked', 'true');
+          window.setTimeout(() => {
+            const fresh2 = root.querySelector<HTMLElement>(
+              `[data-pkc-action="select-activity-tab"][data-pkc-activity-tab="${tabId}"]`,
+            );
+            if (fresh2) fresh2.removeAttribute('data-pkc-just-clicked');
+          }, 150);
+        }
+        break;
+      }
+      case 'toggle-new-picker': {
+        // pgc-99 wave-γ #1(MASTER.md §6.1):header の `+ New` button click
+        // で popover を toggle。popover element は renderer.ts が描画済で
+        // `data-pkc-open="false"` start。本 handler は trigger button の
+        // 兄弟 popover の attr を flip + aria-expanded を同期。outside click /
+        // Escape で close。次回 render 走行で popover が再描画され open 状態
+        // は reset される(進入 entry 作成等で state 遷移 → render 走行時)。
+        e.preventDefault();
+        e.stopPropagation();
+        const wrap = target.closest('[data-pkc-region="new-picker-wrap"]') as HTMLElement | null;
+        if (!wrap) break;
+        const popover = wrap.querySelector('[data-pkc-region="new-picker-popover"]') as HTMLElement | null;
+        if (!popover) break;
+        const open = popover.getAttribute('data-pkc-open') === 'true';
+        if (open) {
+          closeNewPicker();
+        } else {
+          openNewPicker(wrap, popover, target);
+        }
+        break;
+      }
+      case 'toggle-pin-tab': {
+        // pgc-88:tab の pin 状態を toggle。pinned tab は close 不可、
+        // tab strip 右端に永続化。
+        if (!lid) break;
+        togglePinTab(lid);
+        persistTabState();
+        // 強制 re-render:state.selectedLid 変化なしのため SYS_SYNC_CHILD_WINDOWS
+        const st = dispatcher.getState();
+        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        break;
+      }
+      case 'switch-view-tab': {
+        // pgc-87(MASTER.md §4.3):view tab(workspace-level の calendar /
+        // kanban / filer / graph / launcher)click → SET_VIEW_MODE を
+        // dispatch。tab-strip side の active 化は wireTabStrip の onState
+        // が listen して syncActiveViewTab で行う。
+        const mode = target.getAttribute('data-pkc-view-mode');
+        if (!mode) break;
+        if (mode === 'detail' || mode === 'calendar' || mode === 'kanban'
+            || mode === 'filer' || mode === 'graph' || mode === 'launcher') {
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        }
+        break;
+      }
+      case 'open-view-tab': {
+        // pgc-87:command palette / context menu / 明示 button から呼ばれる
+        // 「view tab を tab strip に open する」 action。data-pkc-view-mode
+        // が必須。
+        const mode = target.getAttribute('data-pkc-view-mode');
+        if (!mode) break;
+        if (mode === 'calendar' || mode === 'kanban' || mode === 'filer'
+            || mode === 'graph' || mode === 'launcher') {
+          openViewTab(mode);
+          persistTabState();
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+        }
+        break;
+      }
+      case 'close-tab': {
+        // pgc-85(MASTER.md §4.3):tab strip の × button click。
+        // module-local tab state から該当 lid を削除、neighbor を active 化。
+        // event.button === 1(middle click)経由でも同 handler に届く想定
+        // (action-binder の middle-click route が dispatch する)。
+        if (!lid) break;
+        const newActive = recordTabClose(lid);
+        persistTabState();
+        if (newActive) {
+          // pgc-87:newActive が view tab(`__view:` prefix)の場合は
+          // SET_VIEW_MODE を dispatch、entry tab なら SELECT_ENTRY。
+          if (newActive.startsWith('__view:')) {
+            const mode = newActive.slice('__view:'.length);
+            if (mode === 'calendar' || mode === 'kanban' || mode === 'filer'
+                || mode === 'graph' || mode === 'launcher') {
+              dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
+            }
+          } else {
+            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
+          }
+        } else {
+          // 最後の tab が閉じられた ── state.selectedLid が既に null の場合
+          // DESELECT_ENTRY は no-render(scope='none')になるため、`SYS_SYNC_
+          // CHILD_WINDOWS` を現値で dispatch して **state object 参照を
+          // 更新** することで強制 re-render を引き起こす(scope='full')。
+          // childWindowLids array が常に新規生成されるので、tab strip が
+          // 確実に rebuild される。
+          const st = dispatcher.getState();
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        }
+        break;
+      }
       case 'select-entry': {
         if (!lid) break;
         const me = e as MouseEvent;
@@ -1145,7 +1592,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
             sidebarSelectTimer = null;
             sidebarSelectLid = null;
           }
-          handleDblClickAction(target, lid);
+          handleDblClickAction(lid);
         } else if (me.ctrlKey || me.metaKey) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
         } else if (me.shiftKey) {
@@ -1292,7 +1739,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!lid) break;
         const me = e as MouseEvent;
         if (me.detail >= 2) {
-          handleDblClickAction(target, lid);
+          handleDblClickAction(lid);
           break;
         }
         if (dispatcher.getState().viewMode !== 'detail') {
@@ -1375,7 +1822,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'begin-edit':
-        if (lid) dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+        if (lid) triggerEdit(lid);
         break;
       case 'commit-edit':
         dispatchCommitEdit(root, lid, dispatcher);
@@ -1446,8 +1893,13 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           triggerCreateFileAttach(ctxFolder);
           break;
         }
-        const titleMap: Partial<Record<ArchetypeId, string>> = { text: 'New Text', textlog: 'New Textlog', todo: 'New Todo', form: 'New Form', attachment: 'New Attachment', folder: 'New Folder' };
-        const title = titleMap[arch] ?? 'New Text';
+        // user direction 2026-06-02「デフォ名称が New TEXT、スプレッドシート
+        // じゃないの?」 fix:従来は archetype 別の英語固定 title を渡していたが、
+        // spreadsheet 等は titleMap になく `'New Text'` に fallback して
+        // しまっていた。reducer の `defaultTitleForArchetype` が title='' で
+        // archetype 別の Japanese 名(`新規シート` / `新規メモ` 等)を採番する
+        // 設計なので、ここでは常に空文字を渡して reducer に名前生成を委譲。
+        const title = '';
         // Explicit context from a "+ New" button inside a folder row.
         // When present, it always wins — the user asked specifically
         // for that folder.
@@ -1754,6 +2206,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'clear-filters':
         dispatcher.dispatch({ type: 'CLEAR_FILTERS' });
+        break;
+      case 'go-back': {
+        // pgc-55: 全 back/forward を browser history へ集約。
+        // history.back() → popstate → nav-history bridge が GO_BACK を
+        // dispatch する単一経路(分岐 = stack 二重化を構造的に排除)。
+        // user direction 2026-06-02「戻る進む button と mobile 初期戻し合流」 fix:
+        // PKC2 internal nav history が空(初手 entry)の場合は browser back では
+        // 親 page に飛んでしまうため、`SELECT_ENTRY` を null clear して mobile
+        // 一覧に戻る fallback を踏む。internal history があれば従来通り browser back。
+        const st = dispatcher.getState();
+        if (st.navIndex <= 0) {
+          // 履歴 0 = mobile 「‹ List」 と同じ effect:選択 clear + detail view を解除
+          dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
+        } else {
+          window.history.back();
+        }
+        break;
+      }
+      case 'go-forward':
+        window.history.forward();
         break;
       case 'save-search': {
         // Saved Searches v1 — spec: docs/development/saved-searches-v1.md §5.1.
@@ -2068,6 +2540,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         });
         break;
       }
+      case 'toggle-todo-subtask': {
+        // pgc-150 wave-δ #19(handoff §3.3):todo description 内の inline
+        // checkbox click。markdown-it task-list plugin が出力する
+        // `data-pkc-task-index` 属性が subtask の 0-origin index に対応する
+        // ため、toggleSubtaskAt(description, index)で description を
+        // 更新 → QUICK_UPDATE_ENTRY で全体 re-render。default checkbox
+        // toggle は preventDefault で抑制(dispatch 後の re-render が
+        // 真の checked 状態を反映)。
+        e.preventDefault();
+        e.stopPropagation();
+        if (!lid) break;
+        const idxRaw = target.getAttribute('data-pkc-task-index');
+        const idx = idxRaw === null ? NaN : Number.parseInt(idxRaw, 10);
+        if (!Number.isInteger(idx)) break;
+        const st = dispatcher.getState();
+        if (st.readonly) break;
+        const entry = st.container?.entries.find((x) => x.lid === lid);
+        if (!entry || entry.archetype !== 'todo') break;
+        const todo = parseTodoBody(entry.body);
+        const newDesc = toggleSubtaskAt(todo.description, idx);
+        if (newDesc === todo.description) break;
+        const newBody = serializeTodoBody({ ...todo, description: newDesc });
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: newBody });
+        });
+        break;
+      }
       case 'append-log-entry': {
         if (!lid) break;
         performTextlogAppend(lid);
@@ -2130,13 +2629,64 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (!isTextlogSelectionModeActive(lid)) break;
         const selection = getSelectedTextlogLogIds();
         if (selection.size === 0) break;
-        const result = textlogToText(ent, selection);
-        openTextlogPreviewModal(root, {
-          title: result.title,
-          body: result.body,
-          emittedCount: result.emittedCount,
-          skippedEmptyCount: result.skippedEmptyCount,
-          sourceLid: ent.lid,
+        // user bug 2026-05-27「凄まじく重い…遂行は絶対」hotfix:大量 log textlog
+        // を Web Worker でオフロード + chunk 進捗 + abort 対応。
+        // 閾値判定:body size が SYNC_THRESHOLD_BODY_BYTES(50KB)未満なら sync
+        // で即実行(test 経路 + 進捗 modal 表示不要 + worker boot コスト回避)。
+        // 超えるなら worker boot + 進捗 modal + abort 対応。
+        const SYNC_THRESHOLD_BODY_BYTES = 50_000;
+        const lidCaptured = ent.lid;
+        const bodyBytes = (ent.body ?? '').length;
+        if (bodyBytes < SYNC_THRESHOLD_BODY_BYTES) {
+          // sync 経路(従来動作 + test 経路維持)
+          const result = textlogToText(ent, selection);
+          openTextlogPreviewModal(root, {
+            title: result.title,
+            body: result.body,
+            emittedCount: result.emittedCount,
+            skippedEmptyCount: result.skippedEmptyCount,
+            sourceLid: lidCaptured,
+          });
+          break;
+        }
+        // async 経路(worker + chunk 進捗 + cancel)
+        const sourceTitle = ent.title;
+        const abortController = new AbortController();
+        openTextlogConversionProgress(root, {
+          sourceTitle,
+          onCancel: () => abortController.abort(),
+        });
+        convertTextlogToTextAsync(ent, selection, {
+          onProgress: (v) => updateTextlogConversionProgress(v),
+          signal: abortController.signal,
+        }).then((result) => {
+          closeTextlogConversionProgress();
+          openTextlogPreviewModal(root, {
+            title: result.title,
+            body: result.body,
+            emittedCount: result.emittedCount,
+            skippedEmptyCount: result.skippedEmptyCount,
+            sourceLid: lidCaptured,
+          });
+        }).catch((err) => {
+          closeTextlogConversionProgress();
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            // user cancel:silently、selection mode は維持
+            return;
+          }
+          console.warn('[PKC2] textlog-to-text async failed, sync fallback:', err);
+          try {
+            const fallback = textlogToText(ent, selection);
+            openTextlogPreviewModal(root, {
+              title: fallback.title,
+              body: fallback.body,
+              emittedCount: fallback.emittedCount,
+              skippedEmptyCount: fallback.skippedEmptyCount,
+              sourceLid: lidCaptured,
+            });
+          } catch (fallbackErr) {
+            console.error('[PKC2] sync fallback also failed:', fallbackErr);
+          }
         });
         break;
       }
@@ -2286,6 +2836,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       case 'download-attachment':
         if (lid) downloadAttachment(lid, dispatcher);
+        break;
+      case 'convert-attachment-to-text':
+        // 領域 3: テキスト系添付を新しい TEXT エントリへ変換。
+        if (lid) convertAttachmentEntryToText(lid, dispatcher);
         break;
       case 'open-html-attachment': {
         // Direct surfacing of `createHtmlOpenButton` at the attachment
@@ -3084,6 +3638,14 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         break;
       }
+      case 'ctx-open-window': {
+        // γ-A5-6(user 報告「メインウィンドウで別窓を開く動線が不足」):
+        // context menu からこのエントリを独立した編集ウィンドウで開く。
+        // handleDblClickAction が SELECT_ENTRY + openEntryWindow を担う。
+        if (!lid) break;
+        handleDblClickAction(lid);
+        break;
+      }
       case 'ctx-preview': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -3418,7 +3980,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'toggle-focus-mode': {
-        toggleFocusMode(root);
+        toggleFocusMode(root, dispatcher);
         break;
       }
       case 'set-view-mode': {
@@ -3545,6 +4107,76 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           '[data-pkc-region="graph-canvas"]',
         );
         if (canvas) resetGraphCanvasZoom(canvas);
+        break;
+      }
+      case 'set-meta-pane-mode': {
+        // Phase γ-B3:meta pane mode tab。dispatch → re-render で section が
+        // mode に応じて絞られる。
+        const mode = target.getAttribute('data-pkc-meta-pane-mode');
+        if (mode === 'all' || mode === 'properties' || mode === 'references') {
+          dispatcher.dispatch({ type: 'SET_META_PANE_MODE', mode });
+        }
+        break;
+      }
+      case 'set-edit-mode': {
+        // Phase γ-A2:編集モード picker。dispatch → re-render で picker の
+        // active が更新され、以後あらゆる編集トリガが triggerEdit 経由で
+        // inline / window に分岐する。A2-3:user 選択は localStorage に
+        // 永続化(boot 時に main.ts が復元)。
+        const mode = target.getAttribute('data-pkc-edit-mode');
+        if (mode === 'inline' || mode === 'window') {
+          dispatcher.dispatch({ type: 'SET_EDIT_MODE', mode });
+          saveEditMode(mode);
+        }
+        break;
+      }
+      case 'bulk-relate-selected': {
+        // Phase γ-B2-6:multi-select した node を、先頭 node を hub に放射状
+        // (hub → 各 node)で一括 relate。kind は popup で選ぶ。各 dispatch は
+        // reducer 側で重複 / cycle / self-loop を guard 済。
+        const lids = dispatcher.getState().multiSelectedLids;
+        const hub = lids[0];
+        if (lids.length < 2 || !hub) break;
+        if (dispatcher.getState().readonly) break;
+        const rect = target.getBoundingClientRect();
+        openRelationKindPopup({
+          x: rect.left,
+          y: rect.bottom + 4,
+          onPick: (kind) => {
+            for (let i = 1; i < lids.length; i++) {
+              const to = lids[i];
+              if (to) {
+                dispatcher.dispatch({
+                  type: 'CREATE_RELATION',
+                  from: hub,
+                  to,
+                  kind,
+                });
+              }
+            }
+          },
+        });
+        break;
+      }
+      case 'set-graph-edit-mode': {
+        // Phase γ-B2:graph view の View / Edit toggle。edit mode は
+        // canvas-local runtime state(dispatch でない)なので、toggle の
+        // active class も直接更新する。
+        const mode = target.getAttribute('data-pkc-graph-edit-mode');
+        if (mode === 'view' || mode === 'edit') {
+          setGraphEditMode(mode);
+          const toggle = target.closest(
+            '[data-pkc-region="graph-edit-toggle"]',
+          );
+          toggle
+            ?.querySelectorAll('[data-pkc-graph-edit-mode]')
+            .forEach((b) => {
+              b.classList.toggle(
+                'pkc-graph-edit-toggle-active',
+                b.getAttribute('data-pkc-graph-edit-mode') === mode,
+              );
+            });
+        }
         break;
       }
       case 'toggle-graph-region-select-mode': {
@@ -3689,11 +4321,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         break;
       }
       case 'toggle-sidebar': {
-        togglePane(root, 'sidebar');
+        togglePane(root, 'sidebar', dispatcher);
         break;
       }
       case 'toggle-meta': {
-        togglePane(root, 'meta');
+        togglePane(root, 'meta', dispatcher);
         break;
       }
       case 'toc-jump': {
@@ -4102,6 +4734,36 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (handleSlashMenuKeydown(e)) return;
     }
 
+    // pgc-82(MASTER.md §4.6):Keymap registry。`Alt+←/→` の前に挿入する
+    // のは、本 binder が textarea / input 編集中はスキップ + flag OFF で
+    // no-op、なので **既存挙動を一切壊さない** ため。flag ON 時のみ
+    // `Alt+1`〜`6` / `F12` / `Ctrl+K Ctrl+S` 等の fresh shortcut が発火。
+    if (handleKeymapKeydown(e)) return;
+
+    // pgc-186 wave-α' #9:editor format shortcuts。textarea 編集中の
+    // `Ctrl+B` / `Ctrl+I` を override して format-panel.wrapInline と
+    // 同じ wrap 変換を発火。`editor.format_shortcuts_enabled` OFF で
+    // 完全 no-op、textarea 外の target は skip。
+    if (handleEditorFormatShortcut(e)) return;
+
+    // 領域 1: Alt+←/→ で entry navigation history を移動。テキスト入力中
+    // (textarea / input)は OS ネイティブの単語移動を尊重するため発火
+    // しない。pgc-55: `history.back()` / `forward()` を呼び popstate 経路へ
+    // 集約する(Windows/Linux の native Alt+←→ も popstate 経由なので、
+    // `preventDefault` で native を止めて二重移動を防ぐ。macOS は native の
+    // Alt+←→ が無いため本ハンドラが唯一の経路)。
+    if (
+      e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
+      && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      && !(e.target instanceof HTMLTextAreaElement)
+      && !(e.target instanceof HTMLInputElement)
+    ) {
+      e.preventDefault();
+      if (e.key === 'ArrowLeft') window.history.back();
+      else window.history.forward();
+      return;
+    }
+
     // PR #198: markdown editor enhancements — Enter (indent + list
     // continuation), bracket pair completion, skip-out, list-level
     // Tab/Space indent, multi-line Tab/Shift+Tab. Only fires on
@@ -4493,6 +5155,88 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // pgc-80(vscode-grade-overhaul-2026-05 MASTER.md §4.1):Command Palette
+    // を `Ctrl+Shift+P` または `F1` で toggle 起動。flag OFF なら
+    // `toggleCommandPalette` 内で no-op、CI / 既存挙動への影響ゼロ。
+    // 既に palette が開いていれば、palette 自身の Escape handler が閉じる
+    // (本 handler は trigger 専用、palette 内部の navigation には立ち入らない)。
+    if (
+      shellCommandPaletteEnabled()
+      && !isCommandPaletteOpen()
+      && (
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'P' || e.key === 'p'))
+        || (e.key === 'F1' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey)
+      )
+    ) {
+      e.preventDefault();
+      toggleCommandPalette(root);
+      return;
+    }
+
+    // pgc-81(MASTER.md §4.2):Quick Open。`Ctrl+P` で entry fuzzy launcher を
+    // 起動。browser print(Ctrl+P 既定)を **上書き**する ── PKC2 では entry
+    // navigation の方が圧倒的に高頻度。flag OFF なら no-op。Shift+Ctrl+P は
+    // Command Palette が先に拾うので衝突しない。
+    if (
+      shellQuickOpenEnabled()
+      && !isQuickOpenOpen()
+      && (e.ctrlKey || e.metaKey)
+      && !e.shiftKey
+      && !e.altKey
+      && (e.key === 'P' || e.key === 'p')
+    ) {
+      e.preventDefault();
+      toggleQuickOpen(root, dispatcher);
+      return;
+    }
+
+    // pgc-86(MASTER.md §4.3):Tab keyboard。`Ctrl+W` で active tab close、
+    // `Ctrl+Shift+T` で last-closed reopen。textarea / input 編集中は browser
+    // 既定を尊重(意図しない window-close を避ける)。flag OFF で no-op。
+    if (
+      shellTabsEnabled()
+      && (e.ctrlKey || e.metaKey)
+      && !e.altKey
+      && !(e.target instanceof HTMLTextAreaElement)
+      && !(e.target instanceof HTMLInputElement)
+    ) {
+      // Ctrl+W ── active tab close
+      if (!e.shiftKey && (e.key === 'W' || e.key === 'w')) {
+        e.preventDefault();
+        const newActive = closeActiveTab();
+        persistTabState();
+        if (newActive) {
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
+        } else {
+          const st = dispatcher.getState();
+          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+        }
+        return;
+      }
+      // Ctrl+Shift+T ── reopen last closed
+      if (e.shiftKey && (e.key === 'T' || e.key === 't')) {
+        e.preventDefault();
+        const reopen = reopenLastClosedTab();
+        if (reopen) {
+          // tab を **先に** 直接 recordTabOpen で復元(renderer よりも先に
+          // openTabs が更新されている状態にする)、その後で SELECT_ENTRY を
+          // dispatch して renderer を発火。reopen 対象が現 selectedLid と
+          // 同じ場合に reducer の state 変化が小さくても、render は最新の
+          // module-local openTabs を読むので tab は visible になる。
+          const container = dispatcher.getState().container;
+          if (container) {
+            // tab-strip module の関数 recordTabOpen は import 済
+            // (reopenLastClosedTab の処理上限と独立)
+            // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+            recordTabOpenForReopen(reopen, container);
+            persistTabState();
+          }
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: reopen });
+        }
+        return;
+      }
+    }
+
     // Slice 6: pane re-toggle shortcuts. `Ctrl/⌘+\` toggles the
     // sidebar (left pane), `Ctrl+Shift+\` (or `⌘+Shift+\`) toggles the
     // meta pane (right pane). Both go through the same `togglePane`
@@ -4514,7 +5258,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       e.preventDefault();
-      togglePane(root, e.shiftKey ? 'meta' : 'sidebar');
+      togglePane(root, e.shiftKey ? 'meta' : 'sidebar', dispatcher);
       return;
     }
 
@@ -4561,7 +5305,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       const editLid = state.selectedLid;
       if (!editLid) return;
       e.preventDefault();
-      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: editLid });
+      triggerEdit(editLid);
       return;
     }
 
@@ -5069,7 +5813,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       e.preventDefault();
-      dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: state.selectedLid });
+      triggerEdit(state.selectedLid);
       return;
     }
 
@@ -5132,7 +5876,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // PR-QQQ (2026-05-07):sidebar 検索 + filer 検索の両方で IME 中は
     // dispatch をスキップする。filer 側は data-pkc-field="filer-search"
     // を持つ(PR-QQQ で追加)。
-    if (field === 'search' || field === 'filer-search') {
+    if (
+      field === 'search'
+      || field === 'filer-search'
+      || field === 'sidebar-filer-search'
+    ) {
       searchImeComposing = true;
     }
   }
@@ -5146,6 +5894,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     } else if (field === 'filer-search') {
       searchImeComposing = false;
       dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: target!.value });
+    } else if (field === 'sidebar-filer-search') {
+      searchImeComposing = false;
+      dispatcher.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: target!.value });
     }
   }
 
@@ -5166,6 +5917,35 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (searchImeComposing) return;
       const value = (target as HTMLInputElement).value;
       dispatcher.dispatch({ type: 'SET_FILER_SEARCH_QUERY', query: value });
+      return;
+    }
+    // Phase γ-A1(pgc-35):filer モード sidebar の per-folder 絞り込み。
+    if (target.getAttribute('data-pkc-action') === 'set-sidebar-filer-query') {
+      if (searchImeComposing) return;
+      const value = (target as HTMLInputElement).value;
+      dispatcher.dispatch({ type: 'SET_SIDEBAR_FILER_QUERY', query: value });
+      return;
+    }
+    // pgc-107 wave-γ #8(MASTER.md §6.2):Activity Bar Search tab の
+    // 検索窓 input。module-local state(activity-search-tab.ts)を更新後、
+    // SYS_SYNC dispatch で再描画。IME 合成中は skip(同経路で full
+    // re-render が走ると変換候補が壊れる、PR-QQQ と同 contract)。
+    if (target.getAttribute('data-pkc-action') === 'set-activity-search-query') {
+      if (searchImeComposing) return;
+      const value = (target as HTMLInputElement).value;
+      setActivitySearchQuery(value);
+      const st = dispatcher.getState();
+      dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+      // re-render で input が再生成されるため、focus + caret 位置を復元。
+      window.requestAnimationFrame(() => {
+        const fresh = root.querySelector<HTMLInputElement>(
+          '[data-pkc-action="set-activity-search-query"]',
+        );
+        if (fresh && document.activeElement !== fresh) {
+          fresh.focus();
+          fresh.setSelectionRange(value.length, value.length);
+        }
+      });
       return;
     }
 
@@ -5438,6 +6218,31 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const body = target.value;
         dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body });
       }
+      return;
+    }
+    if (action === 'update-frontmatter-field') {
+      // Phase γ-B1:frontmatter graphical editor の input change。section 内の
+      // 全 key input を集めて meta を再構築、setFrontmatter で entry.body に
+      // 書き戻す(body-only update なので QUICK_UPDATE_ENTRY)。
+      // target は input / select いずれもあり得る(enum key は select)。
+      const lid = target.getAttribute('data-pkc-lid');
+      if (!lid) return;
+      const section = target.closest('[data-pkc-region="frontmatter"]');
+      if (!section) return;
+      const entry = dispatcher
+        .getState()
+        .container?.entries.find((e) => e.lid === lid);
+      if (!entry) return;
+      const meta: Record<string, string | number | boolean | null> = {};
+      const controls = section.querySelectorAll<
+        HTMLInputElement | HTMLSelectElement
+      >('input[data-pkc-frontmatter-key], select[data-pkc-frontmatter-key]');
+      for (const control of controls) {
+        const key = control.getAttribute('data-pkc-frontmatter-key');
+        if (key) meta[key] = parseFrontmatterScalar(control.value);
+      }
+      const body = setFrontmatter(entry.body ?? '', meta);
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body });
       return;
     }
     if (action === 'set-display-profile') {
@@ -6100,6 +6905,24 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       return;
     }
 
+    // Case 0 — pgc-84(MASTER.md §4.7): Object-aware context menu。
+    // 右クリック対象が link / image / heading / selected text のいずれか
+    // なら、object 専用の小さな menu を出す。flag OFF なら下流の case に
+    // 落ちて従来挙動。Tier 0 flag は pgc-83 と共有(universal menu の全
+    // 機能を 1 flag で統合 gate)。
+    if (shellContextMenuUniversalEnabled()) {
+      const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+      const obj = detectObjectContext(rawTarget, sel);
+      if (obj) {
+        e.preventDefault();
+        dismissContextMenu();
+        const menu = renderObjectContextMenu(obj, e.clientX, e.clientY);
+        root.appendChild(menu);
+        clampMenuToViewport(menu);
+        return;
+      }
+    }
+
     const canEdit = !state.readonly;
 
     // Case 1 — TEXTLOG row context menu (center pane).
@@ -6160,30 +6983,50 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
     // Case 3 — sidebar tree (unchanged behaviour).
     const entryItem = rawTarget.closest<HTMLElement>('[data-pkc-lid][data-pkc-action="select-entry"]');
-    if (!entryItem) return;
-    const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
-    if (!sidebar) return;
+    if (entryItem) {
+      const sidebar = entryItem.closest('[data-pkc-region="sidebar"]');
+      if (sidebar) {
+        e.preventDefault();
+        dismissContextMenu();
 
-    e.preventDefault();
-    dismissContextMenu();
+        const lid = entryItem.getAttribute('data-pkc-lid');
+        if (!lid) return;
+        const entry = state.container.entries.find((en) => en.lid === lid);
+        const hasParent =
+          getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
+        // Collect folders for "Move to Folder" sub-menu
+        const folders = state.container.entries
+          .filter((en) => en.archetype === 'folder' && en.lid !== lid)
+          .map((en) => ({ lid: en.lid, title: en.title }));
+        const menu = renderContextMenu(lid, e.clientX, e.clientY, {
+          archetype: entry?.archetype,
+          canEdit,
+          hasParent,
+          folders,
+        });
+        root.appendChild(menu);
+        clampMenuToViewport(menu);
+        return;
+      }
+    }
 
-    const lid = entryItem.getAttribute('data-pkc-lid');
-    if (!lid) return;
-    const entry = state.container.entries.find((en) => en.lid === lid);
-    const hasParent =
-      getStructuralParent(state.container.relations, state.container.entries, lid) !== null;
-    // Collect folders for "Move to Folder" sub-menu
-    const folders = state.container.entries
-      .filter((en) => en.archetype === 'folder' && en.lid !== lid)
-      .map((en) => ({ lid: en.lid, title: en.title }));
-    const menu = renderContextMenu(lid, e.clientX, e.clientY, {
-      archetype: entry?.archetype,
-      canEdit,
-      hasParent,
-      folders,
-    });
-    root.appendChild(menu);
-    clampMenuToViewport(menu);
+    // Case 4 — pgc-83(MASTER.md §4.7): Universal region-aware fallback。
+    // Specific entry-bound menu に該当しない background 右クリックを拾い、
+    // region 別の menu(center / sidebar / meta / header / unknown)を
+    // 出す。flag OFF なら何もしない(browser native context menu 表示)。
+    if (shellContextMenuUniversalEnabled()) {
+      const region = detectContextMenuRegion(rawTarget);
+      // 'unknown' は誰の右クリック領域にも該当しないため、生身の native
+      // context menu が user 体感的に望ましい場面が多い(URL 上のテキスト
+      // 等)。本 POC では explicit に region match した場合のみ menu 出す。
+      if (region !== 'unknown') {
+        e.preventDefault();
+        dismissContextMenu();
+        const menu = renderRegionContextMenu(region, e.clientX, e.clientY);
+        root.appendChild(menu);
+        clampMenuToViewport(menu);
+      }
+    }
   }
 
   /**
@@ -6446,7 +7289,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         if (i + 1 < totalFiles) await yieldToEventLoop();
       }
       if (items.length > 0) {
+        // 領域 3: drop 後に新規 attachment を diff で特定し、テキスト系の
+        // ものは「TEXT に変換」提案 toast を出す(default は添付のまま)。
+        const beforeLids = new Set(
+          (dispatcher.getState().container?.entries ?? []).map((en) => en.lid),
+        );
         dispatcher.dispatch({ type: 'BATCH_PASTE_ATTACHMENTS', items });
+        const newAttachments = (dispatcher.getState().container?.entries ?? []).filter(
+          (en) => !beforeLids.has(en.lid) && en.archetype === 'attachment',
+        );
+        offerTextConversionToasts(newAttachments, dispatcher);
       }
       zone.setAttribute('data-pkc-drop-success', 'true');
       setTimeout(() => zone.removeAttribute('data-pkc-drop-success'), 600);
@@ -6578,19 +7430,38 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         };
       }
 
-      const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-      dispatcher.dispatch({
-        type: 'PASTE_ATTACHMENT',
-        name: file.name,
-        mime: payload.mime,
-        size: payload.size,
-        assetKey,
-        assetData: payload.assetData,
-        contextLid,
-        originalAssetData: payload.originalAssetData,
-        optimizationMeta: payload.optimizationMeta,
-      });
+      // ② ハッシュ重複排除:同一内容の asset が既に container にあれば、
+      // 新規 attachment entry も storage も作らず、既存 `asset_key` を
+      // 参照する anchor だけを挿入する(無駄な重複格納の回避)。anchor が
+      // markdown ref として既存 asset への参照(リレーション)になる。
+      // 重複でなければ従来どおり新規 key + PASTE_ATTACHMENT。
+      const dupKey = findDuplicateAssetKey(
+        payload.assetData,
+        payload.size,
+        dispatcher.getState().container,
+      );
+      let assetKey: string;
+      if (dupKey !== null) {
+        assetKey = dupKey;
+        showToast({
+          kind: 'info',
+          message: `「${file.name}」は既存の添付と同一内容です。重複格納せず既存を参照します。`,
+          autoDismissMs: 4000,
+        });
+      } else {
+        assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        dispatcher.dispatch({
+          type: 'PASTE_ATTACHMENT',
+          name: file.name,
+          mime: payload.mime,
+          size: payload.size,
+          assetKey,
+          assetData: payload.assetData,
+          contextLid,
+          originalAssetData: payload.originalAssetData,
+          optimizationMeta: payload.optimizationMeta,
+        });
+      }
 
       if (insertCtx) {
         const ref = buildAssetRef(file.name, assetKey, payload.mime);
@@ -6642,6 +7513,20 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     e.stopPropagation();
 
     const insertCtx = captureInsertContext();
+    // ① 編集中ドロップ:drop した正確な位置に anchor を入れる。`e.target`
+    // が textarea なら drop 座標 → 文字オフセットへ変換して `cursorPos` を
+    // 上書きする。変換不能(API 非対応 / 座標が外)なら captureInsertContext
+    // が読んだ selectionStart のまま = 既存挙動で回帰なし。
+    if (insertCtx) {
+      const dropTa = (e.target as HTMLElement).closest('textarea');
+      if (
+        dropTa instanceof HTMLTextAreaElement
+        && dropTa.getAttribute('data-pkc-field') === insertCtx.fieldAttr
+      ) {
+        const dropOffset = textareaOffsetAtPoint(dropTa, e.clientX, e.clientY);
+        if (dropOffset !== null) insertCtx.cursorPos = dropOffset;
+      }
+    }
     const files = Array.from(e.dataTransfer.files);
     const contextLid = state.editingLid ?? state.selectedLid;
     if (!contextLid) return;
@@ -6792,6 +7677,81 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     return handled;
   }
 
+  /**
+   * user direction 2026-05-28:`![alt](blob:...)` を含む markdown text の paste 時、
+   * blob URL を fetch して asset 化 + markdown を `asset:<key>` に rewrite した上で
+   * textarea に挿入する。
+   *
+   * - text/plain に blob URL image syntax が無ければ false(別 handler に fallthrough)
+   * - 1 つでもあれば preventDefault + async 処理に入る、true 返却
+   * - fetch 失敗(cross-document blob 等)は URL を残置、warning toast
+   */
+  function maybeHandleBlobUrlPaste(e: ClipboardEvent): boolean {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return false;
+    const field = target.getAttribute('data-pkc-field');
+    if (!field || !PASTE_LINK_ALLOWED_FIELDS.has(field)) return false;
+
+    const raw = e.clipboardData?.getData('text/plain') ?? '';
+    if (raw === '' || !hasBlobUrlImageMarkdown(raw)) return false;
+
+    const state = dispatcher.getState();
+    if (!state.container) return false;
+    const contextLid = state.editingLid ?? state.selectedLid;
+    if (!contextLid) return false;
+
+    e.preventDefault();
+
+    const textarea = target;
+    const cursorPos = textarea.selectionStart ?? textarea.value.length;
+    const cursorEnd = textarea.selectionEnd ?? cursorPos;
+    const currentValue = textarea.value;
+    const fieldAttr = field;
+    const logId = textarea.getAttribute('data-pkc-log-id');
+
+    void (async () => {
+      try {
+        const result = await rewriteBlobUrlsToAssets(raw, { contextLid, dispatcher });
+        // 挿入用 text:rewrittenText を textarea の cursor 位置に splice
+        const before = currentValue.slice(0, cursorPos);
+        const after = currentValue.slice(cursorEnd);
+        const merged = before + result.rewrittenText + after;
+
+        // re-render 後の textarea を再取得(PASTE_ATTACHMENT で center pane が再構築)
+        const freshSelector = logId
+          ? `textarea[data-pkc-field="${fieldAttr}"][data-pkc-log-id="${CSS.escape(logId)}"]`
+          : `textarea[data-pkc-field="${fieldAttr}"]`;
+        const freshTextarea = root.querySelector<HTMLTextAreaElement>(freshSelector);
+        const ta = freshTextarea ?? textarea;
+        ta.value = merged;
+        const newCursor = cursorPos + result.rewrittenText.length;
+        ta.selectionStart = newCursor;
+        ta.selectionEnd = newCursor;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+
+        if (result.processedCount > 0) {
+          showToast({
+            message: `Blob URL ${result.processedCount} 件を asset として保存しました${result.failedCount > 0 ? `(${result.failedCount} 件は fetch 失敗で元 URL を維持)` : ''}`,
+            kind: result.failedCount > 0 ? 'warn' : 'info',
+          });
+        } else if (result.failedCount > 0) {
+          showToast({
+            message: `Blob URL ${result.failedCount} 件の fetch に失敗、元 URL のまま貼付しました(cross-document blob は再現不可)`,
+            kind: 'warn',
+          });
+        }
+      } catch (err) {
+        console.warn('[PKC2] blob URL rewrite failed:', err);
+        showToast({
+          message: `Blob URL の asset 化に失敗:${(err as Error).message ?? 'unknown error'}`,
+          kind: 'error',
+        });
+      }
+    })();
+
+    return true;
+  }
+
   function maybeHandleHtmlLinkPaste(e: ClipboardEvent): void {
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
@@ -6852,6 +7812,15 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // default paste. Cross-container / malformed / non-PKC URLs
       // return false here and fall through to the existing paths.
       if (maybeHandlePkcPermalinkPaste(e)) return;
+
+      // ── blob URL → asset rewrite(user direction 2026-05-28)──
+      //
+      // text/plain に `![alt](blob:...)` markdown image syntax があれば、
+      // blob を fetch → base64 → PASTE_ATTACHMENT で asset 化 →
+      // markdown 内の blob URL を `asset:<key>` に rewrite してから textarea に
+      // 挿入する。`fetch(blobUrl)` は同 document 由来の blob のみ resolved。
+      // cross-document blob は network error → fallback で原 markdown 維持。
+      if (maybeHandleBlobUrlPaste(e)) return;
 
       // ── HTML → Markdown link normalization (S-25 / 2026-04-16) ──
       //
@@ -7026,12 +7995,51 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Sidebar: opens detached read-only panel.
   // Calendar/Kanban: dispatches BEGIN_EDIT (editing in detail view).
 
-  function handleDblClickAction(_target: HTMLElement, lid: string): void {
+  // Phase γ-A2:編集トリガの共通経路。flag `shell.edit_mode_enabled` が
+  // ON かつ editMode='window' なら inline 編集に入らず entry-window を
+  // 開く。それ以外(flag OFF / editMode='inline' / undefined)は従来の
+  // BEGIN_EDIT。✏️ Edit button / Ctrl+E / Enter の全トリガがここを通る
+  // ので surface 選択が一貫する。
+  function triggerEdit(lid: string): void {
+    // Phase γ-A3:対象 entry が既に child window で開かれているなら、
+    // inline 編集に入らずその window を front へ focus する(同一 entry を
+    // 2 surface で同時編集 → save 衝突するのを防ぐ)。reducer 側 BEGIN_EDIT
+    // も childWindowLids guard で二重に防ぐが、ここで focus まで行うことで
+    // 「編集はあちらの window で」という導線が成立する。
+    if (focusEntryWindow(lid)) return;
+    if (shellEditModeEnabled() && dispatcher.getState().editMode === 'window') {
+      handleDblClickAction(lid);
+      return;
+    }
+    dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+  }
+
+  function handleDblClickAction(lid: string): void {
     const state = dispatcher.getState();
     if (!state.container) return;
 
     const entry = state.container.entries.find((e) => e.lid === lid);
     if (!entry) return;
+
+    // pgc-206(user 報告 2026-05-24「ファイラ、マルチウィンドウ以前は
+    // もっと使い勝手良かったのに」):folder archetype は OS Finder /
+    // Explorer 流に「ダブルクリックでフォルダの中に入る」 が期待される。
+    // 旧 multi-window 統一導線では folder 種別を区別せず popup window を
+    // 開いていたが、folder の popup は本体が空(子は relation で繋がる)で
+    // ユーザー期待と乖離。folder の dblclick は:
+    //   - viewMode='filer' のとき: SELECT_ENTRY のみ(filer 側 click handler
+    //     で stayInFiler=true の路に乗り、自動的に新 scope へ navigate)
+    //   - その他の viewMode: SELECT_ENTRY + SET_VIEW_MODE='filer'(folder の
+    //     中身を Filer で見せる、これも OS 流の自然な挙動)
+    // popup は開かない。entry-window で folder を開きたい特殊要件は
+    // context menu の「Open in new window」 経路から(別 PR)。
+    if (entry.archetype === 'folder') {
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+      if (state.viewMode !== 'filer') {
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'filer' });
+      }
+      return;
+    }
 
     // 2026-04-26 user direction: keep the desktop detached-window
     // double-tap UX even on touch devices — iPad in 3-pane mode
@@ -7067,14 +8075,26 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // Conflict detection: check if entry was modified after the window opened
         const currentEntry = currentState.container.entries.find((e) => e.lid === saveLid);
         if (currentEntry && currentEntry.updated_at !== openedAt) {
-          // Entry was modified in the parent window after the child window opened
+          // Entry was modified in the parent window after the child window opened.
+          // γ-A5-5 §5.3:flag ON なら現 body と子窓 draft の行 diff を計算し、
+          // 子 window が banner 下に 2-pane diff を描画できるよう渡す。
+          const conflictDiff = shellConflictDiffViewEnabled()
+            ? diffRows(currentEntry.body, body)
+            : undefined;
           import('./entry-window').then(({ notifyConflict }) => {
-            notifyConflict(saveLid, 'Warning: this entry was modified in the main window. Your save will overwrite those changes. Use the revision history in the right pane to recover if needed.');
+            notifyConflict(
+              saveLid,
+              'Warning: this entry was modified in the main window. Your save will overwrite those changes. Use the revision history in the right pane to recover if needed.',
+              conflictDiff,
+            );
           });
         }
 
-        // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update with revision)
-        dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid });
+        // Save via BEGIN_EDIT + COMMIT_EDIT (supports title + body update
+        // with revision). γ-A5 bugfix:`windowSave: true` で BEGIN_EDIT の
+        // childWindowLids ガードを免除する ── この save は子 entry-window
+        // 自身の編集 commit であり、ガードに弾かれると main へ伝搬しない。
+        dispatcher.dispatch({ type: 'BEGIN_EDIT', lid: saveLid, windowSave: true });
         dispatcher.dispatch({ type: 'COMMIT_EDIT', lid: saveLid, title, body });
       },
       !!state.lightSource,
@@ -7167,7 +8187,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     const lid = entryItem.getAttribute('data-pkc-lid');
     if (!lid) return;
     e.preventDefault();
-    handleDblClickAction(entryItem, lid);
+    handleDblClickAction(lid);
   }
 
   // ── Resize handle logic ──
@@ -7387,10 +8407,49 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       // raw text として preview に出ていた)。
       const livePreviewVars = extractVars(src);
       const livePreviewSource = parseLivePreviewFrontmatter(resolved).body;
+      // pgc-90(audit pgc-77 Gap-1):S3 live preview にも currentContainerId
+      // を thread。同一 container 内 `pkc://` permalink を internal 扱い、
+      // hydrateCardPlaceholders の入口にも必要(下流の features 層 DOM op
+      // と整合)。
+      const liveContainerId = dispatcher.getState().container?.meta?.container_id ?? '';
       preview.innerHTML = renderMarkdown(livePreviewSource, {
         sourceLineAnchors: true,
         vars: livePreviewVars,
+        headingNumber: extractHeadingNumberConfig(src),
+        currentContainerId: liveContainerId,
       });
+      // user direction 2026-05-28「プレビューにおいて負荷を増幅させずに HTML レンダー
+      // と mermaid レンダーを有効化」── post-markdown hydration を Split View edit
+      // preview 経路にも展開。detail-presenter(S1)/ rendered-viewer(S2)/ entry-window
+      // (S4)と同 3 surface parity 規約。
+      // 負荷ガード:
+      //   - 既存 500ms input debounce(L8482-8486)が呼出頻度を抑制
+      //   - mermaid renderer 内に source → svg cache(本 PR 追加)で同一 source の
+      //     再 render を即座 reuse
+      //   - placeholder 0 件で全 hydrate が早期 return(no-op)
+      //   - HTML render iframe は HTML 文字列に含まれ自己完結(別途 hydrate 不要)
+      try {
+        const state = dispatcher.getState();
+        const container = state.container;
+        if (container) {
+          expandTransclusions(preview, {
+            entries: container.entries,
+            assets: container.assets,
+            mimeByKey: buildAssetMimeMap(container),
+            nameByKey: buildAssetNameMap(container),
+            hostLid: state.editingLid ?? state.selectedLid ?? '',
+          });
+          hydrateCardPlaceholders(preview, {
+            entries: container.entries,
+            currentContainerId: liveContainerId,
+          });
+        }
+        applyHeadingFold(preview);
+        void hydrateMermaidPlaceholders(preview);
+      } catch (err) {
+        // hydrate 失敗は preview 表示を壊さず warn のみ(markdown render は既に完了)
+        console.warn('[PKC2] live preview hydrate failed:', err);
+      }
     } else {
       preview.innerHTML = '';
       const pre = document.createElement('pre');
@@ -7429,6 +8488,70 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   }
   root.addEventListener('keyup', handleTextEditPreviewUpdate);
   root.addEventListener('input', handleTextEditPreviewInput);
+
+  // pgc-126 wave-δ #2(MASTER.md §7 text):editor footer wordcount の
+  // live update。pgc-125 で static render を着地、本 PR で textarea 入力に
+  // 追従して footer の metrics を realtime 更新。flag OFF / footer 不在で
+  // no-op、state mutation なし(DOM 直書きで描画を avoid)。
+  function handleEditorFooterWordcountInput(e: Event): void {
+    if (!shellEditorFooterWordcountEnabled()) return;
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (target.getAttribute('data-pkc-field') !== 'body') return;
+    const editor = target.closest('.pkc-editor');
+    if (!editor) return;
+    const footer = editor.querySelector<HTMLElement>(
+      '[data-pkc-region="editor-footer-wordcount"]',
+    );
+    if (!footer) return;
+    const metrics = footer.querySelector<HTMLElement>('.pkc-editor-footer-metrics');
+    if (!metrics) return;
+    const body = target.value;
+    const charCount = body.length;
+    const lineCount = body === '' ? 0 : body.split('\n').length;
+    const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length;
+    // pgc-127 wave-δ #3:read time も live 更新。
+    const readMinutes = estimateReadTimeMinutes(body);
+    metrics.setAttribute('data-pkc-char-count', String(charCount));
+    metrics.setAttribute('data-pkc-word-count', String(wordCount));
+    metrics.setAttribute('data-pkc-line-count', String(lineCount));
+    metrics.setAttribute('data-pkc-read-minutes', readMinutes.toFixed(2));
+    metrics.textContent = `${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
+  }
+  root.addEventListener('input', handleEditorFooterWordcountInput);
+
+  // pgc-155 wave-δ #22:textlog search input。flag ON 時の per-lid
+  // search query を module-local state に register、SYS_SYNC で再描画。
+  // 再描画後に同 input を find して focus + caret 末尾復元(input 中の
+  // 体感事故回避)。
+  function handleTextlogSearchInput(e: Event): void {
+    if (!textTextlogLogSearchEnabled()) return;
+    const target = e.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.getAttribute('data-pkc-action') !== 'set-textlog-search') return;
+    const lid = target.getAttribute('data-pkc-lid');
+    if (!lid) return;
+    const query = target.value;
+    const caret = target.selectionStart ?? query.length;
+    setTextlogSearchQuery(lid, query);
+    const st = dispatcher.getState();
+    dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+    // 再描画後に新 input element を find → focus + caret 復元。
+    queueMicrotask(() => {
+      const next = root.querySelector<HTMLInputElement>(
+        `input[data-pkc-action="set-textlog-search"][data-pkc-lid="${lid}"]`,
+      );
+      if (next) {
+        next.focus();
+        try {
+          next.setSelectionRange(caret, caret);
+        } catch {
+          // setSelectionRange may throw for some input types; ignore.
+        }
+      }
+    });
+  }
+  root.addEventListener('input', handleTextlogSearchInput);
 
   // ── 領域 10-1: Source ↔ Preview sync wiring ──
   // Caret-tracking handlers (selectionchange / keyup / focus) keep the
@@ -7562,6 +8685,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('scroll', handleEditorScroll, true);
 
   root.addEventListener('click', handleClick);
+  // user 要望(2026-05-29):タブを中クリックで閉じる。`.pkc-tab` 内の中クリック
+  // (button=1)で内側の `[data-pkc-action="close-tab"]` button をプログラム的
+  // click → 既存 close 経路を通す。pinned tab は close button を持たないので
+  // 自動的に no-op。`mousedown` で preventDefault してブラウザ標準の autoscroll
+  // を抑止し、`auxclick` で実 action を発火(autoscroll が出る環境への保険)。
+  const handleTabAuxClick = (e: MouseEvent): void => {
+    if (e.button !== 1) return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    const tab = target.closest<HTMLElement>('.pkc-tab');
+    if (!tab) return;
+    if (tab.classList.contains('pkc-tab-pinned')) return; // pinned tab は閉じない
+    const closeBtn = tab.querySelector<HTMLElement>('[data-pkc-action="close-tab"]');
+    if (!closeBtn) return;
+    e.preventDefault();
+    closeBtn.click();
+  };
+  const handleTabMiddleMouseDown = (e: MouseEvent): void => {
+    if (e.button !== 1) return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (!target.closest('.pkc-tab')) return;
+    // autoscroll 抑止
+    e.preventDefault();
+  };
+  root.addEventListener('auxclick', handleTabAuxClick);
+  root.addEventListener('mousedown', handleTabMiddleMouseDown);
   // Press-drag-release UX for the color picker palette (2026-04-26
   // user request). Limited to popover-style "palette" controls
   // anchored to a trigger button; the shell menu is intentionally
@@ -7571,6 +8721,11 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   // Press-drag-release for anchored `<details>` menus (Data… and
   // More… — see `handleDetailsMenuMouseDown`).
   root.addEventListener('mousedown', handleDetailsMenuMouseDown);
+  // pgc-222:tag-target select の lazy options populate(mousedown 経由)。
+  // SELECT_ENTRY 時の render-time cost を 6.6ms@1000 → 0ms に削減、user 操作
+  // で初めて N option を build。focus event は touch device で fires しない
+  // ケースがあるため mousedown を使う(touch でも fires)。
+  root.addEventListener('mousedown', handleLazyTagTargetPopulate, true);
 
   // Mail-style swipe-to-delete on entry list rows (touch only).
   // touchmove uses `passive: false` so we can call preventDefault
@@ -7656,6 +8811,33 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     });
     root.appendChild(menu);
     clampMenuToViewport(menu);
+  });
+  root.addEventListener('pkc-graph-wire-drop', (ev) => {
+    // Phase γ-B2-3/4:graph wire drag の drop。kind selector popup を出し、
+    // kind 選択で CREATE_RELATION を dispatch(meta pane の create-relation
+    // と同じ reducer path を共有)。
+    const detail = (ev as CustomEvent).detail as
+      | { source?: unknown; target?: unknown; clientX?: unknown; clientY?: unknown }
+      | undefined;
+    if (
+      !detail ||
+      typeof detail.source !== 'string' ||
+      typeof detail.target !== 'string' ||
+      typeof detail.clientX !== 'number' ||
+      typeof detail.clientY !== 'number'
+    ) {
+      return;
+    }
+    if (dispatcher.getState().readonly) return;
+    const from = detail.source;
+    const to = detail.target;
+    openRelationKindPopup({
+      x: detail.clientX,
+      y: detail.clientY,
+      onPick: (kind) => {
+        dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind });
+      },
+    });
   });
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);
@@ -7773,6 +8955,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('mousedown', handleColorPickerMouseDown);
     root.removeEventListener('mousedown', handleDetailsMenuMouseDown);
+    root.removeEventListener('mousedown', handleLazyTagTargetPopulate, true);
     root.removeEventListener('touchstart', handleEntrySwipeStart);
     root.removeEventListener('touchmove', handleEntrySwipeMove);
     root.removeEventListener('touchend', handleEntrySwipeEnd);
@@ -7850,6 +9033,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     closeAssetAutocomplete();
     closeEntryRefAutocomplete();
     registerAssetPickerCallback(null);
+    registerEntryPickerCallback(null);
     registerEntryRefInsertCallback(null);
   };
 }
@@ -8318,10 +9502,21 @@ function formatAssetReference(entry: Entry): string {
 
 /**
  * Resolve attachment base64 data from container.assets or legacy body.data.
+ *
+ * pgc-236:optional `entryByLidOverride` Map を受け取れる ── 呼び出し側
+ * (`populateAttachmentPreviews` 等)で複数 lid を一括解決する場合、Map を
+ * 1 度 build して渡すことで per-call の O(N) `entries.find` walk を完全除去。
+ * 未指定なら従来通り state から `entries.find` で walk(test / 単発呼出)。
  */
-function resolveAttachmentData(lid: string, dispatcher: Dispatcher): { data: string; mime: string; name: string } | null {
+function resolveAttachmentData(
+  lid: string,
+  dispatcher: Dispatcher,
+  entryByLidOverride?: Map<string, import('../../core/model/record').Entry>,
+): { data: string; mime: string; name: string } | null {
   const state = dispatcher.getState();
-  const entry = state.container ? getFilterIndexes(state.container).entryByLid.get(lid) : undefined;
+  const entry = entryByLidOverride
+    ? entryByLidOverride.get(lid)
+    : state.container?.entries.find((e) => e.lid === lid);
   if (!entry || entry.archetype !== 'attachment') return null;
 
   const att = parseAttachmentBody(entry.body);
@@ -8353,6 +9548,96 @@ function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, 100);
+}
+
+/**
+ * 領域 3: attachment エントリの内容を新しい TEXT エントリへ変換する。
+ * テキスト系でない / 復号不能なら何もせず `false` を返す。`convert-
+ * attachment-to-text` action と drop 後の変換提案 toast が共有する。
+ * decode 済み内容を `CREATE_ENTRY` の `body` に渡し、添付と同じ structural
+ * 親 folder に配置する。
+ */
+export function convertAttachmentEntryToText(lid: string, dispatcher: Dispatcher): boolean {
+  const st = dispatcher.getState();
+  const attEntry = st.container?.entries.find((en) => en.lid === lid);
+  if (!attEntry || attEntry.archetype !== 'attachment') return false;
+  const att = parseAttachmentBody(attEntry.body);
+  if (!isTextConvertibleAttachment(att)) return false;
+  const text = decodeAttachmentText(att, st.container?.assets);
+  if (text === null) return false;
+  const parentRel = (st.container?.relations ?? []).find(
+    (r) => r.kind === 'structural' && r.to === lid,
+  );
+  const parentEntry = parentRel
+    ? st.container?.entries.find((en) => en.lid === parentRel.from)
+    : undefined;
+  const parentFolder = parentEntry?.archetype === 'folder' ? parentEntry.lid : undefined;
+  const title = att.name.replace(/\.(md|markdown|txt|text)$/i, '').trim() || attEntry.title;
+  dispatcher.dispatch({
+    type: 'CREATE_ENTRY', archetype: 'text', title, body: text, parentFolder,
+  });
+  return true;
+}
+
+/**
+ * ① 編集中ドロップ:textarea 上の screen 座標 (x, y) を value の文字
+ * オフセットへ変換する。`caretPositionFromPoint`(Firefox)/
+ * `caretRangeFromPoint`(Chrome / Safari)が form control に対し
+ * 当該 textarea を node として offset を返す挙動を利用。座標が textarea
+ * 外 / API 非対応のときは `null`(呼び出し側は selectionStart へ
+ * fallback するので回帰なし)。
+ */
+export function textareaOffsetAtPoint(
+  ta: HTMLTextAreaElement,
+  x: number,
+  y: number,
+): number | null {
+  const doc = ta.ownerDocument;
+  const max = ta.value.length;
+  type CPFP = (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  const cpfp = (doc as Document & { caretPositionFromPoint?: CPFP }).caretPositionFromPoint;
+  if (typeof cpfp === 'function') {
+    const pos = cpfp.call(doc, x, y);
+    if (pos && pos.offsetNode === ta) return Math.max(0, Math.min(pos.offset, max));
+  }
+  if (typeof doc.caretRangeFromPoint === 'function') {
+    const range = doc.caretRangeFromPoint(x, y);
+    if (range && range.startContainer === ta) {
+      return Math.max(0, Math.min(range.startOffset, max));
+    }
+  }
+  return null;
+}
+
+/**
+ * 領域 3: drop で新規作成された attachment のうちテキスト系のものに
+ * 「TEXT に変換」を提案する toast を出す。toast を無視すれば添付のまま
+ * (設計骨子 item 3 の非破壊 default)。toast stack は `#pkc-root` 外に
+ * あり `bindActions` の delegation が届かないため、変換ボタンは明示的な
+ * click listener を持つ(`data-pkc-action` / `data-pkc-lid` は test 用)。
+ */
+export function offerTextConversionToasts(attachments: Entry[], dispatcher: Dispatcher): void {
+  for (const att of attachments) {
+    if (att.archetype !== 'attachment') continue;
+    const body = parseAttachmentBody(att.body);
+    if (!isTextConvertibleAttachment(body)) continue;
+    const name = body.name || att.title;
+    const toastEl = showToast({
+      kind: 'info',
+      message: `📄 「${name}」を添付しました。TEXT エントリに変換できます。`,
+      autoDismissMs: 12000,
+    });
+    const convertBtn = document.createElement('button');
+    convertBtn.className = 'pkc-btn pkc-btn-small pkc-toast-convert-text';
+    convertBtn.setAttribute('data-pkc-action', 'convert-attachment-to-text');
+    convertBtn.setAttribute('data-pkc-lid', att.lid);
+    convertBtn.textContent = 'TEXT に変換';
+    convertBtn.addEventListener('click', () => {
+      convertAttachmentEntryToText(att.lid, dispatcher);
+      toastEl.remove();
+    });
+    toastEl.appendChild(convertBtn);
+  }
 }
 
 /**
@@ -8501,6 +9786,20 @@ function collectAssetNameMap(container: Container): Record<string, string> {
  */
 export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispatcher): void {
   const previews = root.querySelectorAll<HTMLElement>('[data-pkc-region="attachment-preview"]');
+  if (previews.length === 0) return;
+  // pgc-234 / pgc-236:旧 path は per-preview に `entries.find(...)` で O(N)
+  // walk、複数 preview があると O(P × N)。loop の外で 1 度だけ Map build し、
+  // **resolveAttachmentData にも override として渡す** ことで以後 O(1) Map.get。
+  // pgc-236 で resolveAttachmentData の per-call N walk も完全除去。
+  const state = dispatcher.getState();
+  const containerSandboxDefault = resolveContainerSandboxDefault(state.container?.meta.sandbox_policy);
+  let entryByLid: Map<string, import('../../core/model/record').Entry> | null = null;
+  const ensureEntryByLid = (): Map<string, import('../../core/model/record').Entry> | null => {
+    if (!entryByLid && state.container) {
+      entryByLid = new Map(state.container.entries.map((e) => [e.lid, e]));
+    }
+    return entryByLid;
+  };
   for (const el of previews) {
     // Skip if already populated (has child elements beyond placeholder)
     if (el.querySelector('img, video, audio, iframe, object')) continue;
@@ -8508,19 +9807,17 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     const lid = el.getAttribute('data-pkc-lid');
     if (!lid) continue;
 
-    const resolved = resolveAttachmentData(lid, dispatcher);
+    const map = ensureEntryByLid();
+    const resolved = resolveAttachmentData(lid, dispatcher, map ?? undefined);
     if (!resolved) continue;
 
     // Read sandbox_allow from the entry body for HTML previews.
     // Fallback chain: per-entry override → container default → strict.
-    const state = dispatcher.getState();
-    const entryForPreview = state.container
-      ? getFilterIndexes(state.container).entryByLid.get(lid)
-      : undefined;
+    const entryForPreview = map?.get(lid);
     const entryAllow = entryForPreview
       ? parseAttachmentBody(entryForPreview.body).sandbox_allow
       : undefined;
-    const sandboxAllow = entryAllow ?? resolveContainerSandboxDefault(state.container?.meta.sandbox_policy);
+    const sandboxAllow = entryAllow ?? containerSandboxDefault;
     populatePreviewElement(el, resolved, 'pkc-attachment-preview-img', sandboxAllow);
   }
 }
@@ -8558,10 +9855,34 @@ export function populateInlineAssetPreviews(root: HTMLElement, dispatcher: Dispa
   const containers = root.querySelectorAll<HTMLElement>(
     '.pkc-md-rendered:not(.pkc-text-edit-preview)',
   );
+  if (containers.length === 0) return;
 
   const state = dispatcher.getState();
   const container = state.container;
   if (!container) return;
+
+  // pgc-235:旧 path は per-chip に container.entries 全件 walk + 全 attachment
+  // body parse で `O(C × K × N)` cost。**1 度だけ全 attachment を index 化**
+  // し、以後 O(1) Map.get で resolve。lazy build:chip が無い container では
+  // index 構築自体を skip。
+  let assetByKey: Map<string, { mime: string; base64: string }> | null = null;
+  const buildAssetIndex = (): Map<string, { mime: string; base64: string }> => {
+    const map = new Map<string, { mime: string; base64: string }>();
+    for (const entry of container.entries) {
+      if (entry.archetype !== 'attachment') continue;
+      const att = parseAttachmentBody(entry.body);
+      if (!att.asset_key) continue;
+      let base64 = '';
+      if (container.assets?.[att.asset_key] != null) {
+        base64 = container.assets[att.asset_key]!;
+      } else if (att.data) {
+        base64 = att.data;
+      }
+      if (!base64 || !att.mime) continue;
+      map.set(att.asset_key, { mime: att.mime, base64 });
+    }
+    return map;
+  };
 
   for (const mdContainer of containers) {
     const chipLinks = mdContainer.querySelectorAll<HTMLAnchorElement>('a[href^="#asset-"]');
@@ -8573,24 +9894,10 @@ export function populateInlineAssetPreviews(root: HTMLElement, dispatcher: Dispa
       const assetKey = href.slice('#asset-'.length);
       if (!assetKey) continue;
 
-      // Find the attachment entry for this asset key
-      let mime = '';
-      let base64 = '';
-      for (const entry of container.entries) {
-        if (entry.archetype !== 'attachment') continue;
-        const att = parseAttachmentBody(entry.body);
-        if (att.asset_key !== assetKey) continue;
-        mime = att.mime;
-        // Resolve data from container.assets or legacy body.data
-        if (att.asset_key && container.assets?.[att.asset_key] != null) {
-          base64 = container.assets[att.asset_key]!;
-        } else if (att.data) {
-          base64 = att.data;
-        }
-        break;
-      }
-
-      if (!base64 || !mime) continue;
+      if (!assetByKey) assetByKey = buildAssetIndex();
+      const found = assetByKey.get(assetKey);
+      if (!found) continue;
+      const { mime, base64 } = found;
 
       const previewType = classifyPreviewType(mime);
       if (previewType !== 'pdf' && previewType !== 'audio' && previewType !== 'video') continue;
@@ -9109,18 +10416,22 @@ function shiftCalendarMonth(
   return { year: y, month: m };
 }
 
-function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
+function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta', dispatcher?: Dispatcher): void {
   const selector = pane === 'sidebar' ? '[data-pkc-region="sidebar"]' : '[data-pkc-region="meta"]';
   const paneEl = root.querySelector<HTMLElement>(selector);
   if (!paneEl) return;
   const isCollapsed = paneEl.getAttribute('data-pkc-collapsed') === 'true';
   const nextCollapsed = !isCollapsed;
-  // H-7 (S-19, 2026-04-14): persist to localStorage then apply the
-  // DOM effect via the shared helper so click / shortcut / tray
-  // paths all go through identical code. The prefs cache returned
-  // by setPaneCollapsed is authoritative for the next render.
   setPaneCollapsed(pane, nextCollapsed);
   applyOnePaneCollapsedToDOM(root, pane, nextCollapsed);
+  // user direction 2026-06-02「左右ペインを隠したあと、元に戻してもペイン内が
+  // 何も表示されないことがある」 fix:collapsed → 展開時、renderer の
+  // partial render path が `wasCollapsed` を見て placeholder を出すため
+  // 中身が空になる。展開時は SYS_SYNC を dispatch して完全 render を強制。
+  if (!nextCollapsed && dispatcher) {
+    const st = dispatcher.getState();
+    dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+  }
 }
 
 // Focus-mode toggle: shared by the Ctrl+Alt+\ keyboard chord and
@@ -9128,18 +10439,18 @@ function togglePane(root: HTMLElement, pane: 'sidebar' | 'meta'): void {
 // otherwise expand both. The "either-open → fold-both" rule
 // mirrors OS focus modes — one trigger flips the whole layout
 // regardless of mixed intermediate states.
-function toggleFocusMode(root: HTMLElement): void {
+function toggleFocusMode(root: HTMLElement, dispatcher?: Dispatcher): void {
   const sidebarEl = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
   const metaEl = root.querySelector<HTMLElement>('[data-pkc-region="meta"]');
   const sidebarCollapsed = sidebarEl?.getAttribute('data-pkc-collapsed') === 'true';
   const metaCollapsed = metaEl?.getAttribute('data-pkc-collapsed') === 'true';
   const eitherOpen = !sidebarCollapsed || !metaCollapsed;
   if (eitherOpen) {
-    if (!sidebarCollapsed) togglePane(root, 'sidebar');
-    if (!metaCollapsed) togglePane(root, 'meta');
+    if (!sidebarCollapsed) togglePane(root, 'sidebar', dispatcher);
+    if (!metaCollapsed) togglePane(root, 'meta', dispatcher);
   } else {
-    if (sidebarCollapsed) togglePane(root, 'sidebar');
-    if (metaCollapsed) togglePane(root, 'meta');
+    if (sidebarCollapsed) togglePane(root, 'sidebar', dispatcher);
+    if (metaCollapsed) togglePane(root, 'meta', dispatcher);
   }
 }
 

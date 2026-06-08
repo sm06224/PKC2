@@ -34,7 +34,25 @@ export type UserAction =
    */
   | { type: 'SELECT_ENTRY'; lid: string; revealInSidebar?: boolean }
   | { type: 'DESELECT_ENTRY' }
-  | { type: 'BEGIN_EDIT'; lid: string }
+  /**
+   * GO_BACK / GO_FORWARD — 領域 1: move through the navigation history
+   * stack. Pure index move — selects `navHistory[navIndex ∓ 1]` without
+   * pushing a new history entry. No-op at the ends of the stack.
+   */
+  | { type: 'GO_BACK' }
+  | { type: 'GO_FORWARD' }
+  /**
+   * BEGIN_EDIT — enter the editing phase for `lid`.
+   *
+   * γ-A5(2026-05-22):`windowSave` は「子 entry-window 自身の save 経路」
+   * から発行される transient な begin であることを示す。true のとき
+   * reducer は (1) `childWindowLids` ガードを免除し(子窓は自分の編集を
+   * commit する正当な経路 ── 同一 entry の main inline 二重編集防止が
+   * 目的のガードに引っかかってはいけない)、(2) `viewMode` / `selectedLid`
+   * を変更しない minimal begin にする(子窓 save で main の表示を奪わない)。
+   * 直後に `COMMIT_EDIT` が続く前提。
+   */
+  | { type: 'BEGIN_EDIT'; lid: string; windowSave?: boolean }
   /**
    * COMMIT_EDIT — confirm the user's in-progress edit back to the
    * container.
@@ -87,8 +105,11 @@ export type UserAction =
    * - Atomic placement matters here because CREATE_ENTRY itself moves
    *   the state machine into `editing`, where follow-up
    *   CREATE_RELATION / CREATE_ENTRY would be blocked.
+   * - `body` (領域 3): optional initial body for the new entry. Used by
+   *   "attachment → TEXT 変換" to seed the decoded file content. Omitted
+   *   for normal creation (entry starts empty).
    */
-  | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string; parentFolder?: string; ensureSubfolder?: string }
+  | { type: 'CREATE_ENTRY'; archetype: ArchetypeId; title: string; parentFolder?: string; ensureSubfolder?: string; body?: string }
   | { type: 'DELETE_ENTRY'; lid: string }
   | { type: 'BEGIN_EXPORT'; mode: ExportMode; mutability: ExportMutability }
   | { type: 'CREATE_RELATION'; from: string; to: string; kind: RelationKind }
@@ -478,6 +499,8 @@ export type UserAction =
   | { type: 'TOGGLE_ADVANCED_FILTERS' }
   | { type: 'SET_VIEW_MODE'; mode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher' }
   | { type: 'SET_GRAPH_MODE'; mode: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity' }
+  | { type: 'SET_META_PANE_MODE'; mode: 'all' | 'properties' | 'references' }
+  | { type: 'SET_EDIT_MODE'; mode: 'inline' | 'window' }
   | { type: 'OPEN_GRAPH_FOR_ENTRY'; lid: string | null }
   | { type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' }
   | { type: 'SET_GRAPH_REGION_SELECTED_LIDS'; lids: readonly string[] }
@@ -488,6 +511,7 @@ export type UserAction =
   | { type: 'CLEAR_INVENTORY_QUERY' }
   | { type: 'SET_FILER_EXPLORER_SORT'; sortBy: string | null; sortDir?: 'asc' | 'desc' }
   | { type: 'SET_FILER_SEARCH_QUERY'; query: string }
+  | { type: 'SET_SIDEBAR_FILER_QUERY'; query: string }
   | { type: 'SET_DISPLAY_PROFILE'; lid: string; profile: FilerProfile | undefined }
   | { type: 'SET_FILER_SCOPE'; scope: 'auto' | 'trash' }
   | { type: 'SET_LAST_FILER_SCOPE'; lid: string | null }

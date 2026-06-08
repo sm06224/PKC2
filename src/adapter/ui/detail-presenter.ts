@@ -1,10 +1,16 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
-import { extractDocumentGlobals, globalsToDataAttrs } from '../../features/markdown/document-globals';
+import {
+  extractDocumentGlobals,
+  globalsToDataAttrs,
+  extractHeadingNumberConfig,
+} from '../../features/markdown/document-globals';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
+import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
+import { hydrateMermaidPlaceholders } from './mermaid-renderer';
 import { isSyncEnabled } from './source-preview-sync';
 
 /**
@@ -98,7 +104,11 @@ const textPresenter: DetailPresenter = {
     if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
-      body.innerHTML = renderMarkdown(source, { currentContainerId, vars });
+      body.innerHTML = renderMarkdown(source, {
+        currentContainerId,
+        vars,
+        headingNumber: extractHeadingNumberConfig(entry.body),
+      });
       // PR-2A:document globals を data-pkc-* + dir attr で root に反映
       for (const [k, v] of Object.entries(globalsToDataAttrs(globals))) {
         body.setAttribute(k, v);
@@ -125,6 +135,14 @@ const textPresenter: DetailPresenter = {
           currentContainerId: currentContainerId ?? '',
         });
       }
+      // pgc-203 wave-α' polish #24:built-in mermaid hydration(S1 center)。
+      // `editor.mermaid_render_enabled` flag OFF / placeholder 0 件で
+      // early return、lazy import('mermaid')。fire-and-forget(非同期、
+      // 戻り値 promise は無視 ── render 完了は次 frame 以降に visible に)。
+      void hydrateMermaidPlaceholders(body);
+      // 領域 6:top-level 見出しを native <details> で畳めるよう再構成。
+      // 純 DOM 操作のため entries 有無に依らず無条件で適用する。
+      applyHeadingFold(body);
       return body;
     }
 
@@ -146,6 +164,18 @@ const textPresenter: DetailPresenter = {
     bodyArea.value = entry.body;
     bodyArea.setAttribute('data-pkc-field', 'body');
     bodyArea.className = 'pkc-editor-body';
+    // pgc-142 wave-δ #16(user bug report 2026-05-24「スクショ貼付できる
+    // ようになっているかも気になる」):空 body の text editor に paste 動線
+    // 含む hint を placeholder で表示 ── スクショ貼付は既存 PASTE_ATTACHMENT
+    // 経路で動作するが、user が気づきにくい(無 hint で空 textarea)。
+    // body が空のときだけ placeholder を出して操作性を向上、書き始めると
+    // 自然に消える。entry が non-empty body を持つときは未表示。
+    if (!entry.body) {
+      bodyArea.setAttribute(
+        'placeholder',
+        '# 見出し / 本文を書く  ──  Ctrl+V で image / screenshot 貼付可能(自動で attachment 化)、/ で slash menu',
+      );
+    }
     // Slice C: height follows body line count (min 15, +3 buffer for comfortable editing).
     // See docs/development/ui-readability-and-editor-sizing-hardening.md §3-C.
     const lineCount = entry.body ? entry.body.split('\n').length : 0;
@@ -213,6 +243,7 @@ const textPresenter: DetailPresenter = {
       preview.innerHTML = renderMarkdown(previewSource, {
         sourceLineAnchors: true,
         vars: previewVars,
+        headingNumber: extractHeadingNumberConfig(initialSource),
       });
     } else if (initialSource) {
       const pre = document.createElement('pre');

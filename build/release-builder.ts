@@ -15,6 +15,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { createHash } from 'crypto';
+import { gzipSync } from 'zlib';
 import { computeGitStamp } from './git-stamp';
 import { buildAboutEntry } from './about-entry-builder';
 
@@ -68,6 +69,13 @@ function main(): void {
 
   const js = readFileSync(jsPath, 'utf8');
   const css = existsSync(cssPath) ? readFileSync(cssPath, 'utf8') : '';
+
+  // pgc-53: CSS / JS 本体を gzip+base64 化して shell へ埋め込む。plain
+  // inline 比で初期ダウンロードサイズが約 1/3 に縮む(展開は shell の
+  // pkc-loader が DecompressionStream で行う)。code_integrity は従来
+  // どおり未圧縮 js の SHA-256(loader 展開後の pkc-core 内容と一致)。
+  const cssGzB64 = gzipSync(Buffer.from(css, 'utf8'), { level: 9 }).toString('base64');
+  const jsGzB64 = gzipSync(Buffer.from(js, 'utf8'), { level: 9 }).toString('base64');
 
   // Build metadata
   const kind = process.env.PKC_KIND ?? 'dev';
@@ -127,6 +135,54 @@ function main(): void {
   }
   const faviconLink = faviconLinks.join('\n  ');
 
+  // PWA manifest(窓の杜 2026-05-26 記事 / Chrome 148+ origin trial `<install>` 要素):
+  // 同一 origin のとき manifest の `id` field のみで browser が trusted install
+  // button を描画。PKC2 は単一 HTML deliverable なので manifest を data URL で
+  // inline、icons は favicon を data URL 経由で再利用。`id` は PKC2 固有の安定
+  // identifier(version 不変、PWA install の一意性に使う)。Single-HTML PWA は
+  // origin が serving context 依存(file:// / localhost / HTTPS)のため origin
+  // trial token は同梱せず、user が Chrome flag `chrome://flags/#install-element`
+  // を enable する想定。
+  let firstFaviconDataUrl: string | null = null;
+  let firstFaviconMime: string | null = null;
+  for (const cand of FAVICON_CANDIDATES) {
+    if (!existsSync(cand.path)) continue;
+    const buf = readFileSync(cand.path);
+    const b64 = buf.toString('base64');
+    firstFaviconDataUrl = `data:${cand.mime};base64,${b64}`;
+    firstFaviconMime = cand.mime;
+    break;
+  }
+  const manifest: Record<string, unknown> = {
+    id: 'pkc2-personal-knowledge-container',
+    name: 'PKC2 — Personal Knowledge Container',
+    short_name: 'PKC2',
+    description: '単一 HTML PWA。Markdown / Todo / Calendar / Kanban / Graph view を統合した personal knowledge container 第 2 世代。',
+    start_url: '.',
+    scope: './',
+    display: 'standalone',
+    orientation: 'any',
+    theme_color: '#0d0f0a',
+    background_color: '#0d0f0a',
+    lang: 'ja',
+    dir: 'ltr',
+    categories: ['productivity', 'utilities'],
+  };
+  if (firstFaviconDataUrl && firstFaviconMime) {
+    manifest.icons = [
+      {
+        src: firstFaviconDataUrl,
+        sizes: 'any',
+        type: firstFaviconMime,
+        purpose: 'any maskable',
+      },
+    ];
+  }
+  const manifestJson = JSON.stringify(manifest);
+  const manifestB64 = Buffer.from(manifestJson, 'utf8').toString('base64');
+  const manifestLink = `<link rel="manifest" href="data:application/manifest+json;base64,${manifestB64}">`;
+  console.log(`  manifest: pkc2 PWA manifest (id=${manifest.id}, ${manifestJson.length} bytes → +${(manifestB64.length / 1024).toFixed(1)} KB inlined)`);
+
   // Read shell template and replace placeholders
   let html = readFileSync(SHELL, 'utf8');
   html = html.replace('{{APP}}', APP_ID);
@@ -135,10 +191,11 @@ function main(): void {
   html = html.replace('{{TIMESTAMP}}', timestamp);
   html = html.replace('{{KIND}}', kind);
   html = html.replace('{{FAVICON_LINK}}', () => faviconLink);
+  html = html.replace('{{MANIFEST_LINK}}', () => manifestLink);
   html = html.replace('{{PKC_DATA}}', () => pkcData);
-  html = html.replace('{{STYLES}}', () => css);
+  html = html.replace('{{STYLES_GZ}}', () => cssGzB64);
   html = html.replace('{{META}}', () => metaJson);
-  html = html.replace('{{CORE}}', () => js);
+  html = html.replace('{{CORE_GZ}}', () => jsGzB64);
 
   if (!existsSync(DIST)) {
     mkdirSync(DIST, { recursive: true });
@@ -148,6 +205,8 @@ function main(): void {
   writeFileSync(outPath, html, 'utf8');
 
   console.log(`✓ ${outPath} (${(html.length / 1024).toFixed(1)} KB)`);
+  console.log(`  payload: js ${(js.length / 1024).toFixed(0)}→${(jsGzB64.length / 1024).toFixed(0)} KB, `
+    + `css ${(css.length / 1024).toFixed(0)}→${(cssGzB64.length / 1024).toFixed(0)} KB (gzip+base64)`);
   console.log(`  version: ${pkg.version}-${kind}+${timestamp}`);
   console.log(`  schema:  ${SCHEMA_VERSION}`);
   console.log(`  commit:  ${source_commit}`);
