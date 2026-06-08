@@ -70,7 +70,7 @@ import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placemen
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import { getFilterIndexes } from './filter-cache';
 import { start as profileStart } from '../../runtime/profile';
-import { computeRenderScope } from './render-scope';
+import { computeRenderScope, findEntryBodyChangeLid } from './render-scope';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -392,6 +392,12 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   if (scope === 'selection') {
     const endProfile = profileStart('render:scope=selection');
     replaceSelectionRegions(state, root);
+    endProfile();
+    return;
+  }
+  if (scope === 'entry-body') {
+    const endProfile = profileStart('render:scope=entry-body');
+    replaceEntryBodyRegions(state, prev, root);
     endProfile();
     return;
   }
@@ -859,6 +865,51 @@ function reconcileMetaPane(state: AppState, root: HTMLElement): void {
   if (rightTray) {
     rightTray.style.display = panePrefs.meta && hasMetaPane ? '' : 'none';
   }
+}
+
+/**
+ * L1 #693 PR-2: `'entry-body'` scope region replacement.
+ *
+ * A single todo entry's body changed (QUICK_UPDATE status toggle) in a
+ * way the scope detector proved cannot affect link index, tree membership,
+ * or sort position (see `findEntryBodyChangeLid`). So the other N-1 sidebar
+ * rows are untouched — only the changed row is swapped — and the center /
+ * meta panes (which show that todo + its revision history) are rebuilt.
+ *
+ * A parity test asserts the result equals a full render of the same state.
+ */
+function replaceEntryBodyRegions(state: AppState, prev: AppState | null, root: HTMLElement): void {
+  const lid = prev ? findEntryBodyChangeLid(prev, state) : null;
+  if (!lid || !state.container) return; // defensive — detector already gated
+
+  const fi = getFilterIndexes(state.container);
+  const entry = fi.entryByLid.get(lid);
+
+  // 1. Swap ONLY the changed entry's sidebar row (tree-mode leaf). The scope
+  // is gated to no-active-filter detail view, so the row is a renderTreeNode
+  // leaf: renderEntryItem + depth padding + draggable attrs.
+  // Scope to the entry-list tree (NOT the whole sidebar): the recent pane
+  // also carries `li[data-pkc-lid]` rows, but those show an archetype icon +
+  // title only — both status-independent — so they need no update.
+  const oldRow = root.querySelector<HTMLElement>(
+    `[data-pkc-region="entry-list"] li[data-pkc-lid="${CSS.escape(lid)}"]`,
+  );
+  if (oldRow && entry) {
+    const connectednessSets = memoizedBuildConnectednessSets(
+      state.container,
+      memoizedBuildLinkIndex(state.container),
+    );
+    const newRow = renderEntryItem(entry, state, fi.backlinkCounts, fi.connectedLids, connectednessSets);
+    newRow.style.paddingLeft = oldRow.style.paddingLeft; // preserve depth indent
+    newRow.setAttribute('draggable', 'true');
+    newRow.setAttribute('data-pkc-draggable', 'true');
+    oldRow.replaceWith(newRow);
+  }
+
+  // 2. Center (the todo's detail / any board) + meta (revision history) —
+  // reuse the selection-scope region swaps.
+  replaceCenterRegion(state, root);
+  reconcileMetaPane(state, root);
 }
 
 function renderInitializing(): HTMLElement {

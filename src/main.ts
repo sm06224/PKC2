@@ -239,6 +239,20 @@ async function boot(): Promise<void> {
       prevRenderState = state;
       return;
     }
+    if (renderScope === 'entry-body') {
+      // L1 #693 PR-2: a single todo body-only change. Like the selection
+      // path, the center pane is replaced, so revoke its old preview Blobs
+      // and re-hydrate previews; continuity preserves center scroll / focus.
+      cleanupBlobUrls(root);
+      const continuity = captureRenderContinuity(root);
+      render(state, root, prevRenderState);
+      restoreRenderContinuity(root, continuity);
+      populateAttachmentPreviews(root, dispatcher);
+      populateInlineAssetPreviews(root, dispatcher);
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevRenderState = state;
+      return;
+    }
 
     // A-1 / A-2 (2026-04-23): continuity capture runs BEFORE the
     // full re-render wipes `root.innerHTML`. The helper records

@@ -33,12 +33,86 @@
  *                        + replace center / meta / header regions, WITHOUT
  *                        rebuilding the O(N) sidebar tree (L1 #693). See
  *                        `replaceSelectionRegions` in renderer.ts.
+ *   - `'entry-body'`     a single todo entry's body changed in a way that
+ *                        cannot affect link index / membership / sort order
+ *                        (status toggle): swap just that ONE sidebar row +
+ *                        center + meta, leaving the other N-1 rows untouched
+ *                        (L1 #693 PR-2). See `replaceEntryBodyRegions`.
  *   - `'full'`           current full-shell rebuild
  */
 
 import type { AppState } from '../state/app-state';
+import { parseTodoBody } from '../../features/todo/todo-body';
 
-export type RenderScope = 'none' | 'settings-only' | 'sidebar-only' | 'selection' | 'full';
+export type RenderScope =
+  | 'none'
+  | 'settings-only'
+  | 'sidebar-only'
+  | 'selection'
+  | 'entry-body'
+  | 'full';
+
+/**
+ * Detect a `'entry-body'`-eligible container delta (L1 #693 PR-2).
+ *
+ * Returns the lid of the single changed entry when prev → state is a
+ * QUICK_UPDATE-style body-only mutation of ONE todo entry whose change
+ * provably cannot ripple beyond its own row:
+ *
+ *   - exactly one entry differs (by reference), matched by lid at the
+ *     same array index (no reorder of the source array);
+ *   - title + archetype preserved, archetype === 'todo';
+ *   - todo `description` unchanged ⇒ link index (which scans the todo
+ *     description for entry-refs) is identical ⇒ connectedness / backlink
+ *     badges on every row are unchanged;
+ *   - todo `archived` flag unchanged ⇒ tree membership under the
+ *     `showArchived` filter is unchanged;
+ *   - `relations` and `assets` keep identity.
+ *
+ * `updated_at` is expected to bump and a revision snapshot to be appended
+ * — neither affects the sidebar row structure (only the meta history,
+ * which the entry-body path re-renders). Returns `null` when any condition
+ * fails, so the caller falls back to `'full'`.
+ */
+export function findEntryBodyChangeLid(prev: AppState, state: AppState): string | null {
+  const pc = prev.container;
+  const nc = state.container;
+  if (!pc || !nc || pc === nc) return null;
+  if (pc.relations !== nc.relations) return null;
+  if (pc.assets !== nc.assets) return null;
+  if (pc.entries.length !== nc.entries.length) return null;
+
+  let changedLid: string | null = null;
+  for (let i = 0; i < nc.entries.length; i++) {
+    const ne = nc.entries[i]!;
+    const pe = pc.entries[i]!;
+    if (ne === pe) continue;
+    // Reorder (different lid at the same index) is not a body-only delta.
+    if (ne.lid !== pe.lid) return null;
+    if (changedLid !== null) return null; // more than one entry changed
+    if (ne.title !== pe.title) return null;
+    if (ne.archetype !== pe.archetype) return null;
+    if (ne.archetype !== 'todo') return null;
+    const pb = parseTodoBody(pe.body);
+    const nb = parseTodoBody(ne.body);
+    if (pb.description !== nb.description) return null; // link-safe
+    if ((pb.archived ?? false) !== (nb.archived ?? false)) return null; // membership-safe
+    changedLid = ne.lid;
+  }
+  return changedLid;
+}
+
+/** Whether any sidebar filter is active (⇒ flat list mode, not tree). */
+function hasAnyActiveFilter(state: AppState): boolean {
+  return (
+    state.searchQuery.trim().length > 0
+    || state.archetypeFilter.size > 0
+    || (state.tagFilter?.size ?? 0) > 0
+    || (state.colorTagFilter?.size ?? 0) > 0
+    || state.categoricalPeerFilter != null
+    || state.unreferencedAttachmentsOnly === true
+  );
+}
 
 /**
  * Compute the minimum render work required to bring the DOM in sync
@@ -65,7 +139,13 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // review (the default is 'full' until it's added to one of the
   // narrower buckets below).
   if (state.phase !== prev.phase) return 'full';
-  if (state.container !== prev.container) return 'full';
+  // `container` is an immediate-full trigger EXCEPT for the narrow
+  // `'entry-body'` case (a single todo body-only mutation), which is
+  // resolved in the combination section below. Any other container change
+  // still falls to 'full' here.
+  const entryBodyChangeLid =
+    state.container !== prev.container ? findEntryBodyChangeLid(prev, state) : null;
+  if (state.container !== prev.container && entryBodyChangeLid === null) return 'full';
   // `selectedLid` is intentionally NOT an immediate-full trigger anymore
   // (L1 #693). It is resolved in the combination section below: when ONLY
   // selection changed (every other full/sidebar trigger identical) we return
@@ -213,6 +293,25 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
     // the full sidebar rebuild.
     if (sidebarOnlyChanged || settingsChanged || !noMultiBarTransition) return 'full';
     return 'selection';
+  }
+
+  // ── Entry-body resolution (L1 #693 PR-2) ────────────────────────
+  // A single todo body-only mutation (QUICK_UPDATE status toggle). Reaching
+  // here means selectedLid / editingLid / phase / viewMode / overlays are
+  // unchanged. Restrict to the localization-safe configuration: detail view
+  // (filer/kanban sidebars render differently), a position-stable sort
+  // (`updated_at` bumps on every body write and would reorder the row), and
+  // no active filter (which switches the sidebar to flat-list mode). Any
+  // co-varying narrow bucket ⇒ 'full'.
+  if (entryBodyChangeLid !== null) {
+    if (sidebarOnlyChanged || settingsChanged || !noMultiBarTransition) return 'full';
+    if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
+    if (state.textlogSelection !== prev.textlogSelection) return 'full';
+    if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
+    if (state.viewMode !== 'detail') return 'full';
+    if (state.sortKey === 'updated_at') return 'full';
+    if (hasAnyActiveFilter(state)) return 'full';
+    return 'entry-body';
   }
 
   // selectedLid did NOT change → preserve prior behaviour: these fields
