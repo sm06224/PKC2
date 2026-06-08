@@ -156,7 +156,6 @@ export function registerBuiltinKeymaps(): void {
   registerKeyBinding('Ctrl+K P', 'inspector.properties');
   registerKeyBinding('Ctrl+K R', 'inspector.references');
   registerKeyBinding('Ctrl+K H', 'inspector.history');
-  registerKeyBinding('Ctrl+K Y', 'inspector.style');
   registerKeyBinding('Ctrl+K I', 'inspector.ai');
   // pgc-144 wave-δ #18(user bug report 2026-05-24「センターペインに
   // 編集結果を Split View のように反映する動線」):VSCode 流の

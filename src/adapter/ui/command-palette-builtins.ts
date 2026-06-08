@@ -430,7 +430,6 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
     { id: 'properties', icon: '📋', ja: 'Inspector: Properties', en: 'Inspector: Properties', key: 'Ctrl+K P' },
     { id: 'references', icon: '🔗', ja: 'Inspector: References', en: 'Inspector: References', key: 'Ctrl+K R' },
     { id: 'history',    icon: '📜', ja: 'Inspector: History',    en: 'Inspector: History',    key: 'Ctrl+K H' },
-    { id: 'style',      icon: '🎨', ja: 'Inspector: Style',      en: 'Inspector: Style',      key: 'Ctrl+K Y' },
   ];
   for (const t of inspectorTabs) {
     registerCommand(

@@ -14,7 +14,7 @@
 
 import { shellInspectorTabBadgesEnabled } from './shell-flags';
 
-export type InspectorTab = 'properties' | 'references' | 'history' | 'style';
+export type InspectorTab = 'properties' | 'references' | 'history';
 
 interface InspectorTabMeta {
   id: InspectorTab;
@@ -79,17 +79,6 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
       'derived-branches',
     ],
   },
-  {
-    id: 'style',
-    icon: '🎨',
-    label: 'Style',
-    keybind: 'Ctrl+K Y',
-    // pgc-118 wave-γ #18:Style tab を placeholder から脱却 ── 読み取り
-    // 専用 metrics(archetype / char count / heading 数 / frontmatter style
-    // globals 等)を `inspector-style-tab.ts buildInspectorStyleSection` で
-    // render、`data-pkc-region="inspector-style-metrics"` で識別。
-    visibleRegions: ['inspector-style-metrics'],
-  },
 ];
 
 let activeInspectorTab: InspectorTab = 'properties';
@@ -120,7 +109,6 @@ export interface InspectorTabBadges {
   readonly properties: number;
   readonly references: number;
   readonly history: number;
-  readonly style: number;
 }
 
 export function computeInspectorTabBadges(
@@ -128,7 +116,7 @@ export function computeInspectorTabBadges(
   container?: import('../../core/model/container').Container | null,
 ): InspectorTabBadges {
   const empty: InspectorTabBadges = {
-    properties: 0, references: 0, history: 0, style: 0,
+    properties: 0, references: 0, history: 0,
   };
   if (!entry || !container) return empty;
   // References:選択 entry の outbound + inbound relation 数(Activity Bar
@@ -156,7 +144,7 @@ export function buildMetaPaneInspectorTabStrip(
   strip.setAttribute('aria-label', 'Inspector tabs');
   // pgc-201:flag ON + entry/container 指定で badge 計算、それ以外は全 0。
   const badges = (
-    shellInspectorTabBadgesEnabled() ? computeInspectorTabBadges(entry, container) : { properties: 0, references: 0, history: 0, style: 0 }
+    shellInspectorTabBadgesEnabled() ? computeInspectorTabBadges(entry, container) : { properties: 0, references: 0, history: 0 }
   );
   for (const t of META_PANE_INSPECTOR_TABS) {
     const btn = document.createElement('button');
@@ -276,8 +264,6 @@ function labelToEmptyMessage(tab: InspectorTab): string {
       return 'No tags / relations / markdown links for this entry yet.';
     case 'history':
       return 'No revisions yet. Edit and save the entry to create the first revision.';
-    case 'style':
-      return 'Coming soon(wave-γ で順次実装中)';
   }
 }
 

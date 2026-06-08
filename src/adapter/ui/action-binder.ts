@@ -1389,7 +1389,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const tab = target.getAttribute('data-pkc-meta-pane-tab');
         if (
           tab === 'properties' || tab === 'references' || tab === 'history'
-          || tab === 'style'
         ) {
           setMetaPaneInspectorActiveTab(tab);
           const st = dispatcher.getState();

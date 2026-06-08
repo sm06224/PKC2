@@ -23,7 +23,6 @@ import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
-import { buildInspectorStyleSection } from './inspector-style-tab';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab, getActivityBarSide } from './activity-bar';
 import { buildOutlineTab } from './activity-outline-tab';
 import { buildRecentTab } from './activity-recent-tab';
@@ -9504,9 +9503,6 @@ function renderMetaPaneImpl(
   // skip、ON なら Style + AI + tab strip + filter の合計を計測)。
   const endProfInspector = profileStart('meta:inspector');
   if (shellMetaPaneInspectorEnabled()) {
-    // pgc-118 wave-γ #18:Style tab を機能化 ── inspector-style-metrics
-    // section を meta pane 末尾に挿入(visibleRegions に登録済)。
-    meta.appendChild(buildInspectorStyleSection(entry, container));
     const strip = buildMetaPaneInspectorTabStrip(entry, container);
     // tab strip は header / timestamps の直前(meta pane の最上段)に挿入
     meta.insertBefore(strip, meta.firstChild);

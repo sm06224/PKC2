@@ -94,9 +94,9 @@ describe('pgc-109 meta pane Inspector tab strip scaffold', () => {
     boot();
     expect(tabStrip()).not.toBeNull();
     const btns = tabBtns();
-    expect(btns.length).toBe(4);
+    expect(btns.length).toBe(3);
     const ids = btns.map((b) => b.getAttribute('data-pkc-meta-pane-tab'));
-    expect(ids).toEqual(['properties', 'references', 'history', 'style']);
+    expect(ids).toEqual(['properties', 'references', 'history']);
   });
 
   it('flag ON:default で Properties tab active', () => {
@@ -106,16 +106,6 @@ describe('pgc-109 meta pane Inspector tab strip scaffold', () => {
     expect(props?.getAttribute('data-pkc-active')).toBe('true');
     expect(props?.getAttribute('aria-selected')).toBe('true');
     expect(getMetaPaneInspectorActiveTab()).toBe('properties');
-  });
-
-  it('flag ON:Style tab(pgc-118 で実装済)は placeholder ではなく Style metrics section', () => {
-    // pgc-118 で Style tab に metrics 実装。
-    setFlag(true);
-    boot();
-    const style = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="style"]')!;
-    style.click();
-    expect(inspectorPlaceholder()).toBeNull();
-    expect(root.querySelector('[data-pkc-region="inspector-style-metrics"]')).not.toBeNull();
   });
 
   it('flag ON:History → Properties 切替で empty hint が Properties 用に切替わる', () => {

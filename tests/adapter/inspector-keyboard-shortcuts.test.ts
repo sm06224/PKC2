@@ -62,14 +62,13 @@ describe('pgc-123 Inspector tab chord shortcut(Ctrl+K P/R/H/Y/I)', () => {
     return dispatcher;
   }
 
-  it('command palette に inspector.* 4 件 + keybind Ctrl+K * が登録される(AI tab 撤去 2026-06-02)', () => {
+  it('command palette に inspector.* 3 件 + keybind Ctrl+K * が登録される(AI/Style tab 撤去)', () => {
     bootCommands();
     const metas = getCommandMetas();
     const expected: { id: string; key: string }[] = [
       { id: 'inspector.properties', key: 'Ctrl+K P' },
       { id: 'inspector.references', key: 'Ctrl+K R' },
       { id: 'inspector.history',    key: 'Ctrl+K H' },
-      { id: 'inspector.style',      key: 'Ctrl+K Y' },
     ];
     for (const exp of expected) {
       const m = metas.find((mm) => mm.id === exp.id);
@@ -102,15 +101,6 @@ describe('pgc-123 Inspector tab chord shortcut(Ctrl+K P/R/H/Y/I)', () => {
     expect(getMetaPaneInspectorActiveTab()).toBe('history');
   });
 
-  it('keymap registry:Ctrl+K Y chord で style tab に switch', () => {
-    setFlags({ keymap: true });
-    bootCommands();
-    registerBuiltinKeymaps();
-    handleKeymapKeydown(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
-    handleKeymapKeydown(new KeyboardEvent('keydown', { key: 'y' }));
-    expect(getMetaPaneInspectorActiveTab()).toBe('style');
-  });
-
   it('keymap flag OFF だと Ctrl+K H は no-op', () => {
     setFlags({ keymap: false });
     bootCommands();
@@ -131,7 +121,7 @@ describe('pgc-123 Inspector tab chord shortcut(Ctrl+K P/R/H/Y/I)', () => {
     expect(getMetaPaneInspectorActiveTab()).toBe('properties');
   });
 
-  it('連続 chord switch:properties → references → style → properties', () => {
+  it('連続 chord switch:properties → references → history → properties', () => {
     setFlags({ keymap: true });
     bootCommands();
     registerBuiltinKeymaps();
@@ -141,8 +131,8 @@ describe('pgc-123 Inspector tab chord shortcut(Ctrl+K P/R/H/Y/I)', () => {
     };
     chord('r');
     expect(getMetaPaneInspectorActiveTab()).toBe('references');
-    chord('y');
-    expect(getMetaPaneInspectorActiveTab()).toBe('style');
+    chord('h');
+    expect(getMetaPaneInspectorActiveTab()).toBe('history');
     chord('p');
     expect(getMetaPaneInspectorActiveTab()).toBe('properties');
   });

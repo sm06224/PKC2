@@ -69,7 +69,7 @@ describe('pgc-201 Inspector tab strip badges', () => {
 
   it('case 1: computeInspectorTabBadges — 0 entry / 0 container で全 0', () => {
     const badges = computeInspectorTabBadges();
-    expect(badges).toEqual({ properties: 0, references: 0, history: 0, style: 0 });
+    expect(badges).toEqual({ properties: 0, references: 0, history: 0 });
   });
 
   it('case 2: computeInspectorTabBadges — relation 数 + revision 数 を正しく集計', () => {
@@ -92,7 +92,6 @@ describe('pgc-201 Inspector tab strip badges', () => {
     expect(badges.references).toBe(3); // e1 関連 3 relation
     expect(badges.history).toBe(2); // e1 関連 2 revision
     expect(badges.properties).toBe(0);
-    expect(badges.style).toBe(0);
   });
 
   it('case 3: flag OFF で buildMetaPaneInspectorTabStrip(entry, container) でも badge 非描画', () => {
@@ -146,7 +145,7 @@ describe('pgc-201 Inspector tab strip badges', () => {
       [{ id: 'rev1', entry_lid: 'e1', snapshot: '{}', created_at: TS }],
     );
     const strip = buildMetaPaneInspectorTabStrip(e, container);
-    for (const tabId of ['properties', 'style', 'ai']) {
+    for (const tabId of ['properties', 'ai']) {
       const badge = strip.querySelector(`button[data-pkc-meta-pane-tab="${tabId}"] .pkc-meta-inspector-tab-badge`);
       expect(badge).toBeNull();
     }
@@ -157,8 +156,8 @@ describe('pgc-201 Inspector tab strip badges', () => {
     const strip = buildMetaPaneInspectorTabStrip();
     const anyBadge = strip.querySelector('.pkc-meta-inspector-tab-badge');
     expect(anyBadge).toBeNull();
-    // 4 tab button は出る(AI tab 撤去 2026-06-02)
-    expect(strip.querySelectorAll('button.pkc-meta-inspector-tab').length).toBe(4);
+    // 3 tab button は出る(AI tab 撤去 2026-06-02 / Style tab 撤去 2026-06-08)
+    expect(strip.querySelectorAll('button.pkc-meta-inspector-tab').length).toBe(3);
   });
 
   it('case 8: 99 超は "99+" 圧縮表示(Activity Bar と同方針)', () => {

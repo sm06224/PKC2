@@ -160,7 +160,7 @@ describe('registerBuiltinKeymaps', () => {
     resetKeymapRegistry();
     registerBuiltinKeymaps();
     const bs = getKeyBindings();
-    expect(bs.length).toBe(27); // 6 + 1 + 1 + 1 + 6 + 5 + 1 + 2 + 4(pgc-182 tab.next/previous/close-active/reopen-last-closed)
+    expect(bs.length).toBe(26); // 6 + 1 + 1 + 1 + 6 + 4(inspector P/R/H/I、Style 撤去 2026-06-08) + 1 + 2 + 4(pgc-182 tab.next/previous/close-active/reopen-last-closed)
     const ids = bs.map((b) => b.commandId).sort();
     expect(ids).toContain('view.detail');
     expect(ids).toContain('app.flags');

@@ -50,10 +50,10 @@ describe('pgc-172 button tab migration(audit step 3)', () => {
     }
   });
 
-  it('case 2: Inspector tab strip(4 tab、AI tab 撤去 2026-06-02)に pkc-button-base + pkc-button-size-tab class', () => {
+  it('case 2: Inspector tab strip(3 tab、AI/Style tab 撤去)に pkc-button-base + pkc-button-size-tab class', () => {
     const strip = buildMetaPaneInspectorTabStrip();
     const tabs = strip.querySelectorAll<HTMLButtonElement>('.pkc-meta-inspector-tab');
-    expect(tabs.length).toBe(4);
+    expect(tabs.length).toBe(3);
     for (const t of tabs) {
       expect(t.classList.contains('pkc-button-base')).toBe(true);
       expect(t.classList.contains('pkc-button-size-tab')).toBe(true);

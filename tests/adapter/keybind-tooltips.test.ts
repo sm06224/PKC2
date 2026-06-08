@@ -109,14 +109,13 @@ describe('pgc-124 Activity Bar + Inspector tab の tooltip に keybind 併記', 
     expect(props?.getAttribute('title')).toContain('Properties');
   });
 
-  it('Inspector:4 tab 全部に Ctrl+K * の keybind 記載(AI tab 撤去 2026-06-02)', () => {
+  it('Inspector:3 tab 全部に Ctrl+K * の keybind 記載(AI/Style tab 撤去)', () => {
     setFlags({ inspector: true });
     boot();
     const expected: { id: string; key: string }[] = [
       { id: 'properties', key: 'Ctrl+K P' },
       { id: 'references', key: 'Ctrl+K R' },
       { id: 'history',    key: 'Ctrl+K H' },
-      { id: 'style',      key: 'Ctrl+K Y' },
     ];
     for (const exp of expected) {
       const btn = root.querySelector<HTMLElement>(`[data-pkc-meta-pane-tab="${exp.id}"]`);
