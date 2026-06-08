@@ -28,12 +28,17 @@
  *   - `'sidebar-only'`   replace the `[data-pkc-region="sidebar"]`
  *                        subtree in place (header / center / meta
  *                        / overlays untouched)
+ *   - `'selection'`      only `selectedLid` changed (plain navigation):
+ *                        move the sidebar selection highlight in place
+ *                        + replace center / meta / header regions, WITHOUT
+ *                        rebuilding the O(N) sidebar tree (L1 #693). See
+ *                        `replaceSelectionRegions` in renderer.ts.
  *   - `'full'`           current full-shell rebuild
  */
 
 import type { AppState } from '../state/app-state';
 
-export type RenderScope = 'none' | 'settings-only' | 'sidebar-only' | 'full';
+export type RenderScope = 'none' | 'settings-only' | 'sidebar-only' | 'selection' | 'full';
 
 /**
  * Compute the minimum render work required to bring the DOM in sync
@@ -61,7 +66,13 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // narrower buckets below).
   if (state.phase !== prev.phase) return 'full';
   if (state.container !== prev.container) return 'full';
-  if (state.selectedLid !== prev.selectedLid) return 'full';
+  // `selectedLid` is intentionally NOT an immediate-full trigger anymore
+  // (L1 #693). It is resolved in the combination section below: when ONLY
+  // selection changed (every other full/sidebar trigger identical) we return
+  // `'selection'`, otherwise it still falls through to `'full'`. Because all
+  // the other immediate-full checks below still run, any co-varying field
+  // keeps forcing `'full'`, so a new unenumerated field can never be silently
+  // absorbed into the selection short-circuit.
   if (state.editingLid !== prev.editingLid) return 'full';
   if (state.editingBase !== prev.editingBase) return 'full';
   if (state.error !== prev.error) return 'full';
@@ -101,14 +112,18 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.graphRegionSelectedLids !== prev.graphRegionSelectedLids) return 'full';
   if (state.calendarYear !== prev.calendarYear) return 'full';
   if (state.calendarMonth !== prev.calendarMonth) return 'full';
-  if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
+  // `multiSelectedLids` / `textlogSelection` / `textToTextlogModal` are NOT
+  // immediate-full triggers: SELECT_ENTRY clears them on every plain
+  // navigation, so leaving them here would defeat the `'selection'` scope.
+  // They are resolved in the combination section below — forced to `'full'`
+  // when they change WITHOUT a selection change, and absorbed by the
+  // selection DOM path (which rebuilds center + clears multi highlight)
+  // when they change alongside it.
   if (state.storageProfileOpen !== prev.storageProfileOpen) return 'full';
   if (state.shortcutHelpOpen !== prev.shortcutHelpOpen) return 'full';
   if (state.flagsInspectorOpen !== prev.flagsInspectorOpen) return 'full';
   if (state.todoAddPopover !== prev.todoAddPopover) return 'full';
   if (state.recentEntryRefLids !== prev.recentEntryRefLids) return 'full';
-  if (state.textlogSelection !== prev.textlogSelection) return 'full';
-  if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
   if (state.dualEditConflict !== prev.dualEditConflict) return 'full';
 
   // ── Fields the SIDEBAR consumes exclusively ──────────────────────
@@ -176,6 +191,35 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // DOES need to run on every dispatch. The 'none' scope handles
   // that by letting main.ts run its post-hooks regardless of the
   // renderer's decision — see `main.ts` for the integration.
+
+  // ── Selection resolution (L1 #693) ──────────────────────────────
+  // Reaching here means every immediate-full trigger above is identical
+  // (container / editingLid / phase / viewMode / overlays / …). The only
+  // fields that can still differ are: selectedLid, the three selection-
+  // adjacent fields (multi / textlog / textToTextlog), and the sidebar /
+  // settings buckets computed above.
+  const selectionChanged = state.selectedLid !== prev.selectedLid;
+  // The multi-select action bar (renderSidebarImpl) appears iff
+  // multiSelectedLids is non-empty. The `'selection'` DOM path does NOT
+  // rebuild the sidebar, so it cannot make that bar appear/disappear —
+  // restrict `'selection'` to plain navigation where the bar's presence
+  // is unchanged (both empty; SELECT_ENTRY always clears to []).
+  const noMultiBarTransition =
+    state.multiSelectedLids.length === 0 && prev.multiSelectedLids.length === 0;
+
+  if (selectionChanged) {
+    // Co-varying narrow buckets ⇒ fall back to 'full' (the selection path
+    // is standalone, like sidebar-only). A multi-bar transition also needs
+    // the full sidebar rebuild.
+    if (sidebarOnlyChanged || settingsChanged || !noMultiBarTransition) return 'full';
+    return 'selection';
+  }
+
+  // selectedLid did NOT change → preserve prior behaviour: these fields
+  // each forced 'full' before #693 carved them out of the immediate list.
+  if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
+  if (state.textlogSelection !== prev.textlogSelection) return 'full';
+  if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
 
   // ── Combination resolution ──────────────────────────────────────
   // Multiple narrow buckets changed → fall back to 'full' since the

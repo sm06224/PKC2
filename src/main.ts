@@ -220,6 +220,25 @@ async function boot(): Promise<void> {
       prevRenderState = state;
       return;
     }
+    if (renderScope === 'selection') {
+      // L1 #693: only `selectedLid` changed. The renderer swaps the
+      // center / meta / header regions and moves the sidebar highlight
+      // in place WITHOUT rebuilding the O(N) sidebar tree. The center
+      // pane IS replaced, so — unlike sidebar-only — we revoke its old
+      // preview Blobs first and re-hydrate BOTH attachment and inline
+      // asset previews afterwards. Continuity capture/restore keeps the
+      // center scroll / focus across the swap.
+      cleanupBlobUrls(root);
+      const continuity = captureRenderContinuity(root);
+      render(state, root, prevRenderState);
+      restoreRenderContinuity(root, continuity);
+      populateAttachmentPreviews(root, dispatcher);
+      populateInlineAssetPreviews(root, dispatcher);
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevSelectedLid = state.selectedLid;
+      prevRenderState = state;
+      return;
+    }
 
     // A-1 / A-2 (2026-04-23): continuity capture runs BEFORE the
     // full re-render wipes `root.innerHTML`. The helper records

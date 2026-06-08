@@ -389,6 +389,12 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
     endProfile();
     return;
   }
+  if (scope === 'selection') {
+    const endProfile = profileStart('render:scope=selection');
+    replaceSelectionRegions(state, root);
+    endProfile();
+    return;
+  }
   // PR #176 profile wave: outermost wrapper for the full-shell
   // rebuild. `render:phase=<phase>` is the canonical "renderer
   // wall-clock" measure used by the bench runner. No-op when
@@ -718,6 +724,143 @@ function replaceSidebarRegion(state: AppState, root: HTMLElement): void {
   }
 }
 
+/**
+ * L1 #693: `'selection'` scope region replacement.
+ *
+ * Mirror of `replaceSidebarRegion` (PR #178) but inverted: when ONLY
+ * `selectedLid` changed (plain navigation), the expensive O(N) sidebar
+ * tree is PRESERVED and only its selection highlight moves. Every other
+ * region that depends on `selectedLid` is small (N-independent) and
+ * rebuilt wholesale: center pane (~38 nodes), meta pane, desktop +
+ * mobile headers, plus the root selection attributes.
+ *
+ * The scope detector (`render-scope.ts`) guarantees container / viewMode
+ * / editingLid / overlays / filters are unchanged and that no multi-
+ * select action bar transition is in flight, so the sidebar's non-
+ * highlight content is already in sync. A parity test asserts the
+ * resulting DOM equals a full render of the same state.
+ */
+function replaceSelectionRegions(state: AppState, root: HTMLElement): void {
+  // 1. Root selection attributes (drive responsive master-detail CSS).
+  root.setAttribute('data-pkc-has-selection', state.selectedLid ? 'true' : 'false');
+  root.setAttribute('data-pkc-mobile-page', resolveMobilePage(state));
+
+  // 2. Sidebar selection highlight — O(1) attribute move, no tree rebuild.
+  applySelectionHighlight(state, root);
+
+  // 2b. Nudge the newly-selected sidebar row into view (and update the
+  // `data-pkc-last-scrolled-lid` memo) exactly as the full path does —
+  // must run AFTER the highlight so the node query resolves.
+  scrollSelectedSidebarNodeIntoView(state, root);
+
+  // 3. Center pane — full swap.
+  replaceCenterRegion(state, root);
+
+  // 4. Meta pane — appear / disappear / replace reconciliation.
+  reconcileMetaPane(state, root);
+
+  // 5. Headers — desktop back-button + mobile title depend on selectedLid.
+  const oldHeader = root.querySelector<HTMLElement>('[data-pkc-region="header"]');
+  if (oldHeader) oldHeader.replaceWith(renderHeader(state));
+  const oldMobileHeader = root.querySelector<HTMLElement>('[data-pkc-region="mobile-header"]');
+  if (oldMobileHeader) oldMobileHeader.replaceWith(renderMobileHeader(state));
+}
+
+/**
+ * Move the sidebar selection highlight to match `state`, mirroring
+ * `applyEntryRowSelectionAttrs` but driven by DOM `data-pkc-lid` so a
+ * row is never rebuilt. `data-pkc-selected` applies to every lid-
+ * carrying row (entry-list rows + recent-pane items); `data-pkc-multi-
+ * selected` is scoped to entry-list rows only (matching the full render,
+ * where recent items never carry the multi attribute).
+ */
+function applySelectionHighlight(state: AppState, root: HTMLElement): void {
+  const sidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
+  if (!sidebar) return;
+  for (const li of sidebar.querySelectorAll<HTMLElement>('li[data-pkc-lid]')) {
+    if (li.getAttribute('data-pkc-lid') === state.selectedLid) {
+      li.setAttribute('data-pkc-selected', 'true');
+    } else {
+      li.removeAttribute('data-pkc-selected');
+    }
+  }
+  const entryList = sidebar.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
+  if (entryList) {
+    for (const li of entryList.querySelectorAll<HTMLElement>('li[data-pkc-lid]')) {
+      const lid = li.getAttribute('data-pkc-lid');
+      if (lid && state.multiSelectedLids.includes(lid)) {
+        li.setAttribute('data-pkc-multi-selected', 'true');
+      } else {
+        li.removeAttribute('data-pkc-multi-selected');
+      }
+    }
+  }
+}
+
+/** Swap the center pane in place, preserving its scroll position. */
+function replaceCenterRegion(state: AppState, root: HTMLElement): void {
+  const oldCenter = root.querySelector<HTMLElement>('[data-pkc-region="center"]');
+  if (!oldCenter) return;
+  const prevScroll =
+    oldCenter.querySelector<HTMLElement>('.pkc-center-content')?.scrollTop ?? null;
+  const newCenter = renderCenter(state);
+  oldCenter.replaceWith(newCenter);
+  if (prevScroll != null) {
+    const sc = newCenter.querySelector<HTMLElement>('.pkc-center-content');
+    if (sc) sc.scrollTop = prevScroll;
+  }
+}
+
+/**
+ * Reconcile the meta pane (+ its resize handle + right tray) against the
+ * new selection. Uses the SAME desired-state computation as `renderShell`
+ * (filer mode pins the meta pane to the scope folder; otherwise it shows
+ * the selected entry; `system-about` entries have no meta pane). Handles
+ * all four appear/disappear/replace transitions.
+ */
+function reconcileMetaPane(state: AppState, root: HTMLElement): void {
+  const center = root.querySelector<HTMLElement>('[data-pkc-region="center"]');
+  const main = center?.parentElement;
+  if (!center || !main) return;
+
+  let selected = findSelectedEntry(state);
+  if (state.viewMode === 'filer' && state.container) {
+    const scope = resolveFilerScope(state);
+    if (scope) selected = scope;
+  }
+  const hasMetaPane = !!selected && selected.archetype !== 'system-about';
+
+  const oldMeta = main.querySelector<HTMLElement>('[data-pkc-region="meta"]');
+  const oldRightHandle = main.querySelector<HTMLElement>('[data-pkc-resize="right"]');
+  const panePrefs = loadPanePrefs();
+
+  if (hasMetaPane) {
+    const canEdit = state.phase === 'ready' && !state.readonly;
+    const linkIndex = state.container ? memoizedBuildLinkIndex(state.container) : null;
+    const metaPane = renderMetaPane(selected!, canEdit, state.container, linkIndex, state.tagFilter);
+    if (panePrefs.meta) metaPane.setAttribute('data-pkc-collapsed', 'true');
+    if (oldMeta) {
+      oldMeta.replaceWith(metaPane);
+    } else {
+      // none → has: insert resize handle + meta pane right after center.
+      const rightHandle = createElement('div', 'pkc-resize-handle');
+      rightHandle.setAttribute('data-pkc-resize', 'right');
+      if (panePrefs.meta) rightHandle.setAttribute('data-pkc-collapsed', 'true');
+      center.after(rightHandle);
+      rightHandle.after(metaPane);
+    }
+  } else if (oldMeta) {
+    // has → none: drop the meta pane and its resize handle.
+    oldMeta.remove();
+    oldRightHandle?.remove();
+  }
+
+  const rightTray = main.querySelector<HTMLElement>('[data-pkc-region="tray-right"]');
+  if (rightTray) {
+    rightTray.style.display = panePrefs.meta && hasMetaPane ? '' : 'none';
+  }
+}
+
 function renderInitializing(): HTMLElement {
   const el = createElement('div', 'pkc-loading');
   el.textContent = 'PKC2 initializing…';
@@ -1015,6 +1158,10 @@ function renderMobileHeader(state: AppState): HTMLElement {
 
 function renderHeader(state: AppState): HTMLElement {
   const header = createElement('header', 'pkc-header');
+  // Stable functional selector for the `'selection'` render scope, which
+  // replaces this header in place (the back button presence depends on
+  // `selectedLid`). See `replaceSelectionRegions`.
+  header.setAttribute('data-pkc-region', 'header');
 
   // 2026-04-26 mobile master-detail: a back arrow button that
   // deselects the current entry, used by the touch-coarse phone

@@ -75,9 +75,28 @@ describe('computeRenderScope', () => {
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
-  it('returns "full" when selectedLid changes', () => {
+  it('returns "selection" when ONLY selectedLid changes (L1 #693)', () => {
     const prev = createInitialState();
     const next = withChange(prev, (s) => ({ ...s, selectedLid: 'e1' }));
+    expect(computeRenderScope(next, prev)).toBe('selection');
+  });
+
+  it('returns "selection" when selectedLid changes and multiSelectedLids stays empty (SELECT_ENTRY clears it)', () => {
+    const prev = createInitialState();
+    // SELECT_ENTRY always emits a fresh empty multiSelectedLids array.
+    const next = withChange(prev, (s) => ({ ...s, selectedLid: 'e1', multiSelectedLids: [] }));
+    expect(computeRenderScope(next, prev)).toBe('selection');
+  });
+
+  it('returns "full" when selectedLid changes while a multi-select bar is showing (transition)', () => {
+    const prev = withChange(createInitialState(), (s) => ({ ...s, multiSelectedLids: ['x'] }));
+    const next = withChange(prev, (s) => ({ ...s, selectedLid: 'e1', multiSelectedLids: [] }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when selectedLid changes alongside collapsedFolders (reveal jump needs tree rebuild)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, selectedLid: 'e1', collapsedFolders: ['fld'] }));
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
