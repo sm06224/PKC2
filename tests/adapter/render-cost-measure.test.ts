@@ -62,7 +62,7 @@ function baseState(container: Container, selectedLid: string | null): AppState {
     sortKey: 'created_at', sortDirection: 'desc', exportMode: null, exportMutability: null,
     readonly: false, lightSource: false, showArchived: false, viewMode: 'detail' as const,
     calendarYear: 2026, calendarMonth: 4, multiSelectedLids: [], batchImportResult: null,
-    collapsedFolders: [], recentEntryRefLids: [],
+    collapsedFolders: [], recentEntryRefLids: [], navHistory: [], navIndex: 0,
   } as AppState;
 }
 

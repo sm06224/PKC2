@@ -22,9 +22,6 @@ import { diffRows } from '../../features/diff/line-diff';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
-// user bug 2026-05-27 perf hotfix:textlog selection toggle の narrow update で
-// toolbar 差し替え用に export 経由で再利用(renderBody 経路を bypass)。
-import { renderSelectionToolbar as rebuildSelectionToolbar } from './textlog-presenter';
 import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildInspectorStyleSection } from './inspector-style-tab';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab, getActivityBarSide } from './activity-bar';
