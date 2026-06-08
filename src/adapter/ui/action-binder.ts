@@ -1828,34 +1828,9 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       case 'commit-edit':
         dispatchCommitEdit(root, lid, dispatcher);
         break;
-      case 'cancel-edit': {
-        // user direction 2026-06-03「新規エントリ作成時にキャンセル押す場合は
-        // 警告付きで削除して」 fix:editing 中の entry が「作成直後で未編集」
-        // (created_at === updated_at)なら、cancel = "新規作成を中止" と
-        // 解釈して confirm で DELETE_ENTRY、それ以外は従来 CANCEL_EDIT。
-        const st = dispatcher.getState();
-        const editingLid = st.editingLid;
-        const editingEntry = editingLid
-          ? st.container?.entries.find((e) => e.lid === editingLid)
-          : null;
-        const isFreshlyCreated = editingEntry
-          && editingEntry.created_at === editingEntry.updated_at;
-        if (isFreshlyCreated && editingEntry && typeof window.confirm === 'function') {
-          const title = editingEntry.title || '(無題)';
-          const ok = window.confirm(
-            `「${title}」 は今作成したばかりのエントリです。\n`
-            + `キャンセルで削除しますか?(編集を続ける場合はキャンセルしてください)`,
-          );
-          if (ok) {
-            dispatcher.dispatch({ type: 'CANCEL_EDIT' });
-            dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: editingLid! });
-          }
-          // ok=false の場合は何もしない(編集続行)
-          break;
-        }
+      case 'cancel-edit':
         dispatcher.dispatch({ type: 'CANCEL_EDIT' });
         break;
-      }
       case 'open-replace-dialog': {
         // S-26: find/replace over the current TEXT body textarea.
         // The dialog operates on the live textarea value, not on
