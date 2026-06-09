@@ -112,6 +112,7 @@ import { spreadsheetPresenter } from './adapter/ui/spreadsheet-presenter';
 import { applyExternalPermalinkOnBoot } from './adapter/ui/external-permalink-receive';
 import { setLinkMigrationDialogDispatcher } from './adapter/ui/link-migration-dialog';
 import type { Dispatcher } from './adapter/state/dispatcher';
+import { autostartPkcExtensions } from './adapter/ui/pkc-extension-startup';
 import type { ContainerStore } from './adapter/platform/idb-store';
 import type { Container } from './core/model/container';
 import { mergeSystemEntries } from './core/model/container';
@@ -757,6 +758,20 @@ async function boot(): Promise<void> {
     if (!bootReadySignaled && state.phase === 'ready' && state.container) {
       bootReadySignaled = true;
       signalBootReady();
+    }
+  });
+
+  // 8d. PKC-Extension autostart (#790). Launch `pkc_extension && startup`
+  // attachments once the container is ready (skipped in `?pkc-safe-mode`),
+  // and push live container updates to the running extensions thereafter.
+  let extensionsStarted = false;
+  let extensionHandles: ReturnType<typeof autostartPkcExtensions> = [];
+  dispatcher.onState((state) => {
+    if (!extensionsStarted && state.phase === 'ready' && state.container) {
+      extensionsStarted = true;
+      extensionHandles = autostartPkcExtensions(dispatcher);
+    } else if (extensionsStarted) {
+      for (const h of extensionHandles) h.pushUpdate();
     }
   });
 

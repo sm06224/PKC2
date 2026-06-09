@@ -41,6 +41,7 @@ import {
   isMediaViewerOpen,
 } from './media-viewer';
 import { openImagePreview } from './image-preview';
+import { launchPkcExtensionEntry } from './pkc-extension-startup';
 import {
   enhanceTable,
   sortColumn,
@@ -2857,6 +2858,16 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         // Safari は user 設定次第)。これにより App Launcher tile click と
         // 既存 「🌐 Open in New Window」button の両方が別窓化される。
         if (!lid) break;
+        // PKC-Extension (#790): launch over the secure PKC-Message channel
+        // (host serves a minimal projection) rather than as a plain
+        // document.write app.
+        {
+          const extEntry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+          if (extEntry && parseAttachmentBody(extEntry.body).pkc_extension === true) {
+            launchPkcExtensionEntry(lid, dispatcher);
+            break;
+          }
+        }
         const resolved = resolveAttachmentData(lid, dispatcher);
         if (!resolved) break;
         if (classifyPreviewType(resolved.mime) !== 'html') break;

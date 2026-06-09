@@ -86,8 +86,10 @@ export class GraphChannel {
 
   /** Begin the secure handshake with the host. */
   start(): boolean {
-    const host = window.opener as Window | null;
-    if (!host || host === window) return false; // standalone — no host
+    // The host is the opener (popup launch) or the parent (iframe overlay).
+    const host = (window.opener as Window | null)
+      ?? (window.parent !== window ? window.parent : null);
+    if (!host) return false; // standalone — no host
     this.host = host;
     window.addEventListener('message', (ev) => this.onMessage(ev));
     // Kick the handshake. Host binds us by `event.source` (the window it

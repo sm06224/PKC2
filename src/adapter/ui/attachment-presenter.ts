@@ -45,6 +45,18 @@ export interface AttachmentBody {
    * 両方 set でも asset 解決優先、emoji は隠れた safety net。
    */
   app_icon_asset_key?: string;
+  /**
+   * PKC-Extension marker (#790)。`true` のとき、この HTML asset は単なる起動
+   * app ではなく **PKC-Extension** として扱われ、起動時に host PKC2 と secure
+   * PKC-Message channel を張る(graph 拡張など)。`registered_as_app` とは
+   * 独立した概念。
+   */
+  pkc_extension?: boolean;
+  /**
+   * Boot 時の自動起動 (#790)。`pkc_extension` と併用。`?pkc-safe-mode=1` が
+   * 付いている起動では skip される(extension 起因ハングからの復旧導線)。
+   */
+  startup?: boolean;
 }
 
 export function parseAttachmentBody(body: string): AttachmentBody {
@@ -66,6 +78,8 @@ export function parseAttachmentBody(body: string): AttachmentBody {
       app_icon_asset_key: typeof parsed.app_icon_asset_key === 'string'
         ? parsed.app_icon_asset_key
         : undefined,
+      pkc_extension: typeof parsed.pkc_extension === 'boolean' ? parsed.pkc_extension : undefined,
+      startup: typeof parsed.startup === 'boolean' ? parsed.startup : undefined,
     };
   } catch {
     return { name: '', mime: 'application/octet-stream' };
@@ -124,6 +138,8 @@ export function serializeAttachmentBody(att: AttachmentBody): string {
   if (typeof att.app_icon_asset_key === 'string' && att.app_icon_asset_key.length > 0) {
     obj.app_icon_asset_key = att.app_icon_asset_key;
   }
+  if (att.pkc_extension === true) obj.pkc_extension = true;
+  if (att.startup === true) obj.startup = true;
   return JSON.stringify(obj);
 }
 
