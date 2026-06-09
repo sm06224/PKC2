@@ -39,27 +39,27 @@ test.describe('View tab parity', () => {
   });
 
   test('clicking view tab switches mode and activates tab', async ({ page }) => {
-    // open 2 view tabs(calendar / graph)
+    // open 2 view tabs(calendar / launcher)
     await page.keyboard.press('Control+Shift+P');
     await page.locator('[data-pkc-field="cmd-query"]').fill('カレンダーを tab');
     await page.locator('[data-pkc-cmd-id="view-tab.open.calendar"]').first().click();
     await page.waitForTimeout(300);
     await page.keyboard.press('Control+Shift+P');
-    await page.locator('[data-pkc-field="cmd-query"]').fill('グラフを tab');
-    await page.locator('[data-pkc-cmd-id="view-tab.open.graph"]').first().click();
+    await page.locator('[data-pkc-field="cmd-query"]').fill('ランチャーを tab');
+    await page.locator('[data-pkc-cmd-id="view-tab.open.launcher"]').first().click();
     await page.waitForTimeout(400);
 
-    const graphTab = page.locator('[data-pkc-action="switch-view-tab"][data-pkc-view-mode="graph"]').first();
-    await expect(graphTab).toHaveClass(/pkc-tab-active/);
+    const launcherTab = page.locator('[data-pkc-action="switch-view-tab"][data-pkc-view-mode="launcher"]').first();
+    await expect(launcherTab).toHaveClass(/pkc-tab-active/);
 
     // click calendar tab
     const calTab = page.locator('[data-pkc-action="switch-view-tab"][data-pkc-view-mode="calendar"]').first();
     await calTab.click();
     await page.waitForTimeout(300);
     await expect(calTab).toHaveClass(/pkc-tab-active/);
-    // graph not active anymore
-    const graphActive = await graphTab.evaluate((el) => el.classList.contains('pkc-tab-active'));
-    expect(graphActive).toBe(false);
+    // launcher not active anymore
+    const launcherActive = await launcherTab.evaluate((el) => el.classList.contains('pkc-tab-active'));
+    expect(launcherActive).toBe(false);
   });
 
   test('close view tab × removes from strip', async ({ page }) => {

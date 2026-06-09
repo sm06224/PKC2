@@ -177,13 +177,13 @@ describe('pin persistence', () => {
   });
 
   it('pinned view tab survives reload', () => {
-    openViewTab('graph');
-    togglePinTab('__view:graph');
+    openViewTab('launcher');
+    togglePinTab('__view:launcher');
     persistTabState();
     resetTabState();
 
     restoreTabState(mkContainer([]));
-    expect(getOpenTabs()[0]?.lid).toBe('__view:graph');
+    expect(getOpenTabs()[0]?.lid).toBe('__view:launcher');
     expect(getOpenTabs()[0]?.pinned).toBe(true);
   });
 });

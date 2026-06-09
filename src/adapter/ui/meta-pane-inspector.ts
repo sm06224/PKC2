@@ -65,7 +65,6 @@ export const META_PANE_INSPECTOR_TABS: ReadonlyArray<InspectorTabMeta> = [
       'entry-tags', 'entry-tag-add', 'entry-tag-filter',
       'relation-create',
       'relations',
-      'graph-bulk-relate',
     ],
   },
   {

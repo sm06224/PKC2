@@ -52,23 +52,22 @@ describe('pgc-161 view-mode tabs size(user bug fix)', () => {
     return Array.from(root.querySelectorAll<HTMLButtonElement>('.pkc-view-mode-btn'));
   }
 
-  it('case 1: compact-header OFF で 6 view-mode tabs(Detail / Calendar / Kanban / Filer / Graph / Launcher)', () => {
+  it('case 1: compact-header OFF で 5 view-mode tabs(Detail / Calendar / Kanban / Filer / Launcher、graph 撤去 #790)', () => {
     setFlag(false);
     const tabs = bootAndGetTabs();
-    expect(tabs.length).toBe(6);
+    expect(tabs.length).toBe(5);
     const labels = tabs.map((t) => t.textContent);
     expect(labels).toContain('Detail');
     expect(labels).toContain('Calendar');
     expect(labels).toContain('Kanban');
     expect(labels).toContain('Filer');
-    expect(labels).toContain('Graph');
     expect(labels).toContain('Launcher');
   });
 
-  it('case 2: compact-header ON でも 6 tab + class 経路(min-width / padding CSS が適用される)', () => {
+  it('case 2: compact-header ON でも 5 tab + class 経路(min-width / padding CSS が適用される)', () => {
     setFlag(true);
     const tabs = bootAndGetTabs();
-    expect(tabs.length).toBe(6);
+    expect(tabs.length).toBe(5);
     // 全 tab が pkc-view-mode-btn class を持つ(min-width CSS rule が cascading で適用)。
     for (const t of tabs) {
       expect(t.classList.contains('pkc-view-mode-btn')).toBe(true);

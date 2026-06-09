@@ -147,15 +147,15 @@ describe('pgc-111 view-mode tabs scope mark + 視覚 separator', () => {
     expect(launcher?.disabled).toBe(false);
   });
 
-  it('flag ON:6 tab + 1 separator = 7 子要素', () => {
+  it('flag ON:5 tab + 1 separator = 6 子要素(graph 撤去 #790)', () => {
     setFlag(true);
     boot();
-    expect(viewModeBar()?.children.length).toBe(7);
+    expect(viewModeBar()?.children.length).toBe(6);
   });
 
-  it('flag OFF:6 tab のみ(separator 無し)', () => {
+  it('flag OFF:5 tab のみ(separator 無し、graph 撤去 #790)', () => {
     setFlag(false);
     boot();
-    expect(viewModeBar()?.children.length).toBe(6);
+    expect(viewModeBar()?.children.length).toBe(5);
   });
 });

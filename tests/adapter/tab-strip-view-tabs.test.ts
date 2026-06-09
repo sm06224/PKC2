@@ -69,7 +69,7 @@ describe('openViewTab', () => {
   it('entry tabs + view tabs coexist', () => {
     const c = mkContainer([mkEntry('a', 'Alice')]);
     recordTabOpen('a', c);
-    openViewTab('graph');
+    openViewTab('launcher');
     expect(getOpenTabs().length).toBe(2);
   });
 });
@@ -133,10 +133,10 @@ describe('buildTabStripElement renders view tab differently', () => {
   });
 
   it('view tab title uses VIEW_TAB_META', () => {
-    openViewTab('graph');
+    openViewTab('launcher');
     const el = buildTabStripElement(mkState());
     const title = el.querySelector('.pkc-tab-title');
-    expect(title?.textContent).toContain('グラフ');
+    expect(title?.textContent).toContain('ランチャー');
   });
 
   it('entry tab + view tab render with correct actions', () => {
@@ -168,12 +168,12 @@ describe('view tab persistence', () => {
   it('mixed entry + view tabs round-trip', () => {
     const c = mkContainer([mkEntry('a', 'Alice')]);
     recordTabOpen('a', c);
-    openViewTab('graph');
+    openViewTab('launcher');
     persistTabState();
     resetTabState();
 
     const restored = restoreTabState(c);
-    expect(restored).toBe('__view:graph');
+    expect(restored).toBe('__view:launcher');
     expect(getOpenTabs().length).toBe(2);
   });
 

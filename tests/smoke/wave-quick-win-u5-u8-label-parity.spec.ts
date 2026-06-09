@@ -112,37 +112,3 @@ test('U5: subset profile select is grouped via <optgroup> (Layout / Catalogue / 
   expect(queryGroup?.optionCount).toBe(1);
 });
 
-test('U8: graph mode select labels are short (no parenthetical descriptions)', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await bootWithSeed(page);
-
-  // Graph view へ切替。
-  const graphTab = page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="graph"]');
-  await graphTab.waitFor();
-  const gtbox = await graphTab.boundingBox();
-  if (!gtbox) throw new Error('graph tab missing');
-  await page.mouse.click(gtbox.x + gtbox.width / 2, gtbox.y + gtbox.height / 2);
-  await page.locator('[data-pkc-region="graph-canvas"]').waitFor();
-
-  const modeSelect = page.locator('select[data-pkc-action="set-graph-mode"]').first();
-  await modeSelect.waitFor();
-
-  // Consumer verification: option texts match new short labels.
-  const labels = await modeSelect.evaluate((s) => {
-    const sel = s as HTMLSelectElement;
-    return Array.from(sel.querySelectorAll('option')).map((o) => o.textContent ?? '');
-  });
-  console.log('U8 graph mode labels:', JSON.stringify(labels));
-
-  // 5 modes、すべて短 label。括弧書きが残っていないこと。
-  expect(labels).toEqual([
-    'Relations',
-    'Color tags',
-    'Tag groups',
-    'Folder hierarchy',
-    'Time proximity',
-  ]);
-  for (const label of labels) {
-    expect(label).not.toMatch(/[(（]/);  // ASCII '(' or 全角 '('
-  }
-});
