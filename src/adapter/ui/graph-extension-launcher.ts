@@ -37,13 +37,6 @@ export interface LaunchGraphExtensionOptions {
   getContainer: () => Container | null;
   /** Invoked when the extension reports a node selection. */
   onSelect?: (lid: string) => void;
-  /**
-   * `'window'` (default): a real popup window via `window.open` — used for a
-   * manual launch, which carries the user activation a popup needs.
-   * `'iframe'`: a same-origin overlay — used for **autostart** at boot, where
-   * there is no activation and a popup would be blocked.
-   */
-  mode?: 'window' | 'iframe';
 }
 
 export interface GraphExtensionHandle {
@@ -65,15 +58,14 @@ function makeNonce(): string {
 }
 
 /**
- * Open the graph extension and wire the secure channel. `mode: 'window'`
- * (default) opens a real popup window (manual launch); `mode: 'iframe'` uses a
- * same-origin overlay (autostart, where a popup would be blocked). Both inject
- * the single-file extension via `document.write` — it is a **classic IIFE**, so
- * it executes reliably this way on every browser (a `type="module"` script does
- * not run via document.write in Firefox). Returns null if a popup was blocked.
+ * Open the graph extension in a real separate window and wire the secure
+ * channel. The single-file extension is a **classic IIFE**, so it runs reliably
+ * when injected via `document.write` on every browser (a `type="module"` script
+ * does not). Returns null if the popup was blocked (e.g. an autostart at boot
+ * with no user activation) — the host must never fall back to a screen-hijacking
+ * overlay.
  */
 export function launchGraphExtension(opts: LaunchGraphExtensionOptions): GraphExtensionHandle | null {
-  const mode = opts.mode ?? 'window';
   const nonce = makeNonce();
   let established = false;
   let childWin: Window | null = null;
@@ -112,44 +104,17 @@ export function launchGraphExtension(opts: LaunchGraphExtensionOptions): GraphEx
     closeChild();
   };
 
-  if (mode === 'window') {
-    const win = window.open('', '_blank', 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes');
-    if (!win) return null;
-    win.document.open();
-    win.document.write(opts.html); // classic IIFE runs reliably via document.write
-    win.document.close();
-    childWin = win;
-    closeChild = () => { try { win.close(); } catch { /* noop */ } };
-  } else {
-    const overlay = document.createElement('div');
-    overlay.setAttribute('data-pkc-region', 'extension-overlay');
-    overlay.style.cssText =
-      'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.4);display:flex;flex-direction:column;';
-    const bar = document.createElement('div');
-    bar.style.cssText = 'flex:0 0 auto;display:flex;justify-content:flex-end;padding:4px;background:#000;';
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕ 閉じる';
-    closeBtn.setAttribute('data-pkc-action', 'close-extension-overlay');
-    closeBtn.addEventListener('click', () => cleanup());
-    bar.appendChild(closeBtn);
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('data-pkc-region', 'extension-frame');
-    iframe.style.cssText = 'flex:1 1 auto;border:0;width:100%;background:#0d0f0a;';
-    overlay.appendChild(bar);
-    overlay.appendChild(iframe);
-    document.body.appendChild(overlay);
-    // Same-origin iframe; the classic IIFE runs via document.write.
-    const doc = iframe.contentWindow?.document;
-    if (!doc || !iframe.contentWindow) {
-      overlay.remove();
-      return null;
-    }
-    doc.open();
-    doc.write(opts.html);
-    doc.close();
-    childWin = iframe.contentWindow;
-    closeChild = () => overlay.remove();
-  }
+  // Always a real separate window — never an in-page overlay (which would
+  // hijack the PKC2 screen). `window.open('') + document.write` keeps the child
+  // same-origin with `window.opener` pointing back to the host, so the secure
+  // channel works; the classic IIFE runs reliably via document.write.
+  const win = window.open('', '_blank', 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes');
+  if (!win) return null;
+  win.document.open();
+  win.document.write(opts.html);
+  win.document.close();
+  childWin = win;
+  closeChild = () => { try { win.close(); } catch { /* noop */ } };
 
   window.addEventListener('message', onMessage);
 

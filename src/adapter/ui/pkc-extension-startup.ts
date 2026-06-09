@@ -32,7 +32,6 @@ export function isSafeMode(): boolean {
 export function launchPkcExtensionEntry(
   entryLid: string,
   dispatcher: Dispatcher,
-  mode: 'window' | 'iframe' = 'window',
 ): GraphExtensionHandle | null {
   const container = dispatcher.getState().container;
   if (!container) return null;
@@ -44,7 +43,6 @@ export function launchPkcExtensionEntry(
   if (!html) return null;
   return launchGraphExtension({
     html,
-    mode,
     getContainer: () => dispatcher.getState().container,
     onSelect: (lid) => dispatcher.dispatch({ type: 'SELECT_ENTRY', lid }),
   });
@@ -67,9 +65,11 @@ export function autostartPkcExtensions(dispatcher: Dispatcher): GraphExtensionHa
     if (e.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(e.body);
     if (att.pkc_extension === true && att.startup === true) {
-      // Autostart has no user activation → an overlay iframe (a popup would
-      // be blocked).
-      const handle = launchPkcExtensionEntry(e.lid, dispatcher, 'iframe');
+      // Opens in a separate window. At boot there is no user activation, so the
+      // browser may block the popup (returns null) — that is fine; we never
+      // hijack the PKC2 screen as a fallback. The user allows the popup or
+      // launches manually.
+      const handle = launchPkcExtensionEntry(e.lid, dispatcher);
       if (handle) handles.push(handle);
     }
   }
