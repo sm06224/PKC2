@@ -6,7 +6,8 @@
   "description": "Standalone graph view extension for PKC2 — force-directed network of entries + relations, communicating with a host PKC2 over PKC-Message.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node build-singlefile.mjs",
+    "build:single": "node build-singlefile.mjs",
     "typecheck": "tsc --noEmit"
   }
 }

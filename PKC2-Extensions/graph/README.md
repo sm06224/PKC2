@@ -64,11 +64,15 @@ installed there), so no separate install is required in the container:
 ```bash
 cd PKC2-Extensions/graph
 ../../node_modules/.bin/vite          # dev server
-../../node_modules/.bin/vite build    # → dist/
+../../node_modules/.bin/vite build && node build-singlefile.mjs   # → dist/ + pkc2-graph.html
 ../../node_modules/.bin/tsc --noEmit  # typecheck
 ```
 
 (With a normal checkout, `npm install` then `npm run dev` / `npm run build`.)
+
+`npm run build` emits both the `dist/` assets and **`pkc2-graph.html`** — a
+single self-contained file (JS + CSS inlined, ~37 KB) that opens straight from
+`file://` and embeds in an iframe, the same shape as `PKC2-Extensions/pkc2-manual.html`.
 
 The extension is **excluded from the host's tsconfig / eslint / build**
 (root `include` is `src tests build`), so it never affects PKC2 CI.
@@ -78,6 +82,6 @@ The extension is **excluded from the host's tsconfig / eslint / build**
 - ✅ Ported renderer + force layout + payload builder, typecheck clean, builds
   (~33 KB JS / ~5 KB CSS gzip ~13 KB).
 - ✅ Renders the demo container in a real browser (canvas + legend + mode switch).
+- ✅ Single-file embeddable artifact `pkc2-graph.html` (~37 KB, opens from `file://`).
 - ☐ Formal PKC-Message envelope v2 integration (host-side push of the container).
-- ☐ Single-file embeddable artifact (`pkc2-graph.html`, like `pkc2-manual.html`).
 - ☐ Feature enrichment now that the UI-integration ceiling is gone.
