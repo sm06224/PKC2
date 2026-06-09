@@ -28,17 +28,27 @@ const MODE_LABELS: { v: GraphMode; label: string }[] = [
 interface ViewState {
   entries: Entry[];
   relations: Relation[];
+  hyperlinks: { from: string; to: string }[];
+  externalLinks: { from: string; url: string }[];
+  folderOf: Map<string, string>;
   title: string;
   mode: GraphMode;
   source: 'connecting' | 'host' | 'demo';
+  showHyperlinks: boolean;
+  showExternal: boolean;
 }
 
 const state: ViewState = {
   entries: [],
   relations: [],
+  hyperlinks: [],
+  externalLinks: [],
+  folderOf: new Map(),
   title: '',
   mode: 'relations',
   source: 'connecting',
+  showHyperlinks: true,
+  showExternal: false,
 };
 
 let rootEl: HTMLElement | null = null;
@@ -93,6 +103,9 @@ function applyProjection(p: GraphProjection): void {
     created_at: '',
     updated_at: '',
   }));
+  state.hyperlinks = p.hyperlinks ?? [];
+  state.externalLinks = p.externalLinks ?? [];
+  state.folderOf = new Map(p.nodes.filter((n) => n.folder).map((n) => [n.lid, n.folder!]));
   state.title = p.title;
   state.source = 'host';
   render();
@@ -102,6 +115,15 @@ function showDemo(): void {
   const c = makeDemoContainer();
   state.entries = c.entries;
   state.relations = c.relations;
+  state.hyperlinks = [];
+  state.externalLinks = [];
+  state.folderOf = new Map();
+  for (const r of c.relations) {
+    if (r.kind === 'structural') {
+      const parent = c.entries.find((e) => e.lid === r.from);
+      if (parent?.archetype === 'folder') state.folderOf.set(r.to, r.from);
+    }
+  }
   state.title = c.meta.title;
   state.source = 'demo';
   render();
@@ -113,8 +135,13 @@ function render(): void {
   graph.update({
     entries: state.entries,
     relations: state.relations,
+    hyperlinks: state.hyperlinks,
+    externalLinks: state.externalLinks,
+    folderOf: state.folderOf,
     mode: state.mode,
     focusLid: null,
+    showHyperlinks: state.showHyperlinks,
+    showExternal: state.showExternal,
   });
   // Swap the legend overlay without touching Cytoscape's canvas layers.
   if (graphHost) {
@@ -151,6 +178,21 @@ function renderToolbar(): HTMLElement {
   select.addEventListener('change', () => { state.mode = select.value as GraphMode; render(); });
   toolbar.appendChild(select);
 
+  // In-document link toggles.
+  const linkBtn = createElement('button', 'pkc-btn-small');
+  linkBtn.textContent = `🔗 内部リンク(${state.hyperlinks.length})`;
+  if (state.showHyperlinks) linkBtn.setAttribute('data-pkc-active', 'true');
+  linkBtn.title = '文書内の内部リンク(entry 参照)を辺として表示';
+  linkBtn.addEventListener('click', () => { state.showHyperlinks = !state.showHyperlinks; render(); });
+  toolbar.appendChild(linkBtn);
+
+  const extBtn = createElement('button', 'pkc-btn-small');
+  extBtn.textContent = `🌐 外部リンク(${new Set(state.externalLinks.map((x) => x.url)).size})`;
+  if (state.showExternal) extBtn.setAttribute('data-pkc-active', 'true');
+  extBtn.title = '文書内の外部 URL を node 化して表示(PKC の外と繋ぐ)';
+  extBtn.addEventListener('click', () => { state.showExternal = !state.showExternal; render(); });
+  toolbar.appendChild(extBtn);
+
   const zoomReset = createElement('button', 'pkc-btn-small');
   zoomReset.textContent = '↺ 表示リセット';
   zoomReset.addEventListener('click', () => graph?.resetView());
@@ -182,18 +224,32 @@ function renderLegend(): HTMLElement {
 
   const kinds = new Set<string>();
   for (const r of state.relations) kinds.add(r.kind);
-  if (kinds.size > 0) {
-    const kindRow = createElement('div', 'pkc-graph-legend-row');
-    for (const k of Array.from(kinds).sort()) {
-      const item = createElement('span', 'pkc-graph-legend-item');
-      const sw = createElement('span', 'pkc-graph-legend-swatch');
-      sw.style.background = relationColor(k);
-      item.appendChild(sw);
-      item.appendChild(document.createTextNode(` ${k}`));
-      kindRow.appendChild(item);
-    }
-    legend.appendChild(kindRow);
+  const kindRow = createElement('div', 'pkc-graph-legend-row');
+  for (const k of Array.from(kinds).sort()) {
+    const item = createElement('span', 'pkc-graph-legend-item');
+    const sw = createElement('span', 'pkc-graph-legend-swatch');
+    sw.style.background = relationColor(k);
+    item.appendChild(sw);
+    item.appendChild(document.createTextNode(` ${k}`));
+    kindRow.appendChild(item);
   }
+  if (state.showHyperlinks && state.hyperlinks.length > 0) {
+    const item = createElement('span', 'pkc-graph-legend-item');
+    const sw = createElement('span', 'pkc-graph-legend-swatch');
+    sw.style.background = '#33d6c0';
+    item.appendChild(sw);
+    item.appendChild(document.createTextNode(' 内部リンク'));
+    kindRow.appendChild(item);
+  }
+  if (state.showExternal && state.externalLinks.length > 0) {
+    const item = createElement('span', 'pkc-graph-legend-item');
+    const sw = createElement('span', 'pkc-graph-legend-swatch');
+    sw.style.background = '#5b8def';
+    item.appendChild(sw);
+    item.appendChild(document.createTextNode(' 外部 URL'));
+    kindRow.appendChild(item);
+  }
+  if (kindRow.childElementCount > 0) legend.appendChild(kindRow);
   return legend;
 }
 

@@ -38,17 +38,31 @@ export interface GraphNodeProjection {
   updated_at: string;
   tags?: string[];
   color_tag?: string | null;
+  /** Parent folder lid (structural) — for compound/grouped layout. */
+  folder?: string;
 }
 export interface GraphEdgeProjection {
   from: string;
   to: string;
   kind: string;
 }
+/** In-document internal link (entry → entry). */
+export interface GraphHyperlink {
+  from: string;
+  to: string;
+}
+/** In-document external link (entry → outside URL). */
+export interface GraphExternalLink {
+  from: string;
+  url: string;
+}
 export interface GraphProjection {
   containerId: string;
   title: string;
   nodes: GraphNodeProjection[];
   edges: GraphEdgeProjection[];
+  hyperlinks?: GraphHyperlink[];
+  externalLinks?: GraphExternalLink[];
 }
 
 export type ChildToHost =
