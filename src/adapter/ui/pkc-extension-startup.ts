@@ -45,6 +45,11 @@ export function launchPkcExtensionEntry(
     html,
     getContainer: () => dispatcher.getState().container,
     onSelect: (lid) => dispatcher.dispatch({ type: 'SELECT_ENTRY', lid }),
+    onOpen: (lid) => {
+      // Double-click in the graph → open the entry here and bring PKC2 forward.
+      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid, revealInSidebar: true });
+      try { window.focus(); } catch { /* noop */ }
+    },
   });
 }
 

@@ -47,3 +47,13 @@ html, body {
 .pkc-graph-source-label[data-pkc-demo="true"] {
   color: var(--c-warn);
 }
+
+.pkc-graph-search {
+  font-size: var(--fs-sm);
+  padding: 2px 6px;
+  background: var(--c-surface, #111510);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius, 2px);
+  min-width: 180px;
+}

@@ -1,10 +1,11 @@
 /**
  * Cytoscape-based graph renderer.
  *
- * Renders the projection with Cytoscape.js: data-driven node/edge styling,
- * per-mode layouts (fcose force / breadthfirst hierarchy / time-line preset),
- * **folder compound boxes**, in-document **internal hyperlinks**, and
- * **external URL nodes** that reach outside the container.
+ * Purpose-driven **views** (explore / folders / connectivity / timeline), an
+ * orthogonal **colour-by** axis, **search** highlighting, folder **compound
+ * boxes**, in-document **internal hyperlinks**, and **external links
+ * aggregated by domain** (so they reach outside the container without breaking
+ * the folder grouping). Tap a node to select; double-tap to open it in PKC2.
  */
 
 import cytoscape, { type Core, type ElementDefinition, type StylesheetJson } from 'cytoscape';
@@ -12,25 +13,14 @@ import fcose from 'cytoscape-fcose';
 import type { Entry, Relation } from './types';
 import type { GraphHyperlink, GraphExternalLink } from './protocol';
 import { isSystemArchetype, getAncestorFolderLids } from './util';
-import {
-  archetypeColor,
-  archetypeEmoji,
-  relationColor,
-  colorTagColor,
-  hashColor,
-  depthColor,
-} from './colors';
+import { archetypeColor, archetypeEmoji, relationColor, colorTagColor, hashColor, depthColor } from './colors';
 
 cytoscape.use(fcose);
 
-export type GraphMode =
-  | 'relations'
-  | 'color-tags'
-  | 'tag-groups'
-  | 'folder-hierarchy'
-  | 'time-proximity';
+export type GraphView = 'explore' | 'folders' | 'connectivity' | 'timeline';
+export type ColorBy = 'archetype' | 'color-tag' | 'tag' | 'depth';
 
-const COMPOUND_MODES: ReadonlySet<GraphMode> = new Set(['relations', 'color-tags', 'tag-groups']);
+const COMPOUND_VIEWS: ReadonlySet<GraphView> = new Set(['explore', 'folders']);
 
 export interface GraphRenderInput {
   entries: Entry[];
@@ -38,14 +28,17 @@ export interface GraphRenderInput {
   hyperlinks: GraphHyperlink[];
   externalLinks: GraphExternalLink[];
   folderOf: Map<string, string>;
-  mode: GraphMode;
-  focusLid: string | null;
+  view: GraphView;
+  colorBy: ColorBy;
+  search: string;
   showHyperlinks: boolean;
   showExternal: boolean;
 }
 
 export interface CytoscapeGraph {
   update(input: GraphRenderInput): void;
+  /** Highlight/dim by query without re-running layout (live search). */
+  applySearch(query: string): void;
   resetView(): void;
   destroy(): void;
 }
@@ -81,7 +74,6 @@ function buildStyle(): StylesheetJson {
         'border-color': 'rgba(255,255,255,0.25)',
       },
     },
-    // Folder compound boxes.
     {
       selector: ':parent',
       style: {
@@ -93,24 +85,20 @@ function buildStyle(): StylesheetJson {
         shape: 'round-rectangle',
         label: 'data(label)',
         'text-valign': 'top',
-        'text-halign': 'center',
         'font-size': 11,
         color: '#f0c060',
         padding: '14px',
       },
     },
-    // External URL nodes.
     {
-      selector: 'node[type="external"]',
+      selector: 'node[type="domain"]',
       style: {
         'background-color': '#2a3550',
         'border-color': '#5b8def',
         'border-width': 1.5,
         shape: 'diamond',
-        width: 18,
-        height: 18,
         color: '#9bc0ff',
-        'font-size': 8,
+        'font-size': 9,
       },
     },
     {
@@ -125,45 +113,32 @@ function buildStyle(): StylesheetJson {
         opacity: 0.62,
       },
     },
-    // Internal hyperlinks (in-document entry references).
     {
       selector: 'edge[kind="hyperlink"]',
-      style: {
-        'line-color': '#33d6c0',
-        'line-style': 'dashed',
-        'target-arrow-color': '#33d6c0',
-        width: 1.6,
-        opacity: 0.8,
-      },
+      style: { 'line-color': '#33d6c0', 'line-style': 'dashed', 'target-arrow-color': '#33d6c0', width: 1.6, opacity: 0.8 },
     },
-    // External links (to outside URLs).
     {
       selector: 'edge[kind="external"]',
-      style: {
-        'line-color': '#5b8def',
-        'line-style': 'dotted',
-        'target-arrow-shape': 'none',
-        width: 1.2,
-        opacity: 0.55,
-      },
+      style: { 'line-color': '#5b8def', 'line-style': 'dotted', 'target-arrow-shape': 'none', width: 1.2, opacity: 0.55 },
     },
     {
       selector: 'node.focused, node:selected',
       style: { 'border-width': 3, 'border-color': '#33ff66', color: '#eaffea' },
     },
+    {
+      selector: 'node.match',
+      style: { 'border-width': 3, 'border-color': '#ffd23f' },
+    },
+    { selector: '.dim', style: { opacity: 0.12 } },
   ] as unknown) as StylesheetJson;
 }
 
-function nodeColor(e: Entry, mode: GraphMode, depth: number): string {
-  switch (mode) {
-    case 'color-tags':
-      return colorTagColor(e.color_tag);
-    case 'tag-groups':
-      return e.tags && e.tags.length > 0 ? hashColor(e.tags[0]!) : '#6b7280';
-    case 'folder-hierarchy':
-      return e.archetype === 'folder' ? '#f0a500' : depthColor(depth);
-    default:
-      return archetypeColor(e.archetype);
+function nodeColor(e: Entry, colorBy: ColorBy, depth: number): string {
+  switch (colorBy) {
+    case 'color-tag': return colorTagColor(e.color_tag);
+    case 'tag': return e.tags && e.tags.length > 0 ? hashColor(e.tags[0]!) : '#6b7280';
+    case 'depth': return e.archetype === 'folder' ? '#f0a500' : depthColor(depth);
+    default: return archetypeColor(e.archetype);
   }
 }
 
@@ -171,26 +146,25 @@ function buildElements(input: GraphRenderInput): {
   elements: ElementDefinition[];
   preset: Map<string, { x: number; y: number }> | null;
 } {
-  const { entries, relations, mode, showHyperlinks, showExternal, folderOf } = input;
+  const { entries, relations, view, colorBy, showHyperlinks, showExternal, folderOf } = input;
   const userEntries = entries.filter((e) => !isSystemArchetype(e.archetype));
   const scope = new Set(userEntries.map((e) => e.lid));
-  const compound = COMPOUND_MODES.has(mode);
+  const compound = COMPOUND_VIEWS.has(view);
 
   const relEdges = relations.filter((r) => {
     if (!scope.has(r.from) || !scope.has(r.to)) return false;
-    if (mode === 'time-proximity') return false;
-    if (mode === 'folder-hierarchy') return r.kind === 'structural';
+    if (view === 'timeline') return false;
+    if (view === 'folders') return r.kind === 'structural';
+    if (view === 'connectivity') return r.kind === 'semantic' || r.kind === 'categorical';
     return r.kind === 'structural' || r.kind === 'semantic' || r.kind === 'categorical';
   });
-
-  const hyperEdges = showHyperlinks && mode !== 'time-proximity'
+  const hyperEdges = showHyperlinks && view !== 'timeline'
     ? input.hyperlinks.filter((h) => scope.has(h.from) && scope.has(h.to))
     : [];
-  const extLinks = showExternal && mode !== 'time-proximity'
+  const extLinks = showExternal && view !== 'timeline'
     ? input.externalLinks.filter((x) => scope.has(x.from))
     : [];
 
-  // degree (visible structural/semantic + hyperlinks) → node size
   const degree = new Map<string, number>();
   const bump = (id: string): void => { degree.set(id, (degree.get(id) ?? 0) + 1); };
   for (const r of relEdges) { bump(r.from); bump(r.to); }
@@ -200,16 +174,17 @@ function buildElements(input: GraphRenderInput): {
   const elements: ElementDefinition[] = [];
 
   for (const e of userEntries) {
-    const depth = mode === 'folder-hierarchy'
+    const depth = colorBy === 'depth' || view === 'folders'
       ? getAncestorFolderLids(relations, entries, e.lid).length
       : 0;
     const deg = degree.get(e.lid) ?? 0;
     const data: ElementDefinition['data'] = {
       id: e.lid,
       label: `${archetypeEmoji(e.archetype)} ${e.title || e.lid}`,
-      color: nodeColor(e, mode, depth),
+      search: `${e.title} ${(e.tags ?? []).join(' ')}`.toLowerCase(),
+      color: nodeColor(e, colorBy, depth),
       shape: e.archetype === 'folder' ? 'round-rectangle' : 'ellipse',
-      size: 22 + Math.min(deg, 12) * 4,
+      size: 22 + Math.min(deg, 14) * 4,
       archetype: e.archetype,
     };
     if (compound) {
@@ -219,15 +194,21 @@ function buildElements(input: GraphRenderInput): {
     elements.push({ data });
   }
 
-  // External URL nodes (deduped) + edges.
+  // External links aggregated by DOMAIN (one hub per domain; folders untouched).
   if (extLinks.length > 0) {
-    const urls = new Set(extLinks.map((x) => x.url));
-    for (const url of urls) {
-      elements.push({ data: { id: `ext:${url}`, type: 'external', label: `🌐 ${hostname(url)}`, color: '#2a3550', shape: 'diamond', size: 18 } });
+    const byDomain = new Map<string, Set<string>>();
+    for (const x of extLinks) {
+      const d = hostname(x.url);
+      let s = byDomain.get(d);
+      if (!s) { s = new Set(); byDomain.set(d, s); }
+      s.add(x.from);
     }
-    for (let i = 0; i < extLinks.length; i++) {
-      const x = extLinks[i]!;
-      elements.push({ data: { id: `xe${i}`, source: x.from, target: `ext:${x.url}`, kind: 'external', ecolor: '#5b8def', ewidth: 1.2 } });
+    let i = 0;
+    for (const [domain, froms] of byDomain) {
+      elements.push({ data: { id: `dom:${domain}`, type: 'domain', label: `🌐 ${domain}`, color: '#2a3550', shape: 'diamond', size: 16 + Math.min(froms.size, 12) * 3 } });
+      for (const from of froms) {
+        elements.push({ data: { id: `xe${i++}`, source: from, target: `dom:${domain}`, kind: 'external', ecolor: '#5b8def', ewidth: 1.2 } });
+      }
     }
   }
 
@@ -240,9 +221,8 @@ function buildElements(input: GraphRenderInput): {
     elements.push({ data: { id: `h${i}`, source: h.from, target: h.to, kind: 'hyperlink', ecolor: '#33d6c0', ewidth: 1.6 } });
   }
 
-  // time-proximity preset positions.
   let preset: Map<string, { x: number; y: number }> | null = null;
-  if (mode === 'time-proximity') {
+  if (view === 'timeline') {
     preset = new Map();
     const times = userEntries.map((e) => Date.parse(e.updated_at)).filter((t) => Number.isFinite(t));
     const minT = times.length ? Math.min(...times) : 0;
@@ -265,49 +245,59 @@ function buildElements(input: GraphRenderInput): {
   return { elements, preset };
 }
 
-function layoutFor(
-  mode: GraphMode,
-  preset: Map<string, { x: number; y: number }> | null,
-): cytoscape.LayoutOptions {
-  if (mode === 'time-proximity' && preset) {
-    return {
-      name: 'preset',
-      positions: (n: cytoscape.NodeSingular) => preset.get(n.id()) ?? { x: 0, y: 0 },
-      fit: true,
-      padding: 40,
-    } as unknown as cytoscape.LayoutOptions;
-  }
-  if (mode === 'folder-hierarchy') {
-    return { name: 'breadthfirst', directed: true, spacingFactor: 1.1, padding: 30, animate: false } as cytoscape.LayoutOptions;
+function layoutFor(view: GraphView, preset: Map<string, { x: number; y: number }> | null): cytoscape.LayoutOptions {
+  if (view === 'timeline' && preset) {
+    return { name: 'preset', positions: (n: cytoscape.NodeSingular) => preset.get(n.id()) ?? { x: 0, y: 0 }, fit: true, padding: 40 } as unknown as cytoscape.LayoutOptions;
   }
   return {
     name: 'fcose',
     quality: 'default',
     animate: true,
-    animationDuration: 500,
+    animationDuration: 450,
     randomize: true,
-    nodeRepulsion: 6500,
-    idealEdgeLength: 90,
+    nodeRepulsion: view === 'connectivity' ? 9000 : 6500,
+    idealEdgeLength: view === 'connectivity' ? 120 : 90,
     nestingFactor: 0.2,
     padding: 30,
   } as unknown as cytoscape.LayoutOptions;
 }
 
+function applySearch(cy: Core, query: string): void {
+  const q = query.trim().toLowerCase();
+  if (!q) { cy.elements().removeClass('dim match'); return; }
+  cy.nodes().forEach((n) => {
+    const hay = String(n.data('search') ?? n.data('label') ?? '').toLowerCase();
+    const match = hay.includes(q);
+    n.toggleClass('match', match);
+    n.toggleClass('dim', !match);
+  });
+  cy.edges().forEach((e) => {
+    e.toggleClass('dim', e.source().hasClass('dim') || e.target().hasClass('dim'));
+  });
+}
+
 export function createCytoscapeGraph(
   container: HTMLElement,
   onSelect: (lid: string) => void,
+  onOpen: (lid: string) => void,
 ): CytoscapeGraph {
-  const cy: Core = cytoscape({
-    container,
-    style: buildStyle(),
-    wheelSensitivity: 0.2,
-    minZoom: 0.05,
-    maxZoom: 4,
-  });
+  const cy: Core = cytoscape({ container, style: buildStyle(), wheelSensitivity: 0.2, minZoom: 0.05, maxZoom: 4 });
 
+  // Tap = select, double-tap = open (manual detection).
+  let lastTapId = '';
+  let lastTapAt = 0;
   cy.on('tap', 'node', (evt) => {
     const id = evt.target.id();
-    if (!id.startsWith('ext:')) onSelect(id);
+    if (id.startsWith('dom:')) return;
+    const now = Date.now();
+    if (id === lastTapId && now - lastTapAt < 320) {
+      onOpen(id);
+      lastTapId = '';
+    } else {
+      onSelect(id);
+      lastTapId = id;
+      lastTapAt = now;
+    }
   });
 
   const tip = document.createElement('div');
@@ -320,7 +310,7 @@ export function createCytoscapeGraph(
   container.appendChild(tip);
   cy.on('mouseover', 'node', (evt) => {
     const id = evt.target.id();
-    tip.textContent = id.startsWith('ext:') ? id.slice(4) : String(evt.target.data('label') ?? '');
+    tip.textContent = id.startsWith('dom:') ? id.slice(4) : String(evt.target.data('label') ?? '');
     tip.style.display = 'block';
   });
   cy.on('mousemove', 'node', (evt) => {
@@ -335,11 +325,15 @@ export function createCytoscapeGraph(
       const { elements, preset } = buildElements(input);
       cy.elements().remove();
       cy.add(elements);
-      if (input.focusLid) cy.getElementById(input.focusLid).addClass('focused');
-      cy.layout(layoutFor(input.mode, preset)).run();
+      cy.layout(layoutFor(input.view, preset)).run();
+      applySearch(cy, input.search);
       container.setAttribute('data-pkc-node-count', String(cy.nodes('[!type]').length));
-      container.setAttribute('data-pkc-external-count', String(cy.nodes('[type="external"]').length));
+      container.setAttribute('data-pkc-external-count', String(cy.nodes('[type="domain"]').length));
       container.setAttribute('data-pkc-hyperlink-count', String(cy.edges('[kind="hyperlink"]').length));
+    },
+    applySearch(query: string): void {
+      applySearch(cy, query);
+      container.setAttribute('data-pkc-match-count', String(cy.nodes('.match').length));
     },
     resetView(): void { cy.fit(undefined, 30); },
     destroy(): void { cy.destroy(); },

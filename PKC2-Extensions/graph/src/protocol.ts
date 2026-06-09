@@ -67,7 +67,8 @@ export interface GraphProjection {
 
 export type ChildToHost =
   | { pkc: typeof PKC_GRAPH; v: 1; t: 'hello' }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'select'; nonce: string; lid: string };
+  | { pkc: typeof PKC_GRAPH; v: 1; t: 'select'; nonce: string; lid: string }
+  | { pkc: typeof PKC_GRAPH; v: 1; t: 'open'; nonce: string; lid: string };
 
 export type HostToChild =
   | { pkc: typeof PKC_GRAPH; v: 1; t: 'welcome'; nonce: string; projection: GraphProjection }
@@ -117,6 +118,15 @@ export class GraphChannel {
     if (!this.host || this.nonce === null) return;
     this.host.postMessage(
       { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'select', nonce: this.nonce, lid } satisfies ChildToHost,
+      safeTargetOrigin(),
+    );
+  }
+
+  /** Ask the host to open / focus the entry in PKC2 (double-click). */
+  open(lid: string): void {
+    if (!this.host || this.nonce === null) return;
+    this.host.postMessage(
+      { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'open', nonce: this.nonce, lid } satisfies ChildToHost,
       safeTargetOrigin(),
     );
   }

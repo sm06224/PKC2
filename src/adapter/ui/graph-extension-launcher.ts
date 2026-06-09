@@ -37,6 +37,8 @@ export interface LaunchGraphExtensionOptions {
   getContainer: () => Container | null;
   /** Invoked when the extension reports a node selection. */
   onSelect?: (lid: string) => void;
+  /** Invoked when the extension asks to open / focus an entry (double-click). */
+  onOpen?: (lid: string) => void;
 }
 
 export interface GraphExtensionHandle {
@@ -96,6 +98,8 @@ export function launchGraphExtension(opts: LaunchGraphExtensionOptions): GraphEx
       sendProjection('welcome');
     } else if (d.t === 'select' && d.nonce === nonce && typeof d.lid === 'string') {
       opts.onSelect?.(d.lid);
+    } else if (d.t === 'open' && d.nonce === nonce && typeof d.lid === 'string') {
+      opts.onOpen?.(d.lid);
     }
   };
 

@@ -10,19 +10,25 @@
 import './tokens.css';
 import './graph-styles.css';
 import './page.css';
-import { createCytoscapeGraph, type CytoscapeGraph, type GraphMode } from './cytoscape-renderer';
+import { createCytoscapeGraph, type CytoscapeGraph, type GraphView, type ColorBy } from './cytoscape-renderer';
 import { createElement, isSystemArchetype } from './util';
 import { archetypeColor, archetypeEmoji, relationColor } from './colors';
 import type { ArchetypeId, Entry, Relation, RelationKind } from './types';
 import { makeDemoContainer } from './demo-container';
 import { GraphChannel, type GraphProjection } from './protocol';
 
-const MODE_LABELS: { v: GraphMode; label: string }[] = [
-  { v: 'relations', label: 'Relations' },
-  { v: 'color-tags', label: 'Color tags' },
-  { v: 'tag-groups', label: 'Tag groups' },
-  { v: 'folder-hierarchy', label: 'Folder hierarchy' },
-  { v: 'time-proximity', label: 'Time proximity' },
+// Purpose-driven views: each bundles a layout + which links/grouping it emphasises.
+const VIEW_LABELS: { v: GraphView; label: string }[] = [
+  { v: 'explore', label: '🧭 探索(全体)' },
+  { v: 'folders', label: '📁 フォルダ整理' },
+  { v: 'connectivity', label: '🔗 つながり' },
+  { v: 'timeline', label: '🕒 時系列' },
+];
+const COLOR_LABELS: { v: ColorBy; label: string }[] = [
+  { v: 'archetype', label: '色: 種別' },
+  { v: 'color-tag', label: '色: カラータグ' },
+  { v: 'tag', label: '色: タグ' },
+  { v: 'depth', label: '色: フォルダ深さ' },
 ];
 
 interface ViewState {
@@ -32,7 +38,9 @@ interface ViewState {
   externalLinks: { from: string; url: string }[];
   folderOf: Map<string, string>;
   title: string;
-  mode: GraphMode;
+  view: GraphView;
+  colorBy: ColorBy;
+  search: string;
   source: 'connecting' | 'host' | 'demo';
   showHyperlinks: boolean;
   showExternal: boolean;
@@ -45,7 +53,9 @@ const state: ViewState = {
   externalLinks: [],
   folderOf: new Map(),
   title: '',
-  mode: 'relations',
+  view: 'explore',
+  colorBy: 'archetype',
+  search: '',
   source: 'connecting',
   showHyperlinks: true,
   showExternal: false,
@@ -78,10 +88,11 @@ function ensureLayout(): void {
   graphHost.setAttribute('data-pkc-region', 'graph-view');
   rootEl.appendChild(toolbarHost);
   rootEl.appendChild(graphHost);
-  graph = createCytoscapeGraph(graphHost, (lid) => {
-    // Node tapped → tell the host (Cytoscape handles the visual selection).
-    channel?.select(lid);
-  });
+  graph = createCytoscapeGraph(
+    graphHost,
+    (lid) => channel?.select(lid),
+    (lid) => channel?.open(lid),
+  );
 }
 
 function applyProjection(p: GraphProjection): void {
@@ -138,8 +149,9 @@ function render(): void {
     hyperlinks: state.hyperlinks,
     externalLinks: state.externalLinks,
     folderOf: state.folderOf,
-    mode: state.mode,
-    focusLid: null,
+    view: state.view,
+    colorBy: state.colorBy,
+    search: state.search,
     showHyperlinks: state.showHyperlinks,
     showExternal: state.showExternal,
   });
@@ -166,17 +178,46 @@ function renderToolbar(): HTMLElement {
   }
   toolbar.appendChild(status);
 
-  const select = document.createElement('select');
-  select.className = 'pkc-graph-mode-select';
-  for (const m of MODE_LABELS) {
+  // View (purpose) selector.
+  const viewSel = document.createElement('select');
+  viewSel.className = 'pkc-graph-mode-select';
+  viewSel.setAttribute('data-pkc-field', 'graph-view');
+  for (const m of VIEW_LABELS) {
     const opt = document.createElement('option');
     opt.value = m.v;
     opt.textContent = m.label;
-    if (m.v === state.mode) opt.selected = true;
-    select.appendChild(opt);
+    if (m.v === state.view) opt.selected = true;
+    viewSel.appendChild(opt);
   }
-  select.addEventListener('change', () => { state.mode = select.value as GraphMode; render(); });
-  toolbar.appendChild(select);
+  viewSel.addEventListener('change', () => { state.view = viewSel.value as GraphView; render(); });
+  toolbar.appendChild(viewSel);
+
+  // Colour-by (orthogonal) selector.
+  const colorSel = document.createElement('select');
+  colorSel.className = 'pkc-graph-mode-select';
+  colorSel.setAttribute('data-pkc-field', 'graph-color');
+  for (const m of COLOR_LABELS) {
+    const opt = document.createElement('option');
+    opt.value = m.v;
+    opt.textContent = m.label;
+    if (m.v === state.colorBy) opt.selected = true;
+    colorSel.appendChild(opt);
+  }
+  colorSel.addEventListener('change', () => { state.colorBy = colorSel.value as ColorBy; render(); });
+  toolbar.appendChild(colorSel);
+
+  // Search — live highlight without re-layout (no toolbar rebuild on keystroke).
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'pkc-graph-search';
+  search.placeholder = '🔍 タイトル・タグで絞り込み';
+  search.value = state.search;
+  search.setAttribute('data-pkc-field', 'graph-search');
+  search.addEventListener('input', () => {
+    state.search = search.value;
+    graph?.applySearch(state.search);
+  });
+  toolbar.appendChild(search);
 
   // In-document link toggles.
   const linkBtn = createElement('button', 'pkc-btn-small');
