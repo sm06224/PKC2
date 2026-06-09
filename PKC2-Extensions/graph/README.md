@@ -24,49 +24,51 @@ src/
   graph-canvas.ts     Canvas renderer + gestures (ported verbatim; deps trimmed to ./flags, ./types)
   force-layout.ts     Pure force simulation (zero deps)
   payload-builder.ts  Container → {nodes, links} per mode + time-proximity seed (ported from renderer)
-  pkc-message.ts      PKC-Message v2 client (JSON-RPC 2.0 over postMessage); vendored envelope
+  protocol.ts         Secure PKC-Graph channel client + minimal GraphProjection types
   flags.ts            Tuning params — decoupled from the core flag registry into a live `graphSettings`
-  types.ts            Vendored minimal PKC2 data model (Entry / Relation / Container …)
+  types.ts            Vendored minimal PKC2 data model (Entry / Relation …)
   util.ts             createElement / isSystemArchetype / structural-parent walk
-  demo-container.ts   Sample container for first open
-  main.ts             Local-state orchestration: toolbar + canvas + legend + container sources
+  demo-container.ts   Sample container for standalone open
+  main.ts             Local-state orchestration: toolbar + canvas + legend, fed by the channel
 ```
 
-The only host coupling that was dropped: multi-select bulk operations and the
-relation wire editor (both needed the host's dispatcher). Everything else —
-the five modes (relations / color-tags / tag-groups / folder-hierarchy /
-time-proximity), galaxy mode, Venn memberships, time axis, revision dots — is
-intact.
+The host side lives in PKC2:
+`src/features/graph-extension/projection.ts` (build the minimal projection)
+and `src/adapter/ui/graph-extension-launcher.ts` (launch + secure channel).
 
-## Container sources
+The only host coupling dropped from the original in-product graph: multi-select
+bulk operations and the relation wire editor (both needed the host's
+dispatcher). Everything else — the five modes (relations / color-tags /
+tag-groups / folder-hierarchy / time-proximity), galaxy mode, Venn memberships,
+time axis — is intact. (Revision dots are gone: revisions are intentionally not
+in the projection.)
 
-1. **Host postMessage** — the host posts `{ type: 'pkc-graph:container', container }`.
-2. **File load** — the 📂 toolbar button reads a `.pkc` / pkc-data JSON, or a
-   PKC2 HTML artifact with an embedded `<script type="application/pkc-data">`.
-3. **Demo** — a bundled sample container renders on first open.
+## How it is launched + the secure channel
 
-### PKC-Message contract
+PKC2 stores this extension's single-file HTML in `container.assets` and the
+launcher opens it with `window.open('') + document.write` — so the child is
+**same-origin** with the host and `window.opener` points back to PKC2. The host
+then serves a **minimal `GraphProjection`** (node/edge metadata only — never
+bodies, assets or revisions) over a secure channel.
 
-The extension is a **PKC-Message v2 client** — JSON-RPC 2.0 over `postMessage`,
-the same envelope the host uses (`src/adapter/transport/envelope-v2.ts`),
-vendored into `src/pkc-message.ts`. On mount it opens a channel to
-`window.parent` and:
+### Secure handshake — the channel must start safely
 
-| Direction | Method | Form | Payload |
+| Step | Direction | Message | Security gate |
 | --- | --- | --- | --- |
-| ext → host | `pkc.container.snapshot` | request | → result `{ container }` |
-| host → ext | `pkc.container.changed` | notification | `{ container }` (live update) |
-| ext → host | `pkc.graph.nodeSelected` | notification | `{ lid }` |
+| 1 | child → host | `hello` | host accepts only if `event.source === openedWindow` **and** `event.origin === location.origin` (window identity is unforgeable) |
+| 2 | host → child | `welcome { nonce, projection }` | child pins the nonce + `event.source === window.opener` + origin |
+| 3 | child → host | `select { nonce, lid }` | host requires matching nonce + source + origin |
+| — | host → child | `projection { nonce, ... }` | live update; child requires matching nonce |
 
-`dev-host.html` is a **host simulator**: it mounts the responder side of this
-contract (answers `snapshot`, pushes `changed`, logs `nodeSelected`) and embeds
-the extension in an iframe — a runnable spec of what the real host must do.
+`targetOrigin` is the exact origin; for `file://` (origin string `"null"`, not a
+valid `postMessage` target) it falls back to `'*'`, with security carried by the
+window-identity + nonce binding. Opened standalone (no opener), the extension
+shows a small demo.
 
-The remaining host-side work in PKC2 is to mount `mountMessageBridge`, answer
-`pkc.container.snapshot` with the live container, and launch this extension in an
-iframe/window (a separate PKC2 change — `multi-window-vscode-extension-spec` is
-the reference). When no host answers, the extension falls back to the demo /
-file-load path so it still runs standalone.
+This replaces the earlier **fabricated** `pkc.container.*` methods (which did
+not exist in PKC2) — see git history. The doc-described `export:request` path is
+the *inverse* topology (PKC2 embedded as a child) and does not fit a launcher-
+opened extension; this host→child channel is the additive PKC-Message flow.
 
 ## Develop
 
@@ -94,10 +96,11 @@ The extension is **excluded from the host's tsconfig / eslint / build**
 - ✅ Ported renderer + force layout + payload builder, typecheck clean, builds
   (~33 KB JS / ~5 KB CSS gzip ~13 KB).
 - ✅ Renders a container in a real browser (canvas + legend + mode switch).
-- ✅ Single-file embeddable artifact `pkc2-graph.html` (~38 KB, opens from `file://`).
-- ✅ **PKC-Message v2 client** (extension side) — verified bidirectional with a
-  real 47-entry container via `dev-host.html`: host pushes the container, the
-  graph renders it, node selection flows back as a notification.
-- ☐ Host side in PKC2: answer `pkc.container.snapshot` + launch the extension
-  iframe (separate PKC2 change).
+- ✅ Single-file embeddable artifact `pkc2-graph.html` (~37 KB, opens from `file://`).
+- ✅ **Secure host channel verified with real code on both sides** — the real
+  `launchGraphExtension` opened the real extension, served a real 47-entry
+  projection over the handshake, the graph rendered it, and a node selection
+  flowed back (nonce + source + origin validated). No simulator.
+- ☐ Wire `launchGraphExtension` into PKC2's launcher/action-binder (`open-graph-
+  extension` action + storing this HTML as a container asset).
 - ☐ Feature enrichment now that the UI-integration ceiling is gone.

@@ -27,12 +27,17 @@ const js = readFileSync(resolve(assetsDir, jsFile), 'utf8')
   .replace(/<\/script>/gi, '<\\/script>');
 const css = cssFile ? readFileSync(resolve(assetsDir, cssFile), 'utf8') : '';
 
-// Inline CSS (drop the <link>).
-html = html.replace(/\s*<link[^>]*rel="stylesheet"[^>]*>/i, css ? `\n    <style>\n${css}\n    </style>` : '');
+// Inline CSS (drop the <link>). Use a function replacement so `$` sequences
+// in the asset content are never interpreted as `String.replace` specials
+// (`$&`, `$1`, …) — a real bug that corrupted the inlined JS bundle.
+html = html.replace(
+  /\s*<link[^>]*rel="stylesheet"[^>]*>/i,
+  () => (css ? `\n    <style>\n${css}\n    </style>` : ''),
+);
 // Inline JS (replace the module <script src>).
 html = html.replace(
   /<script[^>]*src="[^"]*\.js"[^>]*><\/script>/i,
-  `<script type="module">\n${js}\n</script>`,
+  () => `<script type="module">\n${js}\n</script>`,
 );
 
 const out = resolve(dir, 'pkc2-graph.html');
