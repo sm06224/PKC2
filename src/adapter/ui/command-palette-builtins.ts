@@ -71,7 +71,6 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
     { mode: 'calendar', ja: 'カレンダービュー', en: 'View: Calendar' },
     { mode: 'kanban',   ja: 'カンバンビュー',   en: 'View: Kanban' },
     { mode: 'filer',    ja: 'ファイラービュー', en: 'View: Filer' },
-    { mode: 'graph',    ja: 'グラフビュー',     en: 'View: Graph' },
     { mode: 'launcher', ja: 'ランチャービュー', en: 'View: Launcher' },
   ] as const;
   for (const v of viewModes) {
@@ -220,11 +219,10 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
   // ─── View tabs(pgc-87、MASTER.md §4.3)─────────
   // tab strip(`shell.tabs_enabled` 必須)に workspace-level view tab を
   // open する。`SET_VIEW_MODE` も同時に dispatch して mode 切替。
-  const viewTabModes: { mode: 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher'; ja: string; en: string }[] = [
+  const viewTabModes: { mode: 'calendar' | 'kanban' | 'filer' | 'launcher'; ja: string; en: string }[] = [
     { mode: 'calendar', ja: 'カレンダーを tab で開く', en: 'Open Calendar as tab' },
     { mode: 'kanban',   ja: 'カンバンを tab で開く',   en: 'Open Kanban as tab' },
     { mode: 'filer',    ja: 'ファイラーを tab で開く', en: 'Open Filer as tab' },
-    { mode: 'graph',    ja: 'グラフを tab で開く',     en: 'Open Graph as tab' },
     { mode: 'launcher', ja: 'ランチャーを tab で開く', en: 'Open Launcher as tab' },
   ];
   for (const v of viewTabModes) {
@@ -279,7 +277,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       if (!next) return;
       // view tab(__view:<mode>)なら SET_VIEW_MODE、entry tab なら SELECT_ENTRY
       if (next.startsWith('__view:')) {
-        const mode = next.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        const mode = next.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
         dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
       } else {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: next });
@@ -298,7 +296,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       const prev = getPreviousOpenTabLid();
       if (!prev) return;
       if (prev.startsWith('__view:')) {
-        const mode = prev.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        const mode = prev.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
         dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
       } else {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: prev });
@@ -319,7 +317,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       // closeActiveTab は次に focus すべき lid を返す ── 続けて SELECT/SET_VIEW
       if (nextLid) {
         if (nextLid.startsWith('__view:')) {
-          const mode = nextLid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+          const mode = nextLid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
           dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         } else {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: nextLid });
@@ -340,7 +338,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       if (!lid) return;
       persistTabState();
       if (lid.startsWith('__view:')) {
-        const mode = lid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        const mode = lid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
         dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
       } else {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });

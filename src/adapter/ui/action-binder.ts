@@ -41,8 +41,6 @@ import {
   isMediaViewerOpen,
 } from './media-viewer';
 import { openImagePreview } from './image-preview';
-import { resetGraphCanvasZoom, setGraphEditMode } from './graph-canvas';
-import { openRelationKindPopup } from './relation-kind-popup';
 import {
   enhanceTable,
   sortColumn,
@@ -1500,7 +1498,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const mode = target.getAttribute('data-pkc-view-mode');
         if (!mode) break;
         if (mode === 'detail' || mode === 'calendar' || mode === 'kanban'
-            || mode === 'filer' || mode === 'graph' || mode === 'launcher') {
+            || mode === 'filer' || mode === 'launcher') {
           dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         }
         break;
@@ -1512,7 +1510,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         const mode = target.getAttribute('data-pkc-view-mode');
         if (!mode) break;
         if (mode === 'calendar' || mode === 'kanban' || mode === 'filer'
-            || mode === 'graph' || mode === 'launcher') {
+            || mode === 'launcher') {
           openViewTab(mode);
           persistTabState();
           dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
@@ -1533,7 +1531,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           if (newActive.startsWith('__view:')) {
             const mode = newActive.slice('__view:'.length);
             if (mode === 'calendar' || mode === 'kanban' || mode === 'filer'
-                || mode === 'graph' || mode === 'launcher') {
+                || mode === 'launcher') {
               dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
             }
           } else {
@@ -3988,8 +3986,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           | 'detail'
           | 'calendar'
           | 'kanban'
-          | 'filer'
-          | 'graph';
+          | 'filer';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         break;
       }
@@ -4087,28 +4084,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         dispatcher.dispatch({ type: 'CLEAR_INVENTORY_QUERY' });
         break;
       }
-      case 'open-graph-for-entry': {
-        // Open graph view focused on this entry. Used from filer cards,
-        // detail headers, sidebar context menus — anywhere entry lid is
-        // available.
-        if (!lid) break;
-        dispatcher.dispatch({ type: 'OPEN_GRAPH_FOR_ENTRY', lid });
-        break;
-      }
-      case 'open-graph-full': {
-        dispatcher.dispatch({ type: 'OPEN_GRAPH_FOR_ENTRY', lid: null });
-        break;
-      }
-      case 'reset-graph-zoom': {
-        // PR-C G1 + PR-H G16 (2026-05-06):galaxy 風 zoom / pan を identity
-        // に戻す。Canvas 化に追従して selector は data-pkc-region="graph-canvas"。
-        // dispatcher を経由せず、現在 mount 中の canvas を直接探して reset。
-        const canvas = root.querySelector<HTMLCanvasElement>(
-          '[data-pkc-region="graph-canvas"]',
-        );
-        if (canvas) resetGraphCanvasZoom(canvas);
-        break;
-      }
       case 'set-meta-pane-mode': {
         // Phase γ-B3:meta pane mode tab。dispatch → re-render で section が
         // mode に応じて絞られる。
@@ -4128,60 +4103,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           dispatcher.dispatch({ type: 'SET_EDIT_MODE', mode });
           saveEditMode(mode);
         }
-        break;
-      }
-      case 'bulk-relate-selected': {
-        // Phase γ-B2-6:multi-select した node を、先頭 node を hub に放射状
-        // (hub → 各 node)で一括 relate。kind は popup で選ぶ。各 dispatch は
-        // reducer 側で重複 / cycle / self-loop を guard 済。
-        const lids = dispatcher.getState().multiSelectedLids;
-        const hub = lids[0];
-        if (lids.length < 2 || !hub) break;
-        if (dispatcher.getState().readonly) break;
-        const rect = target.getBoundingClientRect();
-        openRelationKindPopup({
-          x: rect.left,
-          y: rect.bottom + 4,
-          onPick: (kind) => {
-            for (let i = 1; i < lids.length; i++) {
-              const to = lids[i];
-              if (to) {
-                dispatcher.dispatch({
-                  type: 'CREATE_RELATION',
-                  from: hub,
-                  to,
-                  kind,
-                });
-              }
-            }
-          },
-        });
-        break;
-      }
-      case 'set-graph-edit-mode': {
-        // Phase γ-B2:graph view の View / Edit toggle。edit mode は
-        // canvas-local runtime state(dispatch でない)なので、toggle の
-        // active class も直接更新する。
-        const mode = target.getAttribute('data-pkc-graph-edit-mode');
-        if (mode === 'view' || mode === 'edit') {
-          setGraphEditMode(mode);
-          const toggle = target.closest(
-            '[data-pkc-region="graph-edit-toggle"]',
-          );
-          toggle
-            ?.querySelectorAll('[data-pkc-graph-edit-mode]')
-            .forEach((b) => {
-              b.classList.toggle(
-                'pkc-graph-edit-toggle-active',
-                b.getAttribute('data-pkc-graph-edit-mode') === mode,
-              );
-            });
-        }
-        break;
-      }
-      case 'toggle-graph-region-select-mode': {
-        // PR-E G8 後半 (2026-05-06):region-slice tool の ON/OFF。
-        dispatcher.dispatch({ type: 'TOGGLE_GRAPH_REGION_SELECT_MODE' });
         break;
       }
       case 'copy-bookmarklet-code': {
@@ -4213,34 +4134,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         }
         break;
       }
-      case 'toggle-graph-venn-grouping-mode': {
-        // PR-I G17 (2026-05-06):Venn-style グルーピング ring の ON/OFF。
-        dispatcher.dispatch({ type: 'TOGGLE_GRAPH_VENN_GROUPING_MODE' });
-        break;
-      }
-      case 'toggle-graph-galaxy-mode': {
-        // PR-Δ22 (2026-05-07):galaxy 3D perspective ON/OFF。
-        // graph.galaxy_mode flag(0/1)を SET_FLAG で flip。
-        const cur = dispatcher.getState();
-        const flagsEntry = cur.container?.entries.find((e) => e.archetype === 'system-flags');
-        let curVal = 0;
-        if (flagsEntry) {
-          try {
-            const j = JSON.parse(flagsEntry.body) as { values?: Record<string, unknown> };
-            const v = j.values?.['graph.galaxy_mode'];
-            if (typeof v === 'number') curVal = v;
-          } catch { /* ignore */ }
-        }
-        dispatcher.dispatch({ type: 'SET_FLAG', key: 'graph.galaxy_mode', value: curVal === 1 ? 0 : 1 });
-        break;
-      }
-      case 'clear-graph-region-selection': {
-        // 選択 lids を空に。mode 自体は維持(user が連続 select したい
-        // ケースが多そう)。
-        dispatcher.dispatch({ type: 'SET_GRAPH_REGION_SELECTED_LIDS', lids: [] });
-        break;
-      }
-      // set-graph-mode: handled in handleChange (select element).
       case 'open-image-preview-from-filer': {
         // 領域 10-6 ζ'' Phase 4 follow-up — clicking an image
         // attachment in the filer opens the browser native image
@@ -6142,19 +6035,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
       if (target instanceof HTMLSelectElement) {
         const v = target.value || null;
         dispatcher.dispatch({ type: 'SET_INVENTORY_GROUP_BY', groupBy: v });
-      }
-      return;
-    }
-    if (action === 'set-graph-mode') {
-      // 領域 10-6 ζ'' Phase 4 follow-up 4 — center pane Graph view の
-      // mode 切替 select。
-      // PR-D G8 (2026-05-06):'time-proximity' を 5th option として追加。
-      if (target instanceof HTMLSelectElement) {
-        const v = target.value as 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
-        const valid: typeof v[] = ['relations', 'color-tags', 'tag-groups', 'folder-hierarchy', 'time-proximity'];
-        if (valid.includes(v)) {
-          dispatcher.dispatch({ type: 'SET_GRAPH_MODE', mode: v });
-        }
       }
       return;
     }
@@ -8743,102 +8623,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   root.addEventListener('compositionend', handleSearchCompositionEnd);
   root.addEventListener('change', handleChange);
   root.addEventListener('dblclick', handleDblClick);
-  // PR-E G8 後半 (2026-05-06):graph-canvas が drag-rect 解放時に
-  // emit する CustomEvent を root で listen し、SET_GRAPH_REGION_SELECTED_LIDS
-  // を dispatch する。
-  root.addEventListener('pkc-graph-region-selected', (ev) => {
-    const detail = (ev as CustomEvent).detail as { lids?: unknown } | undefined;
-    if (!detail || !Array.isArray(detail.lids)) return;
-    const lids = detail.lids.filter((s): s is string => typeof s === 'string');
-    dispatcher.dispatch({ type: 'SET_GRAPH_REGION_SELECTED_LIDS', lids });
-  });
-  // PR-H G16 (2026-05-06):Canvas には DOM 子の data-pkc-action は無いので、
-  // graph-canvas が node click を hit-test し CustomEvent で notify する。
-  // root でこの event を listen し SELECT_ENTRY + SET_VIEW_MODE 'detail'
-  // を dispatch する。
-  // PR-K G22 修正(2026-05-06、user 報告):「グラフのノードをクリック
-  // しても該当のエントリが開かない」。SELECT_ENTRY 単独だと viewMode は
-  // 'graph' のままで detail 表示に切り替わらない。SET_VIEW_MODE を併発
-  // して detail に飛ばす(folder click であっても graph では同じ — graph
-  // ペーン内で folder navigation する semantics は無い)。
-  root.addEventListener('pkc-graph-node-click', (ev) => {
-    const detail = (ev as CustomEvent).detail as {
-      lid?: unknown;
-      modifier?: unknown;
-    } | undefined;
-    if (!detail || typeof detail.lid !== 'string' || detail.lid.length === 0) return;
-    // PR-Δ32 (2026-05-07、user 指示「Ctrl+クリックで複数選択」):graph node の
-    // 左クリックで modifier=ctrl/meta を伴うときは TOGGLE_MULTI_SELECT を
-    // dispatch して multi-select に追加/除外する。
-    if (detail.modifier === 'ctrl' || detail.modifier === 'meta' || detail.modifier === 'shift') {
-      dispatcher.dispatch({
-        type: 'TOGGLE_MULTI_SELECT',
-        lid: detail.lid,
-        includeAnchor: false,
-      });
-      return;
-    }
-    // PR-Δ34 (2026-05-07、user 指示「左クリック=graph 操作専用、誤操作防止」):
-    // node 左クリックは SELECT_ENTRY のみで viewMode は変えない。Detail で
-    // 開きたい場合は右クリック context menu の「Open」を経由する。
-    dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: detail.lid });
-  });
-  // PR-Δ34: graph node 上での contextmenu(右クリック)で「開く」を含む
-  // menu を出す。clientX/Y は graph-canvas の hit test 結果と同じ座標系。
-  root.addEventListener('pkc-graph-node-context', (ev) => {
-    const detail = (ev as CustomEvent).detail as {
-      lid?: unknown; x?: unknown; y?: unknown;
-    } | undefined;
-    if (!detail || typeof detail.lid !== 'string') return;
-    if (typeof detail.x !== 'number' || typeof detail.y !== 'number') return;
-    const state = dispatcher.getState();
-    if (!state.container) return;
-    const lid = detail.lid;
-    const entry = state.container.entries.find((en) => en.lid === lid);
-    dismissContextMenu();
-    const folders = state.container.entries
-      .filter((en) => en.archetype === 'folder' && en.lid !== lid)
-      .map((en) => ({ lid: en.lid, title: en.title }));
-    const hasParent = entry
-      ? getStructuralParent(state.container.relations, state.container.entries, lid) !== null
-      : false;
-    const menu = renderContextMenu(lid, detail.x, detail.y, {
-      archetype: entry?.archetype,
-      canEdit: !state.readonly,
-      hasParent,
-      folders,
-      showOpen: true,
-    });
-    root.appendChild(menu);
-    clampMenuToViewport(menu);
-  });
-  root.addEventListener('pkc-graph-wire-drop', (ev) => {
-    // Phase γ-B2-3/4:graph wire drag の drop。kind selector popup を出し、
-    // kind 選択で CREATE_RELATION を dispatch(meta pane の create-relation
-    // と同じ reducer path を共有)。
-    const detail = (ev as CustomEvent).detail as
-      | { source?: unknown; target?: unknown; clientX?: unknown; clientY?: unknown }
-      | undefined;
-    if (
-      !detail ||
-      typeof detail.source !== 'string' ||
-      typeof detail.target !== 'string' ||
-      typeof detail.clientX !== 'number' ||
-      typeof detail.clientY !== 'number'
-    ) {
-      return;
-    }
-    if (dispatcher.getState().readonly) return;
-    const from = detail.source;
-    const to = detail.target;
-    openRelationKindPopup({
-      x: detail.clientX,
-      y: detail.clientY,
-      onPick: (kind) => {
-        dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind });
-      },
-    });
-  });
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);
   root.addEventListener('dragstart', handleCalendarDragStart);

@@ -174,8 +174,6 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.linkMigrationLastApplyResult !== prev.linkMigrationLastApplyResult) return 'full';
   if (state.viewMode !== prev.viewMode) return 'full';
   if (state.filerScope !== prev.filerScope) return 'full';
-  if (state.graphMode !== prev.graphMode) return 'full';
-  if (state.graphFocusLid !== prev.graphFocusLid) return 'full';
   if (state.inventoryQuery !== prev.inventoryQuery) return 'full';
   if (state.filerExplorerSort !== prev.filerExplorerSort) return 'full';
   // PR-NNN (2026-05-06、user 修正指示6「Filer の検索窓が活きていない」):
@@ -183,13 +181,6 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // ケースで render-scope が `'none'` を返し、filter が画面に反映され
   // ない bug。`'full'` trigger に追加して filer 再描画を起こす。
   if (state.filerSearchQuery !== prev.filerSearchQuery) return 'full';
-  // PR-Δ9 (2026-05-07、user 報告「グラフの Venn と region ボタンが
-  // 押しても反応しない」):graphVennGroupingMode / graphRegionSelectMode /
-  // graphRegionSelectedLids が full-trigger に無いため、toggle dispatch
-  // しても再描画されず button visual が固まっていた。PR-NNN と同型 bug。
-  if (state.graphVennGroupingMode !== prev.graphVennGroupingMode) return 'full';
-  if (state.graphRegionSelectMode !== prev.graphRegionSelectMode) return 'full';
-  if (state.graphRegionSelectedLids !== prev.graphRegionSelectedLids) return 'full';
   if (state.calendarYear !== prev.calendarYear) return 'full';
   if (state.calendarMonth !== prev.calendarMonth) return 'full';
   // `multiSelectedLids` / `textlogSelection` / `textToTextlogModal` are NOT
