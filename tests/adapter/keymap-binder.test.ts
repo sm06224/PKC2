@@ -156,11 +156,12 @@ describe('handleKeymapKeydown', () => {
 });
 
 describe('registerBuiltinKeymaps', () => {
-  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F + Alt+Shift+1..6 + Ctrl+K P/R/H/Y/I + Ctrl+\\ + Alt+ArrowLeft/Right + tab nav(pgc-182)', () => {
+  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F + Alt+Shift+1..6 + Ctrl+\\ + Alt+ArrowLeft/Right + tab nav(pgc-182)', () => {
     resetKeymapRegistry();
     registerBuiltinKeymaps();
     const bs = getKeyBindings();
-    expect(bs.length).toBe(26); // 6 + 1 + 1 + 1 + 6 + 4(inspector P/R/H/I、Style 撤去 2026-06-08) + 1 + 2 + 4(pgc-182 tab.next/previous/close-active/reopen-last-closed)
+    // 6 + 1 + 1 + 1 + 6 + 1 + 2 + 4(pgc-182 tab nav)。inspector chord は #790 で撤去。
+    expect(bs.length).toBe(22);
     const ids = bs.map((b) => b.commandId).sort();
     expect(ids).toContain('view.detail');
     expect(ids).toContain('app.flags');
@@ -169,9 +170,6 @@ describe('registerBuiltinKeymaps', () => {
     expect(ids).toContain('activity.explorer');
     expect(ids).toContain('activity.search');
     expect(ids).toContain('activity.pinned');
-    expect(ids).toContain('inspector.properties');
-    expect(ids).toContain('inspector.references');
-    expect(ids).toContain('inspector.ai');
     expect(ids).toContain('split-view.toggle');
     expect(ids).toContain('history.back');
     expect(ids).toContain('history.forward');

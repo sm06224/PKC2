@@ -154,7 +154,6 @@ import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, s
 import { toggleSplitView } from './split-view';
 import { setActivityBarActiveTab, toggleActivityBarSide } from './activity-bar';
 import { setActivitySearchQuery } from './activity-search-tab';
-import { setMetaPaneInspectorActiveTab } from './meta-pane-inspector';
 import { toggleFormatPanelVisible } from './format-panel-visibility';
 import { diffRows } from '../../features/diff/line-diff';
 import { saveEditMode } from '../platform/edit-mode-prefs';
@@ -1377,22 +1376,6 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         toggleFormatPanelVisible();
         const st = dispatcher.getState();
         dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
-        break;
-      }
-      case 'select-meta-pane-tab': {
-        // pgc-109 wave-γ #10(MASTER.md §6.3):Inspector tab strip の
-        // tab を切替。module-local state を更新 → SYS_SYNC で再描画。
-        // 不正 tab id は no-op(防衛的)。
-        e.preventDefault();
-        e.stopPropagation();
-        const tab = target.getAttribute('data-pkc-meta-pane-tab');
-        if (
-          tab === 'properties' || tab === 'references' || tab === 'history'
-        ) {
-          setMetaPaneInspectorActiveTab(tab);
-          const st = dispatcher.getState();
-          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
-        }
         break;
       }
       case 'toggle-textlog-importance-only': {

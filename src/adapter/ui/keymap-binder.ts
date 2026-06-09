@@ -149,14 +149,6 @@ export function registerBuiltinKeymaps(): void {
   registerKeyBinding('Alt+Shift+4', 'activity.relations');
   registerKeyBinding('Alt+Shift+5', 'activity.recent');
   registerKeyBinding('Alt+Shift+6', 'activity.pinned');
-  // pgc-123 wave-γ #22(MASTER.md §6.3 後続):Inspector tab chord shortcut。
-  // `shell.meta_pane_inspector_enabled` + `shell.keymap_registry_enabled`
-  // 両方 ON で `Ctrl+K P/R/H/Y/I` で各 tab に switch。VSCode 流 `Ctrl+K
-  // Ctrl+S` keybinding system の 2-chord 流儀、browser shortcut と衝突なし。
-  registerKeyBinding('Ctrl+K P', 'inspector.properties');
-  registerKeyBinding('Ctrl+K R', 'inspector.references');
-  registerKeyBinding('Ctrl+K H', 'inspector.history');
-  registerKeyBinding('Ctrl+K I', 'inspector.ai');
   // pgc-144 wave-δ #18(user bug report 2026-05-24「センターペインに
   // 編集結果を Split View のように反映する動線」):VSCode 流の
   // Split editor shortcut。`shell.split_view_enabled` + `shell.keymap_

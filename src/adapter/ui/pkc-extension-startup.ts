@@ -32,6 +32,7 @@ export function isSafeMode(): boolean {
 export function launchPkcExtensionEntry(
   entryLid: string,
   dispatcher: Dispatcher,
+  mode: 'window' | 'iframe' = 'window',
 ): GraphExtensionHandle | null {
   const container = dispatcher.getState().container;
   if (!container) return null;
@@ -43,6 +44,7 @@ export function launchPkcExtensionEntry(
   if (!html) return null;
   return launchGraphExtension({
     html,
+    mode,
     getContainer: () => dispatcher.getState().container,
     onSelect: (lid) => dispatcher.dispatch({ type: 'SELECT_ENTRY', lid }),
   });
@@ -65,7 +67,9 @@ export function autostartPkcExtensions(dispatcher: Dispatcher): GraphExtensionHa
     if (e.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(e.body);
     if (att.pkc_extension === true && att.startup === true) {
-      const handle = launchPkcExtensionEntry(e.lid, dispatcher);
+      // Autostart has no user activation → an overlay iframe (a popup would
+      // be blocked).
+      const handle = launchPkcExtensionEntry(e.lid, dispatcher, 'iframe');
       if (handle) handles.push(handle);
     }
   }

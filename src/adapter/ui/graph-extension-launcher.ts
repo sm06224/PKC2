@@ -37,6 +37,13 @@ export interface LaunchGraphExtensionOptions {
   getContainer: () => Container | null;
   /** Invoked when the extension reports a node selection. */
   onSelect?: (lid: string) => void;
+  /**
+   * `'window'` (default): a real popup window via `window.open` — used for a
+   * manual launch, which carries the user activation a popup needs.
+   * `'iframe'`: a same-origin overlay — used for **autostart** at boot, where
+   * there is no activation and a popup would be blocked.
+   */
+  mode?: 'window' | 'iframe';
 }
 
 export interface GraphExtensionHandle {
@@ -58,57 +65,36 @@ function makeNonce(): string {
 }
 
 /**
- * Open the graph extension in a same-origin iframe overlay and wire the
- * secure channel. Returns null if a host window is unavailable.
+ * Open the graph extension and wire the secure channel. `mode: 'window'`
+ * (default) opens a real popup window (manual launch); `mode: 'iframe'` uses a
+ * same-origin overlay (autostart, where a popup would be blocked). Both inject
+ * the single-file extension via `document.write` — it is a **classic IIFE**, so
+ * it executes reliably this way on every browser (a `type="module"` script does
+ * not run via document.write in Firefox). Returns null if a popup was blocked.
  */
 export function launchGraphExtension(opts: LaunchGraphExtensionOptions): GraphExtensionHandle | null {
-  const overlay = document.createElement('div');
-  overlay.setAttribute('data-pkc-region', 'extension-overlay');
-  overlay.style.cssText =
-    'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.4);display:flex;flex-direction:column;';
-
-  const bar = document.createElement('div');
-  bar.style.cssText = 'flex:0 0 auto;display:flex;justify-content:flex-end;padding:4px;background:#000;';
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '✕ 閉じる';
-  closeBtn.setAttribute('data-pkc-action', 'close-extension-overlay');
-  bar.appendChild(closeBtn);
-
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('data-pkc-region', 'extension-frame');
-  iframe.style.cssText = 'flex:1 1 auto;border:0;width:100%;background:#0d0f0a;';
-
-  overlay.appendChild(bar);
-  overlay.appendChild(iframe);
-  document.body.appendChild(overlay);
-
-  // Write the extension HTML into the (about:blank, same-origin) iframe.
-  const doc = iframe.contentWindow?.document;
-  if (!doc || !iframe.contentWindow) {
-    overlay.remove();
-    return null;
-  }
-  doc.open();
-  doc.write(opts.html);
-  doc.close();
-  const childWin = iframe.contentWindow;
-
+  const mode = opts.mode ?? 'window';
   const nonce = makeNonce();
   let established = false;
+  let childWin: Window | null = null;
+  let closeChild: () => void = () => { /* set per mode */ };
 
   const sendProjection = (t: 'welcome' | 'projection'): void => {
     const container = opts.getContainer();
-    if (!container) return;
+    if (!container || !childWin) return;
     const projection = buildGraphProjection(container);
     try {
-      childWin.postMessage({ pkc: PKC_GRAPH, v: PKC_GRAPH_V, t, nonce, projection }, safeTargetOrigin());
+      childWin.postMessage(
+        { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t, nonce, projection },
+        safeTargetOrigin(),
+      );
     } catch {
-      /* frame torn down mid-send */
+      /* child torn down mid-send */
     }
   };
 
   const onMessage = (ev: MessageEvent): void => {
-    // Security gate: only our iframe's window, only same-origin.
+    // Security gate: only the child we launched, only same-origin.
     if (ev.source !== childWin) return;
     if (ev.origin !== window.location.origin) return;
     const d = ev.data as { pkc?: unknown; v?: unknown; t?: unknown; nonce?: unknown; lid?: unknown } | null;
@@ -120,13 +106,52 @@ export function launchGraphExtension(opts: LaunchGraphExtensionOptions): GraphEx
       opts.onSelect?.(d.lid);
     }
   };
-  window.addEventListener('message', onMessage);
 
-  function cleanup(): void {
+  const cleanup = (): void => {
     window.removeEventListener('message', onMessage);
-    overlay.remove();
+    closeChild();
+  };
+
+  if (mode === 'window') {
+    const win = window.open('', '_blank', 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes');
+    if (!win) return null;
+    win.document.open();
+    win.document.write(opts.html); // classic IIFE runs reliably via document.write
+    win.document.close();
+    childWin = win;
+    closeChild = () => { try { win.close(); } catch { /* noop */ } };
+  } else {
+    const overlay = document.createElement('div');
+    overlay.setAttribute('data-pkc-region', 'extension-overlay');
+    overlay.style.cssText =
+      'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.4);display:flex;flex-direction:column;';
+    const bar = document.createElement('div');
+    bar.style.cssText = 'flex:0 0 auto;display:flex;justify-content:flex-end;padding:4px;background:#000;';
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕ 閉じる';
+    closeBtn.setAttribute('data-pkc-action', 'close-extension-overlay');
+    closeBtn.addEventListener('click', () => cleanup());
+    bar.appendChild(closeBtn);
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('data-pkc-region', 'extension-frame');
+    iframe.style.cssText = 'flex:1 1 auto;border:0;width:100%;background:#0d0f0a;';
+    overlay.appendChild(bar);
+    overlay.appendChild(iframe);
+    document.body.appendChild(overlay);
+    // Same-origin iframe; the classic IIFE runs via document.write.
+    const doc = iframe.contentWindow?.document;
+    if (!doc || !iframe.contentWindow) {
+      overlay.remove();
+      return null;
+    }
+    doc.open();
+    doc.write(opts.html);
+    doc.close();
+    childWin = iframe.contentWindow;
+    closeChild = () => overlay.remove();
   }
-  closeBtn.addEventListener('click', cleanup);
+
+  window.addEventListener('message', onMessage);
 
   return {
     pushUpdate: () => { if (established) sendProjection('projection'); },

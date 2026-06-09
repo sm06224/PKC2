@@ -45,11 +45,23 @@ in the projection.)
 
 ## How it is launched + the secure channel
 
-PKC2 stores this extension's single-file HTML in `container.assets` and the
-launcher opens it with `window.open('') + document.write` — so the child is
-**same-origin** with the host and `window.opener` points back to PKC2. The host
-then serves a **minimal `GraphProjection`** (node/edge metadata only — never
-bodies, assets or revisions) over a secure channel.
+PKC2 stores this extension's single-file HTML in `container.assets`. The host
+injects it via `document.write` into a child surface — so the child is
+**same-origin** and points back to PKC2:
+
+- **manual launch** (`AttachmentBody.pkc_extension`, user gesture) → a real
+  popup `window.open` (child reaches the host via `window.opener`);
+- **autostart** (`startup` flag, at boot, no gesture → a popup would be blocked)
+  → a same-origin `<iframe>` overlay (child reaches the host via `window.parent`).
+  Skipped when the page is opened with `?pkc-safe-mode=1`, so a hanging extension
+  can never brick startup.
+
+The single-file is built as a **classic IIFE script** (not `type="module"`):
+a module script does *not* execute when injected via `document.write` in Firefox,
+which left the graph blank — the IIFE runs reliably on every browser.
+
+The host then serves a **minimal `GraphProjection`** (node/edge metadata only —
+never bodies, assets or revisions) over a secure channel.
 
 ### Secure handshake — the channel must start safely
 

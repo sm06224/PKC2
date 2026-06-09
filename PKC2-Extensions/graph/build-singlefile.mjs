@@ -1,12 +1,11 @@
 /**
  * Post-build single-file packager.
  *
- * Reads the Vite `dist/` output and inlines the JS bundle into a
- * `<script type="module">` and the CSS into a `<style>`, producing a
- * single self-contained `pkc2-graph.html` — an iframe-embeddable,
- * portable artifact in the same shape as `PKC2-Extensions/pkc2-manual.html`.
- *
- * Run after `vite build` (wired as `npm run build:single`).
+ * Reads the Vite lib output (`dist/graph.js` IIFE + the extracted CSS) and
+ * emits a single self-contained `pkc2-graph.html` with the CSS in a `<style>`
+ * and the JS in a **classic** `<script>` (NOT `type="module"`). A classic
+ * script runs when the HTML is injected via `document.write` (the launcher /
+ * "Open in New Window" path) on every browser, including Firefox.
  */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -14,33 +13,35 @@ import { fileURLToPath } from 'node:url';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const dist = resolve(dir, 'dist');
-const assetsDir = resolve(dist, 'assets');
 
-let html = readFileSync(resolve(dist, 'index.html'), 'utf8');
-const files = readdirSync(assetsDir);
-const jsFile = files.find((f) => f.endsWith('.js'));
+const files = readdirSync(dist);
 const cssFile = files.find((f) => f.endsWith('.css'));
-if (!jsFile) throw new Error('no JS bundle found in dist/assets');
 
-const js = readFileSync(resolve(assetsDir, jsFile), 'utf8')
-  // Guard against a literal </script> inside the bundle terminating the tag.
+const js = readFileSync(resolve(dist, 'graph.js'), 'utf8')
+  // A literal </script> inside the bundle would close the tag early.
   .replace(/<\/script>/gi, '<\\/script>');
-const css = cssFile ? readFileSync(resolve(assetsDir, cssFile), 'utf8') : '';
+const css = cssFile ? readFileSync(resolve(dist, cssFile), 'utf8') : '';
 
-// Inline CSS (drop the <link>). Use a function replacement so `$` sequences
-// in the asset content are never interpreted as `String.replace` specials
-// (`$&`, `$1`, …) — a real bug that corrupted the inlined JS bundle.
-html = html.replace(
-  /\s*<link[^>]*rel="stylesheet"[^>]*>/i,
-  () => (css ? `\n    <style>\n${css}\n    </style>` : ''),
-);
-// Inline JS (replace the module <script src>).
-html = html.replace(
-  /<script[^>]*src="[^"]*\.js"[^>]*><\/script>/i,
-  () => `<script type="module">\n${js}\n</script>`,
-);
+const html = `<!doctype html>
+<html lang="ja" data-pkc-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PKC2 Graph — Extension</title>
+    <style>
+${css}
+    </style>
+  </head>
+  <body>
+    <div id="graph-root"></div>
+    <script>
+${js}
+    </script>
+  </body>
+</html>
+`;
 
 const out = resolve(dir, 'pkc2-graph.html');
 writeFileSync(out, html);
 const kb = (Buffer.byteLength(html) / 1024).toFixed(1);
-console.log(`wrote ${out} (${kb} KB, single-file)`);
+console.log(`wrote ${out} (${kb} KB, single-file, classic script)`);

@@ -3,7 +3,6 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { render } from '../../src/adapter/ui/renderer';
 import { __resetRegistry, __resetUrlCache } from '../../src/adapter/flags';
 import { createDispatcher } from '../../src/adapter/state/dispatcher';
-import { buildMetaPaneInspectorTabStrip, resetMetaPaneInspectorState } from '../../src/adapter/ui/meta-pane-inspector';
 import type { Container } from '../../src/core/model/container';
 
 function makeContainer(): Container {
@@ -25,7 +24,6 @@ describe('pgc-172 button tab migration(audit step 3)', () => {
   beforeEach(() => {
     __resetRegistry();
     __resetUrlCache();
-    resetMetaPaneInspectorState();
     document.body.innerHTML = '';
     root = document.createElement('div');
     document.body.appendChild(root);
@@ -48,24 +46,5 @@ describe('pgc-172 button tab migration(audit step 3)', () => {
       expect(t.classList.contains('pkc-button-size-tab')).toBe(true);
       expect(t.classList.contains('pkc-view-mode-btn')).toBe(true); // 既存維持
     }
-  });
-
-  it('case 2: Inspector tab strip(3 tab、AI/Style tab 撤去)に pkc-button-base + pkc-button-size-tab class', () => {
-    const strip = buildMetaPaneInspectorTabStrip();
-    const tabs = strip.querySelectorAll<HTMLButtonElement>('.pkc-meta-inspector-tab');
-    expect(tabs.length).toBe(3);
-    for (const t of tabs) {
-      expect(t.classList.contains('pkc-button-base')).toBe(true);
-      expect(t.classList.contains('pkc-button-size-tab')).toBe(true);
-      expect(t.classList.contains('pkc-meta-inspector-tab')).toBe(true);
-    }
-  });
-
-  it('case 3: class order 安定性(base helper 先頭)', () => {
-    const strip = buildMetaPaneInspectorTabStrip();
-    const tab = strip.querySelector<HTMLButtonElement>('.pkc-meta-inspector-tab');
-    const classes = Array.from(tab?.classList ?? []);
-    expect(classes[0]).toBe('pkc-button-base');
-    expect(classes[1]).toBe('pkc-button-size-tab');
   });
 });

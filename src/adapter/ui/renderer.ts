@@ -17,12 +17,11 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellMetaPaneInspectorEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled } from './shell-flags';
 import { diffRows } from '../../features/diff/line-diff';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
 import { isFormatPanelVisible, buildFormatPanelToggleButton } from './format-panel-visibility';
-import { buildMetaPaneInspectorTabStrip, applyInspectorTabFilter } from './meta-pane-inspector';
 import { buildActivityBarElement, buildActivityTabPlaceholder, getActivityBarActiveTab, getActivityBarSide } from './activity-bar';
 import { buildOutlineTab } from './activity-outline-tab';
 import { buildRecentTab } from './activity-recent-tab';
@@ -8744,20 +8743,6 @@ function renderMetaPaneImpl(
     applyMetaPaneModeFilter(meta, metaPaneMode);
   }
 
-  // pgc-109 wave-γ #10(MASTER.md §6.3):Inspector tab strip(flag ON 時)。
-  // meta pane の頭に 5 tab(Properties / References / History / Style /
-  // AI)の strip を prepend、各 tab の visibleRegions に応じて section
-  // 表示を絞る。AI は pgc-147 で機能化、Style は pgc-118 で実装。
-  // pgc-215:inspector section 全体を 1 sub-profile で囲む(flag OFF なら
-  // skip、ON なら Style + AI + tab strip + filter の合計を計測)。
-  const endProfInspector = profileStart('meta:inspector');
-  if (shellMetaPaneInspectorEnabled()) {
-    const strip = buildMetaPaneInspectorTabStrip(entry, container);
-    // tab strip は header / timestamps の直前(meta pane の最上段)に挿入
-    meta.insertBefore(strip, meta.firstChild);
-    applyInspectorTabFilter(meta);
-  }
-  endProfInspector();
 
   return meta;
 }

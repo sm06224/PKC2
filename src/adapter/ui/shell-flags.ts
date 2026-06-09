@@ -403,26 +403,6 @@ export const shellFormatPanelDefaultHiddenEnabled = defineFlag<boolean>(
   },
 );
 
-// meta pane Inspector tab strip(MASTER.md §6.3、pgc-109 wave-γ #10)。
-// ON で meta pane(右ペイン)の頭に 5 tab(Properties / References /
-// History / Style / AI)の tab strip を **prepend**、tab 別に section
-// 可視性を切替える(VSCode の Inspector / Tool Window 相当)。OFF で
-// 従来どおり 13+ section の縦長 list(`renderMetaPaneModeBar` の 3 mode
-// は flag に関わらず常時残り、Inspector は更に上位の chunk 分け)。
-//
-// 本 PR(pgc-109)は scaffold のみ ── 各 tab で見せる section の filter
-// 表は META_PANE_INSPECTOR_TABS で定義、Style / AI は placeholder
-// (Coming soon)。後続 PR で各 tab の中身を肉付け。
-export const shellMetaPaneInspectorEnabled = defineFlag<boolean>(
-  'shell.meta_pane_inspector_enabled',
-  true,
-  {
-    category: 'shell',
-    description:
-      'meta pane の頭に Inspector tab strip(Properties / References / History / Style / AI)を prepend、tab 別 section 可視性切替',
-  },
-);
-
 // Textlog importance-only filter(wave-δ #24、pgc-157 handoff §3.3)。
 // ON で textlog presenter に「⭐ Only important」 toggle button を追加、
 // 押下中は `important` flag が立っている log entry だけ表示。pgc-155 の
@@ -561,22 +541,6 @@ export const editorFormatShortcutsEnabled = defineFlag<boolean>(
     category: 'editor',
     description:
       'editor 中 textarea で `Ctrl+B`(strong)/ `Ctrl+I`(emphasis)keyboard shortcut で format-panel と同じ wrap 変換を発火',
-  },
-);
-
-// Inspector tab strip(Properties / References / History / Style / Hints)
-// の References / History tab に count badge(visual indicator、現 entry の
-// relation / revision 数)を表示(v3 統合 master G6 + G8、handoff §3.5
-// 後続候補、pgc-201 wave-α' polish #23)。Activity Bar badges(pgc-180)の
-// Inspector 版。`shell.meta_pane_inspector_enabled` 共依存(Inspector tab
-// strip 自体が無いと badge も描画されない)。
-export const shellInspectorTabBadgesEnabled = defineFlag<boolean>(
-  'shell.inspector_tab_badges_enabled',
-  false,
-  {
-    category: 'shell',
-    description:
-      'Inspector tab strip の References / History tab に count badge(relation 数 / revision 数)を表示',
   },
 );
 
