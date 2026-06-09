@@ -31,6 +31,7 @@ import { getGraphForceParams, graphIterations, graphGalaxyMode, graphSettings } 
 import { createElement, isSystemArchetype, getAncestorFolderLids } from './util';
 import type { Container, Entry } from './types';
 import { makeDemoContainer } from './demo-container';
+import { PkcMessageClient, METHOD } from './pkc-message';
 
 type GraphMode = 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
 
@@ -48,6 +49,8 @@ interface ViewState {
   focusLid: string | null;
   vennMode: boolean;
   isDemo: boolean;
+  /** Awaiting the host's snapshot response. */
+  connecting: boolean;
 }
 
 const state: ViewState = {
@@ -56,21 +59,44 @@ const state: ViewState = {
   focusLid: null,
   vennMode: false,
   isDemo: false,
+  connecting: false,
 };
 
 let rootEl: HTMLElement | null = null;
+/** PKC-Message client to the host PKC2 (null when standalone). */
+let client: PkcMessageClient | null = null;
 
 /** Mount the extension into a root element and start rendering. */
 export function mountGraphExtension(root: HTMLElement): void {
   rootEl = root;
-  // Container source 1: host postMessage.
-  window.addEventListener('message', (ev: MessageEvent) => {
-    const data = ev.data as { type?: string; container?: Container } | null;
-    if (data && data.type === 'pkc-graph:container' && data.container) {
-      setContainer(data.container);
-    }
-  });
-  // Container source 2: drag a PKC2 export (HTML / JSON) anywhere onto the page.
+
+  // Container source 1 — the host PKC2, over PKC-Message v2 (JSON-RPC).
+  // When embedded in a host window, request a container snapshot and
+  // subscribe to live changes. Node selections flow back as notifications.
+  if (window.parent && window.parent !== window) {
+    client = new PkcMessageClient(window.parent);
+    client.onNotification(METHOD.CONTAINER_CHANGED, (params) => {
+      const c = (params as { container?: Container } | null)?.container;
+      if (c) setContainer(c);
+    });
+    state.connecting = true;
+    client
+      .request<{ container?: Container }>(METHOD.CONTAINER_SNAPSHOT)
+      .then((res) => {
+        state.connecting = false;
+        if (res?.container) setContainer(res.container);
+        else if (!state.container) showDemo();
+      })
+      .catch(() => {
+        // No host responded (opened standalone, or host lacks the method):
+        // fall back to the demo / file-load path.
+        state.connecting = false;
+        if (state.isDemo || !state.container) { showDemo(); }
+        else { render(); }
+      });
+  }
+
+  // Container source 2 — drag a PKC2 export (HTML / JSON) onto the page.
   window.addEventListener('dragover', (e) => {
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
@@ -80,11 +106,16 @@ export function mountGraphExtension(root: HTMLElement): void {
     const file = e.dataTransfer?.files?.[0];
     if (file) void loadContainerFile(file);
   });
-  // Source 3: demo container until something real arrives.
-  if (!state.container) {
-    state.container = makeDemoContainer();
-    state.isDemo = true;
-  }
+
+  // Source 3 — demo container for first paint (standalone, or until the
+  // host's snapshot arrives).
+  if (!state.container) showDemo();
+  render();
+}
+
+function showDemo(): void {
+  state.container = makeDemoContainer();
+  state.isDemo = true;
   render();
 }
 
@@ -93,6 +124,7 @@ export function setContainer(c: Container | null): void {
   state.container = c;
   state.focusLid = null;
   state.isDemo = false;
+  state.connecting = false;
   render();
 }
 
@@ -112,12 +144,14 @@ function renderToolbar(): HTMLElement {
   const entryCount = (state.container?.entries ?? []).filter(
     (e) => !isSystemArchetype(e.archetype),
   ).length;
-  if (state.isDemo) {
-    status.textContent = '🧪 デモ表示 — PKC2 で書き出した HTML をここにドラッグ、または 📂 で読込';
+  if (state.connecting) {
+    status.textContent = '🔌 ホスト PKC2 に接続中…(PKC-Message)';
+  } else if (state.isDemo) {
+    status.textContent = '🧪 デモ表示 — ホスト未接続。PKC2 の HTML をドラッグ / 📂 で読込';
     status.setAttribute('data-pkc-demo', 'true');
   } else {
     const title = state.container?.meta?.title || 'Container';
-    status.textContent = `📊 ${title}(${entryCount} entries)`;
+    status.textContent = `📊 ${title}(${entryCount} entries)— PKC-Message 接続`;
   }
   toolbar.appendChild(status);
 
@@ -329,10 +363,9 @@ function renderGraph(): HTMLElement {
     const detail = (ev as CustomEvent).detail as { lid?: string } | undefined;
     if (detail?.lid) {
       state.focusLid = detail.lid;
-      // Notify a host (if embedded) that a node was selected.
-      if (window.parent !== window) {
-        window.parent.postMessage({ type: 'pkc-graph:node-selected', lid: detail.lid }, '*');
-      }
+      // Notify the host (if connected) that a node was selected, over
+      // PKC-Message v2.
+      client?.notify(METHOD.GRAPH_NODE_SELECTED, { lid: detail.lid });
       render();
     }
   });

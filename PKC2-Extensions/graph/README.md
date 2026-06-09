@@ -24,6 +24,7 @@ src/
   graph-canvas.ts     Canvas renderer + gestures (ported verbatim; deps trimmed to ./flags, ./types)
   force-layout.ts     Pure force simulation (zero deps)
   payload-builder.ts  Container → {nodes, links} per mode + time-proximity seed (ported from renderer)
+  pkc-message.ts      PKC-Message v2 client (JSON-RPC 2.0 over postMessage); vendored envelope
   flags.ts            Tuning params — decoupled from the core flag registry into a live `graphSettings`
   types.ts            Vendored minimal PKC2 data model (Entry / Relation / Container …)
   util.ts             createElement / isSystemArchetype / structural-parent walk
@@ -44,17 +45,28 @@ intact.
    PKC2 HTML artifact with an embedded `<script type="application/pkc-data">`.
 3. **Demo** — a bundled sample container renders on first open.
 
-### PKC-Message contract (v0)
+### PKC-Message contract
 
-| Direction | Message | Payload |
-| --- | --- | --- |
-| host → ext | `pkc-graph:container` | `{ container: Container }` |
-| ext → host | `pkc-graph:node-selected` | `{ lid: string }` |
+The extension is a **PKC-Message v2 client** — JSON-RPC 2.0 over `postMessage`,
+the same envelope the host uses (`src/adapter/transport/envelope-v2.ts`),
+vendored into `src/pkc-message.ts`. On mount it opens a channel to
+`window.parent` and:
 
-This v0 uses bare `window.postMessage`. Wiring it onto the formal PKC-Message
-**envelope v2** (`src/adapter/transport/envelope-v2.ts` in the host) — request/
-response, capability negotiation, heartbeat — is the next integration step (the
-host's `multi-window-vscode-extension-spec` is the reference).
+| Direction | Method | Form | Payload |
+| --- | --- | --- | --- |
+| ext → host | `pkc.container.snapshot` | request | → result `{ container }` |
+| host → ext | `pkc.container.changed` | notification | `{ container }` (live update) |
+| ext → host | `pkc.graph.nodeSelected` | notification | `{ lid }` |
+
+`dev-host.html` is a **host simulator**: it mounts the responder side of this
+contract (answers `snapshot`, pushes `changed`, logs `nodeSelected`) and embeds
+the extension in an iframe — a runnable spec of what the real host must do.
+
+The remaining host-side work in PKC2 is to mount `mountMessageBridge`, answer
+`pkc.container.snapshot` with the live container, and launch this extension in an
+iframe/window (a separate PKC2 change — `multi-window-vscode-extension-spec` is
+the reference). When no host answers, the extension falls back to the demo /
+file-load path so it still runs standalone.
 
 ## Develop
 
@@ -81,7 +93,11 @@ The extension is **excluded from the host's tsconfig / eslint / build**
 
 - ✅ Ported renderer + force layout + payload builder, typecheck clean, builds
   (~33 KB JS / ~5 KB CSS gzip ~13 KB).
-- ✅ Renders the demo container in a real browser (canvas + legend + mode switch).
-- ✅ Single-file embeddable artifact `pkc2-graph.html` (~37 KB, opens from `file://`).
-- ☐ Formal PKC-Message envelope v2 integration (host-side push of the container).
+- ✅ Renders a container in a real browser (canvas + legend + mode switch).
+- ✅ Single-file embeddable artifact `pkc2-graph.html` (~38 KB, opens from `file://`).
+- ✅ **PKC-Message v2 client** (extension side) — verified bidirectional with a
+  real 47-entry container via `dev-host.html`: host pushes the container, the
+  graph renders it, node selection flows back as a notification.
+- ☐ Host side in PKC2: answer `pkc.container.snapshot` + launch the extension
+  iframe (separate PKC2 change).
 - ☐ Feature enrichment now that the UI-integration ceiling is gone.
