@@ -762,16 +762,14 @@ async function boot(): Promise<void> {
   });
 
   // 8d. PKC-Extension autostart (#790). Launch `pkc_extension && startup`
-  // attachments once the container is ready (skipped in `?pkc-safe-mode`),
-  // and push live container updates to the running extensions thereafter.
+  // attachments once the container is ready (skipped in `?pkc-safe-mode`).
+  // Each launched extension subscribes itself to live container updates, so no
+  // per-handle push is needed here.
   let extensionsStarted = false;
-  let extensionHandles: ReturnType<typeof autostartPkcExtensions> = [];
   dispatcher.onState((state) => {
     if (!extensionsStarted && state.phase === 'ready' && state.container) {
       extensionsStarted = true;
-      extensionHandles = autostartPkcExtensions(dispatcher);
-    } else if (extensionsStarted) {
-      for (const h of extensionHandles) h.pushUpdate();
+      autostartPkcExtensions(dispatcher);
     }
   });
 

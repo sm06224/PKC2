@@ -10,15 +10,24 @@
 
 import cytoscape, { type Core, type ElementDefinition, type StylesheetJson } from 'cytoscape';
 import fcose from 'cytoscape-fcose';
+import edgehandles from 'cytoscape-edgehandles';
 import type { Entry, Relation } from './types';
 import type { GraphHyperlink, GraphExternalLink } from './protocol';
 import { isSystemArchetype, getAncestorFolderLids } from './util';
 import { archetypeColor, archetypeEmoji, relationColor, colorTagColor, hashColor, depthColor } from './colors';
 
 cytoscape.use(fcose);
+cytoscape.use(edgehandles);
 
 export type GraphView = 'explore' | 'folders' | 'connectivity' | 'timeline';
-export type ColorBy = 'archetype' | 'color-tag' | 'tag' | 'depth';
+export type ColorBy = 'archetype' | 'color-tag' | 'tag' | 'depth' | 'cluster';
+export type EditMode = 'none' | 'organize' | 'relate';
+
+/** Edit callbacks (graph → host). */
+export interface GraphEditHandlers {
+  onMove: (lid: string, folderLid: string) => void;
+  onRelate: (from: string, to: string) => void;
+}
 
 const COMPOUND_VIEWS: ReadonlySet<GraphView> = new Set(['explore', 'folders']);
 
@@ -39,9 +48,13 @@ export interface CytoscapeGraph {
   update(input: GraphRenderInput): void;
   /** Highlight/dim by query without re-running layout (live search). */
   applySearch(query: string): void;
+  /** Switch interaction mode: 'organize' (drag into folders) / 'relate' (draw edges). */
+  setEditMode(mode: EditMode): void;
   resetView(): void;
   destroy(): void;
 }
+
+interface EdgehandlesApi { enable(): void; disable(): void; }
 
 function hostname(url: string): string {
   try {
@@ -142,6 +155,42 @@ function nodeColor(e: Entry, colorBy: ColorBy, depth: number): string {
   }
 }
 
+/**
+ * Community detection by label propagation over the visible link graph — a
+ * lightweight clustering so "色: クラスタ" groups densely-connected entries.
+ */
+function detectCommunities(nodeIds: string[], links: ReadonlyArray<{ from: string; to: string }>): Map<string, number> {
+  const label = new Map<string, number>();
+  nodeIds.forEach((id, i) => label.set(id, i));
+  const adj = new Map<string, string[]>();
+  for (const id of nodeIds) adj.set(id, []);
+  for (const l of links) {
+    if (adj.has(l.from) && adj.has(l.to)) {
+      adj.get(l.from)!.push(l.to);
+      adj.get(l.to)!.push(l.from);
+    }
+  }
+  for (let iter = 0; iter < 12; iter++) {
+    let changed = false;
+    for (const id of nodeIds) {
+      const neigh = adj.get(id)!;
+      if (neigh.length === 0) continue;
+      const counts = new Map<number, number>();
+      let best = label.get(id)!;
+      let bestN = -1;
+      for (const n of neigh) {
+        const l = label.get(n)!;
+        const c = (counts.get(l) ?? 0) + 1;
+        counts.set(l, c);
+        if (c > bestN) { bestN = c; best = l; }
+      }
+      if (best !== label.get(id)) { label.set(id, best); changed = true; }
+    }
+    if (!changed) break;
+  }
+  return label;
+}
+
 function buildElements(input: GraphRenderInput): {
   elements: ElementDefinition[];
   preset: Map<string, { x: number; y: number }> | null;
@@ -171,6 +220,10 @@ function buildElements(input: GraphRenderInput): {
   for (const h of hyperEdges) { bump(h.from); bump(h.to); }
   for (const x of extLinks) bump(x.from);
 
+  const communities = colorBy === 'cluster'
+    ? detectCommunities(userEntries.map((e) => e.lid), [...relEdges, ...hyperEdges])
+    : null;
+
   const elements: ElementDefinition[] = [];
 
   for (const e of userEntries) {
@@ -178,11 +231,14 @@ function buildElements(input: GraphRenderInput): {
       ? getAncestorFolderLids(relations, entries, e.lid).length
       : 0;
     const deg = degree.get(e.lid) ?? 0;
+    const color = communities
+      ? hashColor(`cl${communities.get(e.lid) ?? 0}`)
+      : nodeColor(e, colorBy, depth);
     const data: ElementDefinition['data'] = {
       id: e.lid,
       label: `${archetypeEmoji(e.archetype)} ${e.title || e.lid}`,
       search: `${e.title} ${(e.tags ?? []).join(' ')}`.toLowerCase(),
-      color: nodeColor(e, colorBy, depth),
+      color,
       shape: e.archetype === 'folder' ? 'round-rectangle' : 'ellipse',
       size: 22 + Math.min(deg, 14) * 4,
       archetype: e.archetype,
@@ -280,13 +336,51 @@ export function createCytoscapeGraph(
   container: HTMLElement,
   onSelect: (lid: string) => void,
   onOpen: (lid: string) => void,
+  edit: GraphEditHandlers,
 ): CytoscapeGraph {
   const cy: Core = cytoscape({ container, style: buildStyle(), wheelSensitivity: 0.2, minZoom: 0.05, maxZoom: 4 });
+  container.style.position = 'relative';
 
-  // Tap = select, double-tap = open (manual detection).
+  let editMode: EditMode = 'none';
+
+  // Edge-drawing for "relate" mode (cytoscape-edgehandles).
+  const eh = (cy as unknown as { edgehandles: (o: unknown) => EdgehandlesApi }).edgehandles({
+    snap: true,
+    canConnectFn: (s: cytoscape.NodeSingular, t: cytoscape.NodeSingular) =>
+      s.id() !== t.id() && !s.id().startsWith('dom:') && !t.id().startsWith('dom:') && !s.isParent() && !t.isParent(),
+  });
+  eh.disable();
+  cy.on('ehcomplete', (_evt: unknown, source: cytoscape.NodeSingular, target: cytoscape.NodeSingular, added: cytoscape.EdgeSingular) => {
+    added.remove(); // host creates the real relation and pushes a fresh projection
+    edit.onRelate(source.id(), target.id());
+  });
+
+  // Drag a node into a folder box (organize mode) → reparent.
+  cy.on('dragfree', 'node', (evt) => {
+    if (editMode !== 'organize') return;
+    const n = evt.target as cytoscape.NodeSingular;
+    const id = n.id();
+    if (id.startsWith('dom:') || n.isParent()) return;
+    const pos = n.position();
+    let bestFolder: string | null = null;
+    let bestArea = Infinity;
+    cy.nodes('[archetype="folder"]').forEach((f) => {
+      if (f.id() === id) return;
+      const bb = f.boundingBox();
+      if (pos.x >= bb.x1 && pos.x <= bb.x2 && pos.y >= bb.y1 && pos.y <= bb.y2) {
+        const area = (bb.x2 - bb.x1) * (bb.y2 - bb.y1);
+        if (area < bestArea) { bestArea = area; bestFolder = f.id(); }
+      }
+    });
+    const curParent = n.parent().nonempty() ? n.parent().first().id() : '';
+    if (bestFolder && bestFolder !== curParent) edit.onMove(id, bestFolder);
+  });
+
+  // Tap = select, double-tap = open (manual detection). Skip while editing.
   let lastTapId = '';
   let lastTapAt = 0;
   cy.on('tap', 'node', (evt) => {
+    if (editMode !== 'none') return;
     const id = evt.target.id();
     if (id.startsWith('dom:')) return;
     const now = Date.now();
@@ -298,6 +392,33 @@ export function createCytoscapeGraph(
       lastTapId = id;
       lastTapAt = now;
     }
+  });
+
+  // Minimap: a small read-only overview; click to pan the main view.
+  const mini = document.createElement('div');
+  mini.setAttribute('data-pkc-region', 'graph-minimap');
+  mini.style.cssText =
+    'position:absolute;right:8px;bottom:8px;width:180px;height:120px;z-index:40;'
+    + 'background:rgba(13,15,10,0.85);border:1px solid #1e2a16;border-radius:3px;overflow:hidden;';
+  container.appendChild(mini);
+  const miniCy: Core = cytoscape({
+    container: mini,
+    userZoomingEnabled: false,
+    userPanningEnabled: false,
+    boxSelectionEnabled: false,
+    autoungrabify: true,
+    style: [{ selector: 'node', style: { 'background-color': 'data(color)', width: 6, height: 6, label: '' } },
+      { selector: 'edge', style: { width: 0.5, 'line-color': '#3a4632', 'curve-style': 'haystack' } }] as unknown as StylesheetJson,
+  });
+  mini.addEventListener('click', (ev) => {
+    const r = mini.getBoundingClientRect();
+    const mx = ev.clientX - r.left;
+    const my = ev.clientY - r.top;
+    const mpan = miniCy.pan();
+    const mz = miniCy.zoom();
+    const modelX = (mx - mpan.x) / mz;
+    const modelY = (my - mpan.y) / mz;
+    cy.pan({ x: container.clientWidth / 2 - modelX * cy.zoom(), y: container.clientHeight / 2 - modelY * cy.zoom() });
   });
 
   const tip = document.createElement('div');
@@ -327,6 +448,14 @@ export function createCytoscapeGraph(
       cy.add(elements);
       cy.layout(layoutFor(input.view, preset)).run();
       applySearch(cy, input.search);
+      // Mirror into the minimap.
+      miniCy.elements().remove();
+      miniCy.add(cy.elements().map((el) => ({
+        group: el.isNode() ? 'nodes' : 'edges',
+        data: { ...el.data() },
+      })) as ElementDefinition[]);
+      miniCy.layout(layoutFor(input.view, preset)).run();
+      miniCy.fit(undefined, 4);
       container.setAttribute('data-pkc-node-count', String(cy.nodes('[!type]').length));
       container.setAttribute('data-pkc-external-count', String(cy.nodes('[type="domain"]').length));
       container.setAttribute('data-pkc-hyperlink-count', String(cy.edges('[kind="hyperlink"]').length));
@@ -335,7 +464,12 @@ export function createCytoscapeGraph(
       applySearch(cy, query);
       container.setAttribute('data-pkc-match-count', String(cy.nodes('.match').length));
     },
+    setEditMode(mode: EditMode): void {
+      editMode = mode;
+      if (mode === 'relate') eh.enable(); else eh.disable();
+      cy.autoungrabify(mode === 'none' ? false : mode === 'relate');
+    },
     resetView(): void { cy.fit(undefined, 30); },
-    destroy(): void { cy.destroy(); },
+    destroy(): void { miniCy.destroy(); cy.destroy(); },
   };
 }

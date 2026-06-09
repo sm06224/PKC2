@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "cytoscape": "^3.34.0",
+    "cytoscape-edgehandles": "^4.0.1",
     "cytoscape-fcose": "^2.2.0"
   }
 }

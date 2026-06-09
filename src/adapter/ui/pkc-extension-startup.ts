@@ -10,6 +10,7 @@
  */
 
 import type { Dispatcher } from '../state/dispatcher';
+import { getAncestorFolderLids } from '@features/relation/tree';
 import { parseAttachmentBody, decodeAttachmentText } from './attachment-presenter';
 import { launchGraphExtension, type GraphExtensionHandle } from './graph-extension-launcher';
 
@@ -41,7 +42,7 @@ export function launchPkcExtensionEntry(
   if (!att.pkc_extension) return null;
   const html = decodeAttachmentText(att, container.assets);
   if (!html) return null;
-  return launchGraphExtension({
+  const handle = launchGraphExtension({
     html,
     getContainer: () => dispatcher.getState().container,
     onSelect: (lid) => dispatcher.dispatch({ type: 'SELECT_ENTRY', lid }),
@@ -50,7 +51,54 @@ export function launchPkcExtensionEntry(
       dispatcher.dispatch({ type: 'SELECT_ENTRY', lid, revealInSidebar: true });
       try { window.focus(); } catch { /* noop */ }
     },
+    onMove: (lid, folderLid) => moveEntryToFolder(dispatcher, lid, folderLid),
+    onRelate: (from, to) => relateEntries(dispatcher, from, to),
   });
+  if (handle) {
+    // Live updates: push the new projection whenever the container changes
+    // (incl. graph-driven edits), so the graph stays in sync.
+    dispatcher.onState(() => handle.pushUpdate());
+  }
+  return handle;
+}
+
+/**
+ * Move an entry into a folder via the normal dispatch + persistence path
+ * (DELETE_RELATION on the old structural parent, CREATE_RELATION on the new).
+ * All inputs are validated; an invalid request is a safe no-op so graph-driven
+ * edits cannot corrupt the container.
+ */
+export function moveEntryToFolder(dispatcher: Dispatcher, lid: string, folderLid: string): void {
+  const container = dispatcher.getState().container;
+  if (!container || dispatcher.getState().readonly) return;
+  const entry = container.entries.find((e) => e.lid === lid);
+  const folder = container.entries.find((e) => e.lid === folderLid);
+  if (!entry || !folder || folder.archetype !== 'folder' || lid === folderLid) return;
+  // Cycle guard: cannot move a folder into its own descendant.
+  if (entry.archetype === 'folder') {
+    const ancestors = getAncestorFolderLids(container.relations, container.entries, folderLid);
+    if (ancestors.includes(lid)) return;
+  }
+  // Already in that folder → no-op.
+  const cur = container.relations.find((r) => r.kind === 'structural' && r.to === lid);
+  if (cur && cur.from === folderLid) return;
+  for (const r of container.relations) {
+    if (r.kind === 'structural' && r.to === lid) dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
+  }
+  dispatcher.dispatch({ type: 'CREATE_RELATION', from: folderLid, to: lid, kind: 'structural' });
+}
+
+/** Create a semantic relation between two entries (validated, persisted). */
+export function relateEntries(dispatcher: Dispatcher, from: string, to: string): void {
+  const container = dispatcher.getState().container;
+  if (!container || dispatcher.getState().readonly) return;
+  if (from === to) return;
+  const hasFrom = container.entries.some((e) => e.lid === from);
+  const hasTo = container.entries.some((e) => e.lid === to);
+  if (!hasFrom || !hasTo) return;
+  // Skip if an identical relation already exists.
+  if (container.relations.some((r) => r.from === from && r.to === to && r.kind === 'semantic')) return;
+  dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind: 'semantic' });
 }
 
 /**

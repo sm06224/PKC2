@@ -10,7 +10,7 @@
 import './tokens.css';
 import './graph-styles.css';
 import './page.css';
-import { createCytoscapeGraph, type CytoscapeGraph, type GraphView, type ColorBy } from './cytoscape-renderer';
+import { createCytoscapeGraph, type CytoscapeGraph, type GraphView, type ColorBy, type EditMode } from './cytoscape-renderer';
 import { createElement, isSystemArchetype } from './util';
 import { archetypeColor, archetypeEmoji, relationColor } from './colors';
 import type { ArchetypeId, Entry, Relation, RelationKind } from './types';
@@ -29,6 +29,7 @@ const COLOR_LABELS: { v: ColorBy; label: string }[] = [
   { v: 'color-tag', label: '色: カラータグ' },
   { v: 'tag', label: '色: タグ' },
   { v: 'depth', label: '色: フォルダ深さ' },
+  { v: 'cluster', label: '色: クラスタ' },
 ];
 
 interface ViewState {
@@ -41,6 +42,7 @@ interface ViewState {
   view: GraphView;
   colorBy: ColorBy;
   search: string;
+  editMode: EditMode;
   source: 'connecting' | 'host' | 'demo';
   showHyperlinks: boolean;
   showExternal: boolean;
@@ -56,6 +58,7 @@ const state: ViewState = {
   view: 'explore',
   colorBy: 'archetype',
   search: '',
+  editMode: 'none',
   source: 'connecting',
   showHyperlinks: true,
   showExternal: false,
@@ -92,6 +95,10 @@ function ensureLayout(): void {
     graphHost,
     (lid) => channel?.select(lid),
     (lid) => channel?.open(lid),
+    {
+      onMove: (lid, folderLid) => channel?.move(lid, folderLid),
+      onRelate: (from, to) => channel?.relate(from, to),
+    },
   );
 }
 
@@ -234,12 +241,40 @@ function renderToolbar(): HTMLElement {
   extBtn.addEventListener('click', () => { state.showExternal = !state.showExternal; render(); });
   toolbar.appendChild(extBtn);
 
+  // Edit toggles (no re-layout; just switch interaction mode).
+  const organizeBtn = createElement('button', 'pkc-btn-small');
+  organizeBtn.textContent = '✏️ 整理';
+  organizeBtn.title = 'ドラッグでノードをフォルダ箱へ入れて移動(付け替え)';
+  if (state.editMode === 'organize') organizeBtn.setAttribute('data-pkc-active', 'true');
+  organizeBtn.addEventListener('click', () => {
+    state.editMode = state.editMode === 'organize' ? 'none' : 'organize';
+    graph?.setEditMode(state.editMode);
+    refreshToolbar();
+  });
+  toolbar.appendChild(organizeBtn);
+
+  const relateBtn = createElement('button', 'pkc-btn-small');
+  relateBtn.textContent = '🔗+ リンク作成';
+  relateBtn.title = 'ノードからノードへドラッグして関連(semantic relation)を作成';
+  if (state.editMode === 'relate') relateBtn.setAttribute('data-pkc-active', 'true');
+  relateBtn.addEventListener('click', () => {
+    state.editMode = state.editMode === 'relate' ? 'none' : 'relate';
+    graph?.setEditMode(state.editMode);
+    refreshToolbar();
+  });
+  toolbar.appendChild(relateBtn);
+
   const zoomReset = createElement('button', 'pkc-btn-small');
   zoomReset.textContent = '↺ 表示リセット';
   zoomReset.addEventListener('click', () => graph?.resetView());
   toolbar.appendChild(zoomReset);
 
   return toolbar;
+}
+
+/** Replace only the toolbar (no graph re-layout) — used by edit toggles. */
+function refreshToolbar(): void {
+  if (toolbarHost) toolbarHost.replaceChildren(renderToolbar());
 }
 
 /** A legend overlay (archetypes + relation kinds present). */

@@ -68,7 +68,9 @@ export interface GraphProjection {
 export type ChildToHost =
   | { pkc: typeof PKC_GRAPH; v: 1; t: 'hello' }
   | { pkc: typeof PKC_GRAPH; v: 1; t: 'select'; nonce: string; lid: string }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'open'; nonce: string; lid: string };
+  | { pkc: typeof PKC_GRAPH; v: 1; t: 'open'; nonce: string; lid: string }
+  | { pkc: typeof PKC_GRAPH; v: 1; t: 'move'; nonce: string; lid: string; folderLid: string }
+  | { pkc: typeof PKC_GRAPH; v: 1; t: 'relate'; nonce: string; from: string; to: string };
 
 export type HostToChild =
   | { pkc: typeof PKC_GRAPH; v: 1; t: 'welcome'; nonce: string; projection: GraphProjection }
@@ -127,6 +129,24 @@ export class GraphChannel {
     if (!this.host || this.nonce === null) return;
     this.host.postMessage(
       { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'open', nonce: this.nonce, lid } satisfies ChildToHost,
+      safeTargetOrigin(),
+    );
+  }
+
+  /** Ask the host to move an entry into a folder (drag-drop reparent). */
+  move(lid: string, folderLid: string): void {
+    if (!this.host || this.nonce === null) return;
+    this.host.postMessage(
+      { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'move', nonce: this.nonce, lid, folderLid } satisfies ChildToHost,
+      safeTargetOrigin(),
+    );
+  }
+
+  /** Ask the host to create a relation between two entries (draw edge). */
+  relate(from: string, to: string): void {
+    if (!this.host || this.nonce === null) return;
+    this.host.postMessage(
+      { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'relate', nonce: this.nonce, from, to } satisfies ChildToHost,
       safeTargetOrigin(),
     );
   }

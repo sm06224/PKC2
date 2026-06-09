@@ -39,6 +39,10 @@ export interface LaunchGraphExtensionOptions {
   onSelect?: (lid: string) => void;
   /** Invoked when the extension asks to open / focus an entry (double-click). */
   onOpen?: (lid: string) => void;
+  /** Invoked when the extension drags an entry into a folder (reparent). */
+  onMove?: (lid: string, folderLid: string) => void;
+  /** Invoked when the extension draws an edge between two entries (relate). */
+  onRelate?: (from: string, to: string) => void;
 }
 
 export interface GraphExtensionHandle {
@@ -91,15 +95,25 @@ export function launchGraphExtension(opts: LaunchGraphExtensionOptions): GraphEx
     // Security gate: only the child we launched, only same-origin.
     if (ev.source !== childWin) return;
     if (ev.origin !== window.location.origin) return;
-    const d = ev.data as { pkc?: unknown; v?: unknown; t?: unknown; nonce?: unknown; lid?: unknown } | null;
+    const d = ev.data as {
+      pkc?: unknown; v?: unknown; t?: unknown; nonce?: unknown;
+      lid?: unknown; folderLid?: unknown; from?: unknown; to?: unknown;
+    } | null;
     if (!d || d.pkc !== PKC_GRAPH || d.v !== PKC_GRAPH_V) return;
     if (d.t === 'hello') {
       established = true;
       sendProjection('welcome');
-    } else if (d.t === 'select' && d.nonce === nonce && typeof d.lid === 'string') {
+      return;
+    }
+    if (d.nonce !== nonce) return; // every other message must carry the channel nonce
+    if (d.t === 'select' && typeof d.lid === 'string') {
       opts.onSelect?.(d.lid);
-    } else if (d.t === 'open' && d.nonce === nonce && typeof d.lid === 'string') {
+    } else if (d.t === 'open' && typeof d.lid === 'string') {
       opts.onOpen?.(d.lid);
+    } else if (d.t === 'move' && typeof d.lid === 'string' && typeof d.folderLid === 'string') {
+      opts.onMove?.(d.lid, d.folderLid);
+    } else if (d.t === 'relate' && typeof d.from === 'string' && typeof d.to === 'string') {
+      opts.onRelate?.(d.from, d.to);
     }
   };
 
