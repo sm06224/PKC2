@@ -21,16 +21,19 @@ evolve without touching the core product.
 
 ```
 src/
-  graph-canvas.ts     Canvas renderer + gestures (ported verbatim; deps trimmed to ./flags, ./types)
-  force-layout.ts     Pure force simulation (zero deps)
-  payload-builder.ts  Container → {nodes, links} per mode + time-proximity seed (ported from renderer)
-  protocol.ts         Secure PKC-Graph channel client + minimal GraphProjection types
-  flags.ts            Tuning params — decoupled from the core flag registry into a live `graphSettings`
-  types.ts            Vendored minimal PKC2 data model (Entry / Relation …)
-  util.ts             createElement / isSystemArchetype / structural-parent walk
-  demo-container.ts   Sample container for standalone open
-  main.ts             Local-state orchestration: toolbar + canvas + legend, fed by the channel
+  cytoscape-renderer.ts  Cytoscape.js renderer: data-driven styling + per-mode layouts (fcose / hierarchy / time-line)
+  colors.ts              Archetype / relation-kind / colour-tag palettes
+  protocol.ts            Secure PKC-Graph channel client + minimal GraphProjection types
+  types.ts               Vendored minimal PKC2 data model (Entry / Relation …)
+  util.ts                createElement / isSystemArchetype / structural-parent walk
+  demo-container.ts      Sample container for standalone open
+  main.ts                Orchestration: toolbar + legend + Cytoscape host, fed by the channel
 ```
+
+Rendering uses **Cytoscape.js** (`+ cytoscape-fcose`) — a general network-graph
+library — replacing the original hand-written canvas. The five modes map to
+Cytoscape layouts: relations / color-tags / tag-groups → fcose force,
+folder-hierarchy → breadthfirst, time-proximity → a preset time-line layout.
 
 The host side lives in PKC2:
 `src/features/graph-extension/projection.ts` (build the minimal projection)

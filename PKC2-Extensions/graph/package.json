@@ -9,5 +9,9 @@
     "build": "vite build && node build-singlefile.mjs",
     "build:single": "node build-singlefile.mjs",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cytoscape": "^3.34.0",
+    "cytoscape-fcose": "^2.2.0"
   }
 }
