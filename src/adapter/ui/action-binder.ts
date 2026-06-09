@@ -2798,6 +2798,34 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         });
         break;
       }
+      case 'toggle-attachment-pkc-extension': {
+        // #790:HTML attachment を PKC-Extension として扱う(起動時に secure
+        // PKC-Message channel)。OFF にするときは startup も落とす(拡張で
+        // ないものを autostart できない)。
+        if (!lid) break;
+        const curEntry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+        if (!curEntry || curEntry.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(curEntry.body);
+        const checked = (target as HTMLInputElement).checked;
+        const next = { ...att, pkc_extension: checked, startup: checked ? att.startup : false };
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: serializeAttachmentBody(next) });
+        });
+        break;
+      }
+      case 'toggle-attachment-startup': {
+        // #790:boot 時の自動起動(pkc_extension 前提)。
+        if (!lid) break;
+        const curEntry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+        if (!curEntry || curEntry.archetype !== 'attachment') break;
+        const att = parseAttachmentBody(curEntry.body);
+        if (!att.pkc_extension) break;
+        const checked = (target as HTMLInputElement).checked;
+        preserveCenterPaneScroll(() => {
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: serializeAttachmentBody({ ...att, startup: checked }) });
+        });
+        break;
+      }
       // set-attachment-app-icon は handleChange 経由(`<input type="text">`
       // は change を blur で発火する)。
       case 'move-to-folder': {

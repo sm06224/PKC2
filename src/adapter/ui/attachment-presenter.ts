@@ -498,6 +498,38 @@ export const attachmentPresenter: DetailPresenter = {
         appRow.appendChild(iconAssetSelect);
 
         card.appendChild(appRow);
+
+        // PKC-Extension toggles (#790): mark this HTML asset as a
+        // PKC-Extension (launched over the secure PKC-Message channel) and
+        // optionally auto-start it at boot.
+        const extRow = document.createElement('div');
+        extRow.className = 'pkc-attachment-app-toggle';
+        extRow.setAttribute('data-pkc-region', 'attachment-extension-toggle');
+
+        const extLabel = document.createElement('label');
+        const extInput = document.createElement('input');
+        extInput.type = 'checkbox';
+        extInput.checked = att.pkc_extension === true;
+        extInput.setAttribute('data-pkc-action', 'toggle-attachment-pkc-extension');
+        extInput.setAttribute('data-pkc-lid', entry.lid);
+        extLabel.appendChild(extInput);
+        extLabel.appendChild(document.createTextNode(' PKC-Extension として扱う'));
+        extLabel.title = 'ON で、起動時にホスト PKC2 と secure PKC-Message channel を張る拡張として扱う';
+        extRow.appendChild(extLabel);
+
+        const startupLabel = document.createElement('label');
+        const startupInput = document.createElement('input');
+        startupInput.type = 'checkbox';
+        startupInput.checked = att.startup === true;
+        startupInput.disabled = att.pkc_extension !== true;
+        startupInput.setAttribute('data-pkc-action', 'toggle-attachment-startup');
+        startupInput.setAttribute('data-pkc-lid', entry.lid);
+        startupLabel.appendChild(startupInput);
+        startupLabel.appendChild(document.createTextNode(' スタートアップ起動'));
+        startupLabel.title = 'PKC2 起動時に自動で開く(?pkc-safe-mode=1 では skip)';
+        extRow.appendChild(startupLabel);
+
+        card.appendChild(extRow);
       }
     }
 
