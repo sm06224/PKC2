@@ -34,3 +34,16 @@ html, body {
   height: 100%;
   display: block;
 }
+
+.pkc-graph-source-label {
+  font-size: var(--fs-sm);
+  color: var(--c-muted);
+  margin-right: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60vw;
+}
+.pkc-graph-source-label[data-pkc-demo="true"] {
+  color: var(--c-warn);
+}

@@ -47,6 +47,7 @@ interface ViewState {
   mode: GraphMode;
   focusLid: string | null;
   vennMode: boolean;
+  isDemo: boolean;
 }
 
 const state: ViewState = {
@@ -54,6 +55,7 @@ const state: ViewState = {
   mode: 'relations',
   focusLid: null,
   vennMode: false,
+  isDemo: false,
 };
 
 let rootEl: HTMLElement | null = null;
@@ -68,8 +70,21 @@ export function mountGraphExtension(root: HTMLElement): void {
       setContainer(data.container);
     }
   });
+  // Container source 2: drag a PKC2 export (HTML / JSON) anywhere onto the page.
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) void loadContainerFile(file);
+  });
   // Source 3: demo container until something real arrives.
-  if (!state.container) state.container = makeDemoContainer();
+  if (!state.container) {
+    state.container = makeDemoContainer();
+    state.isDemo = true;
+  }
   render();
 }
 
@@ -77,6 +92,7 @@ export function mountGraphExtension(root: HTMLElement): void {
 export function setContainer(c: Container | null): void {
   state.container = c;
   state.focusLid = null;
+  state.isDemo = false;
   render();
 }
 
@@ -90,6 +106,20 @@ function render(): void {
 function renderToolbar(): HTMLElement {
   const toolbar = createElement('div', 'pkc-center-graph-toolbar');
   toolbar.setAttribute('data-pkc-region', 'graph-toolbar');
+
+  // Source indicator — which container is on screen (demo vs loaded).
+  const status = createElement('span', 'pkc-graph-source-label');
+  const entryCount = (state.container?.entries ?? []).filter(
+    (e) => !isSystemArchetype(e.archetype),
+  ).length;
+  if (state.isDemo) {
+    status.textContent = '🧪 デモ表示 — PKC2 で書き出した HTML をここにドラッグ、または 📂 で読込';
+    status.setAttribute('data-pkc-demo', 'true');
+  } else {
+    const title = state.container?.meta?.title || 'Container';
+    status.textContent = `📊 ${title}(${entryCount} entries)`;
+  }
+  toolbar.appendChild(status);
 
   // Mode selector.
   const select = document.createElement('select');
@@ -188,6 +218,8 @@ function renderGraph(): HTMLElement {
   const allRels = container?.relations ?? [];
 
   const { nodes, links } = buildGraphForMode(allEntries, allRels, state.mode, state.focusLid);
+  wrap.setAttribute('data-pkc-node-count', String(nodes.length));
+  wrap.setAttribute('data-pkc-entry-count', String(allEntries.length));
 
   const params = getGraphForceParams(width, height);
   let sim;
@@ -347,28 +379,38 @@ function renderLegend(
 }
 
 /**
- * Parse a user-loaded container file. Accepts raw container JSON, an
- * export wrapper `{ container }`, or a PKC2 HTML artifact with an embedded
- * `<script type="application/pkc-data">` payload.
+ * Parse a user-loaded container file. Accepts:
+ *   - a PKC2 exported HTML artifact (`pkc2.html` / an exported `.html`) with
+ *     the embedded `<script id="pkc-data" type="application/json">` slot,
+ *   - the `{ container, export_meta? }` export wrapper as raw JSON,
+ *   - a bare Container JSON.
  */
 async function loadContainerFile(file: File): Promise<void> {
   try {
     const text = await file.text();
-    let parsed: unknown;
-    if (file.name.endsWith('.html')) {
-      const m = text.match(
-        /<script[^>]*type="application\/pkc-data"[^>]*>([\s\S]*?)<\/script>/i,
-      );
-      parsed = m ? JSON.parse(m[1]!.trim()) : null;
-    } else {
-      parsed = JSON.parse(text);
-    }
+    const parsed = parsePkcPayload(text);
     const container = extractContainer(parsed);
-    if (container) setContainer(container);
-    else window.alert('Container を認識できませんでした(entries / relations が見つかりません)。');
+    if (container) {
+      setContainer(container);
+    } else {
+      window.alert(
+        'Container を認識できませんでした。\n'
+          + 'PKC2 で書き出した HTML(pkc-data 埋込)/ JSON を読み込んでください。',
+      );
+    }
   } catch (err) {
     window.alert(`読込に失敗しました: ${String(err)}`);
   }
+}
+
+/**
+ * Extract the JSON payload from either a PKC2 HTML artifact (the
+ * `#pkc-data` script slot) or a raw JSON file.
+ */
+function parsePkcPayload(text: string): unknown {
+  const m = text.match(/<script[^>]*id="pkc-data"[^>]*>([\s\S]*?)<\/script>/i);
+  if (m) return JSON.parse(m[1]!.trim());
+  return JSON.parse(text);
 }
 
 function extractContainer(parsed: unknown): Container | null {
