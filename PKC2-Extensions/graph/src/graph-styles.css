@@ -1,0 +1,184 @@
+/* ── Graph extension styles — extracted from PKC2 base.css ── */
+
+.pkc-btn-small {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+/* Default-size button — adds horizontal padding, larger font, nowrap. */
+.pkc-btn {
+  padding: var(--space-1-5) var(--space-3);
+  font-size: var(--fs-base);
+  white-space: nowrap;
+  /* default-size buttons additionally transition border-color so the
+   * danger variant's red border swap animates cleanly. */
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+/* Hover / active / focus shared between -btn and -btn-small. */
+.pkc-btn:hover,
+.pkc-btn-small:hover {
+  background: var(--c-hover);
+  box-shadow: var(--glow);
+}
+
+.pkc-btn:focus-visible,
+.pkc-btn-small:focus-visible {
+  /* `.pkc-btn-small` is used as the primary small-button across every
+   * overlay (shell menu close, shortcut help close, Storage Profile
+   * export/close, Data Maintenance buttons, theme toggles). Hoisted
+   * here so keyboard users see the same ring on both sizes. */
+  outline: 2px solid var(--c-accent);
+  outline-offset: 1px;
+}
+
+.pkc-btn:active {
+  transform: scale(0.96);
+}
+
+/* Small-size button — used in dialogs, action bars, chip strips. */
+.pkc-btn-small {
+  font-size: var(--fs-xs);
+  padding: 0.05rem var(--space-2);
+}
+
+.pkc-btn-small:active {
+  transform: scale(0.95);
+}
+
+.pkc-center-graph-view {
+  /* PR-WWW (2026-05-07、修正指示5 残):tooltip を absolute 配置するため
+   * positioning context に。 */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* PR-H G16 (2026-05-06):SVG → Canvas 化。Canvas は単一 element なので
+   gesture handler が hit-test で node を解決する。touch-action: none で
+   browser の native pinch zoom を奪い、独自 handler に流す。 */
+.pkc-graph-canvas {
+  flex: 1;
+  display: block;
+  min-height: 320px;
+  /* PR-DD (2026-05-06、user 報告「グラフが Canvas の大きさに引っ張ら
+     れてアス比がおかしくなる」):aspect-ratio で 960:600 (= 8:5) を維持。
+     container の width が変わっても canvas が縦横同じ比で scale するので、
+     描画(payload.width=960 / height=600 baseline)が歪まない。modern
+     browser で aspect-ratio CSS は widely supported。
+     PR-LLL (2026-05-06):window 幅 / 高さに合わせて responsive にする
+     ため `aspect-ratio` を 8/5 から `auto` に変更、`max-aspect-ratio`
+     ガードで縦長 viewport でもバランス維持。canvas 内座標は
+     `payload.width=960 / height=600` 固定のため軽い拡縮はあるが、PR-AAA
+     auto-fit-to-bounds で全 node が収まる scale に自動調整される。 */
+  width: 100%;
+  height: 100%;
+  max-height: min(72vh, 720px);
+  touch-action: none;
+  cursor: grab;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.02));
+  border-radius: var(--radius-sm, 2px);
+}
+
+/* PR-LLL (2026-05-06、user 修正指示5「グラフに凡例を表示」):
+ * graph 下端に archetype emoji + relation kind 色 を凡例として overlay。
+ * canvas 内描画には影響しない非 modal flex item。 */
+.pkc-graph-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  margin-top: var(--space-2, 0.5rem);
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md, 4px);
+  font-size: var(--fs-sm);
+  flex: 0 0 auto;
+}
+
+.pkc-graph-legend-heading {
+  font-weight: 600;
+  color: var(--c-muted);
+  font-size: var(--fs-xs);
+}
+
+.pkc-graph-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3, 0.75rem);
+  align-items: center;
+}
+
+.pkc-graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+  white-space: nowrap;
+}
+
+.pkc-graph-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.pkc-graph-canvas:active {
+  cursor: grabbing;
+}
+
+.pkc-graph-canvas[data-pkc-graph-region-select-mode="true"] {
+  cursor: crosshair;
+}
+
+/* PR-WWW (2026-05-07、修正指示5 残):graph node hover preview tooltip。
+ * absolute 配置(.pkc-center-graph-view が positioning context)、
+ * pointer-events: none で hit-test に干渉しない。 */
+.pkc-graph-hover-tooltip {
+  position: absolute;
+  z-index: 50;
+  max-width: 320px;
+  padding: var(--space-1-5, 0.375rem) var(--space-2, 0.5rem);
+  font-size: var(--fs-xs, 0.8125rem);
+  line-height: 1.4;
+  background: var(--c-surface, rgba(20, 20, 20, 0.95));
+  color: var(--c-fg, #e0e0e0);
+  border: 1px solid var(--c-border, rgba(255, 255, 255, 0.15));
+  border-radius: var(--radius, 4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: pre-line;
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkc-center-graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  padding: var(--space-2, 0.5rem);
+  border-bottom: 1px solid var(--c-border, rgba(0, 0, 0, 0.08));
+}
+
+.pkc-graph-mode-select {
+  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--space-1, 0.25rem) var(--space-2, 0.5rem);
+}
+
+.pkc-graph-focus-label {
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 500;
+  background: var(--c-bg-tag, rgba(0, 0, 0, 0.06));
+  padding: 0 var(--space-2, 0.5rem);
+  border-radius: var(--radius-sm, 2px);
+}
+
