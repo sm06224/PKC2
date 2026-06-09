@@ -61,17 +61,71 @@ export function autostartPkcExtensions(dispatcher: Dispatcher): GraphExtensionHa
   const container = dispatcher.getState().container;
   if (!container) return [];
   const handles: GraphExtensionHandle[] = [];
+  const blocked: { lid: string; title: string }[] = [];
   for (const e of container.entries) {
     if (e.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(e.body);
     if (att.pkc_extension === true && att.startup === true) {
       // Opens in a separate window. At boot there is no user activation, so the
-      // browser may block the popup (returns null) — that is fine; we never
-      // hijack the PKC2 screen as a fallback. The user allows the popup or
-      // launches manually.
+      // browser may block the popup (returns null). We never hijack the PKC2
+      // screen as a fallback — instead we surface a small retry prompt the user
+      // can click (a gesture, so the popup is then allowed).
       const handle = launchPkcExtensionEntry(e.lid, dispatcher);
       if (handle) handles.push(handle);
+      else blocked.push({ lid: e.lid, title: e.title });
     }
   }
+  if (blocked.length > 0) showAutostartRetryPrompt(blocked, dispatcher);
   return handles;
+}
+
+/**
+ * Small, non-intrusive bottom-right prompt listing extensions whose autostart
+ * popup was blocked, each with a button to open it (a user gesture, which the
+ * browser allows). It never covers the PKC2 screen.
+ */
+function showAutostartRetryPrompt(
+  blocked: ReadonlyArray<{ lid: string; title: string }>,
+  dispatcher: Dispatcher,
+): void {
+  document.querySelector('[data-pkc-region="extension-autostart-retry"]')?.remove();
+
+  const bar = document.createElement('div');
+  bar.setAttribute('data-pkc-region', 'extension-autostart-retry');
+  bar.style.cssText =
+    'position:fixed;bottom:16px;right:16px;z-index:9000;max-width:340px;'
+    + 'background:var(--c-surface,#111510);color:var(--c-fg,#c8d8b0);'
+    + 'border:1px solid var(--c-border,#1e2a16);border-radius:4px;'
+    + 'padding:10px 26px 10px 12px;font-size:0.75rem;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
+
+  const msg = document.createElement('div');
+  msg.textContent = '起動時に拡張のウィンドウがブロックされました。クリックで開けます:';
+  msg.style.marginBottom = '8px';
+  bar.appendChild(msg);
+
+  for (const b of blocked) {
+    const btn = document.createElement('button');
+    btn.textContent = `🕸 ${b.title || b.lid} を開く`;
+    btn.setAttribute('data-pkc-lid', b.lid);
+    btn.style.cssText = 'display:block;margin-top:4px;cursor:pointer;';
+    btn.addEventListener('click', () => {
+      // Click = user gesture → window.open is allowed.
+      const handle = launchPkcExtensionEntry(b.lid, dispatcher);
+      if (handle) {
+        btn.remove();
+        if (!bar.querySelector('button[data-pkc-lid]')) bar.remove();
+      }
+    });
+    bar.appendChild(btn);
+  }
+
+  const dismiss = document.createElement('button');
+  dismiss.textContent = '✕';
+  dismiss.setAttribute('aria-label', '閉じる');
+  dismiss.style.cssText =
+    'position:absolute;top:4px;right:6px;background:none;border:none;color:inherit;cursor:pointer;';
+  dismiss.addEventListener('click', () => bar.remove());
+  bar.appendChild(dismiss);
+
+  document.body.appendChild(bar);
 }
