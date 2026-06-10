@@ -48,6 +48,8 @@ export interface LaunchGraphExtensionOptions {
 export interface GraphExtensionHandle {
   /** Re-send the current projection (e.g. after the container changed). */
   pushUpdate: () => void;
+  /** Tell the extension which entry is selected in PKC2 (it focuses there). */
+  pushSelected: (lid: string) => void;
   /** Close the extension window and tear down the channel. */
   close: () => void;
 }
@@ -138,6 +140,15 @@ export function launchGraphExtension(opts: LaunchGraphExtensionOptions): GraphEx
 
   return {
     pushUpdate: () => { if (established) sendProjection('projection'); },
+    pushSelected: (lid: string) => {
+      if (!established || !childWin) return;
+      try {
+        childWin.postMessage(
+          { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'selected', nonce, lid },
+          safeTargetOrigin(),
+        );
+      } catch { /* child torn down mid-send */ }
+    },
     close: cleanup,
   };
 }

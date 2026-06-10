@@ -69,11 +69,21 @@ let channel: GraphChannel | null = null;
 let graph: CytoscapeGraph | null = null;
 let toolbarHost: HTMLElement | null = null;
 let graphHost: HTMLElement | null = null;
+/** Last selection the graph itself sent — its host echo must not re-pan the view. */
+let lastSentSelect: { lid: string; at: number } = { lid: '', at: 0 };
 
 export function mountGraphExtension(root: HTMLElement): void {
   rootEl = root;
   ensureLayout();
-  channel = new GraphChannel((projection) => applyProjection(projection));
+  channel = new GraphChannel(
+    (projection) => applyProjection(projection),
+    (lid) => {
+      // PKC2 側で選択が変わった(フォルダを開いた等)→ graph をそこへフォーカス。
+      // ただし graph 自身の tap 由来の echo は視点を動かさない(操作の邪魔)。
+      const isEcho = lastSentSelect.lid === lid && Date.now() - lastSentSelect.at < 1500;
+      graph?.focusNode(lid, !isEcho);
+    },
+  );
   if (!channel.start()) {
     showDemo();
   } else {
@@ -93,7 +103,10 @@ function ensureLayout(): void {
   rootEl.appendChild(graphHost);
   graph = createCytoscapeGraph(
     graphHost,
-    (lid) => channel?.select(lid),
+    (lid) => {
+      lastSentSelect = { lid, at: Date.now() };
+      channel?.select(lid);
+    },
     (lid) => channel?.open(lid),
     {
       onMove: (lid, folderLid) => channel?.move(lid, folderLid),
@@ -149,7 +162,11 @@ function showDemo(): void {
 
 function render(): void {
   if (!rootEl || !toolbarHost || !graph) return;
-  toolbarHost.replaceChildren(renderToolbar());
+  // Skip the toolbar rebuild while the user is typing in it (a live
+  // projection push must not steal focus from the search box).
+  if (!toolbarHost.contains(document.activeElement)) {
+    toolbarHost.replaceChildren(renderToolbar());
+  }
   graph.update({
     entries: state.entries,
     relations: state.relations,
@@ -268,6 +285,14 @@ function renderToolbar(): HTMLElement {
   zoomReset.textContent = '↺ 表示リセット';
   zoomReset.addEventListener('click', () => graph?.resetView());
   toolbar.appendChild(zoomReset);
+
+  // Saves never shuffle the layout any more; this button is the explicit way
+  // to ask for a fresh arrangement.
+  const relayoutBtn = createElement('button', 'pkc-btn-small');
+  relayoutBtn.textContent = '⟳ 再配置';
+  relayoutBtn.title = 'レイアウトを組み直す(通常の更新では配置は固定)';
+  relayoutBtn.addEventListener('click', () => graph?.relayout());
+  toolbar.appendChild(relayoutBtn);
 
   return toolbar;
 }

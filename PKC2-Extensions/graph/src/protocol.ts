@@ -74,7 +74,8 @@ export type ChildToHost =
 
 export type HostToChild =
   | { pkc: typeof PKC_GRAPH; v: 1; t: 'welcome'; nonce: string; projection: GraphProjection }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'projection'; nonce: string; projection: GraphProjection };
+  | { pkc: typeof PKC_GRAPH; v: 1; t: 'projection'; nonce: string; projection: GraphProjection }
+  | { pkc: typeof PKC_GRAPH; v: 1; t: 'selected'; nonce: string; lid: string };
 
 /** Valid postMessage targetOrigin — exact origin, or '*' for opaque file://. */
 export function safeTargetOrigin(): string {
@@ -99,6 +100,7 @@ export class GraphChannel {
 
   constructor(
     private readonly onProjection: (p: GraphProjection) => void,
+    private readonly onSelected?: (lid: string) => void,
   ) {}
 
   /** Begin the secure handshake with the host. */
@@ -165,6 +167,9 @@ export class GraphChannel {
     } else if (msg.t === 'projection') {
       if (this.nonce === null || msg.nonce !== this.nonce) return; // nonce gate
       this.onProjection(msg.projection);
+    } else if (msg.t === 'selected') {
+      if (this.nonce === null || msg.nonce !== this.nonce) return; // nonce gate
+      this.onSelected?.(msg.lid);
     }
   }
 }

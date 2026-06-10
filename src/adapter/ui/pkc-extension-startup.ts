@@ -55,9 +55,23 @@ export function launchPkcExtensionEntry(
     onRelate: (from, to) => relateEntries(dispatcher, from, to),
   });
   if (handle) {
-    // Live updates: push the new projection whenever the container changes
-    // (incl. graph-driven edits), so the graph stays in sync.
-    dispatcher.onState(() => handle.pushUpdate());
+    // Live updates — but only when something the graph shows actually changed.
+    // The container is immutably updated, so a reference compare suffices;
+    // pushing on every state mutation made each save re-render the graph.
+    // Selection changes flow as a lightweight `selected` (the graph focuses
+    // there, e.g. into the opened folder) instead of a full projection.
+    let lastContainer = dispatcher.getState().container;
+    let lastSelected = dispatcher.getState().selectedLid;
+    dispatcher.onState((s) => {
+      if (s.container !== lastContainer) {
+        lastContainer = s.container;
+        handle.pushUpdate();
+      }
+      if (s.selectedLid !== lastSelected) {
+        lastSelected = s.selectedLid;
+        if (s.selectedLid) handle.pushSelected(s.selectedLid);
+      }
+    });
   }
   return handle;
 }

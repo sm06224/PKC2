@@ -48,6 +48,10 @@ export interface CytoscapeGraph {
   update(input: GraphRenderInput): void;
   /** Highlight/dim by query without re-running layout (live search). */
   applySearch(query: string): void;
+  /** Highlight + (optionally) animate-fit to a node; folders fit their contents. */
+  focusNode(lid: string, animate?: boolean): void;
+  /** Explicit full re-layout (the only thing allowed to shuffle positions). */
+  relayout(): void;
   /** Switch interaction mode: 'organize' (drag into folders) / 'relate' (draw edges). */
   setEditMode(mode: EditMode): void;
   resetView(): void;
@@ -338,7 +342,12 @@ export function createCytoscapeGraph(
   onOpen: (lid: string) => void,
   edit: GraphEditHandlers,
 ): CytoscapeGraph {
-  const cy: Core = cytoscape({ container, style: buildStyle(), wheelSensitivity: 0.2, minZoom: 0.05, maxZoom: 4 });
+  // wheelSensitivity 0.2 はユーザー報告「拡大縮小のスクロール量が多く操作できない」
+  // (1 ノッチの変化が小さすぎる)→ 0.6 に引き上げ。
+  const cy: Core = cytoscape({ container, style: buildStyle(), wheelSensitivity: 0.6, minZoom: 0.05, maxZoom: 4 });
+  // Test hook(PKC2 の __forTest 流儀): E2E が位置・viewport を検証できるよう
+  // container 要素経由で core を参照可能にする。
+  (container as HTMLElement & { __cyForTest?: Core }).__cyForTest = cy;
   container.style.position = 'relative';
 
   let editMode: EditMode = 'none';
@@ -441,28 +450,117 @@ export function createCytoscapeGraph(
   });
   cy.on('mouseout', 'node', () => { tip.style.display = 'none'; });
 
+  // Mirror the MAIN graph's positions into the minimap (no separate layout,
+  // so the minimap always matches what the user sees).
+  function syncMinimap(): void {
+    miniCy.elements().remove();
+    const defs: ElementDefinition[] = [];
+    cy.nodes().forEach((n) => {
+      defs.push({ group: 'nodes', data: { id: n.id(), color: n.data('color') }, position: { ...n.position() } });
+    });
+    cy.edges().forEach((e) => {
+      defs.push({ group: 'edges', data: { id: e.id(), source: e.source().id(), target: e.target().id() } });
+    });
+    miniCy.add(defs);
+    miniCy.fit(undefined, 4);
+  }
+  cy.on('layoutstop', () => syncMinimap());
+
+  let lastView: GraphView | null = null;
+  let lastPreset: Map<string, { x: number; y: number }> | null = null;
+
+  function setCounts(): void {
+    container.setAttribute('data-pkc-node-count', String(cy.nodes('[!type]').length));
+    container.setAttribute('data-pkc-external-count', String(cy.nodes('[type="domain"]').length));
+    container.setAttribute('data-pkc-hyperlink-count', String(cy.edges('[kind="hyperlink"]').length));
+  }
+
   return {
     update(input: GraphRenderInput): void {
       const { elements, preset } = buildElements(input);
-      cy.elements().remove();
-      cy.add(elements);
-      cy.layout(layoutFor(input.view, preset)).run();
+      lastPreset = preset;
+      const viewChanged = lastView !== input.view;
+      const firstRender = cy.nodes().length === 0;
+      lastView = input.view;
+
+      const nodeDefs: ElementDefinition[] = [];
+      const edgeDefs: ElementDefinition[] = [];
+      for (const el of elements) {
+        ((el.data as { source?: unknown }).source === undefined ? nodeDefs : edgeDefs).push(el);
+      }
+
+      if (firstRender || viewChanged) {
+        // Full (re)build with layout — only on first paint or explicit view switch.
+        cy.elements().remove();
+        cy.add(elements);
+        cy.layout(layoutFor(input.view, preset)).run();
+      } else {
+        // Stable incremental patch: a save / live push must NOT shuffle the
+        // graph. Surviving nodes keep their positions, the viewport is
+        // preserved, and new nodes appear next to a connected neighbour.
+        const pan = { ...cy.pan() };
+        const zoom = cy.zoom();
+        const newIds = new Set(nodeDefs.map((d) => String(d.data.id)));
+        const addedIds: string[] = [];
+        cy.startBatch();
+        cy.edges().remove();
+        cy.nodes().forEach((n) => { if (!newIds.has(n.id())) n.remove(); });
+        for (const def of nodeDefs) {
+          const id = String(def.data.id);
+          const existing = cy.getElementById(id);
+          if (existing.nonempty()) {
+            const data = { ...def.data } as Record<string, unknown>;
+            const nextParent = data.parent as string | undefined;
+            delete data.parent;
+            existing.data(data);
+            const curParent = existing.parent().nonempty() ? existing.parent().first().id() : undefined;
+            if (curParent !== nextParent) existing.move({ parent: nextParent ?? null });
+          } else {
+            cy.add(def);
+            addedIds.push(id);
+          }
+        }
+        cy.add(edgeDefs);
+        const addedSet = new Set(addedIds);
+        for (const id of addedIds) {
+          const n = cy.getElementById(id);
+          const neigh = n.neighborhood('node').filter((m) => !addedSet.has(m.id()));
+          if (neigh.nonempty()) {
+            let sx = 0; let sy = 0;
+            neigh.forEach((m) => { sx += m.position('x'); sy += m.position('y'); });
+            n.position({ x: sx / neigh.length + 48, y: sy / neigh.length + 32 });
+          } else {
+            const ext = cy.extent();
+            n.position({ x: (ext.x1 + ext.x2) / 2, y: (ext.y1 + ext.y2) / 2 });
+          }
+        }
+        if (input.view === 'timeline' && preset) {
+          // Timeline positions ARE the data (x = updated_at) — refresh them.
+          cy.nodes().forEach((n) => { const p = preset.get(n.id()); if (p) n.position(p); });
+        }
+        cy.endBatch();
+        cy.viewport({ zoom, pan }); // exactly where the user left it
+      }
       applySearch(cy, input.search);
-      // Mirror into the minimap.
-      miniCy.elements().remove();
-      miniCy.add(cy.elements().map((el) => ({
-        group: el.isNode() ? 'nodes' : 'edges',
-        data: { ...el.data() },
-      })) as ElementDefinition[]);
-      miniCy.layout(layoutFor(input.view, preset)).run();
-      miniCy.fit(undefined, 4);
-      container.setAttribute('data-pkc-node-count', String(cy.nodes('[!type]').length));
-      container.setAttribute('data-pkc-external-count', String(cy.nodes('[type="domain"]').length));
-      container.setAttribute('data-pkc-hyperlink-count', String(cy.edges('[kind="hyperlink"]').length));
+      syncMinimap();
+      setCounts();
     },
     applySearch(query: string): void {
       applySearch(cy, query);
       container.setAttribute('data-pkc-match-count', String(cy.nodes('.match').length));
+    },
+    focusNode(lid: string, animate = true): void {
+      const n = cy.getElementById(lid);
+      if (n.empty()) return;
+      cy.nodes().removeClass('focused');
+      n.addClass('focused');
+      if (!animate) return;
+      // Folders zoom into their contents; plain entries into their neighbourhood.
+      const eles = n.isParent() ? n.union(n.descendants()) : n.closedNeighborhood();
+      cy.animate({ fit: { eles, padding: 60 } }, { duration: 350, easing: 'ease-in-out' });
+    },
+    relayout(): void {
+      cy.layout(layoutFor(lastView ?? 'explore', lastPreset)).run();
     },
     setEditMode(mode: EditMode): void {
       editMode = mode;
