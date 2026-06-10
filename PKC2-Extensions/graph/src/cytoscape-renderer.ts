@@ -14,7 +14,7 @@ import edgehandles from 'cytoscape-edgehandles';
 import type { Entry, Relation } from './types';
 import type { GraphHyperlink, GraphExternalLink } from './protocol';
 import { isSystemArchetype, getAncestorFolderLids } from './util';
-import { archetypeColor, archetypeEmoji, relationColor, colorTagColor, hashColor, depthColor } from './colors';
+import { archetypeColor, archetypeEmoji, relationColor, colorTagColor, hashColor, depthColor, emojiSvgUrl } from './colors';
 
 cytoscape.use(fcose);
 cytoscape.use(edgehandles);
@@ -42,6 +42,12 @@ export interface GraphRenderInput {
   search: string;
   showHyperlinks: boolean;
   showExternal: boolean;
+  /** Aggregate all attachment entries into a single node (toggle to expand). */
+  collapseAssets: boolean;
+  /** Aggregate all todo entries into a single node. */
+  collapseTodos: boolean;
+  /** Show only this folder + its subtree (null = whole container). */
+  focusFolder: string | null;
 }
 
 export interface CytoscapeGraph {
@@ -73,27 +79,37 @@ function buildStyle(): StylesheetJson {
     {
       selector: 'node',
       style: {
+        // The symbol IS the archetype emoji (rendered as an SVG background);
+        // the colour shows as a ring behind it.
         'background-color': 'data(color)',
-        shape: 'data(shape)',
+        'background-image': 'data(emoji)',
+        'background-fit': 'contain',
+        'background-clip': 'none',
+        shape: 'ellipse',
         width: 'data(size)',
         height: 'data(size)',
         label: 'data(label)',
-        color: '#c8d8b0',
-        'font-size': 9,
+        color: '#dbe7c8',
+        'font-size': 13,
         'text-valign': 'bottom',
         'text-halign': 'center',
         'text-margin-y': 3,
         'text-wrap': 'ellipsis',
-        'text-max-width': '120px',
-        'text-outline-width': 2,
-        'text-outline-color': 'rgba(13,15,10,0.9)',
-        'border-width': 1,
-        'border-color': 'rgba(255,255,255,0.25)',
+        'text-max-width': '140px',
+        'text-outline-width': 2.5,
+        'text-outline-color': 'rgba(13,15,10,0.92)',
+        'border-width': 2,
+        'border-color': 'data(color)',
       },
+    },
+    {
+      selector: 'node[type="folder"], node[archetype="folder"]',
+      style: { shape: 'round-rectangle' },
     },
     {
       selector: ':parent',
       style: {
+        'background-image': 'none',
         'background-color': 'rgba(240,165,0,0.06)',
         'background-opacity': 0.5,
         'border-width': 1,
@@ -102,21 +118,22 @@ function buildStyle(): StylesheetJson {
         shape: 'round-rectangle',
         label: 'data(label)',
         'text-valign': 'top',
-        'font-size': 11,
+        'font-size': 14,
         color: '#f0c060',
-        padding: '14px',
+        padding: '16px',
       },
     },
     {
-      selector: 'node[type="domain"]',
-      style: {
-        'background-color': '#2a3550',
-        'border-color': '#5b8def',
-        'border-width': 1.5,
-        shape: 'diamond',
-        color: '#9bc0ff',
-        'font-size': 9,
-      },
+      selector: 'node[type="root"]',
+      style: { 'border-color': 'rgba(150,170,140,0.5)', 'background-color': 'rgba(150,170,140,0.05)', color: '#9aa5b1' },
+    },
+    {
+      selector: 'node[type="extgroup"]',
+      style: { 'border-color': 'rgba(91,141,239,0.5)', 'background-color': 'rgba(91,141,239,0.06)', color: '#9bc0ff' },
+    },
+    {
+      selector: 'node[type="agg"]',
+      style: { 'border-width': 3, 'border-color': '#f0a500', 'font-size': 13, shape: 'round-rectangle' },
     },
     {
       selector: 'edge',
@@ -195,27 +212,72 @@ function detectCommunities(nodeIds: string[], links: ReadonlyArray<{ from: strin
   return label;
 }
 
+/** Group key for an external URL: domain + up to 3 path segments. */
+function extGroupKey(url: string): string {
+  try {
+    const u = new URL(url);
+    const segs = u.pathname.split('/').filter(Boolean).slice(0, 3);
+    return [u.hostname.replace(/^www\./, ''), ...segs].join('/');
+  } catch {
+    return hostname(url);
+  }
+}
+
+const AGG_ARCH: Record<string, { emoji: string; label: string }> = {
+  attachment: { emoji: '📎', label: 'Assets' },
+  todo: { emoji: '✅', label: 'Todos' },
+};
+
 function buildElements(input: GraphRenderInput): {
   elements: ElementDefinition[];
   preset: Map<string, { x: number; y: number }> | null;
 } {
-  const { entries, relations, view, colorBy, showHyperlinks, showExternal, folderOf } = input;
-  const userEntries = entries.filter((e) => !isSystemArchetype(e.archetype));
-  const scope = new Set(userEntries.map((e) => e.lid));
+  const { entries, relations, view, colorBy, showHyperlinks, showExternal, folderOf, focusFolder } = input;
   const compound = COMPOUND_VIEWS.has(view);
+  const userEntries = entries.filter((e) => !isSystemArchetype(e.archetype));
+
+  // Scope: a focused folder shows only its subtree; otherwise the whole graph.
+  let scope: Set<string>;
+  if (focusFolder) {
+    scope = new Set([focusFolder]);
+    let frontier = [focusFolder];
+    while (frontier.length) {
+      const next: string[] = [];
+      for (const f of frontier) {
+        for (const r of relations) {
+          if (r.kind === 'structural' && r.from === f && !scope.has(r.to)) { scope.add(r.to); next.push(r.to); }
+        }
+      }
+      frontier = next;
+    }
+  } else {
+    scope = new Set(userEntries.map((e) => e.lid));
+  }
+
+  // Aggregate (collapse) asset / todo entries into one node each.
+  const collapsed = new Set<string>();
+  if (input.collapseAssets) collapsed.add('attachment');
+  if (input.collapseTodos) collapsed.add('todo');
+  const scopedEntries = userEntries.filter((e) => scope.has(e.lid));
+  const visibleEntries = scopedEntries.filter((e) => !collapsed.has(e.archetype) || e.lid === focusFolder);
+  const visible = new Set(visibleEntries.map((e) => e.lid));
+  const aggCounts = new Map<string, number>();
+  for (const e of scopedEntries) {
+    if (collapsed.has(e.archetype) && e.lid !== focusFolder) aggCounts.set(e.archetype, (aggCounts.get(e.archetype) ?? 0) + 1);
+  }
 
   const relEdges = relations.filter((r) => {
-    if (!scope.has(r.from) || !scope.has(r.to)) return false;
+    if (!visible.has(r.from) || !visible.has(r.to)) return false;
     if (view === 'timeline') return false;
     if (view === 'folders') return r.kind === 'structural';
     if (view === 'connectivity') return r.kind === 'semantic' || r.kind === 'categorical';
     return r.kind === 'structural' || r.kind === 'semantic' || r.kind === 'categorical';
   });
   const hyperEdges = showHyperlinks && view !== 'timeline'
-    ? input.hyperlinks.filter((h) => scope.has(h.from) && scope.has(h.to))
+    ? input.hyperlinks.filter((h) => visible.has(h.from) && visible.has(h.to))
     : [];
   const extLinks = showExternal && view !== 'timeline'
-    ? input.externalLinks.filter((x) => scope.has(x.from))
+    ? input.externalLinks.filter((x) => visible.has(x.from))
     : [];
 
   const degree = new Map<string, number>();
@@ -225,50 +287,67 @@ function buildElements(input: GraphRenderInput): {
   for (const x of extLinks) bump(x.from);
 
   const communities = colorBy === 'cluster'
-    ? detectCommunities(userEntries.map((e) => e.lid), [...relEdges, ...hyperEdges])
+    ? detectCommunities(visibleEntries.map((e) => e.lid), [...relEdges, ...hyperEdges])
     : null;
 
   const elements: ElementDefinition[] = [];
+  // Implicit root: top-level entries nest here so nothing floats unrooted.
+  const topParent = focusFolder ?? (compound ? 'root' : null);
+  if (compound && !focusFolder) {
+    elements.push({ data: { id: 'root', type: 'root', label: '📂 root' } });
+  }
 
-  for (const e of userEntries) {
+  for (const e of visibleEntries) {
     const depth = colorBy === 'depth' || view === 'folders'
       ? getAncestorFolderLids(relations, entries, e.lid).length
       : 0;
     const deg = degree.get(e.lid) ?? 0;
-    const color = communities
-      ? hashColor(`cl${communities.get(e.lid) ?? 0}`)
-      : nodeColor(e, colorBy, depth);
+    const color = communities ? hashColor(`cl${communities.get(e.lid) ?? 0}`) : nodeColor(e, colorBy, depth);
     const data: ElementDefinition['data'] = {
       id: e.lid,
-      label: `${archetypeEmoji(e.archetype)} ${e.title || e.lid}`,
+      label: e.title || e.lid,
+      emoji: emojiSvgUrl(archetypeEmoji(e.archetype)),
       search: `${e.title} ${(e.tags ?? []).join(' ')}`.toLowerCase(),
       color,
-      shape: e.archetype === 'folder' ? 'round-rectangle' : 'ellipse',
-      size: 22 + Math.min(deg, 14) * 4,
+      size: 24 + Math.min(deg, 14) * 4,
       archetype: e.archetype,
     };
-    if (compound) {
+    if (compound && e.lid !== focusFolder) {
       const parent = folderOf.get(e.lid);
-      if (parent && scope.has(parent) && parent !== e.lid) data.parent = parent;
+      data.parent = parent && visible.has(parent) && parent !== e.lid ? parent : topParent ?? undefined;
     }
     elements.push({ data });
   }
 
-  // External links aggregated by DOMAIN (one hub per domain; folders untouched).
+  // Aggregate nodes for collapsed archetypes.
+  for (const [arch, count] of aggCounts) {
+    const meta = AGG_ARCH[arch] ?? { emoji: archetypeEmoji(arch), label: arch };
+    elements.push({ data: {
+      id: `agg:${arch}`, type: 'agg', aggArch: arch,
+      label: `${meta.label} (${count})`, emoji: emojiSvgUrl(meta.emoji),
+      color: archetypeColor(arch), size: 34,
+      ...(topParent ? { parent: topParent } : {}),
+    } });
+  }
+
+  // External URLs: one node per URL, grouped in a domain/path-3 compound box.
   if (extLinks.length > 0) {
-    const byDomain = new Map<string, Set<string>>();
-    for (const x of extLinks) {
-      const d = hostname(x.url);
-      let s = byDomain.get(d);
-      if (!s) { s = new Set(); byDomain.set(d, s); }
-      s.add(x.from);
-    }
+    const groups = new Set<string>();
+    const urlNodes = new Set<string>();
     let i = 0;
-    for (const [domain, froms] of byDomain) {
-      elements.push({ data: { id: `dom:${domain}`, type: 'domain', label: `🌐 ${domain}`, color: '#2a3550', shape: 'diamond', size: 16 + Math.min(froms.size, 12) * 3 } });
-      for (const from of froms) {
-        elements.push({ data: { id: `xe${i++}`, source: from, target: `dom:${domain}`, kind: 'external', ecolor: '#5b8def', ewidth: 1.2 } });
+    for (const x of extLinks) {
+      const key = extGroupKey(x.url);
+      const grpId = `extgrp:${key}`;
+      if (!groups.has(key)) {
+        groups.add(key);
+        elements.push({ data: { id: grpId, type: 'extgroup', label: `🌐 ${key}` } });
       }
+      const urlId = `ext:${x.url}`;
+      if (!urlNodes.has(x.url)) {
+        urlNodes.add(x.url);
+        elements.push({ data: { id: urlId, type: 'external', label: hostname(x.url), emoji: emojiSvgUrl('🔗'), color: '#2a3550', size: 18, parent: grpId } });
+      }
+      elements.push({ data: { id: `xe${i++}`, source: x.from, target: urlId, kind: 'external', ecolor: '#5b8def', ewidth: 1.1 } });
     }
   }
 
@@ -284,14 +363,14 @@ function buildElements(input: GraphRenderInput): {
   let preset: Map<string, { x: number; y: number }> | null = null;
   if (view === 'timeline') {
     preset = new Map();
-    const times = userEntries.map((e) => Date.parse(e.updated_at)).filter((t) => Number.isFinite(t));
+    const times = visibleEntries.map((e) => Date.parse(e.updated_at)).filter((t) => Number.isFinite(t));
     const minT = times.length ? Math.min(...times) : 0;
     const maxT = times.length ? Math.max(...times) : 1;
     const span = Math.max(1, maxT - minT);
     const lanes = new Map<string, number>();
     const laneOf = (a: string): number => { if (!lanes.has(a)) lanes.set(a, lanes.size); return lanes.get(a)!; };
     const seen = new Map<string, number>();
-    for (const e of userEntries) {
+    for (const e of visibleEntries) {
       const t = Date.parse(e.updated_at);
       const x = (((Number.isFinite(t) ? t : minT) - minT) / span) * 1600;
       const lane = laneOf(e.archetype);
@@ -341,10 +420,18 @@ export function createCytoscapeGraph(
   onSelect: (lid: string) => void,
   onOpen: (lid: string) => void,
   edit: GraphEditHandlers,
+  onAggExpand: (arch: string) => void,
 ): CytoscapeGraph {
-  // wheelSensitivity 0.2 はユーザー報告「拡大縮小のスクロール量が多く操作できない」
-  // (1 ノッチの変化が小さすぎる)→ 0.6 に引き上げ。
-  const cy: Core = cytoscape({ container, style: buildStyle(), wheelSensitivity: 0.6, minZoom: 0.05, maxZoom: 4 });
+  // Custom wheel zoom (cytoscape's fixed wheelSensitivity can't react to Alt):
+  // high sensitivity by default, finer while Alt is held.
+  const cy: Core = cytoscape({ container, style: buildStyle(), userZoomingEnabled: false, minZoom: 0.04, maxZoom: 6 });
+  container.addEventListener('wheel', (e: WheelEvent) => {
+    e.preventDefault();
+    const rate = e.altKey ? 0.0009 : 0.0042; // Alt = finer control
+    const next = cy.zoom() * Math.exp(-e.deltaY * rate);
+    const r = container.getBoundingClientRect();
+    cy.zoom({ level: Math.max(0.04, Math.min(next, 6)), renderedPosition: { x: e.clientX - r.left, y: e.clientY - r.top } });
+  }, { passive: false });
   // Test hook(PKC2 の __forTest 流儀): E2E が位置・viewport を検証できるよう
   // container 要素経由で core を参照可能にする。
   (container as HTMLElement & { __cyForTest?: Core }).__cyForTest = cy;
@@ -391,7 +478,9 @@ export function createCytoscapeGraph(
   cy.on('tap', 'node', (evt) => {
     if (editMode !== 'none') return;
     const id = evt.target.id();
-    if (id.startsWith('dom:')) return;
+    if (id.startsWith('agg:')) { onAggExpand(String(evt.target.data('aggArch'))); return; }
+    // Virtual nodes (external URLs/groups, root) are not real entries.
+    if (id.startsWith('ext:') || id.startsWith('extgrp:') || id === 'root') return;
     const now = Date.now();
     if (id === lastTapId && now - lastTapAt < 320) {
       onOpen(id);
@@ -467,11 +556,13 @@ export function createCytoscapeGraph(
   cy.on('layoutstop', () => syncMinimap());
 
   let lastView: GraphView | null = null;
+  let lastFocus: string | null = null;
+  let lastCollapse = '';
   let lastPreset: Map<string, { x: number; y: number }> | null = null;
 
   function setCounts(): void {
     container.setAttribute('data-pkc-node-count', String(cy.nodes('[!type]').length));
-    container.setAttribute('data-pkc-external-count', String(cy.nodes('[type="domain"]').length));
+    container.setAttribute('data-pkc-external-count', String(cy.nodes('[type="external"]').length));
     container.setAttribute('data-pkc-hyperlink-count', String(cy.edges('[kind="hyperlink"]').length));
   }
 
@@ -479,9 +570,15 @@ export function createCytoscapeGraph(
     update(input: GraphRenderInput): void {
       const { elements, preset } = buildElements(input);
       lastPreset = preset;
-      const viewChanged = lastView !== input.view;
+      // A different node SET (view / folder focus / collapse / external toggle)
+      // warrants a fresh layout; an unchanged set keeps positions stable.
+      const collapseKey = `${input.collapseAssets}/${input.collapseTodos}/${input.showExternal}/${input.showHyperlinks}`;
+      const setChanged = lastView !== input.view || lastFocus !== input.focusFolder || lastCollapse !== collapseKey;
+      const viewChanged = setChanged;
       const firstRender = cy.nodes().length === 0;
       lastView = input.view;
+      lastFocus = input.focusFolder;
+      lastCollapse = collapseKey;
 
       const nodeDefs: ElementDefinition[] = [];
       const edgeDefs: ElementDefinition[] = [];

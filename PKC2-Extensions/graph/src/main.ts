@@ -46,6 +46,9 @@ interface ViewState {
   source: 'connecting' | 'host' | 'demo';
   showHyperlinks: boolean;
   showExternal: boolean;
+  collapseAssets: boolean;
+  collapseTodos: boolean;
+  focusFolder: string | null;
 }
 
 const state: ViewState = {
@@ -62,6 +65,9 @@ const state: ViewState = {
   source: 'connecting',
   showHyperlinks: true,
   showExternal: false,
+  collapseAssets: true,
+  collapseTodos: true,
+  focusFolder: null,
 };
 
 let rootEl: HTMLElement | null = null;
@@ -78,10 +84,17 @@ export function mountGraphExtension(root: HTMLElement): void {
   channel = new GraphChannel(
     (projection) => applyProjection(projection),
     (lid) => {
-      // PKC2 側で選択が変わった(フォルダを開いた等)→ graph をそこへフォーカス。
-      // ただし graph 自身の tap 由来の echo は視点を動かさない(操作の邪魔)。
+      // PKC2 側で選択が変わった。フォルダなら「そのフォルダのみ」にフォーカス
+      // (subtree 表示)、それ以外は該当ノードへ寄る。graph 自身の tap echo は
+      // 視点を動かさない(操作の邪魔)。
       const isEcho = lastSentSelect.lid === lid && Date.now() - lastSentSelect.at < 1500;
-      graph?.focusNode(lid, !isEcho);
+      const ent = state.entries.find((e) => e.lid === lid);
+      if (ent?.archetype === 'folder' && !isEcho) {
+        state.focusFolder = lid;
+        render();
+      } else {
+        graph?.focusNode(lid, !isEcho);
+      }
     },
   );
   if (!channel.start()) {
@@ -111,6 +124,12 @@ function ensureLayout(): void {
     {
       onMove: (lid, folderLid) => channel?.move(lid, folderLid),
       onRelate: (from, to) => channel?.relate(from, to),
+    },
+    (arch) => {
+      // Tapped an aggregate node → expand that archetype.
+      if (arch === 'attachment') state.collapseAssets = false;
+      if (arch === 'todo') state.collapseTodos = false;
+      render();
     },
   );
 }
@@ -178,6 +197,9 @@ function render(): void {
     search: state.search,
     showHyperlinks: state.showHyperlinks,
     showExternal: state.showExternal,
+    collapseAssets: state.collapseAssets,
+    collapseTodos: state.collapseTodos,
+    focusFolder: state.focusFolder,
   });
   // Swap the legend overlay without touching Cytoscape's canvas layers.
   if (graphHost) {
@@ -280,6 +302,31 @@ function renderToolbar(): HTMLElement {
     refreshToolbar();
   });
   toolbar.appendChild(relateBtn);
+
+  // asset / todo aggregate toggles.
+  const assetBtn = createElement('button', 'pkc-btn-small');
+  assetBtn.textContent = state.collapseAssets ? '📎 Asset 集約' : '📎 Asset 展開';
+  if (state.collapseAssets) assetBtn.setAttribute('data-pkc-active', 'true');
+  assetBtn.title = 'attachment エントリを1ノードに集約 / 展開';
+  assetBtn.addEventListener('click', () => { state.collapseAssets = !state.collapseAssets; render(); });
+  toolbar.appendChild(assetBtn);
+
+  const todoBtn = createElement('button', 'pkc-btn-small');
+  todoBtn.textContent = state.collapseTodos ? '✅ Todo 集約' : '✅ Todo 展開';
+  if (state.collapseTodos) todoBtn.setAttribute('data-pkc-active', 'true');
+  todoBtn.title = 'todo エントリを1ノードに集約 / 展開';
+  todoBtn.addEventListener('click', () => { state.collapseTodos = !state.collapseTodos; render(); });
+  toolbar.appendChild(todoBtn);
+
+  // Folder-focus indicator + clear.
+  if (state.focusFolder) {
+    const f = state.entries.find((e) => e.lid === state.focusFolder);
+    const clear = createElement('button', 'pkc-btn-small');
+    clear.textContent = `⬑ 全体に戻る(📁 ${f?.title ?? state.focusFolder})`;
+    clear.setAttribute('data-pkc-active', 'true');
+    clear.addEventListener('click', () => { state.focusFolder = null; render(); });
+    toolbar.appendChild(clear);
+  }
 
   const zoomReset = createElement('button', 'pkc-btn-small');
   zoomReset.textContent = '↺ 表示リセット';

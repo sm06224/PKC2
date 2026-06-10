@@ -182,3 +182,10 @@
   border-radius: var(--radius-sm, 2px);
 }
 
+
+/* User request: legend / buttons were too small — bump up. */
+.pkc-graph-legend { font-size: var(--fs-md, 0.85rem); }
+.pkc-graph-legend-heading { font-size: var(--fs-md, 0.85rem); }
+.pkc-graph-legend-item { font-size: var(--fs-sm, 0.8rem); }
+.pkc-btn-small { font-size: var(--fs-sm, 0.8rem); padding: 3px 8px; }
+.pkc-graph-mode-select { font-size: var(--fs-sm, 0.8rem); }

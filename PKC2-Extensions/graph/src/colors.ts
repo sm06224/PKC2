@@ -81,3 +81,11 @@ export function depthColor(depth: number): string {
   const light = 70 - d * 8;
   return `hsl(150, 45%, ${light}%)`;
 }
+
+/** An emoji rendered as an SVG data-URL, usable as a Cytoscape node background. */
+export function emojiSvgUrl(emoji: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">`
+    + `<text x="20" y="30" font-size="30" text-anchor="middle">${emoji}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
