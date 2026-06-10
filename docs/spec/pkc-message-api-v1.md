@@ -106,16 +106,18 @@ PKC-Message v1 は **`window.postMessage`** を transport とする。host(PKC2 
 
 ### 4.2 Validation Rules
 
-bridge 層は受信 envelope を **以下の順** で validate(`envelope.ts:62-109`、`validateEnvelope()`):
+bridge 層は受信 envelope を validate する(`envelope.ts` `validateEnvelope()`)。**検証は「最初の失敗で即 reject」ではなく、`NOT_OBJECT` を除き全 reason を収集して一括 reject する**(複数違反は同時に報告される — 診断・可視化に有用なため、spec を実装挙動に合わせて訂正、#795 B-2、2026-06-10):
 
-1. **`NOT_OBJECT`**: payload が plain object でない(null / array / primitive など)→ reject
-2. **`WRONG_PROTOCOL`**: `protocol !== 'pkc-message'` → reject
-3. **`WRONG_VERSION`**: `version !== 1` → reject(本 spec では future version は別 envelope と見なす)
-4. **`MISSING_TYPE`**: `type` が string でない / 空 → reject
-5. **`INVALID_TYPE`**: `type` が `KNOWN_TYPES` に未登録 → reject(`envelope.ts:44-54`、§7 で列挙)
-6. **`MISSING_TIMESTAMP`**: `timestamp` が string でない → reject
+1. **`NOT_OBJECT`**: payload が plain object でない(null / array / primitive など)→ **この場合のみ即 reject**(以降の検査は行えない)
+2. **`WRONG_PROTOCOL`**: `protocol !== 'pkc-message'` → reason に追加
+3. **`WRONG_VERSION`**: `version !== 1` → reason に追加(本 spec では future version は別 envelope と見なす)
+4. **`MISSING_TYPE`**: `type` が string でない / 空 → reason に追加
+5. **`INVALID_TYPE`**: `type` が `KNOWN_TYPES` に未登録 → reason に追加(§7 で列挙)
+6. **`MISSING_TIMESTAMP`**: `timestamp` が string でない → reason に追加
 
-validation pass 後、envelope は **handler routing layer** に渡される(`message-handler.ts:79-85`、§5 capability gate を経由)。
+reason が 1 件以上あれば invalid(`reasons: RejectReason[]` に**収集された全件**が入る)。検証器を実装する場合は「単一の最初の違反」ではなく**複数 reason の同時報告**を期待すること。
+
+validation pass 後、envelope は **handler routing layer** に渡される(`message-handler.ts` `route()`、§5 capability gate を経由)。
 
 ### 4.3 RejectCode と reject 経路
 
