@@ -291,11 +291,11 @@ if (profile.capabilities.includes('export:request') && profile.embedded) {
 **原因**: PKC2 host の `allowedOrigins` に sender origin が含まれていない、または `'null'` opt-in なしで file://から送信。
 **対処**: §4.1 / §4.2 で provider pattern を使い deployment 環境ごとに動的設定。`onReject` callback で reject reason を確認可能。
 
-### 7.2 Body size cap(256 KiB)
+### 7.2 Body size cap(262144 UTF-16 code units)
 
 **症状**: record:offer 送信して PendingOffer が UI に出ない。
-**原因**: body が 262144 bytes(`BODY_SIZE_CAP_BYTES`)を超過、`record-offer-handler.ts:127` で reject。
-**対処**: sender 側で事前に `new Blob([body]).size <= 262144` check。長い body は分割 / asset-style 添付(v1 では asset embed 禁止、v2+ で別経路)。
+**原因**: `body.length` が 262144(**UTF-16 code units、バイトではない**。`BODY_SIZE_CAP_UTF16_UNITS`)を超過、`record-offer-handler.ts` の `validateOfferPayload` で reject。
+**対処**: sender 側で事前に `body.length <= 262144` check(`new Blob([body]).size` はバイト数なのでホスト判定と一致しない — 非 ASCII で偽陽性に注意)。長い body は分割 / asset-style 添付(v1 では asset embed 禁止、v2+ で別経路)。
 
 ### 7.3 embedded-only types(`export:request`)
 

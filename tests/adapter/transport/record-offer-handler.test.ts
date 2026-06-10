@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   recordOfferHandler,
-  BODY_SIZE_CAP_BYTES,
+  BODY_SIZE_CAP_UTF16_UNITS,
   getReplyWindowForOffer,
   clearReplyWindowForOffer,
   clearAllReplyWindows,
@@ -144,15 +144,26 @@ describe('recordOfferHandler', () => {
   });
 
   it('accepts body exactly at the size cap', () => {
-    const body = 'x'.repeat(BODY_SIZE_CAP_BYTES);
+    const body = 'x'.repeat(BODY_SIZE_CAP_UTF16_UNITS);
     const ctx = makeCtx({ title: 'T', body });
     const result = recordOfferHandler(ctx);
     expect(result).toBe(true);
   });
 
-  it('rejects body one byte over the size cap', () => {
+  // #795 A-2: cap は UTF-16 code unit 数であってバイト数ではない。
+  // 3 バイト/文字の日本語 body は length が cap 以下なら、実バイトが
+  // cap を超えていても受理される(名実一致の改名時に pin した契約。
+  // 実バイト測定への変更は受理範囲が狭まるため user 判断が必要)。
+  it('accepts a multi-byte body whose UTF-16 length is at the cap (bytes exceed it)', () => {
+    const body = 'あ'.repeat(BODY_SIZE_CAP_UTF16_UNITS); // 1 unit / 3 UTF-8 bytes each
+    expect(new TextEncoder().encode(body).length).toBeGreaterThan(BODY_SIZE_CAP_UTF16_UNITS);
+    const ctx = makeCtx({ title: 'T', body });
+    expect(recordOfferHandler(ctx)).toBe(true);
+  });
+
+  it('rejects body one code unit over the size cap', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const body = 'x'.repeat(BODY_SIZE_CAP_BYTES + 1);
+    const body = 'x'.repeat(BODY_SIZE_CAP_UTF16_UNITS + 1);
     const ctx = makeCtx({ title: 'T', body });
     const result = recordOfferHandler(ctx);
     expect(result).toBe(false);

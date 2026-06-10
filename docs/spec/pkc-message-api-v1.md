@@ -322,7 +322,8 @@ interface RecordOfferPayload {
 
 #### 7.2.2 Size Cap
 
-- `body.length ≤ 262144 bytes`(`BODY_SIZE_CAP_BYTES`、`record-offer-handler.ts:127`)
+- `body.length ≤ 262144`、単位は **UTF-16 code unit(バイトではない)**(`BODY_SIZE_CAP_UTF16_UNITS`、`record-offer-handler.ts` の `validateOfferPayload`)
+- `String.prototype.length` での判定のため、非 ASCII 本文は実バイトがこの値を超えても受理されうる(日本語主体なら UTF-8 実バイトで約 3 倍まで)。実バイト測定への変更は受理範囲が狭まる breaking 変更となるため、本 v1 では行わない(#795 A-2 の決定、2026-06-10)
 - 超過時は handler が console.warn 出して reject(handler-level rejection、§8.2)
 - title には size cap 無し(現実的には UI 表示で長すぎは破綻するため、sender 側で 256 文字程度を推奨)
 

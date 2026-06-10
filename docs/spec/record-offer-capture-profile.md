@@ -439,7 +439,7 @@ implementation PR で `"null"` を明示リストに入れた場合の挙動を�
 ### 9.3 body size hard cap
 
 - 本 profile は **body に対して hard cap** を規定する
-- v0 の数値: **256 KiB (262144 bytes)**（UTF-16 length ベースでの近似、`body.length <= 262144` で判定）
+- v0 の数値: **262144 UTF-16 code units**(`body.length <= 262144` で判定。**バイト数ではない** — 非 ASCII 本文は UTF-8 実バイトでこれを超えうる。日本語主体なら約 3 倍。実装定数は `BODY_SIZE_CAP_UTF16_UNITS`、#795 A-2 で名実一致に改名・挙動不変)
 - **body のみ** を対象にする。title / optional field の size は v0 では cap しない（title は `<= 数百文字` が現実的な上限で cap の必然性が低い、optional field は定性的に短い）
 - cap 超過 payload は §8.3 に従い reject
 - 将来 `selection_text` 等も格納対象に昇格した場合、cap の再定義を行う

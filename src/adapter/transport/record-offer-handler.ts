@@ -17,8 +17,8 @@
  *   reducer can inject a body header on accept (`> Source:` / `> Captured:`).
  * - `selection_text` and `page_title` are type-checked but otherwise
  *   discarded in v0 (spec §8.2).
- * - `body.length` over `BODY_SIZE_CAP_BYTES` (262144) is rejected
- *   (spec §9.3).
+ * - `body.length` over `BODY_SIZE_CAP_UTF16_UNITS` (262144 UTF-16 code
+ *   units — NOT bytes) is rejected (spec §9.3).
  *
  * Reply-window threading (PR-C, 2026-04-26):
  * - When a `record:offer` arrives, we stash `ctx.sourceWindow` in
@@ -56,10 +56,17 @@ import type { ArchetypeId } from '../../core/model/record';
 // ── Constants ────────────────────────
 
 /**
- * Hard cap on `body.length` (UTF-16 code units) for inbound `record:offer`
- * payloads. Per `docs/spec/record-offer-capture-profile.md` §9.3, v0 = 256 KiB.
+ * Hard cap on `body.length` for inbound `record:offer` payloads, measured
+ * in **UTF-16 code units — NOT bytes** (`String.prototype.length`). Per
+ * `docs/spec/record-offer-capture-profile.md` §9.3. A non-ASCII body can
+ * therefore exceed 262144 *bytes* while passing this cap (Japanese text
+ * encodes ~3 bytes/unit in UTF-8). #795 A-2 renamed the constant from
+ * `BODY_SIZE_CAP_BYTES` so the name matches what is actually measured;
+ * the value and the check are unchanged (backward compatible — switching
+ * to a byte measure would shrink the accepted range for existing senders
+ * and needs an explicit user decision).
  */
-export const BODY_SIZE_CAP_BYTES = 262144;
+export const BODY_SIZE_CAP_UTF16_UNITS = 262144;
 
 // ── Payload types ────────────────────────
 
@@ -177,8 +184,8 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
   if (!payload || typeof payload !== 'object') return null;
   const p = payload as Record<string, unknown>;
   if (typeof p.title !== 'string' || typeof p.body !== 'string') return null;
-  // Body size cap (spec §9.3).
-  if (p.body.length > BODY_SIZE_CAP_BYTES) return null;
+  // Body size cap (spec §9.3) — UTF-16 code units, not bytes.
+  if (p.body.length > BODY_SIZE_CAP_UTF16_UNITS) return null;
   // Capture-specific optional fields (spec §8.1 / §8.3): when present they
   // must be strings. Unknown extra fields are silently ignored (spec §7.3).
   if (p.source_url !== undefined && typeof p.source_url !== 'string') return null;
