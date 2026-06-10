@@ -124,8 +124,9 @@ flat YAML 制約のため `vars.foo` は flat key として扱い、`vars: { foo
 
 ### §1.4 graph view の実装(線引き edit 非サポート)
 
-**File**:[`src/adapter/ui/graph-canvas.ts`](../../src/adapter/ui/graph-canvas.ts)
-(PR-H G16、**Canvas ベース**、SVG 非採用)
+**File**:`src/adapter/ui/graph-canvas.ts`(PR-H G16、**Canvas ベース**、SVG 非採用)
+— **#790 で core から撤去・`PKC2-Extensions/graph/`(Cytoscape 再実装)へ移植済**。
+以下の記述は撤去前の歴史的仕様(graph link cssColor 等の relation kind 連携の経緯)として保全。
 
 データ型:
 ```typescript
