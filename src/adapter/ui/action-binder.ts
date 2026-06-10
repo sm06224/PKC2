@@ -5209,7 +5209,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         return;
       }
       e.preventDefault();
-      toggleFocusMode(root);
+      // dispatcher 必須:expand 側は SYS_SYNC dispatch で full render を
+      // 強制しないと、collapsed 中の full render が仕込んだ lazy placeholder
+      // が空のまま可視化される(#792 ①再発、2026-06-10)。
+      toggleFocusMode(root, dispatcher);
       return;
     }
 
