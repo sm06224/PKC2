@@ -42,15 +42,17 @@ North Star(#764)の柱②「コアを薄く、ランチャー + PKC-Extensions �
 
 ### 3.3 退避候補リスト(#772 受け入れ条件)
 
-| 候補 | bundle 寄与(audit 実測) | 退避形態 | 備考 |
+> **user direction(2026-06-10、D3 決定)**: **当面これ以上の分離はしない**。拡張は**別リポジトリで研究中**であり、そちらで機能が実現し次第、core 側の該当機能を「分離」ではなく**廃止相当(subtract)**にしていく。つまり退避モデルは「core コードを拡張へ移植する」のではなく、**graph(#790)と同じ「外部で再実装 → core から削除」**。下表は core 側で削除対象になり得る機能の台帳として保全し、優先順位は確定しない。
+
+| 候補 | bundle 寄与(audit 実測) | 想定 | 備考 |
 |---|---|---|---|
-| graph view | ✅ 退避済(#790) | 独立拡張(Cytoscape) | 第1実装・パターン実証 |
-| mermaid レンダリング | **~3.1MB(bundle の 56.7%)** | 拡張 or lazy-load 分離 | L1 #767 最大項目。viewer 連携の設計が必要 |
-| Word/PPT export(docx/pptxgenjs) | ~725KB | 拡張(export 専用) | `export.request` 系 method と相性良 |
-| spreadsheet archetype(#760 系) | L2 #769 仕分け待ち | keep なら拡張化を第一候補 | 凍結 10-4。archetype 追加はコア汚染が大きい |
+| graph view | ✅ 廃止済(#790) | 外部再実装(Cytoscape)→ core 削除 | 第1実装・パターン実証 |
+| mermaid レンダリング | **~3.1MB(bundle の 56.7%)** | 外部実現次第 core 削除 | L1 #767 最大項目。viewer 連携の設計が必要 |
+| Word/PPT export(docx/pptxgenjs) | ~725KB | 外部実現次第 core 削除 | `export.request` 系 method と相性良 |
+| spreadsheet archetype(#760 系) | L2 #769 仕分け待ち | drop なら単純 subtract | 凍結 10-4。archetype 追加はコア汚染が大きい |
 | calendar / kanban view | 中 | **当面 core 残置** | 利用頻度高・projection だけでは完結しない |
 
-> 退避 = 機能追加ではなく **subtract の受け皿**。優先順位は L1(bundle)× L2(実機 keep/drop)の結果に従い、本書では順序を確定しない(§9 D3)。
+この direction により、本 host 設計の主務は「core 機能の移植先を作ること」ではなく、**別リポジトリ産の拡張が乗ってくる安定した受け口(host I/F)を守ること**になる(§4 のセキュリティ不変条件と後方互換が最重要、§6 の v2 統合は受け口の整備として位置づけ)。
 
 ## 4. Host I/F 設計
 
@@ -135,13 +137,13 @@ manifest は `AttachmentBody` の既存 field で足りる(追加するなら将
 - 退避候補機能リスト → §3.3
 - #791(graph channel v2 統合)の設計 → §6
 
-## 9. 判断事項(user 確認待ち)
+## 9. 判断事項
 
-- **D1 — #791 の扱い**: 本書 §6 をもって #791 の「設計」受け入れ条件を満たしたとし、#791 は実装 go 待ち(凍結)に置き換えてよいか
-- **D2 — 同一オリジン拡張への heartbeat 必須**: OQ-1 の「opt-out 不許可」を host→child にも適用(v2 移行と同時に導入)でよいか
-- **D3 — 退避候補の優先順位**: §3.3 のうち次に着手すべきは mermaid 分離(L1 bundle 最大)か、Word/PPT export か、L2 #769 の実機仕分け完了を待つか
-- **D4 — asset 由来拡張の auto-grant**: container 内 asset 由来・同一オリジン拡張に dialog なしの暗黙 grant(§4.4)を許容するか
-- **D5 — 実装 go/no-go**: 段階 1(spec doc のみ、コード不変)だけ先行着手を許可するか、全凍結のままにするか
+- **D3 — 退避候補の優先順位**: ✅ **決定済み(user direction 2026-06-10)** — 当面これ以上の分離はしない。拡張は別リポジトリで研究中、機能実現次第で core 側該当機能を廃止相当(subtract)にする(§3.3 注記)。
+- **D1 — #791 の扱い**(user 確認待ち): 本書 §6 をもって #791 の「設計」受け入れ条件を満たしたとし、#791 は実装 go 待ち(凍結)に置き換えてよいか
+- **D5 — 実装 go/no-go**(user 確認待ち): 段階 1(spec doc のみ、コード不変)だけ先行着手を許可するか、全凍結のままにするか。D3 の direction を踏まえると、受け口(host I/F)の spec 整備は別リポジトリ研究の支援になる
+- **D2 — 同一オリジン拡張への heartbeat 必須**(実装 go まで保留可): OQ-1 の「opt-out 不許可」を host→child にも適用(v2 移行と同時に導入)でよいか
+- **D4 — asset 由来拡張の auto-grant**(実装 go まで保留可): container 内 asset 由来・同一オリジン拡張に dialog なしの暗黙 grant(§4.4)を許容するか
 
 ---
 
