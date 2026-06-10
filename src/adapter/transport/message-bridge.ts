@@ -121,6 +121,21 @@ export interface BridgeHandle {
 // ── Main API ────────────────────────
 
 /**
+ * Pin an outbound `targetOrigin` to the origin the inbound message
+ * arrived from (#795 A-1). The opaque origin (`"null"` — file://
+ * senders, sandboxed iframes) is not a valid `postMessage`
+ * targetOrigin, so it falls back to `'*'`; security there is carried
+ * by the window-identity binding (same trade-off as
+ * `safeTargetOrigin()` in graph-extension-launcher.ts). Every
+ * response path (pong / v2 responses / handler replies / record:reject)
+ * must route its targetOrigin through this helper so the
+ * "`'null'` → `'*'`, otherwise exact" rule lives in one place.
+ */
+export function pinTargetOrigin(origin: string): string {
+  return origin && origin !== 'null' ? origin : '*';
+}
+
+/**
  * Mount the message bridge on window.
  * Returns a handle with destroy() and sender.
  */
@@ -219,7 +234,8 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
       if (event.source && typeof (event.source as Window).postMessage === 'function') {
         const payload = pongProfile ? pongProfile() : null;
         const pong = buildEnvelope(containerId, 'pong', payload, envelope.source_id);
-        (event.source as Window).postMessage(pong, '*');
+        // #795 A-1: pin the response to the origin the ping came from.
+        (event.source as Window).postMessage(pong, pinTargetOrigin(event.origin));
       }
       return;
     }
@@ -258,7 +274,8 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
       // Per JSON-RPC 2.0 §5.1、parse / shape error の id は不明なので null で返す
       if (event.source && typeof (event.source as Window).postMessage === 'function') {
         const resp = buildResponseError(null, result.error.code, result.error.message);
-        (event.source as Window).postMessage(resp, '*');
+        // #795 A-1: pin every v2 response to the inbound origin.
+        (event.source as Window).postMessage(resp, pinTargetOrigin(event.origin));
       }
       return;
     }
@@ -269,7 +286,7 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
         const result = heartbeatHandler(req);
         if (event.source) {
           const resp = buildResponseSuccess(req.id, result);
-          (event.source as Window).postMessage(resp, '*');
+          (event.source as Window).postMessage(resp, pinTargetOrigin(event.origin));
         }
         return;
       }
@@ -280,7 +297,7 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
           JSON_RPC_ERROR_CODES.METHOD_NOT_FOUND,
           `Method not found: ${req.method}`,
         );
-        (event.source as Window).postMessage(resp, '*');
+        (event.source as Window).postMessage(resp, pinTargetOrigin(event.origin));
       }
       return;
     }

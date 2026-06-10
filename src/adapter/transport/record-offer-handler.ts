@@ -258,9 +258,10 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
     brand: payload.brand ?? null,
   };
 
-  // Stash the sender's window so a later `record:reject` (on dismiss)
-  // can travel back to the exact origin. See module doc.
-  setReplyWindowForOffer(offer.offer_id, ctx.sourceWindow);
+  // Stash the sender's window AND origin so a later `record:reject`
+  // (on dismiss) can travel back to the exact window with its
+  // targetOrigin pinned (#795 A-1). See module doc.
+  setReplyWindowForOffer(offer.offer_id, ctx.sourceWindow, ctx.origin);
 
   ctx.dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
   return true;
@@ -269,12 +270,23 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
 // ── Reply-window registry ────────────────────────
 
 /**
- * Transport-memory map from `offer_id` → sender `Window`.
+ * Reply target for a pending offer: the sender `Window` plus the
+ * `event.origin` it arrived from (#795 A-1 — the origin is needed to
+ * pin the outbound `record:reject` targetOrigin instead of `'*'`).
+ */
+export interface OfferReplyTarget {
+  win: Window;
+  origin: string;
+}
+
+/**
+ * Transport-memory map from `offer_id` → sender `{ win, origin }`.
  *
  * Populated when a `record:offer` arrives (`recordOfferHandler` above).
  * Read by `main.ts` when dispatching the outbound `record:reject` so the
  * envelope reaches the *iframe that sent the offer*, not whoever happens
- * to be `window.parent` of the host. Cleared on either accept or
+ * to be `window.parent` of the host — with its targetOrigin pinned to
+ * the receive-time origin (#795 A-1). Cleared on either accept or
  * dismiss to bound memory growth.
  *
  * Why a side-table (not a `PendingOffer` field): a `Window` reference is
@@ -282,15 +294,20 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
  * downstream consumer (reducer, IDB persist, container JSON, domain
  * events) free of host-side handles.
  */
-const replyWindowRegistry = new Map<string, Window>();
+const replyWindowRegistry = new Map<string, OfferReplyTarget>();
 
-/** Register the sender window for a freshly-created offer. */
-export function setReplyWindowForOffer(offerId: string, win: Window): void {
-  replyWindowRegistry.set(offerId, win);
+/** Register the sender window + receive-time origin for a freshly-created offer. */
+export function setReplyWindowForOffer(offerId: string, win: Window, origin: string): void {
+  replyWindowRegistry.set(offerId, { win, origin });
 }
 
 /** Look up the sender window for an offer, or `null` if unknown. */
 export function getReplyWindowForOffer(offerId: string): Window | null {
+  return replyWindowRegistry.get(offerId)?.win ?? null;
+}
+
+/** Look up the full reply target (window + origin), or `null` if unknown. */
+export function getReplyTargetForOffer(offerId: string): OfferReplyTarget | null {
   return replyWindowRegistry.get(offerId) ?? null;
 }
 
