@@ -7,7 +7,12 @@ import {
 
 const CONTAINER_ID = 'test-container-001';
 
-function createMessageEvent(data: unknown, origin = 'http://localhost'): MessageEvent {
+// #795 A-1 以降、応答(pong / v2 response)は受信 event.origin に
+// targetOrigin がピン留めされる。happy-dom は targetOrigin 不一致の
+// postMessage を SecurityError にするため、配達まで検証する本 suite の
+// 既定 origin はテスト window の実 origin に合わせる(ピン留め自体の
+// 検証は target-origin-pinning.test.ts)。
+function createMessageEvent(data: unknown, origin = window.location.origin): MessageEvent {
   return new MessageEvent('message', {
     data,
     origin,

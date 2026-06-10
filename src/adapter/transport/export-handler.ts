@@ -20,6 +20,7 @@
  */
 
 import type { HandlerContext, MessageHandler } from './message-handler';
+import { pinTargetOrigin } from './message-bridge';
 import { buildExportHtml, generateExportFilename } from '../platform/exporter';
 
 export interface ExportRequestPayload {
@@ -61,11 +62,19 @@ export const exportRequestHandler: MessageHandler = (ctx: HandlerContext): boole
       size: html.length,
     };
 
+    // #795 A-1: pin the response to the origin the request came from.
+    // The payload is the FULL container export — without pinning, a
+    // sender window that navigated to another origin while the async
+    // `buildExportHtml` was running would receive the entire container
+    // (`targetOrigin: '*'` delivers to whatever document now occupies
+    // the window). `ctx.origin` is captured at receive time, so the
+    // browser drops the message if the window's origin changed since.
     ctx.sender.send(
       ctx.sourceWindow,
       'export:result',
       resultPayload,
       ctx.envelope.source_id,
+      pinTargetOrigin(ctx.origin),
     );
   });
 

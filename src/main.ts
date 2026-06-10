@@ -83,12 +83,12 @@ import {
 import { serializeAttachmentBody } from './adapter/ui/attachment-presenter';
 import { buildBatchImportPlan } from './features/batch-import/import-planner';
 import type { PlannerInput, PlannerEntry, PlannerFolderInfo } from './features/batch-import/import-planner';
-import { mountMessageBridge } from './adapter/transport/message-bridge';
+import { mountMessageBridge, pinTargetOrigin } from './adapter/transport/message-bridge';
 import { createHandlerRegistry, type MessageHandlerRegistry } from './adapter/transport/message-handler';
 import { exportRequestHandler } from './adapter/transport/export-handler';
 import {
   recordOfferHandler,
-  getReplyWindowForOffer,
+  getReplyTargetForOffer,
   clearReplyWindowForOffer,
 } from './adapter/transport/record-offer-handler';
 import { findThumbnailHttpUrl } from './features/auto-fill/thumbnail-frontmatter';
@@ -785,12 +785,17 @@ async function boot(): Promise<void> {
   // that actually reaches the sender.
   dispatcher.onEvent((event) => {
     if (event.type === 'OFFER_DISMISSED' && event.reply_to_id && bridgeHandle) {
-      const target = getReplyWindowForOffer(event.offer_id) ?? window.parent;
+      // #795 A-1: pin the reject's targetOrigin to the origin recorded at
+      // offer receipt. The `window.parent` fallback (registry miss —
+      // historical offers / debug harness) has no recorded origin, so it
+      // keeps the previous `'*'` behavior.
+      const replyTarget = getReplyTargetForOffer(event.offer_id);
       bridgeHandle.sender.send(
-        target,
+        replyTarget?.win ?? window.parent,
         'record:reject',
         { offer_id: event.offer_id, reason: 'dismissed' },
         event.reply_to_id,
+        replyTarget ? pinTargetOrigin(replyTarget.origin) : '*',
       );
       clearReplyWindowForOffer(event.offer_id);
     }
