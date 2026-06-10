@@ -196,6 +196,23 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.todoAddPopover !== prev.todoAddPopover) return 'full';
   if (state.recentEntryRefLids !== prev.recentEntryRefLids) return 'full';
   if (state.dualEditConflict !== prev.dualEditConflict) return 'full';
+  // Edit-mode picker (inline / window) and meta-pane mode tabs: UI toggles that
+  // change only these AppState fields. They were never enumerated, so the
+  // fall-through returned 'none' and pressing the toggle did not re-render
+  // (user report 2026-06). Both affect the rendered shell → 'full'.
+  if (state.editMode !== prev.editMode) return 'full';
+  if (state.metaPaneMode !== prev.metaPaneMode) return 'full';
+  // `childWindowLids` (set by `SYS_SYNC_CHILD_WINDOWS` on entry-window
+  // open/close) was never enumerated, so a dispatch that changes ONLY it
+  // fell through to 'none'. That broke the sidebar/meta expand path: when a
+  // collapsed pane is re-opened, `togglePane` dispatches SYS_SYNC_CHILD_WINDOWS
+  // specifically to force a full render that rebuilds the lazy placeholder —
+  // but render-scope swallowed it, leaving the pane visually empty until an
+  // unrelated 'full' (e.g. switching detail↔another tab) rebuilt it (user
+  // report 2026-06「サイドのパネルが描画されていないことがある / detailと他の
+  // タブを行ったり来たりすると直る」). Entry-window open/close also marks the
+  // owning sidebar row, so a shell rebuild is the correct response. → 'full'.
+  if (state.childWindowLids !== prev.childWindowLids) return 'full';
 
   // ── Fields the SIDEBAR consumes exclusively ──────────────────────
   // When ONLY these change, the center / meta / header / overlays

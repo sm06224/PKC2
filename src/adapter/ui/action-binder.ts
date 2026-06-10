@@ -1175,7 +1175,18 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
   function preserveCenterPaneScroll(mutate: () => void): void {
     const scroller = root.querySelector<HTMLElement>('.pkc-center-content');
     const savedScroll = scroller ? scroller.scrollTop : null;
+    // user 報告 2026-06「たまに新規作成エントリのタイトルが保存されない(body は
+    // 保存される)」:これらのトグルは QUICK_UPDATE_ENTRY → full re-render
+    // (`root.innerHTML=''`)を起こし、編集中の title input が `entry.title`
+    // (未コミットの default)に巻き戻る。QUICK_UPDATE は title を変えないので、
+    // 編集中の in-progress title 値を退避し、再描画後に書き戻して喪失を防ぐ。
+    const titleEl = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
+    const savedTitle = titleEl ? titleEl.value : null;
     mutate();
+    if (savedTitle !== null) {
+      const freshTitle = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
+      if (freshTitle && freshTitle.value !== savedTitle) freshTitle.value = savedTitle;
+    }
     if (savedScroll !== null) {
       requestAnimationFrame(() => {
         const fresh = root.querySelector<HTMLElement>('.pkc-center-content');
@@ -5765,7 +5776,10 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     // Ctrl+N / Cmd+N: new entry in ready mode
     if (mod && e.key === 'n' && state.phase === 'ready') {
       e.preventDefault();
-      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New Text' });
+      // title:'' → reducer の defaultTitleForArchetype が archetype 別の正規
+      // default 名(`新規メモ` 等)を採番。他の新規作成導線(new-picker /
+      // command palette)と一致させる(user 報告 2026-06:導線で名前が異なる)。
+      dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: '' });
       return;
     }
   }
@@ -9047,7 +9061,19 @@ function dispatchCommitEdit(root: HTMLElement, lid: string | undefined, dispatch
   if (!lid) return;
 
   const titleEl = root.querySelector<HTMLInputElement>('[data-pkc-field="title"]');
-  const title = titleEl?.value ?? '';
+  // Defensive (user report 2026-06「たまに新規作成したエントリのタイトルが
+  // 保存されない・ボディは保存される」): if the title input is absent from the
+  // DOM at commit time (a stray full re-render dropped the editor subtree),
+  // `titleEl?.value ?? ''` would blank an otherwise-valid title. Fall back to
+  // the entry's existing stored title so a commit never destroys it. When the
+  // input IS present we trust its value (including a deliberate empty string).
+  let title: string;
+  if (titleEl) {
+    title = titleEl.value;
+  } else {
+    const existing = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+    title = existing?.title ?? '';
+  }
 
   // Determine archetype from editor container, delegate body collection to presenter
   const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]');
