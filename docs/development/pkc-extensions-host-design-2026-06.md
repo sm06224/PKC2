@@ -118,7 +118,7 @@ manifest は `AttachmentBody` の既存 field で足りる(追加するなら将
 
 両対応期間を置く 3 段階。**asset 内に既に配布された旧 protocol の拡張 HTML が動き続ける**ことが後方互換の要件(invariant 5)。
 
-- **段階 1 — spec**: v2 spec doc(decision doc §4 の PR-α)に **host→child 章**(§4.2/4.3 の写像表)を追加。`pkc-graph-ext` v1 を「bespoke 前例、deprecated 予定」として記録
+- **段階 1 — spec**: v2 spec doc(decision doc §4 の PR-α)に **host→child 章**(§4.2/4.3 の写像表)を追加。`pkc-graph-ext` v1 を「bespoke 前例、deprecated 予定」として記録。✅ **着手済み(2026-06-10、D5 user 承認)**: [`../spec/pkc-message-api-v2.md`](../spec/pkc-message-api-v2.md)(stage 1 — §3 host→extension 章のみ normative、コード不変)として起こした
 - **段階 2 — host 側 both-accept**: launcher の message listener が v1 bespoke と v2 envelope を `jsonrpc:'2.0'` field で discriminate(message-bridge の v1/v2 並列稼働と同じ手法)。セキュリティ検証(§4.2 不変条件)は両経路共通の前段に括り出す
 - **段階 3 — child 側 v2 化 + 共通モジュール抽出**: `PKC2-Extensions/graph/src/protocol.ts` を v2 envelope に書き換え、host 側の channel 配線を `graph-extension-launcher.ts` から **拡張非依存の host モジュール**(仮: `src/adapter/transport/extension-host.ts`)へ抽出。graph は最初のコンシューマとして乗り換え
 
@@ -140,10 +140,10 @@ manifest は `AttachmentBody` の既存 field で足りる(追加するなら将
 ## 9. 判断事項
 
 - **D3 — 退避候補の優先順位**: ✅ **決定済み(user direction 2026-06-10)** — 当面これ以上の分離はしない。拡張は別リポジトリで研究中、機能実現次第で core 側該当機能を廃止相当(subtract)にする(§3.3 注記)。
-- **D1 — #791 の扱い**(user 確認待ち): 本書 §6 をもって #791 の「設計」受け入れ条件を満たしたとし、#791 は実装 go 待ち(凍結)に置き換えてよいか
-- **D5 — 実装 go/no-go**(user 確認待ち): 段階 1(spec doc のみ、コード不変)だけ先行着手を許可するか、全凍結のままにするか。D3 の direction を踏まえると、受け口(host I/F)の spec 整備は別リポジトリ研究の支援になる
-- **D2 — 同一オリジン拡張への heartbeat 必須**(実装 go まで保留可): OQ-1 の「opt-out 不許可」を host→child にも適用(v2 移行と同時に導入)でよいか
-- **D4 — asset 由来拡張の auto-grant**(実装 go まで保留可): container 内 asset 由来・同一オリジン拡張に dialog なしの暗黙 grant(§4.4)を許容するか
+- **D1 — #791 の扱い**: ✅ **決定済み(2026-06-10)** — #791 は凍結せず**次の作業候補として残す**。設計は本書 §6 + v2 spec stage 1 に収録済み、実装(段階 2 以降)は go 待ち。
+- **D5 — 実装 go/no-go**: ✅ **決定済み(2026-06-10)** — 段階 1(spec のみ、コード不変)の先行着手を承認 → 実施済み([`../spec/pkc-message-api-v2.md`](../spec/pkc-message-api-v2.md))。段階 2 以降は引き続き凍結。
+- **D2 — 同一オリジン拡張への heartbeat 必須**(実装 go まで保留): OQ-1 の「opt-out 不許可」を host→child にも適用(v2 移行と同時に導入)でよいか
+- **D4 — asset 由来拡張の auto-grant**(実装 go まで保留): container 内 asset 由来・同一オリジン拡張に dialog なしの暗黙 grant(§4.4)を許容するか
 
 ---
 
