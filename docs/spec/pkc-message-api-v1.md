@@ -530,7 +530,9 @@ PongProfile / capabilities array に変更なし(同 type のため new capabili
 - `PongProfile` の field 削除
 - `RejectCode` enum の semantics 変更
 
-v2 への bump は **必ず docs/spec/pkc-message-api-v2.md を新設** し、本 v1 spec は archive(凍結)する運用。v1 と v2 は同 host で **並列 support 可能**(envelope の `version` field で discriminate、bridge mount 時に対応 version を選択)。
+v2 への bump は **必ず docs/spec/pkc-message-api-v2.md を新設** し、本 v1 spec は archive(凍結)する運用。v1 と v2 は同 host で **並列 support 可能**(現実装は `jsonrpc: '2.0'` field の有無で discriminate、[`pkc-message-api-v2.md`](./pkc-message-api-v2.md) §2.1)。
+
+> **2026-06-10 補足(#795 C-1)**: JSON-RPC 2.0 ベースの v2 経路(`pkc.heartbeat`)は既に同 host で稼働しており、その spec は [`pkc-message-api-v2.md`](./pkc-message-api-v2.md) が正。本 v1 spec は v1 envelope について引き続き canonical(archive 凍結はまだ行わない — v1 が主経路のため)。
 
 ### 9.4 Unknown Field Handling
 

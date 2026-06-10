@@ -1,7 +1,7 @@
 # PKC-Message API v2 — Specification (Draft)
 
-**Status**: Draft — **stage 1**(2026-06-10、#772 host 設計 doc §6 段階 1 / user 承認「spec のみ・コード不変」)
-**本版で normative なのは §3(Host→Extension channel)のみ**。他章は decision doc の確定事項を骨子として予約し、PR-α(v2 spec 本起こし)で詳細化する。
+**Status**: Draft — **stage 2**(2026-06-10、#795 C-1)
+**本版で normative**: **§2(稼働中の v2 経路 — 現実装の記述)** と **§3(Host→Extension channel — 設計)**。§2 は `message-bridge.ts` で**本番稼働中**の経路を記述する(v1 spec §9.3 の「v2 は別 doc 必須」を充足)。将来計画(handshake / source_id / heartbeat 義務)は §2.6 に分離。
 **Audience**: PKC-Extension implementers(別リポジトリでの拡張研究を含む)、PKC2 contributors
 **Normative cross-spec**:
 - `docs/spec/pkc-message-api-v1.md`(v1 envelope。v2 と並列稼働)
@@ -21,18 +21,60 @@ PKC-Message v2 は wire を **JSON-RPC 2.0** に全面移行する(prior-art 調
 
 | 章 | 内容 | 本版の状態 |
 |---|---|---|
-| §2 | Envelope / handshake / heartbeat(v2.0 minimum) | 骨子のみ(decision doc 確定事項の写し)|
-| §3 | **Host→Extension channel** | **normative(stage 1)** |
+| §2 | 稼働中の v2 経路(envelope / `pkc.heartbeat` / error / gate) | **normative(現実装、stage 2)** |
+| §3 | **Host→Extension channel** | **normative(設計、stage 1)** |
 | §4 | Versioning / v1 互換 | normative(短) |
 | §5 | Tasks / ACL / delta / Elicitation | 予約(v2.1+、decision doc 参照) |
 
-## 2. Envelope / handshake / heartbeat(骨子、PR-α で詳細化)
+## 2. 稼働中の v2 経路(normative — 現実装の記述)
 
-- Envelope は JSON-RPC 2.0 の request / notification / response(success|error)4 形態(`src/core/model/message-v2.ts` の型が当面の正)。
-- `source_id`: host が `initialize` 時に sender ごとに発行する UUID v4。以後 sender の全 message が carry し、host は `(source_id, id)` 複合 key で correlation / dedupe する(OQ-2)。sender 側 claim は不可(spoofing 防止)。
-- heartbeat: sender は `serverCapabilities.heartbeat { intervalMs, toleranceMs }`(default 15000/5000)に従い `$/heartbeat` notification を送る義務。timeout で host は sender を inactive 扱い(OQ-1)。opt-out は無い。
-- error code: JSON-RPC 標準 5 種 + PKC 固有 `-32000..-32099`(`-32099 sender_inactive` / `-32098 duplicate_id` 確定済、全表は PR-α)。
-- method 命名は dot-separated(`record.offer` 形)。
+本章は **2026-06 時点で本番稼働している** v2 経路を記述する。sender(外部 page / 拡張 / 検証器)は本章を実挙動の正とせよ。
+
+### 2.1 Discriminate(v1 並列稼働)
+
+受信 message は最初に `jsonrpc === '2.0'` field の有無で判別される(`isV2Envelope`)。**この field を持つ message は v1 検証を一切通らず**、本章の v2 経路で処理される。持たない message は v1 経路(v1 spec §4)へ。
+
+### 2.2 Envelope(4 形態)
+
+`validateEnvelopeV2` の form 判定規則(normative):
+
+| form | 判定 | 例 |
+|---|---|---|
+| request | `method`(string)+ `id`(string \| number \| null) | `{jsonrpc:'2.0', method:'pkc.heartbeat', id:1, params?}` |
+| notification | `method` のみ(`id` 無し) | `{jsonrpc:'2.0', method:'...', params?}` |
+| response (success) | `result` + `id` | `{jsonrpc:'2.0', id:1, result}` |
+| response (error) | `error` + `id` | `{jsonrpc:'2.0', id:1, error:{code,message,data?}}` |
+
+- どの形にも当てはまらない envelope は **Invalid Request(-32600)** の error response(`id: null`)が返る。
+- host が受信した response 形(success / error)は**無視される**(現状 host 発の v2 request が存在しないため)。
+- notification には response を返さない(JSON-RPC 2.0 準拠)。`pkc.heartbeat` の notification 形も無視。
+
+### 2.3 既知 method(現状 1 つ)
+
+**`pkc.heartbeat`**(request):
+- params: `{ seq?: number }`(省略可)
+- result: `{ container_id: string, server_time: string(ISO 8601), pkc_version: string, seq?: number(echo) }`
+- 未知 method の request には **Method not found(-32601)** error response。
+
+### 2.4 Error codes
+
+- JSON-RPC 2.0 標準: `-32700 Parse error` / `-32600 Invalid Request` / `-32601 Method not found` / `-32602 Invalid params` / `-32603 Internal error`
+- PKC 固有 range: `-32000..-32099`。`-32099 sender_inactive` / `-32098 duplicate_id` は decision doc で**予約済み・未実装**(heartbeat 義務 / 複合 key correlation の導入時に有効化)。
+
+### 2.5 Gate / 応答先(現実装の重要な性質)
+
+1. **origin gate**: v2 経路も v1 と同じ origin allowlist 検査を行う(`'null'` は明示 opt-in 必須、allowlist 不一致は reject)。ただし**検査コードは v1 経路と重複実装**(bridge 内 2 箇所)。
+2. **capability gate を通らない**: v1 経路の `canHandleMessage`(capability gate、v1 spec §5)と **handler registry を v2 は経由しない** — `pkc.heartbeat` は bridge 内で直接処理される。per-method gate / ACL の一貫性は設計課題(#795 C-1 補足、§5 の ACL 設計と合流予定)。
+3. **応答の targetOrigin**: すべての v2 response は受信時 `event.origin` にピン留めされる(#795 A-1 / PR #797)。opaque origin(`"null"`)のみ `'*'` フォールバック。
+4. **観測点**: invalid envelope のみ `onReject` callback に乗る。**成功した v2 往復は現状観測不能**(observability seam は #795 B-1 で設計中)。
+
+### 2.6 将来計画(未実装 — decision doc 確定事項)
+
+以下は **wire 上まだ存在しない**。sender は実装を仮定してはならない:
+
+- `initialize` handshake(capability 交換)+ host 発行 `source_id`(UUID v4、`(source_id, id)` 複合 key correlation、OQ-2)
+- `$/heartbeat` notification の送信義務(`serverCapabilities.heartbeat { intervalMs: 15000, toleranceMs: 5000 }`、opt-out 無し、OQ-1)
+- method 命名は dot-separated(`record.offer` 形)で拡充予定。
 
 ## 3. Host→Extension channel(normative)
 
