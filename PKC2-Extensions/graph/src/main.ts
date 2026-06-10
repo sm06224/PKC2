@@ -16,6 +16,26 @@ import { archetypeColor, archetypeEmoji, relationColor } from './colors';
 import type { ArchetypeId, Entry, Relation, RelationKind } from './types';
 import { makeDemoContainer } from './demo-container';
 import { GraphChannel, type GraphProjection } from './protocol';
+import { EXT_INFO } from './deps.generated';
+
+/** Toggle a small ⓘ panel listing version + dependency licenses (build-resolved). */
+function toggleInfoPanel(): void {
+  const existing = document.querySelector('[data-pkc-region="graph-info"]');
+  if (existing) { existing.remove(); return; }
+  const panel = createElement('div', 'pkc-graph-info-panel');
+  panel.setAttribute('data-pkc-region', 'graph-info');
+  const rows = EXT_INFO.dependencies
+    .map((d) => `<tr><td>${d.name}</td><td>${d.version}</td><td>${d.license}</td></tr>`)
+    .join('');
+  panel.innerHTML =
+    `<button class="pkc-graph-info-close" data-pkc-action="close-info" aria-label="閉じる">✕</button>`
+    + `<div class="pkc-graph-info-title">${EXT_INFO.name} v${EXT_INFO.version}`
+    + ` <span>(${EXT_INFO.license} · built ${EXT_INFO.builtAt})</span></div>`
+    + `<table class="pkc-graph-info-table"><thead><tr><th>dependency</th><th>version</th><th>license</th></tr></thead>`
+    + `<tbody>${rows}</tbody></table>`;
+  panel.querySelector('[data-pkc-action="close-info"]')?.addEventListener('click', () => panel.remove());
+  document.body.appendChild(panel);
+}
 
 // Purpose-driven views: each bundles a layout + which links/grouping it emphasises.
 const VIEW_LABELS: { v: GraphView; label: string }[] = [
@@ -340,6 +360,12 @@ function renderToolbar(): HTMLElement {
   relayoutBtn.title = 'レイアウトを組み直す(通常の更新では配置は固定)';
   relayoutBtn.addEventListener('click', () => graph?.relayout());
   toolbar.appendChild(relayoutBtn);
+
+  const infoBtn = createElement('button', 'pkc-btn-small');
+  infoBtn.textContent = 'ⓘ';
+  infoBtn.title = `バージョン・依存・ライセンス(${EXT_INFO.name} v${EXT_INFO.version})`;
+  infoBtn.addEventListener('click', () => toggleInfoPanel());
+  toolbar.appendChild(infoBtn);
 
   return toolbar;
 }

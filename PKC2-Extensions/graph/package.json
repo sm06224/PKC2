@@ -3,10 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "license": "AGPL-3.0",
   "description": "Standalone graph view extension for PKC2 — force-directed network of entries + relations, communicating with a host PKC2 over PKC-Message.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node build-singlefile.mjs",
+    "build": "node build-deps.mjs && vite build && node build-singlefile.mjs",
+    "build:deps": "node build-deps.mjs",
     "build:single": "node build-singlefile.mjs",
     "typecheck": "tsc --noEmit"
   },
