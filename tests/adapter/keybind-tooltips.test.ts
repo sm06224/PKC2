@@ -15,7 +15,6 @@ import { __resetRegistry, __resetUrlCache } from '@adapter/flags';
 import { render } from '@adapter/ui/renderer';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { resetActivityBarState } from '@adapter/ui/activity-bar';
-import { resetMetaPaneInspectorState } from '@adapter/ui/meta-pane-inspector';
 import type { Container } from '@core/model/container';
 
 const TS = '2026-01-01T00:00:00Z';
@@ -30,12 +29,11 @@ function makeContainer(): Container {
   };
 }
 
-function setFlags(values: { activityBar?: boolean; inspector?: boolean }): void {
+function setFlags(values: { activityBar?: boolean }): void {
   const url = new URL(window.location.href);
   url.searchParams.delete('pkc-flag');
   const flags: string[] = [];
   if (values.activityBar) flags.push('shell.activity_bar_enabled=1');
-  if (values.inspector) flags.push('shell.meta_pane_inspector_enabled=1');
   for (const f of flags) url.searchParams.append('pkc-flag', f);
   window.history.replaceState({}, '', url.toString());
   __resetUrlCache();
@@ -48,7 +46,6 @@ describe('pgc-124 Activity Bar + Inspector tab の tooltip に keybind 併記', 
     __resetRegistry();
     __resetUrlCache();
     resetActivityBarState();
-    resetMetaPaneInspectorState();
     document.body.innerHTML = '';
     root = document.createElement('div');
     document.body.appendChild(root);
@@ -57,7 +54,6 @@ describe('pgc-124 Activity Bar + Inspector tab の tooltip に keybind 併記', 
   afterEach(() => {
     setFlags({});
     resetActivityBarState();
-    resetMetaPaneInspectorState();
   });
 
   function boot(): ReturnType<typeof createDispatcher> {
@@ -99,35 +95,5 @@ describe('pgc-124 Activity Bar + Inspector tab の tooltip に keybind 併記', 
     boot();
     const explorer = root.querySelector<HTMLElement>('[data-pkc-activity-tab="explorer"]');
     expect(explorer?.getAttribute('title')).not.toContain('Ctrl+Shift+E');
-  });
-
-  it('Inspector:Properties tab の title に "Ctrl+K P" を含む', () => {
-    setFlags({ inspector: true });
-    boot();
-    const props = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="properties"]');
-    expect(props?.getAttribute('title')).toContain('Ctrl+K P');
-    expect(props?.getAttribute('title')).toContain('Properties');
-  });
-
-  it('Inspector:3 tab 全部に Ctrl+K * の keybind 記載(AI/Style tab 撤去)', () => {
-    setFlags({ inspector: true });
-    boot();
-    const expected: { id: string; key: string }[] = [
-      { id: 'properties', key: 'Ctrl+K P' },
-      { id: 'references', key: 'Ctrl+K R' },
-      { id: 'history',    key: 'Ctrl+K H' },
-    ];
-    for (const exp of expected) {
-      const btn = root.querySelector<HTMLElement>(`[data-pkc-meta-pane-tab="${exp.id}"]`);
-      expect(btn?.getAttribute('title')).toContain(exp.key);
-    }
-  });
-
-  it('Inspector:aria-label は keybind 含まない(SR 読み上げが冗長にならない)', () => {
-    setFlags({ inspector: true });
-    boot();
-    const props = root.querySelector<HTMLElement>('[data-pkc-meta-pane-tab="properties"]');
-    expect(props?.getAttribute('aria-label')).toBe('Properties');
-    expect(props?.getAttribute('aria-label')).not.toContain('Ctrl+K');
   });
 });

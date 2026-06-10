@@ -37,7 +37,7 @@ import { shellTabsEnabled } from './shell-flags';
  * - kind === 'view':lid は `__view:${mode}` sentinel、archetype は `'view'`、
  *   mode は workspace view-mode(calendar / kanban / filer / graph / launcher)
  */
-type ViewMode = 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+type ViewMode = 'calendar' | 'kanban' | 'filer' | 'launcher';
 
 interface TabInfo {
   readonly lid: string;
@@ -84,7 +84,6 @@ const VIEW_TAB_META: Record<ViewMode, { title: string; icon: string }> = {
   calendar: { title: 'カレンダー / Calendar', icon: '📅' },
   kanban:   { title: 'カンバン / Kanban',     icon: '🗂' },
   filer:    { title: 'ファイラー / Filer',     icon: '🗃' },
-  graph:    { title: 'グラフ / Graph',         icon: '🕸' },
   launcher: { title: 'ランチャー / Launcher',  icon: '🚀' },
 };
 

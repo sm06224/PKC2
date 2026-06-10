@@ -93,21 +93,6 @@ test.describe('spreadsheet embed parity across surfaces', () => {
     expect(await visibleHeader.count()).toBe(0);
   });
 
-  test('case 3: graph view に spreadsheet node が描画される', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForSelector('[data-pkc-region="sidebar"]');
-    await createSpreadsheetWithChart(page);
-    // view-mode tab で Graph に切替
-    await page.locator('[data-pkc-view-mode="graph"], button[title*="Graph"]').first().click();
-    // graph-view region が出る
-    await page.waitForSelector('[data-pkc-region="graph-view"], canvas[data-pkc-region="graph-canvas"]', { timeout: 5_000 });
-    // canvas 描画(canvas.width > 0)
-    await page.waitForFunction(() => {
-      const c = document.querySelector('canvas[data-pkc-region="graph-canvas"]') as HTMLCanvasElement | null;
-      return c !== null && c.width > 0;
-    }, { timeout: 3_000 });
-  });
-
   test('case 4: 7 chart kinds 全部 modal で選択可能', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('[data-pkc-region="sidebar"]');

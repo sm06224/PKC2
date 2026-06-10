@@ -344,54 +344,12 @@ export interface AppState {
    */
   advancedFiltersOpen?: boolean;
   /** Current center pane view mode. Runtime-only. */
-  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
-  /**
-   * Graph view edge / coloring mode (Phase 4 follow-up 4):
-   *   - 'relations' (default) — structural + semantic relations as edges,
-   *     archetype-based node color (legacy filer-graph subset behaviour)
-   *   - 'color-tags'           — group by entry.color_tag
-   *   - 'tag-groups'           — group by tag prefix or shared tag
-   *   - 'folder-hierarchy'     — only structural relations, color by depth
-   *
-   * Runtime-only.
-   */
-  graphMode?: 'relations' | 'color-tags' | 'tag-groups' | 'folder-hierarchy' | 'time-proximity';
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
   /**
    * Phase γ-B3:meta pane の表示 mode。all = 全 section、properties =
    * frontmatter のみ、references = 関連 section のみ。flag gate(spec §4)。
    */
   metaPaneMode?: 'all' | 'properties' | 'references';
-  /**
-   * Optional focus lid for graph view. When set, the graph centers on
-   * this entry and includes its 1-hop neighbourhood. When unset, the
-   * graph shows the full container.
-   * Runtime-only.
-   */
-  graphFocusLid?: string | null;
-  /**
-   * Region-slice tool mode (PR-E G8 後半、2026-05-06)。
-   * ON のとき、graph view の background drag は pan ではなく rect 選択
-   * を駆動する。OFF(default)では従来通り pan。Runtime-only。
-   */
-  graphRegionSelectMode?: boolean;
-  /**
-   * Region-slice の選択結果 lids。drag-rect 解放時に rect 内の node の
-   * lid を集めて格納。空配列 / undefined は「選択なし」。Runtime-only。
-   */
-  graphRegionSelectedLids?: readonly string[];
-  /**
-   * PR-I G17 (2026-05-06):graph view の Venn-style グルーピング toggle。
-   * ON のとき、各 node の folder ancestors + tags への所属を Canvas
-   * に色付き concentric ring として overlay 描画する。Runtime-only。
-   */
-  graphVennGroupingMode?: boolean;
-  /**
-   * PR-Δ13 (2026-05-07、user 報告「時系列範囲をユーザーが指定して
-   * 描画できるようにすべき」):time-proximity mode の表示範囲指定。
-   * ms epoch、`null` で auto(全 entry の範囲)。
-   */
-  graphTimeRangeStart?: number | null;
-  graphTimeRangeEnd?: number | null;
   /**
    * Inventory subset query state (Phase 5、Bases 風 filter/sort/group)。
    * Runtime-only, scoped to the current filer scope folder.
@@ -3252,10 +3210,6 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
       return { state: next, events: [] };
     }
-    case 'SET_GRAPH_MODE': {
-      const next: AppState = { ...state, graphMode: action.mode };
-      return { state: next, events: [] };
-    }
     case 'SET_META_PANE_MODE': {
       const next: AppState = { ...state, metaPaneMode: action.mode };
       return { state: next, events: [] };
@@ -3266,54 +3220,6 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // flag `shell.edit_mode_enabled` が OFF の間は誰も dispatch しない
       // ため editMode は undefined のまま = 従来の inline 編集(後方互換)。
       const next: AppState = { ...state, editMode: action.mode };
-      return { state: next, events: [] };
-    }
-    case 'OPEN_GRAPH_FOR_ENTRY': {
-      // Set focus lid + flip viewMode to 'graph' atomically. lid===null
-      // = full container graph (no focus center).
-      let next: AppState = { ...state, viewMode: 'graph' };
-      if (action.lid === null) {
-        const { graphFocusLid: _drop, ...rest } = next;
-        next = rest as AppState;
-      } else {
-        next = { ...next, graphFocusLid: action.lid };
-      }
-      return { state: next, events: [] };
-    }
-    case 'TOGGLE_GRAPH_REGION_SELECT_MODE': {
-      // PR-E G8 後半 (2026-05-06):背景 drag を pan / rect 選択どちらに
-      // 振るかの toggle。OFF に切り替える時は選択結果も clear する
-      // (mode 抜けたら highlight が残ったままだと user が「なぜハイ
-      // ライト」と混乱する)。
-      const turnOn = !(state.graphRegionSelectMode ?? false);
-      const next: AppState = {
-        ...state,
-        graphRegionSelectMode: turnOn,
-        graphRegionSelectedLids: turnOn ? state.graphRegionSelectedLids : [],
-      };
-      return { state: next, events: [] };
-    }
-    case 'SET_GRAPH_REGION_SELECTED_LIDS': {
-      // PR-Δ20 (2026-05-07、user 指摘「region 選択の用途不明」):
-      // region で囲った lids を **multiSelectedLids にも反映** して、
-      // sidebar の multi-action-bar で bulk 操作(Tag / Color / Folder
-      // 移動 / Delete)を直接実行できるようにする。region 選択 = 一括
-      // 操作の入口、という意味付け。
-      const lidsCopy = [...action.lids];
-      const next: AppState = {
-        ...state,
-        graphRegionSelectedLids: action.lids,
-        multiSelectedLids: lidsCopy,
-      };
-      return { state: next, events: [{ type: 'MULTI_SELECT_CHANGED', lids: lidsCopy }] };
-    }
-    case 'TOGGLE_GRAPH_VENN_GROUPING_MODE': {
-      // PR-I G17 (2026-05-06):graph view の Venn-style グルーピング
-      // toggle。ON / OFF を flip するだけのシンプル reducer。
-      const next: AppState = {
-        ...state,
-        graphVennGroupingMode: !(state.graphVennGroupingMode ?? false),
-      };
       return { state: next, events: [] };
     }
     case 'SET_FILER_SEARCH_QUERY': {

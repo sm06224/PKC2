@@ -248,7 +248,7 @@ describe('pgc-182 tab navigation keyboard(Ctrl+PageDown/Up / Alt+W / Ctrl+Shift+
     resetKeymapRegistry();
     registerBuiltinKeymaps();
     const bs = getKeyBindings();
-    expect(bs.length).toBe(26); // pgc-179: 23、+pgc-182 4 件、-Style keybind 撤去 2026-06-08
+    expect(bs.length).toBe(22); // inspector chord 4 件撤去(#790)
     const ids = bs.map((b) => b.commandId);
     expect(ids).toContain('tab.next');
     expect(ids).toContain('tab.previous');

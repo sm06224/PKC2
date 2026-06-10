@@ -34,7 +34,7 @@ import type { AppState } from '../state/app-state';
 
 interface NavSnapshot {
   selectedLid: string | null;
-  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+  viewMode: 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
   /** 内部 navigation stack の現在位置(領域 1)。 */
   navIndex: number;
 }

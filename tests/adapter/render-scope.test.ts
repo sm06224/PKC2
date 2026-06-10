@@ -60,6 +60,26 @@ describe('computeRenderScope', () => {
     expect(computeRenderScope(next, prev)).toBe('full');
   });
 
+  it('returns "full" when only editMode changes (inline/window picker toggle)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, editMode: 'window' as const }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when only metaPaneMode changes (meta-pane tab toggle)', () => {
+    const prev = createInitialState();
+    const next = withChange(prev, (s) => ({ ...s, metaPaneMode: 'properties' as const }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
+  it('returns "full" when only childWindowLids changes (SYS_SYNC_CHILD_WINDOWS forces pane rebuild)', () => {
+    const prev = createInitialState();
+    // togglePane dispatches SYS_SYNC_CHILD_WINDOWS to force a full render that
+    // rebuilds the lazy-placeholder sidebar on expand — must not be 'none'.
+    const next = withChange(prev, (s) => ({ ...s, childWindowLids: ['e1'] }));
+    expect(computeRenderScope(next, prev)).toBe('full');
+  });
+
   it('returns "full" when container reference changes', () => {
     const prev = createInitialState();
     const next = withChange(prev, (s) => ({

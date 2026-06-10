@@ -29,10 +29,6 @@ import {
 import { toggleSplitView } from './split-view';
 import { toggleFormatPanelVisible } from './format-panel-visibility';
 import { setActivityBarActiveTab, type ActivityTab } from './activity-bar';
-import {
-  setMetaPaneInspectorActiveTab,
-  type InspectorTab,
-} from './meta-pane-inspector';
 // 領域 5 編集 command 拡充(user 督促 2026-05-28、roadmap §領域 5 残)── editing
 // 中の body textarea に対して inline wrap / line prefix snippet を palette から
 // 呼べるようにする。既存 keyboard shortcut(Ctrl+B 等)と同じ helper を共有して
@@ -71,7 +67,6 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
     { mode: 'calendar', ja: 'カレンダービュー', en: 'View: Calendar' },
     { mode: 'kanban',   ja: 'カンバンビュー',   en: 'View: Kanban' },
     { mode: 'filer',    ja: 'ファイラービュー', en: 'View: Filer' },
-    { mode: 'graph',    ja: 'グラフビュー',     en: 'View: Graph' },
     { mode: 'launcher', ja: 'ランチャービュー', en: 'View: Launcher' },
   ] as const;
   for (const v of viewModes) {
@@ -220,11 +215,10 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
   // ─── View tabs(pgc-87、MASTER.md §4.3)─────────
   // tab strip(`shell.tabs_enabled` 必須)に workspace-level view tab を
   // open する。`SET_VIEW_MODE` も同時に dispatch して mode 切替。
-  const viewTabModes: { mode: 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher'; ja: string; en: string }[] = [
+  const viewTabModes: { mode: 'calendar' | 'kanban' | 'filer' | 'launcher'; ja: string; en: string }[] = [
     { mode: 'calendar', ja: 'カレンダーを tab で開く', en: 'Open Calendar as tab' },
     { mode: 'kanban',   ja: 'カンバンを tab で開く',   en: 'Open Kanban as tab' },
     { mode: 'filer',    ja: 'ファイラーを tab で開く', en: 'Open Filer as tab' },
-    { mode: 'graph',    ja: 'グラフを tab で開く',     en: 'Open Graph as tab' },
     { mode: 'launcher', ja: 'ランチャーを tab で開く', en: 'Open Launcher as tab' },
   ];
   for (const v of viewTabModes) {
@@ -279,7 +273,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       if (!next) return;
       // view tab(__view:<mode>)なら SET_VIEW_MODE、entry tab なら SELECT_ENTRY
       if (next.startsWith('__view:')) {
-        const mode = next.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        const mode = next.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
         dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
       } else {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: next });
@@ -298,7 +292,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       const prev = getPreviousOpenTabLid();
       if (!prev) return;
       if (prev.startsWith('__view:')) {
-        const mode = prev.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        const mode = prev.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
         dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
       } else {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: prev });
@@ -319,7 +313,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       // closeActiveTab は次に focus すべき lid を返す ── 続けて SELECT/SET_VIEW
       if (nextLid) {
         if (nextLid.startsWith('__view:')) {
-          const mode = nextLid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+          const mode = nextLid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
           dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         } else {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: nextLid });
@@ -340,7 +334,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       if (!lid) return;
       persistTabState();
       if (lid.startsWith('__view:')) {
-        const mode = lid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'graph' | 'launcher';
+        const mode = lid.slice('__view:'.length) as 'detail' | 'calendar' | 'kanban' | 'filer' | 'launcher';
         dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
       } else {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
@@ -413,35 +407,6 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       },
       () => {
         setActivityBarActiveTab(t.id);
-        const st = dispatcher.getState();
-        dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
-      },
-    );
-  }
-
-  // ─── Meta pane Inspector tab(pgc-109+〜118、pgc-123:keyboard shortcut)
-  // MASTER.md §6.3:`shell.meta_pane_inspector_enabled` 必須(OFF だと
-  // tab strip 自体が出ない、command 自体は state 更新だけして再描画は
-  // 通常通り)。VSCode の Ctrl+Shift+I(DevTools)と衝突するため、PKC2 は
-  // **chord** `Ctrl+K` + 文字 で発火する 2-step shortcut(VSCode 流の
-  // `Ctrl+K Ctrl+S` keybinding system 流儀)。Activity Bar の
-  // `Alt+Shift+N`(pgc-121)とも別系列で衝突なし。
-  const inspectorTabs: { id: InspectorTab; icon: string; ja: string; en: string; key: string }[] = [
-    { id: 'properties', icon: '📋', ja: 'Inspector: Properties', en: 'Inspector: Properties', key: 'Ctrl+K P' },
-    { id: 'references', icon: '🔗', ja: 'Inspector: References', en: 'Inspector: References', key: 'Ctrl+K R' },
-    { id: 'history',    icon: '📜', ja: 'Inspector: History',    en: 'Inspector: History',    key: 'Ctrl+K H' },
-  ];
-  for (const t of inspectorTabs) {
-    registerCommand(
-      {
-        id: `inspector.${t.id}`,
-        titleJa: `${t.icon} ${t.ja}`,
-        titleEn: `${t.icon} ${t.en}`,
-        category: 'View',
-        keybind: t.key,
-      },
-      () => {
-        setMetaPaneInspectorActiveTab(t.id);
         const st = dispatcher.getState();
         dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
       },
