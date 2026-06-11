@@ -203,7 +203,15 @@ function executeChild(entryOverrides: Record<string, unknown> = {}): ExecutedChi
       delete win.__testFlushPendingViewBody;
     },
     dispatchMessage: (data: unknown) => {
-      window.dispatchEvent(new MessageEvent('message', { data }));
+      // #795 Phase 1.5: the child listener binds to `e.source ===
+      // window.opener`, so simulated host→child pushes must originate
+      // from the mocked opener (as they do in production).
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data,
+          source: (window as unknown as Record<string, unknown>).opener as Window,
+        }),
+      );
     },
     $: (id: string) => document.getElementById(id),
     setBodyEdit: (value: string) => {
