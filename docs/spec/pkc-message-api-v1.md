@@ -74,6 +74,8 @@ PKC-Message v1 は **`window.postMessage`** を transport とする。host(PKC2 
 
 - **v1 spec の方針**: 「production deployment では allowedOrigins を **明示設定すべき**」を normative requirement として固定。
 - **default は restrictive**(empty allowlist は受信全 reject)に倒すことを v0 で確定済み(`record-offer-capture-profile.md §9.1`)。
+  > **改訂注記(2026-06-11、#795 A-3)**: 実装は長らく「empty = accept-all-except-null」で本項から**乖離**していた。A-3 で実装を本項に一致させた: **empty / 未指定 = 全 reject(deny-all)**、accept-all は明示 sentinel **`['*']`** のみ。これは spec 変更ではなく**実装の spec 準拠修正**である(§12 互換性 commitment との関係: 受信が狭まるのは「spec が当初から要求していた挙動への是正」であり、accept-all に依存していた deployment は `['*']` を明示することで従来挙動を維持できる)。
+- **provider 例外時の既定挙動 = fail-closed**(normative、2026-06-11): `allowedOrigins` の provider form が throw / `null` を返した場合、receiver は **empty(= deny-all)として扱わなければならない**(MUST)。設定読み込み失敗が「全 origin 受理」へ倒れてはならない。accept-all へ倒したい deployment は provider 内で例外を処理して `['*']` を返すこと。
 - **具体値の選定は implementation PR で別途**。Extension 側の origin / `chrome-extension://...` / `moz-extension://...` / OS-launcher origin / 組織内 host name など、deployment context によって異なるため本 spec では列挙しない。
 
 ## 4. Envelope

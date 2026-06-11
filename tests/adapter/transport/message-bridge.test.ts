@@ -61,14 +61,14 @@ describe('mountMessageBridge', () => {
   });
 
   it('mounts and can be destroyed', () => {
-    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'] });
     expect(handle.destroy).toBeTypeOf('function');
     expect(handle.sender).toBeDefined();
   });
 
   it('ignores non-PKC messages silently', () => {
     const onReject = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onReject });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onReject });
 
     window.dispatchEvent(createMessageEvent({ some: 'other-data' }));
 
@@ -78,7 +78,7 @@ describe('mountMessageBridge', () => {
 
   it('rejects invalid PKC messages', () => {
     const onReject = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onReject });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onReject });
 
     window.dispatchEvent(createMessageEvent({
       protocol: 'pkc-message',
@@ -89,7 +89,7 @@ describe('mountMessageBridge', () => {
   });
 
   it('auto-responds to ping with pong', () => {
-    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'] });
 
     const postMessageSpy = vi.spyOn(window, 'postMessage');
 
@@ -115,6 +115,7 @@ describe('mountMessageBridge', () => {
     };
     handle = mountMessageBridge({
       containerId: CONTAINER_ID,
+      allowedOrigins: ['*'],
       pongProfile: () => profile,
     });
 
@@ -129,7 +130,7 @@ describe('mountMessageBridge', () => {
   });
 
   it('sends null payload in pong when no pongProfile provided', () => {
-    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'] });
 
     const postMessageSpy = vi.spyOn(window, 'postMessage');
     window.dispatchEvent(createMessageEvent(validPing()));
@@ -143,7 +144,7 @@ describe('mountMessageBridge', () => {
 
   it('does not call onMessage for ping (handled internally)', () => {
     const onMessage = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage });
 
     window.dispatchEvent(createMessageEvent(validPing()));
 
@@ -152,7 +153,7 @@ describe('mountMessageBridge', () => {
 
   it('routes non-ping messages to onMessage callback', () => {
     const onMessage = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage });
 
     const customMsg = {
       ...validPing(),
@@ -168,7 +169,7 @@ describe('mountMessageBridge', () => {
 
   it('passes pong to onMessage (informational)', () => {
     const onMessage = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage });
 
     const pongMsg = { ...validPing(), type: 'pong' };
     window.dispatchEvent(createMessageEvent(pongMsg));
@@ -179,7 +180,7 @@ describe('mountMessageBridge', () => {
 
   it('filters messages by target_id', () => {
     const onMessage = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage });
 
     // Message for a different container
     const msg = {
@@ -194,7 +195,7 @@ describe('mountMessageBridge', () => {
 
   it('accepts messages with target_id matching local container', () => {
     const onMessage = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage });
 
     const msg = {
       ...validPing(),
@@ -208,7 +209,7 @@ describe('mountMessageBridge', () => {
 
   it('accepts broadcast messages (target_id = null)', () => {
     const onMessage = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage });
 
     const msg = { ...validPing(), type: 'custom', target_id: null };
     window.dispatchEvent(createMessageEvent(msg));
@@ -248,7 +249,7 @@ describe('mountMessageBridge', () => {
 
   it('stops receiving after destroy', () => {
     const onMessage = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage });
     handle.destroy();
 
     const msg = { ...validPing(), type: 'custom' };
@@ -259,10 +260,10 @@ describe('mountMessageBridge', () => {
 
   // ── Capture profile v0 §9.1 / §9.2: explicit allowlist + null opt-in ──
 
-  it('rejects "null" origin by default even when allowedOrigins is empty (accept-all)', () => {
+  it('rejects "null" origin even under the explicit accept-all sentinel [\'*\'] (#795 A-3)', () => {
     const onMessage = vi.fn();
     const onReject = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage, onReject });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage, onReject });
 
     const msg = { ...validPing(), type: 'custom' };
     window.dispatchEvent(createMessageEvent(msg, 'null'));
@@ -389,7 +390,7 @@ describe('mountMessageBridge', () => {
     expect(onMessage).toHaveBeenCalledTimes(2); // 2 — now allowed
   });
 
-  it('treats provider exception as empty allowlist (accept-all fail-safe + onReject signal)', () => {
+  it('provider exception → deny-all(fail-closed、#795 A-3)+ onReject audit signal', () => {
     const onMessage = vi.fn();
     const onReject = vi.fn();
     handle = mountMessageBridge({
@@ -399,32 +400,64 @@ describe('mountMessageBridge', () => {
       onReject,
     });
 
-    // Empty allowlist == accept-all (except 'null'), so a normal
-    // origin still gets through. The provider error is surfaced via
-    // onReject for audit.
+    // #795 A-3: provider 例外時は deny-all へ倒す(設定読み込み失敗が
+    // 「誰でも受理」にならない)。audit 用の provider-error は onReject に
+    // 乗り、メッセージ自体も origin reject される。
     const customMsg = { ...validPing(), type: 'custom' };
     window.dispatchEvent(createMessageEvent(customMsg, 'http://anywhere.example'));
-    expect(onMessage).toHaveBeenCalledTimes(1);
-    expect(onReject).toHaveBeenCalled();
-    // Find the provider-error reject (the validation-pass message
-    // triggered the provider error twice — once on each guard call —
-    // before being routed to onMessage).
+    expect(onMessage).not.toHaveBeenCalled();
     const errorCall = onReject.mock.calls.find((c) =>
       typeof c[1] === 'string' && c[1].includes('config unavailable'),
     );
     expect(errorCall).toBeDefined();
+    const originReject = onReject.mock.calls.find((c) =>
+      typeof c[1] === 'string' && c[1].includes('Origin rejected'),
+    );
+    expect(originReject).toBeDefined();
   });
 
-  it('treats null/undefined provider return as empty allowlist', () => {
+  it('null/undefined provider return = empty allowlist = deny-all(#795 A-3)', () => {
     const onMessage = vi.fn();
     handle = mountMessageBridge({
       containerId: CONTAINER_ID,
-      // @ts-expect-error: deliberate null return for fail-safe verification.
+      // @ts-expect-error: deliberate null return for fail-closed verification.
       allowedOrigins: () => null,
       onMessage,
     });
 
-    // Empty allowlist == accept-all (except 'null').
+    // #795 A-3: empty == deny-all(accept-all は ['*'] sentinel のみ)。
+    const customMsg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(customMsg, 'http://anywhere.example'));
+    expect(onMessage).not.toHaveBeenCalled();
+  });
+
+  // ── #795 A-3: fail-closed 既定のセマンティクス pin ──
+
+  it('unspecified allowedOrigins = deny-all(restrictive default、v1 spec §3.4)', () => {
+    const onMessage = vi.fn();
+    const onReject = vi.fn();
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, onMessage, onReject });
+
+    const customMsg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(customMsg));
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledTimes(1);
+    expect(onReject.mock.calls[0]![1]).toContain('Origin rejected');
+  });
+
+  it('explicit empty array = deny-all', () => {
+    const onMessage = vi.fn();
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: [], onMessage });
+
+    const customMsg = { ...validPing(), type: 'custom' };
+    window.dispatchEvent(createMessageEvent(customMsg));
+    expect(onMessage).not.toHaveBeenCalled();
+  });
+
+  it("explicit ['*'] sentinel = accept-all(except 'null')", () => {
+    const onMessage = vi.fn();
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onMessage });
+
     const customMsg = { ...validPing(), type: 'custom' };
     window.dispatchEvent(createMessageEvent(customMsg, 'http://anywhere.example'));
     expect(onMessage).toHaveBeenCalledTimes(1);
@@ -463,7 +496,7 @@ describe('MessageSender', () => {
   let handle: ReturnType<typeof mountMessageBridge>;
 
   beforeEach(() => {
-    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'] });
   });
 
   afterEach(() => {

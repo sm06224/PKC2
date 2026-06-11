@@ -9,10 +9,14 @@
  * - Provide a typed send API for outgoing messages
  *
  * Design decisions:
- * - origin verification is configurable; the empty/`*` default
- *   accepts all origins except the special `"null"` origin, which
- *   must be opted in explicitly (see `BridgeOptions.allowedOrigins`
- *   and `docs/spec/record-offer-capture-profile.md` §9.2).
+ * - origin verification is configurable and **fail-closed** (#795 A-3,
+ *   2026-06-11): an empty / unspecified allowlist denies ALL origins
+ *   (matching v1 spec §3.4's restrictive default, which the previous
+ *   accept-all behaviour had drifted from). Accept-all must be opted
+ *   in with the explicit `['*']` sentinel; the special `"null"` origin
+ *   additionally requires explicit `'null'` membership (see
+ *   `BridgeOptions.allowedOrigins` and
+ *   `docs/spec/record-offer-capture-profile.md` §9.2).
  * - unknown message types are rejected and logged, not thrown
  * - ping/pong is handled automatically (bridge-internal, no reducer)
  * - other message types are delegated to onMessage callback
@@ -107,11 +111,13 @@ export interface BridgeOptions {
    * Allowed origins. Accepts either a static array or a provider
    * function that returns the array on each message (PR-B 2026-04-26).
    *
-   * Static array form (default, backward-compatible):
-   *   - Empty or `['*']` accepts all origins except the special
-   *     `"null"` origin (opaque origins from `file://` or sandboxed
-   *     iframes), which must always be opted in explicitly via
-   *     `allowedOrigins: [..., 'null']`.
+   * Static array form — **fail-closed semantics**(#795 A-3、2026-06-11。
+   * v1 spec §3.4 の restrictive default に実装を一致させる修正):
+   *   - **Empty / unspecified = deny ALL origins**(従来の accept-all から
+   *     変更。v1 spec §3.4 は v0 時点で「empty allowlist は受信全 reject」
+   *     を確定済みで、実装側が乖離していた)。
+   *   - Accept-all は明示 sentinel **`['*']`** のみ(その場合も `"null"`
+   *     origin は別途 explicit opt-in が必要 — `allowedOrigins: ['*', 'null']`)。
    *   - Otherwise, only accept messages from listed origins.
    *
    * Provider form (`() => string[]`):
@@ -120,12 +126,11 @@ export interface BridgeOptions {
    *     refresh, dynamic registration of trusted Extension origins)
    *     without re-mounting the bridge.
    *   - The result follows the same semantics as the static array.
-   *   - If the provider throws, the bridge logs a warning via
-   *     `onReject` and treats the result as empty (= accept-all
-   *     fail-safe; the deployment author is responsible for choosing
-   *     a fail-closed policy by configuring an explicit list at mount
-   *     time).
-   *   - Returning `null` / `undefined` is normalised to `[]`.
+   *   - **If the provider throws, the result is treated as empty =
+   *     deny-all(fail-closed、#795 A-3)**。`onReject` への audit signal
+   *     は維持。accept-all へ倒したい deployment は provider 内で例外を
+   *     握って `['*']` を返すこと(暗黙の fail-open は廃止)。
+   *   - Returning `null` / `undefined` is normalised to `[]`(= deny-all)。
    *
    * Production bootstrap should pass an explicit list (or provider
    * returning one) per `docs/spec/record-offer-capture-profile.md`
@@ -262,11 +267,11 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
    * per-message so dynamic config (settings UI, env reload, trusted-
    * Extension registry) flows through without remounting the bridge.
    *
-   * Fail-safe behavior: if the provider throws, surface the error to
-   * `onReject` (audit trail) and return `[]`. The deployment chooses
-   * the policy — an empty allowlist defaults to "accept all except
-   * `null`" (`acceptAllOrigins` branch below); deployments that want
-   * fail-closed should configure an explicit list at mount time.
+   * **Fail-closed behavior**(#795 A-3): if the provider throws,
+   * surface the error to `onReject` (audit trail) and return `[]` —
+   * which now means **deny-all** (the `acceptAllOrigins` branch below
+   * requires the explicit `['*']` sentinel). 設定読み込み失敗が
+   * 「誰でも受理」に倒れる事故経路を塞ぐ。
    */
   function resolveAllowedOrigins(): string[] {
     if (typeof allowedOrigins === 'function') {
@@ -298,8 +303,9 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     if (!isPkcMessage(event.data)) return;
 
     const currentAllowed = resolveAllowedOrigins();
-    const acceptAllOrigins =
-      currentAllowed.length === 0 || currentAllowed.includes('*');
+    // #795 A-3(fail-closed): accept-all は明示 sentinel `['*']` のみ。
+    // empty / unspecified は deny-all(v1 spec §3.4 の restrictive default)。
+    const acceptAllOrigins = currentAllowed.includes('*');
 
     // 2a. Origin `"null"` (file:// sender, sandboxed iframe, opaque
     //     origin) is rejected unless explicitly opt-in via
@@ -381,8 +387,8 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
    */
   function handleV2Message(event: MessageEvent): void {
     const currentAllowed = resolveAllowedOrigins();
-    const acceptAllOrigins =
-      currentAllowed.length === 0 || currentAllowed.includes('*');
+    // #795 A-3(fail-closed): v1 経路と同一の意味論(`['*']` sentinel のみ accept-all)。
+    const acceptAllOrigins = currentAllowed.includes('*');
     if (event.origin === 'null' && !currentAllowed.includes('null')) {
       onReject?.(event.data, 'Origin rejected: null (explicit opt-in required)');
       emitTraffic({ direction: 'in', protocol: 'v2', verdict: 'rejected', ...peek(event.data), origin: event.origin, rejectCode: 'ORIGIN_REJECTED' }, event.data);

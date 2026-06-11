@@ -109,9 +109,10 @@ mountMessageBridge({
 });
 ```
 
-- 空配列 / `['*']` で **accept-all-except-null**(default)
+- **空配列 / 未指定 = deny-all(全 reject)**(#795 A-3、2026-06-11 — v1 spec §3.4 の restrictive default に実装を一致させた。**従来の「empty = accept-all」に依存していた deployment は `['*']` を明示すること**)
+- **accept-all-except-null は明示 sentinel `['*']` のみ**
 - 明示 origin list を渡すと、その list 外は reject(`onReject` で audit signal)
-- `'null'` を含めると `file://` / sandboxed iframe / opaque origin の opt-in 受理
+- `'null'` を含めると `file://` / sandboxed iframe / opaque origin の opt-in 受理(`['*']` だけでは `'null'` は通らない)
 - production deployment は **明示 list を必ず渡す**(record-offer-capture-profile.md §9.1)
 
 ### 4.2 Provider function form(2026-04-26 PR-B 追加)
@@ -130,9 +131,9 @@ function loadAllowedOriginsFromSettings(): string[] {
 ```
 
 - **各 inbound message ごとに resolve**(re-mount 不要で動的設定対応)
-- provider が throw → `onReject(null, 'allowedOrigins provider threw: <msg>')` で audit signal、`[]` fallback(accept-all-except-null fail-safe)
-- provider が `null` / `undefined` を返す → `[]` 扱い(同上)
-- deployment author が **fail-closed を望むなら provider 内で空配列の代わりに `['__no-allow__']` 等の sentinel を返す** ような明示拒否ロジックを書く(または mount 時に static array で渡す)
+- **provider が throw → `[]` fallback = deny-all(fail-closed、#795 A-3 / 2026-06-11)**。`onReject(null, 'allowedOrigins provider threw: <msg>')` の audit signal は従来どおり。**旧記述(accept-all fail-safe)は廃止** — 設定読み込み失敗が「誰でも受理」に倒れる事故経路を塞いだ
+- provider が `null` / `undefined` を返す → `[]` 扱い(= deny-all、同上)
+- **accept-all へ倒したい deployment は provider 内で例外を処理して `['*']` を返す**(暗黙の fail-open は存在しない)
 
 ### 4.3 Production patterns
 
