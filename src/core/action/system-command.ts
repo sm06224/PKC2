@@ -17,6 +17,13 @@ export interface PendingOfferRef {
    * OFFER_ACCEPTED / OFFER_DISMISSED event への echo 用に reducer が保持する。
    */
   correlation_id?: string | null;
+  /**
+   * #805 additive: accept 時 mint で付与する tags / color_tag(同意 banner
+   * で表示済みのもの)。handler 側で検証・正規化済み(tags は trim/重複除去/
+   * 件数・長さ上限、color_tag は既知 palette ID のみ)。null = 付与しない。
+   */
+  tags?: string[] | null;
+  color_tag?: string | null;
 }
 
 /**
