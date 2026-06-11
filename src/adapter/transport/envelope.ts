@@ -45,6 +45,7 @@ const KNOWN_TYPES: ReadonlySet<string> = new Set<MessageType>([
   'ping',
   'pong',
   'record:offer',
+  'record:ack',
   'record:accept',
   'record:reject',
   'export:request',

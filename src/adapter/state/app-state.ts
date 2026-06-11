@@ -1861,7 +1861,14 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // その folder 配下に置く。target lid が unknown / non-folder な場合は
       // 静かに root scope へ fallback。
       const events: DomainEvent[] = [
-        { type: 'OFFER_ACCEPTED', offer_id: action.offer_id, lid },
+        {
+          type: 'OFFER_ACCEPTED',
+          offer_id: action.offer_id,
+          lid,
+          // #804: record:accept 送出用に sender への返信情報を carry。
+          reply_to_id: offer.reply_to_id,
+          correlation_id: offer.correlation_id ?? null,
+        },
         { type: 'ENTRY_CREATED', lid, archetype: offer.archetype },
       ];
       if (action.target_folder_lid) {
@@ -1894,7 +1901,13 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       };
       return {
         state: next,
-        events: [{ type: 'OFFER_DISMISSED', offer_id: action.offer_id, reply_to_id: offer.reply_to_id }],
+        events: [{
+          type: 'OFFER_DISMISSED',
+          offer_id: action.offer_id,
+          reply_to_id: offer.reply_to_id,
+          // #804: record:reject payload への echo 用。
+          correlation_id: offer.correlation_id ?? null,
+        }],
       };
     }
     case 'RESTORE_ENTRY': {

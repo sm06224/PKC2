@@ -33,24 +33,29 @@
  *   transport memory only — never flows through the reducer / domain
  *   events / IDB / container JSON.
  *
- * Scope boundary (see
- * `docs/development/transport-record-accept-reject-consistency-review.md`):
- * - The informational `record:accept` outbound message defined in the
- *   spec is NOT wired in this module. `RecordAcceptPayload` below is
- *   kept for forward wire-up but has no current sender.
- * - The `record:reject` outbound message IS sent by `main.ts:391` when
- *   a pending offer is dismissed; it is not handled on the inbound
- *   side by this module.
+ * Correlation / ack / accept (#804, 2026-06-11):
+ * - The sender MAY attach an envelope-level `correlation_id` (spec
+ *   §4.1). It is stored on the `PendingOffer` and echoed back in every
+ *   response payload so the sender can match multiple in-flight offers.
+ * - `record:ack` is sent by THIS module immediately after the offer is
+ *   validated and dispatched (`{ offer_id, correlation_id }`,
+ *   targetOrigin pinned) — the sender learns the host-minted offer_id.
+ * - `record:accept` / `record:reject` outbound senders live in main.ts
+ *   (OFFER_ACCEPTED / OFFER_DISMISSED event wiring); accept is sent
+ *   only when the reply registry still holds the exact sender window
+ *   (no `window.parent` fallback — new path, spec §7.3).
  *
  * This module does NOT:
- * - Send `record:accept` / `record:reject` (outbound sender lives in
- *   main.ts for reject; accept is not yet wired)
- * - Implement merge import / correlation_id / archetype compatibility
+ * - Send `record:accept` / `record:reject` (outbound senders live in
+ *   main.ts)
+ * - Implement dedup on `(source_id, correlation_id)`(§11.6 のスコープ
+ *   外残置 — 必要が実証されたら別途)
+ * - Implement merge import / archetype compatibility
  * - Implement capability negotiation
- * - Adjust origin allowlist defaults (separate follow-up PR)
  */
 
 import type { HandlerContext, MessageHandler } from './message-handler';
+import { pinTargetOrigin } from './message-bridge';
 import type { ArchetypeId } from '../../core/model/record';
 
 // ── Constants ────────────────────────
@@ -123,6 +128,19 @@ export interface RecordOfferPayload {
 }
 
 /**
+ * Payload for record:ack messages (#804 — sent back to the offerer
+ * immediately after validation pass + SYS_RECORD_OFFERED dispatch).
+ * Tells the sender "the offer arrived and is pending" + the host-minted
+ * `offer_id` so later `record:accept` / `record:reject` can be matched.
+ */
+export interface RecordAckPayload {
+  /** Host-minted ID for the pending offer. */
+  offer_id: string;
+  /** Echo of the sender's envelope-level correlation_id (null if absent). */
+  correlation_id: string | null;
+}
+
+/**
  * Payload for record:accept messages (sent back to the offerer).
  */
 export interface RecordAcceptPayload {
@@ -130,6 +148,8 @@ export interface RecordAcceptPayload {
   offer_id: string;
   /** The LID assigned to the new entry in the receiving container. */
   assigned_lid: string;
+  /** Echo of the sender's envelope-level correlation_id (#804、null if absent). */
+  correlation_id?: string | null;
 }
 
 // ── Pending Offer ────────────────────────
@@ -176,6 +196,9 @@ export interface PendingOffer {
   author?: string | null;
   /** メーカー / ブランド(物販系 Amazon で意味を持つ)。 */
   brand?: string | null;
+  // ── #804 additive ──
+  /** Sender の envelope-level correlation_id(echo 用に保持、null = 無し)。 */
+  correlation_id?: string | null;
 }
 
 // ── Validation ────────────────────────
@@ -243,6 +266,11 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
     return false;
   }
 
+  // #804: envelope-level correlation_id(optional)。string のみ採用、
+  // それ以外は absent 扱い(spec §4.1 の寛容規則)。
+  const correlationId =
+    typeof ctx.envelope.correlation_id === 'string' ? ctx.envelope.correlation_id : null;
+
   const offer: PendingOffer = {
     offer_id: generateOfferId(),
     title: payload.title,
@@ -251,6 +279,7 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
     source_container_id: payload.source_container_id ?? null,
     reply_to_id: ctx.envelope.source_id,
     received_at: new Date().toISOString(),
+    correlation_id: correlationId,
     source_url: payload.source_url ?? null,
     captured_at: payload.captured_at ?? null,
     // PR-U v1.1 capture profile additive(2026-05-06)。
@@ -271,6 +300,21 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
   setReplyWindowForOffer(offer.offer_id, ctx.sourceWindow, ctx.origin);
 
   ctx.dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
+
+  // #804: record:ack — 受理(pending 化)した瞬間に host 採番の offer_id を
+  // sender へ返す。以後の record:accept / record:reject と相関可能になる。
+  // targetOrigin は #797 の規則どおり受信 origin にピン留め。
+  const ackPayload: RecordAckPayload = {
+    offer_id: offer.offer_id,
+    correlation_id: correlationId,
+  };
+  ctx.sender.send(
+    ctx.sourceWindow,
+    'record:ack',
+    ackPayload,
+    ctx.envelope.source_id,
+    pinTargetOrigin(ctx.origin),
+  );
   return true;
 };
 

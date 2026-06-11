@@ -819,16 +819,36 @@ async function boot(): Promise<void> {
       bridgeHandle.sender.send(
         replyTarget?.win ?? window.parent,
         'record:reject',
-        { offer_id: event.offer_id, reason: 'dismissed' },
+        // #804: correlation_id を echo(sender が複数 offer を相関できる)。
+        { offer_id: event.offer_id, reason: 'dismissed', correlation_id: event.correlation_id ?? null },
         event.reply_to_id,
         replyTarget ? pinTargetOrigin(replyTarget.origin) : '*',
       );
       clearReplyWindowForOffer(event.offer_id);
     }
     if (event.type === 'OFFER_ACCEPTED') {
-      // No outbound message on accept (spec §7.3 — `record:accept` is
-      // a reserved type, not wired in v1), but we still need to drop
-      // the registry entry so the Map does not grow unbounded.
+      // #804(spec §11.3 予約の wire-up): accept を sender へ通知する。
+      // record:reject と違い window.parent fallback はしない — 新規経路
+      // なので registry に正確な送信元 window + origin がある場合のみ
+      // 送る(targetOrigin は受信時 origin にピン留め、#797 規則)。
+      // **送出 → clear の順**(clear が先だと送れない)。
+      if (event.reply_to_id && bridgeHandle) {
+        const replyTarget = getReplyTargetForOffer(event.offer_id);
+        if (replyTarget) {
+          bridgeHandle.sender.send(
+            replyTarget.win,
+            'record:accept',
+            {
+              offer_id: event.offer_id,
+              assigned_lid: event.lid,
+              correlation_id: event.correlation_id ?? null,
+            },
+            event.reply_to_id,
+            pinTargetOrigin(replyTarget.origin),
+          );
+        }
+      }
+      // Drop the registry entry so the Map does not grow unbounded.
       clearReplyWindowForOffer(event.offer_id);
       // PR-HH (2026-05-06): when the just-accepted entry's body
       // carries a http(s) thumbnail URL in its YAML frontmatter,

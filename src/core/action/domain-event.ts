@@ -52,8 +52,10 @@ export type DomainEvent =
   | { type: 'BATCH_IMPORT_CANCELLED' }
   | { type: 'BATCH_IMPORT_APPLIED'; summary: BatchImportResultSummary }
   | { type: 'RECORD_OFFERED'; offer_id: string; title: string }
-  | { type: 'OFFER_ACCEPTED'; offer_id: string; lid: string }
-  | { type: 'OFFER_DISMISSED'; offer_id: string; reply_to_id: string | null }
+  // #804 additive: reply_to_id / correlation_id を carry して main.ts が
+  // record:accept / record:reject の往復相関(echo)を送出できるようにする。
+  | { type: 'OFFER_ACCEPTED'; offer_id: string; lid: string; reply_to_id: string | null; correlation_id: string | null }
+  | { type: 'OFFER_DISMISSED'; offer_id: string; reply_to_id: string | null; correlation_id: string | null }
   | { type: 'CONTAINER_REHYDRATED'; old_cid: string; new_cid: string }
   | { type: 'TRASH_PURGED'; count: number }
   | { type: 'ORPHAN_ASSETS_PURGED'; count: number }

@@ -32,7 +32,7 @@ PKC-Message v1 は、**PKC2 の単一 HTML(host)** と **外部 sender(embedded 
 
 - Transport layer: `window.postMessage` + origin allowlist + source/target window 関係
 - Envelope shape: protocol / version / type / source_id / target_id / payload / timestamp
-- 9 message types(`ping` / `pong` / `record:offer` / `record:accept` / `record:reject` / `export:request` / `export:result` / `navigate` / `custom`)の **形** と **責務**
+- 10 message types(`ping` / `pong` / `record:offer` / `record:ack`(#804、2026-06-11 additive)/ `record:accept` / `record:reject` / `export:request` / `export:result` / `navigate` / `custom`)の **形** と **責務**
 - Capability negotiation(ping/pong with PongProfile + MESSAGE_RULES の AcceptanceMode)
 - Storage access boundary(read / write / append / delete / subscribe いずれを許可するか / しないか)
 - Error vocabulary(envelope-level `RejectCode` enum + handler-level rejection logging)
@@ -43,10 +43,10 @@ PKC-Message v1 は、**PKC2 の単一 HTML(host)** と **外部 sender(embedded 
 
 - **Hook subscription**(現時点 Defer 決定、§11.1 参照)
 - **Bidirectional error response inbound channel**(§11.2)
-- **`record:accept` outbound sender 実装**(§11.3、type 予約のみ)
+- ~~**`record:accept` outbound sender 実装**~~(§11.3 — **#804 で v1.x 実装済み**、2026-06-11)
 - **`record:reject` inbound handler**(§11.4、Option A: sender-only by design)
 - **External provenance formal Relation schema**(現状 body header 形式、§11.5)
-- **correlation_id / idempotency / dedup**(§11.6)
+- **idempotency / dedup**(§11.6 — correlation_id 自体は #804 で実装済み、dedup のみ未定義のまま)
 - **Default origin allowlist の concrete value**(implementation PR で別途、§3.4 で方針のみ固定)
 - **Capability advertise from sender side**(現状 implicit、§5.4)
 
@@ -97,6 +97,7 @@ PKC-Message v1 は **`window.postMessage`** を transport とする。host(PKC2 
 | `target_id` | `string \| null` | yes | 宛先 container 論理 ID、null は broadcast | `message-bridge.ts:213` |
 | `payload` | `unknown`(type-specific) | yes(空 object でも必須) | type 固有 body、validation は handler 責務 | `envelope.ts` |
 | `timestamp` | ISO 8601 string | yes | 送信時刻、handler 側で informational | `envelope.ts:215` |
+| `correlation_id` | `string`(optional) | no(#804、2026-06-11 additive) | sender 任意の相関トークン。host は `record:ack` / `record:accept` / `record:reject` の payload に echo。string 以外は absent 扱い | `record-offer-handler.ts` |
 
 **形式 example**:
 
@@ -383,19 +384,28 @@ interface PendingOffer {
 - **accept**: user が PendingOffer banner で "保存" クリック → `ACCEPT_OFFER` reducer → 新規 entry mint(`generateLid()` で新 lid 採番、container に追加)。
 - **reject (dismiss)**: user が dismiss → `DISMISS_OFFER` reducer → host から `record:reject` outbound 送信(§7.4、`main.ts:391-399`)。
 
-### 7.3 `record:accept` (Reserved)
+### 7.2.5 `record:ack`(#804、2026-06-11 additive)
 
-- **direction**: host → sender(将来予定、未実装)
-- **capability**: receiver 側 handler 未登録(`MESSAGE_RULES` に列挙なし)
-- **status**: **type 予約のみ**。outbound sender 実装は v1 では存在しない(§11.3)。
-- **rationale**: spec として `record:accept` を将来チャネルとして残す予定。実装は extension 側が "accept された" を確実に知りたい use case が出たときに wire up(現状は user UI で直接見る前提)。
+- **direction**: host → sender(`record:offer` の到達確認)
+- **送信契機**: offer が validation を pass し PendingOffer 化された**直後**(`recordOfferHandler`)。reject された offer には送られない
+- **payload**: `RecordAckPayload = { offer_id: string, correlation_id: string | null }` — host 採番の `offer_id` を sender が知る唯一の経路。`correlation_id` は envelope §4.1 の echo
+- **capability**: host→sender 方向のため `MESSAGE_RULES` に列挙しない(pong / record:reject と同列、§5.2.1)。sender 実装は unknown type として無視してよい(§9.4)— ack を使わない旧 sender は従来どおり動く
+- **targetOrigin**: 受信時 origin にピン留め(#797 規則)
+
+### 7.3 `record:accept`(#804 で wire-up、2026-06-11)
+
+- **direction**: host → sender
+- **送信契機**: PendingOffer を user が **accept** したとき(`OFFER_ACCEPTED` event、main.ts)。**reply registry に受信時の window + origin が残っている場合のみ送る**(`window.parent` fallback はしない — 新規経路のため正確な宛先が特定できるときに限定)
+- **payload**: `RecordAcceptPayload = { offer_id, assigned_lid, correlation_id }`
+- **capability**: receiver 側 handler 未登録(host→sender 方向、§5.2.1)
+- **改訂注記**: v1 初版では type 予約のみだった(§11.3)。extension 側の履歴 UI が accept 通知を要求する use case が実証された(PKC2-Extension#78)ため wire-up。
 
 ### 7.4 `record:reject` (Sender-Only by Design)
 
 - **direction**: host → sender(現状の唯一の direction)
 - **capability**: receiver 側 handler **意図的に未登録**(`transport-record-reject-decision.md` Option A)
 - **送信契機**: PendingOffer を user が dismiss したとき(`main.ts:391-399`)
-- **payload**: `RecordRejectPayload`(envelope.ts に type 定義)、`offer_id` + `reason: 'dismissed'` を含む
+- **payload**: `offer_id` + `reason: 'dismissed'` + `correlation_id`(#804 echo、null = sender が付与しなかった)
 - **rationale**: v1 では reject signal は **host が sender に "あなたの offer は dismiss された" を伝える方向のみ** 必要。逆方向(sender が "ごめん撤回" を host に送る)は use case が無いため inbound handler を作らない設計判断(§11.4)。
 
 ### 7.5 `export:request` / `export:result`
@@ -614,9 +624,7 @@ active な deferred decision doc(decision / acceptance / reject-decision)には 
 
 ### 11.3 `record:accept` Outbound Sender
 
-- **status**: type 予約のみ、sender 実装無し
-- **理由**: 現状の use case では「accept されたか」を sender が確実に知る必要が無い(user UI で見える + accept 後の effect は sender 側に届かなくても問題ない)
-- **future trigger**: extension が "accept されたら次の action を取る" UX を要求してきた時点で wire-up
+- **status**: ✅ **v1.x で実装済み**(#804、2026-06-11 — §7.3 参照)。future trigger(extension が accept 通知を要求する UX)が PKC2-Extension#78 で実証されたため wire-up した。
 
 ### 11.4 `record:reject` Inbound Handler
 
@@ -632,10 +640,8 @@ active な deferred decision doc(decision / acceptance / reject-decision)には 
 
 ### 11.6 correlation_id / Idempotency / Dedup
 
-- **status**: 未定義
-- **v1 の delivery semantics**: at-most-once、dedup なし
-- **v2 で導入する場合の shape**(参考): envelope に optional `correlation_id?: string` を追加、sender が retry 時に同 id を流用、host 側が `(source_id, correlation_id)` キーで dedup
-- **v1 での回避策**: sender 側で「直前 N 秒以内の同 title+body 送信」を抑止する。host 側は user UI で重複を user に判断させる(2026-04-26 時点でこれが現実解)
+- **status**: **correlation_id は v1.x で実装済み**(#804、2026-06-11 — envelope §4.1 の optional field + ack/accept/reject payload への echo)。**dedup は引き続き未実装**(必要が実証されたら `(source_id, correlation_id)` キーで別途)
+- **v1 の delivery semantics**: at-most-once、dedup なし(変わらず — flood guard §3.5 の drop もあるため、sender は ack 不達時の再送 UX を自分で設計する)
 
 ### 11.7 Per-Source Fine-Grained ACL
 
