@@ -147,7 +147,7 @@ describe('PR-V15 A3 — bridge integration', () => {
   }
 
   it('v2 heartbeat request → response success が source へ postMessage 返送', () => {
-    const handle = mountMessageBridge({ containerId: 'my-cid' });
+    const handle = mountMessageBridge({ containerId: 'my-cid', allowedOrigins: ['*'] });
     const src = makeSourceWindow();
     const req = buildRequest('pkc.heartbeat', 'req-1', { seq: 5 });
     listener?.({ data: req, origin: 'https://x.test', source: src } as unknown as MessageEvent);
@@ -161,7 +161,7 @@ describe('PR-V15 A3 — bridge integration', () => {
   });
 
   it('未知 v2 method → Method not found(-32601)error response', () => {
-    const handle = mountMessageBridge({ containerId: 'cid' });
+    const handle = mountMessageBridge({ containerId: 'cid', allowedOrigins: ['*'] });
     const src = makeSourceWindow();
     listener?.(
       {
@@ -177,7 +177,7 @@ describe('PR-V15 A3 — bridge integration', () => {
   });
 
   it('v2 notification(id 無し)→ response 無し', () => {
-    const handle = mountMessageBridge({ containerId: 'cid' });
+    const handle = mountMessageBridge({ containerId: 'cid', allowedOrigins: ['*'] });
     const src = makeSourceWindow();
     listener?.(
       {
@@ -194,6 +194,7 @@ describe('PR-V15 A3 — bridge integration', () => {
     const v1Pings: unknown[] = [];
     const handle = mountMessageBridge({
       containerId: 'cid',
+      allowedOrigins: ['*'],
       onMessage: (env) => v1Pings.push(env),
     });
     const src = makeSourceWindow();
@@ -217,7 +218,7 @@ describe('PR-V15 A3 — bridge integration', () => {
   });
 
   it('invalid v2 envelope(shape 破綻)→ id=null の error response', () => {
-    const handle = mountMessageBridge({ containerId: 'cid' });
+    const handle = mountMessageBridge({ containerId: 'cid', allowedOrigins: ['*'] });
     const src = makeSourceWindow();
     listener?.(
       {

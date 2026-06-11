@@ -51,6 +51,8 @@ describe('onTraffic seam — v1 path', () => {
     events = [];
     handle = mountMessageBridge({
       containerId: CONTAINER_ID,
+      // #795 A-3: fail-closed 既定のため accept-all は明示 sentinel。
+      allowedOrigins: ['*'],
       onTraffic: (e) => events.push(e),
       ...opts,
     });
@@ -158,6 +160,7 @@ describe('onTraffic seam — v1 path', () => {
     events = [];
     handle = mountMessageBridge({
       containerId: CONTAINER_ID,
+      allowedOrigins: ['*'],
       onTraffic: () => { throw new Error('observer bug'); },
     });
     pmSpy = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
@@ -167,7 +170,7 @@ describe('onTraffic seam — v1 path', () => {
   });
 
   it('onTraffic 未指定(既定)は完全に従来挙動(後方互換)', () => {
-    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'] });
     pmSpy = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
     window.dispatchEvent(ev(v1('ping')));
     expect(pmSpy).toHaveBeenCalledTimes(1); // pong は従来どおり
@@ -183,6 +186,7 @@ describe('onTraffic seam — v2 path(盲点 5: 成功往復含む)', () => {
     events = [];
     handle = mountMessageBridge({
       containerId: CONTAINER_ID,
+      allowedOrigins: ['*'],
       onTraffic: (e) => events.push(e),
     });
     pmSpy = vi.spyOn(window, 'postMessage').mockImplementation(() => {});

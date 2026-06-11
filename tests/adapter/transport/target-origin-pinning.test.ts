@@ -69,7 +69,7 @@ describe('bridge responses pin targetOrigin to event.origin', () => {
   });
 
   it('pong is sent with the ping origin (not *)', () => {
-    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'] });
     // happy-dom は targetOrigin 不一致の postMessage を SecurityError に
     // するため、引数検証のみ行う(配達はしない)。
     const spy = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
@@ -98,7 +98,7 @@ describe('bridge responses pin targetOrigin to event.origin', () => {
   });
 
   it('v2 heartbeat response is pinned to the request origin', () => {
-    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'] });
     // happy-dom は targetOrigin 不一致の postMessage を SecurityError に
     // するため、引数検証のみ行う(配達はしない)。
     const spy = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
@@ -116,7 +116,7 @@ describe('bridge responses pin targetOrigin to event.origin', () => {
   });
 
   it('v2 method-not-found error is pinned to the request origin', () => {
-    handle = mountMessageBridge({ containerId: CONTAINER_ID });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'] });
     // happy-dom は targetOrigin 不一致の postMessage を SecurityError に
     // するため、引数検証のみ行う(配達はしない)。
     const spy = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
@@ -135,7 +135,7 @@ describe('bridge responses pin targetOrigin to event.origin', () => {
 
   it('v2 invalid-envelope error is pinned to the request origin', () => {
     const onReject = vi.fn();
-    handle = mountMessageBridge({ containerId: CONTAINER_ID, onReject });
+    handle = mountMessageBridge({ containerId: CONTAINER_ID, allowedOrigins: ['*'], onReject });
     // happy-dom は targetOrigin 不一致の postMessage を SecurityError に
     // するため、引数検証のみ行う(配達はしない)。
     const spy = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
