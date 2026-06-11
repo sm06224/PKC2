@@ -66,6 +66,31 @@ import {
   removeWindowLayout,
   type WindowLayoutEntry,
 } from '../platform/window-layout-store';
+import { pinTargetOrigin } from '../transport/message-bridge';
+
+/**
+ * Target origin for every host→child `postMessage` (#795 Phase 1.5).
+ *
+ * Child entry/viewer/monitor windows are opened with `window.open('')` +
+ * `document.write`, so their `about:blank` document **inherits the host
+ * origin** — they are same-origin. The correct, non-`'*'` target is
+ * therefore the host's own origin; `pinTargetOrigin` falls back to `'*'`
+ * only for the opaque `'null'` origin (`file://` distribution), exactly
+ * as the transport layer does. Routing every send through this keeps the
+ * "`'null'` → `'*'`, otherwise exact" rule in one place.
+ */
+function childWindowTargetOrigin(): string {
+  return pinTargetOrigin(window.location.origin);
+}
+
+/**
+ * Inline JS (embedded into child `<script>` strings) that computes the
+ * child→host target origin the same way (#795 Phase 1.5). The child is
+ * same-origin with its opener, so `location.origin` is the opener's
+ * origin; opaque `'null'` (file://) falls back to `'*'`.
+ */
+const CHILD_TARGET_ORIGIN_JS =
+  "var __pkcTO=(location.origin&&location.origin!=='null')?location.origin:'*';";
 
 /**
  * Expose renderMarkdown on the parent window so child windows
@@ -443,7 +468,7 @@ export function pushMonitorUpdate(
       kind,
       items: deriveMonitorItems(kind, entry),
     },
-    '*',
+    childWindowTargetOrigin(),
   );
   return true;
 }
@@ -613,7 +638,7 @@ export function pushPreviewContextUpdate(
   if (child && !child.closed) {
     child.postMessage(
       { type: ENTRY_WINDOW_PREVIEW_CTX_UPDATE_MSG, previewCtx },
-      '*',
+      childWindowTargetOrigin(),
     );
     return true;
   }
@@ -713,7 +738,7 @@ export function pushViewBodyUpdate(
   for (const child of targets) {
     child.postMessage(
       { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
-      '*',
+      childWindowTargetOrigin(),
     );
   }
   return true;
@@ -741,7 +766,7 @@ export function pushTitleUpdate(
   if (!child || child.closed) return false;
   child.postMessage(
     { type: ENTRY_WINDOW_TITLE_UPDATE_MSG, title },
-    '*',
+    childWindowTargetOrigin(),
   );
   return true;
 }
@@ -863,7 +888,7 @@ export function pushTextlogViewBodyUpdate(
   const html = buildTextlogViewBodyHtml(lid, textlogBody);
   child.postMessage(
     { type: ENTRY_WINDOW_VIEW_BODY_UPDATE_MSG, viewBody: html },
-    '*',
+    childWindowTargetOrigin(),
   );
   return true;
 }
@@ -979,7 +1004,7 @@ export function openEntryWindow(
     if (!e.data) return;
     if (e.data.type === 'pkc-entry-save') {
       onSave(e.data.lid, e.data.title, e.data.body, openedAt);
-      child!.postMessage({ type: 'pkc-entry-saved' }, '*');
+      child!.postMessage({ type: 'pkc-entry-saved' }, childWindowTargetOrigin());
       return;
     }
     if (e.data.type === 'pkc-entry-download-asset') {
@@ -1195,6 +1220,7 @@ body { margin:0; font-family:var(--font-sans); background:var(--c-bg); color:var
 <div class="pkc-monitor-head">${escapeForAttr(heading)}</div>
 <div id="monitor-panel"></div>
 <script>
+${CHILD_TARGET_ORIGIN_JS}
 var monitorKind = ${escapeForScript(kind)};
 function renderMonitor(items) {
   var panel = document.getElementById('monitor-panel');
@@ -1215,6 +1241,10 @@ function renderMonitor(items) {
   }
 }
 window.addEventListener('message', function (e) {
+  /* #795 Phase 1.5: only accept messages from the opener (the host).
+     The opener Window identity is unforgeable, so this binds the channel
+     to the host even when origin is opaque (sandbox / file://). */
+  if (e.source !== window.opener) return;
   if (e.data && e.data.type === 'pkc-monitor-update' && e.data.kind === monitorKind) {
     renderMonitor(e.data.items);
   }
@@ -1242,7 +1272,7 @@ export function notifyConflict(
   if (child && !child.closed) {
     child.postMessage(
       { type: 'pkc-entry-conflict', message, diff: diff ?? null },
-      '*',
+      childWindowTargetOrigin(),
     );
   }
 }
@@ -1272,6 +1302,7 @@ function geometryReportScript(
 ): string {
   return `
 (function () {
+  ${CHILD_TARGET_ORIGIN_JS}
   function pkcReportGeo() {
     if (!window.opener) return;
     try {
@@ -1284,7 +1315,7 @@ function geometryReportScript(
           screenX: window.screenX, screenY: window.screenY,
           outerWidth: window.outerWidth, outerHeight: window.outerHeight
         }
-      }, '*');
+      }, __pkcTO);
     } catch (e) { /* opener gone */ }
   }
   window.addEventListener('load', pkcReportGeo);
@@ -2997,6 +3028,7 @@ ${useStructuredEditor ? `      <div id="structured-editor">${editorBodyHtml}</di
   <div class="pkc-status-msg" id="status"></div>
 
 <script>
+${CHILD_TARGET_ORIGIN_JS}
 var currentMode = 'view';
 var lid = ${escapeForScript(entry.lid)};
 var entryArchetype = ${escapeForScript(entry.archetype)};
@@ -3503,7 +3535,7 @@ document.addEventListener('click', function(e) {
     if (!isNaN(taskIndex) && window.opener) {
       var logRow = target.closest ? target.closest('[data-pkc-log-id]') : null;
       var logId = logRow ? logRow.getAttribute('data-pkc-log-id') : null;
-      try { window.opener.postMessage({ type: 'pkc-entry-task-toggle', lid: lid, taskIndex: taskIndex, logId: logId }, '*'); }
+      try { window.opener.postMessage({ type: 'pkc-entry-task-toggle', lid: lid, taskIndex: taskIndex, logId: logId }, __pkcTO); }
       catch (_e) { /* parent closed */ }
     }
     return;
@@ -3514,7 +3546,7 @@ document.addEventListener('click', function(e) {
     e.preventDefault();
     var key = chip.getAttribute('href').slice('#asset-'.length);
     if (key && window.opener) {
-      try { window.opener.postMessage({ type: 'pkc-entry-download-asset', assetKey: key }, '*'); }
+      try { window.opener.postMessage({ type: 'pkc-entry-download-asset', assetKey: key }, __pkcTO); }
       catch (_e) { /* parent closed or cross-origin */ }
     }
     return;
@@ -4010,14 +4042,14 @@ function closeEntryWindow() {
  * を呼ぶ。flag OFF のときは btn-viewer 自体が描画されないため到達しない。 */
 function openViewerWin() {
   if (window.opener) {
-    window.opener.postMessage({ type: 'pkc-open-viewer', lid: lid }, '*');
+    window.opener.postMessage({ type: 'pkc-open-viewer', lid: lid }, __pkcTO);
   }
 }
 
 /* γ-A5: TOC 別窓(monitor role)を開く。parent が openMonitorWindow を呼ぶ。 */
 function openTocMonitor() {
   if (window.opener) {
-    window.opener.postMessage({ type: 'pkc-open-monitor', kind: 'toc', lid: lid }, '*');
+    window.opener.postMessage({ type: 'pkc-open-monitor', kind: 'toc', lid: lid }, __pkcTO);
   }
 }
 
@@ -4160,11 +4192,14 @@ function renderMdInto(el, text) {
 function saveEntry() {
   var title = document.getElementById('title-input').value;
   var body = useStructuredEditor ? collectStructuredBody() : document.getElementById('body-edit').value;
-  window.opener.postMessage({ type: 'pkc-entry-save', lid: lid, title: title, body: body }, '*');
+  window.opener.postMessage({ type: 'pkc-entry-save', lid: lid, title: title, body: body }, __pkcTO);
   document.getElementById('status').textContent = 'Saving...';
 }
 
 window.addEventListener('message', function(e) {
+  /* #795 Phase 1.5: bind inbound to the opener (host) Window identity.
+     Unforgeable even under opaque origin; ignore any other source. */
+  if (e.source !== window.opener) return;
   if (e.data && e.data.type === 'pkc-entry-saved') {
     originalTitle = document.getElementById('title-input').value;
     originalBody = useStructuredEditor ? collectStructuredBody() : document.getElementById('body-edit').value;

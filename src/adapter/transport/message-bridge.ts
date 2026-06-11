@@ -100,14 +100,17 @@ export interface MessageSender {
    * @param type - Message type
    * @param payload - Message payload
    * @param targetId - Target container_id (null = broadcast)
-   * @param targetOrigin - Target origin (default: '*')
+   * @param targetOrigin - Target origin. **Required** (#795 Phase 1.5):
+   *   every caller must pass an explicit origin — route it through
+   *   `pinTargetOrigin()` so a forgotten argument can no longer silently
+   *   default to `'*'` and leak a response to a navigated-away window.
    */
   send(
     target: Window,
     type: MessageType,
     payload: unknown,
-    targetId?: string | null,
-    targetOrigin?: string,
+    targetId: string | null,
+    targetOrigin: string,
   ): void;
 }
 
@@ -330,8 +333,8 @@ function createSender(containerId: string): MessageSender {
       target: Window,
       type: MessageType,
       payload: unknown,
-      targetId: string | null = null,
-      targetOrigin: string = '*',
+      targetId: string | null,
+      targetOrigin: string,
     ): void {
       const envelope = buildEnvelope(containerId, type, payload, targetId);
       target.postMessage(envelope, targetOrigin);

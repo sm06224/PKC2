@@ -473,7 +473,8 @@ describe('MessageSender', () => {
   it('sends a valid envelope via postMessage', () => {
     const target = { postMessage: vi.fn() } as unknown as Window;
 
-    handle.sender.send(target, 'ping', null);
+    // #795 Phase 1.5: targetId + targetOrigin are now required args.
+    handle.sender.send(target, 'ping', null, null, '*');
 
     expect(target.postMessage).toHaveBeenCalledTimes(1);
     const [data, origin] = (target.postMessage as ReturnType<typeof vi.fn>).mock.calls[0]!;

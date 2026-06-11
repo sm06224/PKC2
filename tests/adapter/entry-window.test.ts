@@ -1394,9 +1394,11 @@ describe('Entry Window', () => {
       };
       const pushed = pushPreviewContextUpdate(entry.lid, fresh);
       expect(pushed).toBe(true);
+      // #795 Phase 1.5: host→child sends are pinned to the (same-origin)
+      // host origin, not '*'. In happy-dom that is window.location.origin.
       expect(childWindow.postMessage).toHaveBeenCalledWith(
         { type: 'pkc-entry-update-preview-ctx', previewCtx: fresh },
-        '*',
+        window.location.origin,
       );
     });
 
@@ -1694,9 +1696,10 @@ describe('Entry Window', () => {
         nameByKey: { 'ast-doc': 'report.pdf' },
       };
       expect(pushPreviewContextUpdate(entry.lid, ctx)).toBe(true);
+      // #795 Phase 1.5: pinned to host origin (same-origin child).
       expect(childWindow.postMessage).toHaveBeenCalledWith(
         { type: 'pkc-entry-update-preview-ctx', previewCtx: ctx },
-        '*',
+        window.location.origin,
       );
       // And the parent-side render (simulating what the child would
       // do after receiving the push) resolves the non-image chip.
