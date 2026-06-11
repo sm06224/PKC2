@@ -12,6 +12,11 @@ export interface PendingOfferRef {
   source_container_id: string | null;
   reply_to_id: string | null;
   received_at: string;
+  /**
+   * #804 additive: sender の envelope-level correlation_id(null = 無し)。
+   * OFFER_ACCEPTED / OFFER_DISMISSED event への echo 用に reducer が保持する。
+   */
+  correlation_id?: string | null;
 }
 
 /**
