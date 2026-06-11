@@ -62,7 +62,9 @@ import { JSON_RPC_ERROR_CODES } from '../../core/model/message-v2';
  * `RejectCode` enum (joined with `,` when multiple reasons were
  * collected); bridge-level decisions use the literal codes
  * `ORIGIN_REJECTED` / `TARGET_ID_MISMATCH` / `V2_INVALID_REQUEST` /
- * `METHOD_NOT_FOUND` / `UNSOLICITED_RESPONSE`.
+ * `METHOD_NOT_FOUND` / `UNSOLICITED_RESPONSE` / `NO_HANDLER` /
+ * `SIZE_LIMIT_EXCEEDED` / `RATE_LIMIT_EXCEEDED`(後者 2 つは #795 A-4
+ * flood guard)。
  */
 export interface TrafficEvent {
   direction: 'in' | 'out';
@@ -101,6 +103,46 @@ export function redactPayloadPreview(payload: unknown): string {
   s = s.replace(DATA_URI_RUN, '[redacted:data-uri]').replace(BASE64_RUN, '[redacted:base64]');
   if (s.length > PREVIEW_MAX) s = `${s.slice(0, PREVIEW_MAX)}…(${fullLen} chars)`;
   return s;
+}
+
+// ── #795 A-4: flood guards(受信 envelope 粗サイズ上限 + origin 別 rate limit) ──
+
+/**
+ * 受信 envelope の粗サイズ上限(**UTF-16 code units** — #798 の body cap と
+ * 同じ単位)。既存の body cap(262144 units)の**外側の壁**で、envelope の
+ * どこかに巨大 string を抱えた flood を validation 前に落とす。
+ * 提案値 1 Mi units(設計 doc §2、user 確認はんてい中)。
+ */
+export const MAX_ENVELOPE_ROUGH_UNITS = 1_048_576;
+
+/** rate limit 固定窓の幅(ms)。 */
+export const RATE_LIMIT_WINDOW_MS = 60_000;
+
+/** 1 窓あたりの受理上限(origin 単位)。提案値 120 msg/min(設計 doc §2)。 */
+export const RATE_LIMIT_MAX_PER_WINDOW = 120;
+
+/**
+ * 受信 data の粗サイズ概算(best-effort、#795 A-4)。top-level と
+ * 1 段下(payload / params 等)の string field 長を合算する。
+ * `JSON.stringify` の全文再走を避けた O(field 数) の見積もりで、
+ * 「巨大 string をどこかに抱えた envelope」を確実に捕まえるのが目的。
+ * より深い nest への分散は body cap(#798)と spec の sender contract
+ * (v1 spec §3.5)が担う。Exported for tests.
+ */
+export function roughEnvelopeSize(data: unknown): number {
+  if (typeof data === 'string') return data.length;
+  if (!data || typeof data !== 'object') return 0;
+  let total = 0;
+  for (const v of Object.values(data as Record<string, unknown>)) {
+    if (typeof v === 'string') {
+      total += v.length;
+    } else if (v && typeof v === 'object') {
+      for (const inner of Object.values(v as Record<string, unknown>)) {
+        if (typeof inner === 'string') total += inner.length;
+      }
+    }
+  }
+  return total;
 }
 
 export interface BridgeOptions {
@@ -250,6 +292,53 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     }
   }
 
+  // ── #795 A-4: flood guard の per-mount 状態 ──────────────────────
+  // origin 別固定窓カウンタ。`'null'`(opaque)origin は 1 バケツに集約。
+  const rateBuckets = new Map<string, { windowStart: number; count: number; notified: boolean }>();
+
+  /**
+   * 受信 envelope に flood guard(粗サイズ上限 → rate limit)を適用する。
+   * false = drop(呼び出し側は即 return)。
+   *
+   * - onReject へは **data を渡さない**(flood payload を観測点へ増幅
+   *   しないため null + 理由文字列のみ)。
+   * - drop は onTraffic に verdict 'dropped' で乗る(設計 doc §2)。
+   *   rate 超過の onReject 通知は窓あたり 1 回(console spam 防止)、
+   *   onTraffic は drop ごとに emit(ring buffer は 100 件 cap で安全)。
+   */
+  function checkFloodGuards(event: MessageEvent, protocol: 'v1' | 'v2'): boolean {
+    // 1. 粗サイズ上限(validation 前の外側の壁)
+    const size = roughEnvelopeSize(event.data);
+    if (size > MAX_ENVELOPE_ROUGH_UNITS) {
+      onReject?.(null, `Envelope size limit exceeded (~${size} > ${MAX_ENVELOPE_ROUGH_UNITS} UTF-16 units)`);
+      emitTraffic({ direction: 'in', protocol, verdict: 'dropped', ...peek(event.data), origin: event.origin, rejectCode: 'SIZE_LIMIT_EXCEEDED' });
+      return false;
+    }
+    // 2. origin 別固定窓 rate limit
+    const now = Date.now();
+    let bucket = rateBuckets.get(event.origin);
+    if (!bucket || now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS) {
+      bucket = { windowStart: now, count: 0, notified: false };
+      rateBuckets.set(event.origin, bucket);
+      // 窓の張り替えタイミングで期限切れ bucket を prune(メモリ上限)。
+      if (rateBuckets.size > 100) {
+        for (const [k, b] of rateBuckets) {
+          if (now - b.windowStart >= RATE_LIMIT_WINDOW_MS) rateBuckets.delete(k);
+        }
+      }
+    }
+    bucket.count += 1;
+    if (bucket.count > RATE_LIMIT_MAX_PER_WINDOW) {
+      if (!bucket.notified) {
+        bucket.notified = true;
+        onReject?.(null, `Rate limit exceeded for origin ${event.origin} (> ${RATE_LIMIT_MAX_PER_WINDOW} msg / ${RATE_LIMIT_WINDOW_MS} ms)`);
+      }
+      emitTraffic({ direction: 'in', protocol, verdict: 'dropped', ...peek(event.data), origin: event.origin, rejectCode: 'RATE_LIMIT_EXCEEDED' });
+      return false;
+    }
+    return true;
+  }
+
   /** Best-effort field extraction from unvalidated inbound data. */
   function peek(data: unknown): { type: string; sourceId: string | null; targetId: string | null } {
     const obj = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
@@ -301,6 +390,11 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
     }
     // 1. Quick filter: skip non-PKC messages silently(v1 path)
     if (!isPkcMessage(event.data)) return;
+
+    // 1b. #795 A-4: flood guards(粗サイズ → rate)。quick filter の後に
+    // 置くことで、同じ window を流れる非 PKC メッセージ(entry-window
+    // channel 等)には測定コストを一切払わない。
+    if (!checkFloodGuards(event, 'v1')) return;
 
     const currentAllowed = resolveAllowedOrigins();
     // #795 A-3(fail-closed): accept-all は明示 sentinel `['*']` のみ。
@@ -386,6 +480,9 @@ export function mountMessageBridge(options: BridgeOptions): BridgeHandle {
    * Notification 形(id 無し)は response を返さない(spec 通り)。
    */
   function handleV2Message(event: MessageEvent): void {
+    // #795 A-4: v2 lane も同一の flood guards を通す。
+    if (!checkFloodGuards(event, 'v2')) return;
+
     const currentAllowed = resolveAllowedOrigins();
     // #795 A-3(fail-closed): v1 経路と同一の意味論(`['*']` sentinel のみ accept-all)。
     const acceptAllOrigins = currentAllowed.includes('*');

@@ -78,6 +78,12 @@ PKC-Message v1 は **`window.postMessage`** を transport とする。host(PKC2 
 - **provider 例外時の既定挙動 = fail-closed**(normative、2026-06-11): `allowedOrigins` の provider form が throw / `null` を返した場合、receiver は **empty(= deny-all)として扱わなければならない**(MUST)。設定読み込み失敗が「全 origin 受理」へ倒れてはならない。accept-all へ倒したい deployment は provider 内で例外を処理して `['*']` を返すこと。
 - **具体値の選定は implementation PR で別途**。Extension 側の origin / `chrome-extension://...` / `moz-extension://...` / OS-launcher origin / 組織内 host name など、deployment context によって異なるため本 spec では列挙しない。
 
+### 3.5 Receiver-side Flood Guards(2026-06-11、#795 A-4)
+
+- **v1 protocol は rate / 受信サイズの上限を規定しない**。receiver は実装の裁量で flood 防御の drop を行ってよい(MAY)。**sender は drop されうることを前提に設計すること**(応答が無い = 必ず届いた、ではない。§4.3 の at-most-once 性質と同じ)。
+- drop は inbound 側で完結し、error response は返さない(§8.3 と同じ方針)。観測は receiver の observability 観測点(§13)に乗る。
+- **本実装(informative)**: ① 受信 envelope の粗サイズ上限 **1,048,576 UTF-16 code units**(top-level + 1 段下の string field 長合算による best-effort 見積もり。body cap §7.2.2 の外側の壁)② origin 単位の固定窓 rate limit **120 msg / 60 秒**(超過分 drop、`onReject` 通知は窓あたり 1 回、`onTraffic` には drop ごとに verdict `'dropped'` で記録)。数値は `message-bridge.ts` の exported 定数(`MAX_ENVELOPE_ROUGH_UNITS` / `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_PER_WINDOW`)。
+
 ## 4. Envelope
 
 ### 4.1 Fields
