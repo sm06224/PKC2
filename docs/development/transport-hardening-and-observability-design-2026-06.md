@@ -1,6 +1,6 @@
 # Transport hardening + observability 設計 — #795 A-3 / A-4 / B-1 / C-3(2026-06-10)
 
-**Status**: 設計 doc。**実装はすべて go 待ち(user 判断)** — 本書は #795 の「設計 doc 先行」項目(着地順 5)を 1 枚に集約する。
+**Status**: 設計 doc → **実装 go 済み(user 判断 2026-06-11、#795 コメント)**。進捗: **B-1 + C-3 = ✅ 実装着地**(`onTraffic` seam + spec §Observability(v1 §13 / v2 §6)、ring buffer `kind:'transport'` 配線)。A-3 / A-4 = 実装中(go 済み、順序 B-1 → A-3 → A-4)。
 **Issues**: #795(transport 監査)/ 関連 #796(封じ込め)・#791(v2 統合)
 **前提**: A-1(targetOrigin ピン留め、PR #797)/ A-2+C-2(size cap 名実一致、PR #798)/ B-2(PR #799)/ C-1(PR #800)は着地済み。
 

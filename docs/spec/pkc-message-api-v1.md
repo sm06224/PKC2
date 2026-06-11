@@ -668,9 +668,18 @@ extension implementer に対する推奨事項:
 3. **応答無しを想定**: v1 では inbound error response が無い(§8.3)。応答が来ないことを「reject」と即断せず、user UI を観察する設計に倒す
 4. **version をハードコードしない**: `version: 1` は本 v1 spec の literal、将来 v2 が出たら **両方サポートできるよう** sender 側を設計する(pong の `app_id` + semver で判別)
 
-## 13. References
+## 13. Observability
 
-### 13.1 Source-of-truth Implementation
+(#795 B-1/C-3、2026-06-11 追加。receiver 実装 = `mountMessageBridge` の `onTraffic` seam)
+
+1. receiver は受信・送信・drop・reject の各イベントを実装定義の観測点(callback / ログ)に公開して**よい**(MAY)。本実装は `BridgeOptions.onTraffic` を提供し、bridge の全判定(inbound ping の内部処理、`target_id` 不一致 silent drop、全 outbound、v2 往復の成功を含む)で発火する。
+2. 観測点に payload を含める場合、(a) 明示的なデバッグフラグ下に限定し(MUST — 本実装は `?pkc-debug=transport`)、(b) assets / base64 データを redact し(MUST)、(c) 全文ではなく bounded preview とする(SHOULD — 本実装は 256 字)。既定はメタデータのみで payload を流してはならない(MUST NOT)。
+3. 観測点はプロトコル挙動(応答・受理判定)に影響してはならない(MUST NOT)。observer の例外は握り潰す。
+4. sender は観測の有無を検知できない(観測は receiver のローカル事項)。
+
+## 14. References
+
+### 14.1 Source-of-truth Implementation
 
 | layer | path | line ref |
 |---|---|---|
@@ -682,12 +691,12 @@ extension implementer に対する推奨事項:
 | Record offer | `src/adapter/transport/record-offer-handler.ts` | 65-79 (RecordOfferPayload), 99-118 (PendingOffer), 122-143 (validation), 157-178 (handler) |
 | Export | `src/adapter/transport/export-handler.ts` | 25-37 (payload types), 44 (capability), 47-69 (handler) |
 
-### 13.2 Normative Spec Cross-Reference
+### 14.2 Normative Spec Cross-Reference
 
 - `docs/spec/record-offer-capture-profile.md`(record:offer の詳細、§7.2 から参照)
 - `docs/spec/provenance-relation-profile.md`(future formal provenance、§11.5 から参照)
 
-### 13.3 Decision / Acceptance / Review Doc
+### 14.3 Decision / Acceptance / Review Doc
 
 - `docs/development/pkc-message-hook-subscription-decision.md`(Defer 決定、§11.1)
 - `docs/development/pkc-message-hook-subscription-acceptance.md`(v2+ minimum scope)
@@ -696,7 +705,7 @@ extension implementer に対する推奨事項:
 - `docs/development/transport-record-reject-decision.md`(sender-only Option A、§7.4)
 - `docs/development/transport-record-accept-reject-consistency-review.md`(consistency review、archive)
 
-### 13.4 Archeology
+### 14.4 Archeology
 
 - `docs/planning/resolved/24_message_transport.md`(初期 design doc、本 v1 spec 完成後は archeology)
 - `docs/development/extension-capture-v0-draft.md`(draft、`record-offer-capture-profile.md` + 本 v1 spec で superseded)
@@ -707,4 +716,4 @@ extension implementer に対する推奨事項:
 
 ---
 
-**Status**: Skeleton committed. Sections §3–§13 are expanded incrementally in subsequent commits / Edits. Total target ≈ 1000 行(実装 PR で 1 PR にまとめて landing する、または 4-5 commit に分割する判断は本 PR で決める)。
+**Status**: Skeleton committed. Sections §3–§14 are expanded incrementally in subsequent commits / Edits. Total target ≈ 1000 行(実装 PR で 1 PR にまとめて landing する、または 4-5 commit に分割する判断は本 PR で決める)。§13 Observability は 2026-06-11(#795 B-1/C-3)に追加され、旧 §13 References は §14 へ繰り下げ。

@@ -4,7 +4,9 @@ import { start as profileStart, mark as profileMark } from './runtime/profile';
 import {
   currentDispatchSeq,
   isRecordingEnabled,
+  nextDispatchSeq,
   recordDebugError,
+  recordDebugEvent,
   refreshStorageEstimate,
 } from './runtime/debug-flags';
 import { createDispatcher } from './adapter/state/dispatcher';
@@ -741,6 +743,30 @@ async function boot(): Promise<void> {
           version: VERSION,
           embedded: dispatcher.getState().embedded,
         }),
+        // #795 B-1: 観測 seam → 既存 debug ring buffer(kind:'transport')。
+        // 新 UI は足さない — 既存の debug report 導線(`?pkc-debug=…` +
+        // 🐞 button)でそのまま輸出される。recording off(通常運用)では
+        // undefined を渡し、seam のオーバーヘッドをゼロにする。
+        // payloadPreview は bridge 側が `?pkc-debug=transport` 時のみ付与
+        // (redaction 済み・256 字 bound)。
+        onTraffic: isRecordingEnabled()
+          ? (ev) => {
+              recordDebugEvent({
+                kind: 'transport',
+                seq: nextDispatchSeq(),
+                ts: ev.at,
+                type: ev.type,
+                direction: ev.direction,
+                protocol: ev.protocol,
+                verdict: ev.verdict,
+                origin: ev.origin,
+                sourceId: ev.sourceId,
+                targetId: ev.targetId,
+                ...(ev.rejectCode !== undefined ? { rejectCode: ev.rejectCode } : {}),
+                ...(ev.payloadPreview !== undefined ? { payloadPreview: ev.payloadPreview } : {}),
+              });
+            }
+          : undefined,
       });
       console.log(`[PKC2] Message bridge mounted (container: ${state.container.meta.container_id})`);
     }
