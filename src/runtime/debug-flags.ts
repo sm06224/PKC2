@@ -155,13 +155,37 @@ export function isContentModeEnabled(): boolean {
  *   eagerly-cloned action payload, capped at MAX_CONTENT_BYTES.
  */
 export interface RecentEvent {
-  kind: 'dispatch';
+  /**
+   * Event source. `'dispatch'` = reducer dispatch (original shape);
+   * `'transport'` = PKC-Message traffic captured via the bridge's
+   * `onTraffic` seam (#795 B-1). Transport events reuse `seq` / `ts` /
+   * `type` and carry the optional transport-specific fields below.
+   */
+  kind: 'dispatch' | 'transport';
   seq: number;
   ts: string;
   type: string;
   lid?: string;
   durMs?: number;
   content?: unknown;
+  // ── kind === 'transport' (#795 B-1) ──────────────────────────
+  /** Message direction relative to this host. */
+  direction?: 'in' | 'out';
+  /** Wire protocol lane (`'v1'` / `'v2'` / `'foreign'`). */
+  protocol?: string;
+  /** Bridge decision (`'accepted'` / `'rejected'` / `'dropped'` / `'sent'`). */
+  verdict?: string;
+  /** inbound: `event.origin` / outbound: targetOrigin. */
+  origin?: string;
+  sourceId?: string | null;
+  targetId?: string | null;
+  rejectCode?: string;
+  /**
+   * Redacted, bounded payload preview. Present ONLY when
+   * `?pkc-debug=transport` is active (spec § Observability: payload
+   * must never reach observers by default).
+   */
+  payloadPreview?: string;
 }
 
 const RECENT_MAX = 100;

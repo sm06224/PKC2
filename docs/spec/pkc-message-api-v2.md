@@ -25,6 +25,7 @@ PKC-Message v2 は wire を **JSON-RPC 2.0** に全面移行する(prior-art 調
 | §3 | **Host→Extension channel** | **normative(設計、stage 1)** |
 | §4 | Versioning / v1 互換 | normative(短) |
 | §5 | Tasks / ACL / delta / Elicitation | 予約(v2.1+、decision doc 参照) |
+| §6 | Observability | **normative(#795 B-1/C-3、2026-06-11)** |
 
 ## 2. 稼働中の v2 経路(normative — 現実装の記述)
 
@@ -66,7 +67,7 @@ PKC-Message v2 は wire を **JSON-RPC 2.0** に全面移行する(prior-art 調
 1. **origin gate**: v2 経路も v1 と同じ origin allowlist 検査を行う(`'null'` は明示 opt-in 必須、allowlist 不一致は reject)。ただし**検査コードは v1 経路と重複実装**(bridge 内 2 箇所)。
 2. **capability gate を通らない**: v1 経路の `canHandleMessage`(capability gate、v1 spec §5)と **handler registry を v2 は経由しない** — `pkc.heartbeat` は bridge 内で直接処理される。per-method gate / ACL の一貫性は設計課題(#795 C-1 補足、§5 の ACL 設計と合流予定)。
 3. **応答の targetOrigin**: すべての v2 response は受信時 `event.origin` にピン留めされる(#795 A-1 / PR #797)。opaque origin(`"null"`)のみ `'*'` フォールバック。
-4. **観測点**: invalid envelope のみ `onReject` callback に乗る。**成功した v2 往復は現状観測不能**(observability seam は #795 B-1 で設計中)。
+4. **観測点**: invalid envelope は `onReject` に乗るほか、**全 v2 トラフィック(成功往復・notification・unsolicited response の drop を含む)が `onTraffic` seam で観測可能**(§6、#795 B-1 実装済み 2026-06-11)。
 
 ### 2.6 将来計画(未実装 — decision doc 確定事項)
 
@@ -155,6 +156,15 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | `record.offer.delta`(preview-only) | v2.2 | OQ-5 |
 | Elicitation(reverse RPC)/ subscription registry | v2.x | prior-art doc |
 | `record.live` / 永続 Tasks | v3+ | OQ-3/5 |
+
+## 6. Observability(normative)
+
+v1 spec §13 と共通の規約(receiver 実装 = `mountMessageBridge` の `onTraffic` seam、#795 B-1/C-3):
+
+1. receiver は受信・送信・drop・reject の各イベントを実装定義の観測点に公開して**よい**(MAY)。本実装の seam は **v2 経路の成功往復を含む全判定**で発火する(§2.5 で「成功往復は観測不能」とした既知ギャップは本節の実装で解消)。
+2. payload を観測点に含めるのは明示デバッグフラグ(`?pkc-debug=transport`)下のみ(MUST)。assets / base64 は redact(MUST)、bounded preview(SHOULD、本実装 256 字)。既定はメタデータのみ(MUST NOT — payload を流さない)。
+3. 観測点はプロトコル挙動に影響してはならない(MUST NOT)。observer 例外は握り潰す。
+4. sender は観測の有無を検知できない。
 
 ---
 
