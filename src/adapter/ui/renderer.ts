@@ -10127,6 +10127,27 @@ function renderPendingOffers(
     title.textContent = offer.title || '(untitled)';
     item.appendChild(title);
 
+    // #805: 同意ゲートの原理(§6.2「user が見たものだけが entry に入る」)
+    // どおり、offer に同送された tags / color_tag を accept 前に提示する。
+    // 既存のタグチップ CSS(.pkc-filer-tag-chip)を流用、新 UI mode は足さない。
+    if ((offer.tags && offer.tags.length > 0) || offer.color_tag) {
+      const meta = createElement('span', 'pkc-pending-tags');
+      meta.setAttribute('data-pkc-region', 'pending-offer-tags');
+      if (offer.color_tag) {
+        const dot = createElement('span', 'pkc-pending-color-dot');
+        dot.setAttribute('data-pkc-color-tag', offer.color_tag);
+        dot.setAttribute('title', `color: ${offer.color_tag}`);
+        dot.textContent = '●';
+        meta.appendChild(dot);
+      }
+      for (const t of offer.tags ?? []) {
+        const chip = createElement('span', 'pkc-filer-tag-chip');
+        chip.textContent = t;
+        meta.appendChild(chip);
+      }
+      item.appendChild(meta);
+    }
+
     // PR-VV: target folder picker. 同じ `[data-pkc-offer-id]` item 内に
     // <select> を置く。action-binder が accept-offer click 時に同 item
     // 内の select を querySelector で読み、value を ACCEPT_OFFER の

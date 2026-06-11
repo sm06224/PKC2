@@ -413,6 +413,28 @@ sender が `body` 中に `---` で始まる frontmatter を **既に組み立て
 
 これにより外部 sender は `kind: video` を送るだけで PKC2 内 Bases に統合される。folder 配置(parent_folder)も sender が指定可能(`source_container_id` 経路は v1 で予約のみ、別 PR)。
 
+### 8.7 tags / color_tag additive fields(#805、2026-06-11)
+
+§8.6 と同じく v1 内 additive(spec §9.2)。`RecordOfferPayload` の superset:
+
+```ts
+interface RecordOfferPayload_805 extends RecordOfferPayload {
+  /** Entry.tags へ。accept 時 mint で付与。 */
+  tags?: string[];
+  /** Entry.color_tag へ。既知 palette ID のみ採用。 */
+  color_tag?: string;
+}
+```
+
+#### 8.7.1 validate ルール(`validateOfferPayload`)
+
+- `tags`: 配列であること / 全要素 `string` / **件数 ≤ 20**(`MAX_OFFER_TAGS`)/ **各要素 ≤ 64 UTF-16 code units**(`MAX_OFFER_TAG_LENGTH`、#798 と同単位)。違反は payload 全体 reject(§8.3)。受理時は host 側で **trim + 空要素除去 + 重複除去** して正規化
+- `color_tag`: `string` 以外は payload 全体 reject。`string` だが **既知 palette ID(`isColorTagId`)でない場合は field のみ null 化**(offer は生かす — palette 語彙は将来拡張されうるため payload ごと殺さない)
+
+#### 8.7.2 同意ゲート(必須条件)
+
+§6.2 の原理「**user が見たものだけが entry に入る**」を維持する。`PendingOffer` が `tags` / `color_tag` を保持し、**pending offer banner に色ドット + tags チップを表示**する(`renderPendingOffers`、既存 `.pkc-filer-tag-chip` CSS 流用、新 UI mode は足さない)。`ACCEPT_OFFER` reducer は mint 後に `updateEntryTags` / `updateEntryColorTag` で付与する。dismiss すれば付与されない。
+
 ---
 
 ## 9. Security / UX constraints
