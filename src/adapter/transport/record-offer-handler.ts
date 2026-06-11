@@ -56,6 +56,7 @@
 
 import type { HandlerContext, MessageHandler } from './message-handler';
 import { pinTargetOrigin } from './message-bridge';
+import { isColorTagId } from '../../features/color/color-palette';
 import type { ArchetypeId } from '../../core/model/record';
 
 // ── Constants ────────────────────────
@@ -125,6 +126,11 @@ export interface RecordOfferPayload {
   author?: string;
   /** メーカー / ブランド(`kind: book` 以外の Amazon 商品で意味を持つ)。 */
   brand?: string;
+  // ── #805 additive(tags / color_tag、PR-U と同型)──
+  /** Entry.tags へ。accept 時 mint で付与。同意 banner に表示。 */
+  tags?: string[];
+  /** Entry.color_tag へ。不正値は field のみ null 化(offer は生かす)。 */
+  color_tag?: string;
 }
 
 /**
@@ -199,9 +205,39 @@ export interface PendingOffer {
   // ── #804 additive ──
   /** Sender の envelope-level correlation_id(echo 用に保持、null = 無し)。 */
   correlation_id?: string | null;
+  // ── #805 additive ──
+  /** mint 時に Entry.tags へ付与(同意 banner に表示済みのもののみ)。 */
+  tags?: string[] | null;
+  /** mint 時に Entry.color_tag へ付与(検証済み既知 ID、それ以外は null)。 */
+  color_tag?: string | null;
 }
 
 // ── Validation ────────────────────────
+
+/**
+ * #805: tags の上限。件数 ≤ 20、要素長 ≤ 64 UTF-16 units(#798 と同単位)。
+ * 超過 / 型違反は payload 全体を reject(既存 field と同じ厳格さ — sender が
+ * 仕様外を送ってきた = bug なので静かに切り詰めない)。
+ */
+export const MAX_OFFER_TAGS = 20;
+export const MAX_OFFER_TAG_LENGTH = 64;
+
+/** tags の検証 + 正規化(trim / 空除去 / 重複除去)。不正なら null(= reject signal)。 */
+function validateOfferTags(raw: unknown): { ok: true; tags: string[] } | { ok: false } {
+  if (!Array.isArray(raw)) return { ok: false };
+  if (raw.length > MAX_OFFER_TAGS) return { ok: false };
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of raw) {
+    if (typeof v !== 'string') return { ok: false };
+    if (v.length > MAX_OFFER_TAG_LENGTH) return { ok: false };
+    const t = v.trim();
+    if (t.length === 0 || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return { ok: true, tags: out };
+}
 
 function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -226,6 +262,19 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
   // PR-JJ additive
   if (p.author !== undefined && typeof p.author !== 'string') return null;
   if (p.brand !== undefined && typeof p.brand !== 'string') return null;
+  // #805: tags は件数/長さ/型を満たさなければ payload 全体 reject。
+  let normalizedTags: string[] | undefined;
+  if (p.tags !== undefined) {
+    const res = validateOfferTags(p.tags);
+    if (!res.ok) return null;
+    normalizedTags = res.tags;
+  }
+  // #805: color_tag は string check のみ通れば採用。string 以外は reject、
+  // 既知 ID 不一致は **field のみ null 化**(offer は生かす — 色 ID 語彙は
+  // 将来拡張されうるため payload ごと殺さない、user 判断 2026-06-11)。
+  if (p.color_tag !== undefined && typeof p.color_tag !== 'string') return null;
+  const colorTag =
+    typeof p.color_tag === 'string' && isColorTagId(p.color_tag) ? p.color_tag : undefined;
   return {
     title: p.title,
     body: p.body,
@@ -244,6 +293,9 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
     // PR-JJ additive
     author: typeof p.author === 'string' ? p.author : undefined,
     brand: typeof p.brand === 'string' ? p.brand : undefined,
+    // #805 additive
+    tags: normalizedTags,
+    color_tag: colorTag,
   };
 }
 
@@ -292,6 +344,9 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
     // PR-JJ additive
     author: payload.author ?? null,
     brand: payload.brand ?? null,
+    // #805 additive
+    tags: payload.tags ?? null,
+    color_tag: payload.color_tag ?? null,
   };
 
   // Stash the sender's window AND origin so a later `record:reject`

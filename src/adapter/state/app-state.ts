@@ -1855,6 +1855,17 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         : injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
       // Set body on the newly added entry
       let updatedContainer = updateEntry(container, lid, offer.title, finalBody, ts);
+      // #805: validated tags / color_tag を mint 時に付与(同意 banner で
+      // user が見たものだけが入る)。tags は正規化済み(handler 側で trim /
+      // 重複除去 / 件数・長さ検証)、color_tag は既知 ID のみ(handler 側で
+      // isColorTagId 検証)。空配列 / null は updateEntry* が field 自体を
+      // drop するので no-op。
+      if (offer.tags && offer.tags.length > 0) {
+        updatedContainer = updateEntryTags(updatedContainer, lid, offer.tags, ts);
+      }
+      if (offer.color_tag) {
+        updatedContainer = updateEntryColorTag(updatedContainer, lid, offer.color_tag, ts);
+      }
       // PR-VV (2026-05-06): user 修正指示4「取り込み先の指定をしたい」.
       // `target_folder_lid` が PendingOffer banner の picker から渡された
       // 場合、folder への structural relation を 1 件追加して entry を
