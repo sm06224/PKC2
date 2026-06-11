@@ -10,6 +10,7 @@ export type MessageType =
   | 'ping'
   | 'pong'
   | 'record:offer'
+  | 'record:ack'
   | 'record:accept'
   | 'record:reject'
   | 'export:request'
@@ -32,4 +33,12 @@ export interface MessageEnvelope {
   payload: unknown;
   /** ISO 8601 send timestamp. */
   timestamp: string;
+  /**
+   * Optional sender-chosen correlation token (#804, v1 additive —
+   * spec §4.1 / §11.6). The host echoes it back in `record:ack` /
+   * `record:accept` / `record:reject` payloads so a sender with
+   * multiple in-flight offers can match responses. Non-string values
+   * are ignored by the receiver (treated as absent).
+   */
+  correlation_id?: string;
 }

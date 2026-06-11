@@ -698,7 +698,7 @@ describe('AppState reducer', () => {
     });
     expect(state.pendingOffers).toHaveLength(0);
     expect(state.container!.entries).toHaveLength(3); // unchanged
-    expect(events).toEqual([{ type: 'OFFER_DISMISSED', offer_id: 'o1', reply_to_id: null }]);
+    expect(events).toEqual([{ type: 'OFFER_DISMISSED', offer_id: 'o1', reply_to_id: null, correlation_id: null }]);
   });
 
   it('DISMISS_OFFER includes reply_to_id in event', () => {
@@ -713,7 +713,7 @@ describe('AppState reducer', () => {
     const { events } = reduce(withOffer, {
       type: 'DISMISS_OFFER', offer_id: 'o2',
     });
-    expect(events).toEqual([{ type: 'OFFER_DISMISSED', offer_id: 'o2', reply_to_id: 'sender-abc' }]);
+    expect(events).toEqual([{ type: 'OFFER_DISMISSED', offer_id: 'o2', reply_to_id: 'sender-abc', correlation_id: null }]);
   });
 
   it('DISMISS_OFFER for unknown offer_id is silent no-op', () => {
