@@ -10,9 +10,10 @@
  *   - `assets`(base64)を含めない
  *   - `revisions` を含めない
  *
- * graph 拡張(#790)の `GraphProjection` を一般化したもの。graph 固有の
- * hyperlink / external-link 統計は `graph-extension/projection.ts` 側が
- * 本 projection の上に重ねる。
+ * graph 拡張(#790)の `GraphProjection` を一般化したもの。graph が使って
+ * いた hyperlink / external-link 統計(body から**導出した集計** — body
+ * そのものではない)も `links` として本 projection が持つ(#796 切替で
+ * graph 固有 projection は廃止、graph は本 projection で再ビルドする)。
  *
  * Pure: no browser APIs(features 層、core のみ import)。読み取り専用で
  * pkc-data を変更しない。
@@ -20,6 +21,7 @@
 
 import type { Container } from '@core/model/container';
 import { isSystemArchetype } from '@core/model/record';
+import { collectLinkRefs } from '@features/link-index/link-index';
 
 /** 1 entry のメタ投影(body は決して含まない)。 */
 export interface ProjectionEntry {
@@ -54,11 +56,27 @@ export interface ProjectionStats {
   totalAssets: number;
 }
 
+/** body 内のエントリ間 hyperlink(解決済み参照、導出統計)。 */
+export interface ProjectionInternalLink {
+  from: string;
+  to: string;
+}
+/** body 内の外部 URL(導出統計)。 */
+export interface ProjectionExternalLink {
+  from: string;
+  url: string;
+}
+
 export interface ContainerProjection {
   containerId: string;
   title: string;
   entries: ProjectionEntry[];
   relations: ProjectionRelation[];
+  /** body から導出した link 統計(body そのものは含まない)。 */
+  links: {
+    internal: ProjectionInternalLink[];
+    external: ProjectionExternalLink[];
+  };
   stats: ProjectionStats;
 }
 
@@ -136,11 +154,38 @@ export function buildContainerProjection(container: Container): ContainerProject
     relations.push({ from: r.from, to: r.to, kind: r.kind });
   }
 
+  // Internal hyperlinks (resolved entry references in bodies), deduped.
+  const seenLink = new Set<string>();
+  const internal: ProjectionInternalLink[] = [];
+  for (const ref of collectLinkRefs(container)) {
+    if (!ref.resolved) continue;
+    if (!inScope(ref.sourceLid) || !inScope(ref.targetLid)) continue;
+    if (ref.sourceLid === ref.targetLid) continue;
+    const key = `${ref.sourceLid} ${ref.targetLid}`;
+    if (seenLink.has(key)) continue;
+    seenLink.add(key);
+    internal.push({ from: ref.sourceLid, to: ref.targetLid });
+  }
+
+  // External URLs in bodies, deduped per (entry, url).
+  const seenExt = new Set<string>();
+  const external: ProjectionExternalLink[] = [];
+  for (const e of container.entries) {
+    if (isSystemArchetype(e.archetype)) continue;
+    for (const url of extractExternalUrls(e.body)) {
+      const key = `${e.lid} ${url}`;
+      if (seenExt.has(key)) continue;
+      seenExt.add(key);
+      external.push({ from: e.lid, url });
+    }
+  }
+
   return {
     containerId: container.meta.container_id,
     title: container.meta.title,
     entries,
     relations,
+    links: { internal, external },
     stats: {
       totalEntries: entries.length,
       byArchetype,
@@ -148,4 +193,18 @@ export function buildContainerProjection(container: Container): ContainerProject
       totalAssets: Object.keys(container.assets).length,
     },
   };
+}
+
+const EXTERNAL_URL_RE = /\bhttps?:\/\/[^\s)<>"'\]]+/gi;
+
+/** Extract distinct external http(s) URLs from a raw body string. */
+function extractExternalUrls(body: string): string[] {
+  if (!body) return [];
+  const out = new Set<string>();
+  for (const m of body.matchAll(EXTERNAL_URL_RE)) {
+    // Trim common trailing punctuation that regex greedily swallowed.
+    const url = m[0].replace(/[.,;:!?]+$/, '');
+    if (url.length > 8) out.add(url);
+  }
+  return [...out];
 }

@@ -4,7 +4,7 @@
  * channel を fake 注入して open / send / projection push を検証。
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { createExtensionHost } from '@adapter/ui/extension-host-runtime';
+import { createExtensionHost, getSharedExtensionHost } from '@adapter/ui/extension-host-runtime';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { serializeAttachmentBody } from '@adapter/ui/attachment-presenter';
 import type { Container } from '@core/model/container';
@@ -44,15 +44,23 @@ function fakeLaunch() {
     opts: LaunchExtensionOptions;
     projections: unknown[];
     delivers: unknown[];
+    selected: string[];
     closed: boolean;
   }[] = [];
   const launch = (opts: LaunchExtensionOptions): ExtensionChannelHandle => {
-    const rec = { opts, projections: [] as unknown[], delivers: [] as unknown[], closed: false };
+    const rec = {
+      opts,
+      projections: [] as unknown[],
+      delivers: [] as unknown[],
+      selected: [] as string[],
+      closed: false,
+    };
     records.push(rec);
     let established = true;
     return {
       pushProjection: () => rec.projections.push(opts.getProjection()),
       deliver: (p) => rec.delivers.push(p),
+      notifySelected: (lid) => rec.selected.push(lid),
       close: () => { rec.closed = true; established = false; },
       isEstablished: () => established,
     };
@@ -107,6 +115,53 @@ describe('openExtension', () => {
     // entry を増やして container 参照を変える。
     d.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'new' });
     expect(records[0]!.projections.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('選択変化で selected が push される(graph focus 追従)', () => {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
+    const { launch, records } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    expect(records[0]!.selected).toEqual(['e1']);
+    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' }); // 同値は再送しない
+    expect(records[0]!.selected).toEqual(['e1']);
+  });
+
+  it('extension_manifest が channel へ渡る(#796 封じ込め tier / capabilities)', () => {
+    const d = createDispatcher();
+    const c = container();
+    c.entries.push({
+      lid: 'extT', title: 'Trusted', archetype: 'attachment', created_at: T, updated_at: T,
+      body: serializeAttachmentBody({
+        name: 't.html', mime: 'text/html', asset_key: 'ext-html', pkc_extension: true,
+        extension_manifest: { tier: 'trusted', capabilities: ['downloads'] },
+      } as never),
+    });
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: c });
+    const { launch, records } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('extT');
+    expect(records[0]!.opts.manifest).toEqual({ tier: 'trusted', capabilities: ['downloads'] });
+    // manifest 無し拡張は undefined(channel 側で Tier S 最小に落ちる)。
+    host.openExtension('ext1');
+    expect(records[1]!.opts.manifest).toBeUndefined();
+  });
+
+  it('hint select は選択のみ、open は sidebar reveal 付き選択', () => {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
+    const { launch, records } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    const onHint = records[0]!.opts.onHint!;
+    onHint({ kind: 'select', lid: 'e1' });
+    expect(d.getState().selectedLid).toBe('e1');
+    onHint({ kind: 'open', lid: 'pdf1' });
+    expect(d.getState().selectedLid).toBe('pdf1');
+    onHint({ kind: 'mystery', lid: 'e1' }); // 未知 kind は無視
+    expect(d.getState().selectedLid).toBe('pdf1');
   });
 });
 
@@ -177,6 +232,16 @@ describe('onWrite(T2、6/6): 検証して既存 data-safe 経路で適用', () =
     const { onWrite } = openHost();
     expect(onWrite({ ops: [] })).toBe(false);
     expect(onWrite({ ops: [{}] })).toBe(false);
+  });
+});
+
+describe('getSharedExtensionHost', () => {
+  it('同じ dispatcher には同じ host(autostart と UI 起動の二重起動防止)', () => {
+    const d1 = createDispatcher();
+    const d2 = createDispatcher();
+    const h1 = getSharedExtensionHost(d1);
+    expect(getSharedExtensionHost(d1)).toBe(h1);
+    expect(getSharedExtensionHost(d2)).not.toBe(h1);
   });
 });
 

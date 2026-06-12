@@ -244,8 +244,8 @@ export interface BridgeHandle {
  * arrived from (#795 A-1). The opaque origin (`"null"` — file://
  * senders, sandboxed iframes) is not a valid `postMessage`
  * targetOrigin, so it falls back to `'*'`; security there is carried
- * by the window-identity binding (same trade-off as
- * `safeTargetOrigin()` in graph-extension-launcher.ts). Every
+ * by the window-identity binding (same trade-off as the Tier S
+ * sandboxed path in extension-channel.ts). Every
  * response path (pong / v2 responses / handler replies / record:reject)
  * must route its targetOrigin through this helper so the
  * "`'null'` → `'*'`, otherwise exact" rule lives in one place.
