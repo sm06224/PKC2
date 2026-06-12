@@ -69,7 +69,11 @@ function fakeLaunch() {
 }
 
 let host: ReturnType<typeof createExtensionHost> | null = null;
-afterEach(() => { host?.closeAll(); host = null; });
+afterEach(() => {
+  host?.closeAll();
+  host = null;
+  document.querySelector('[data-pkc-region="extension-trust-consent"]')?.remove();
+});
 
 describe('openExtension', () => {
   it('asset 由来 HTML を解決して channel 起動(getProjection が projection を返す)', () => {
@@ -133,17 +137,17 @@ describe('openExtension', () => {
     const d = createDispatcher();
     const c = container();
     c.entries.push({
-      lid: 'extT', title: 'Trusted', archetype: 'attachment', created_at: T, updated_at: T,
+      lid: 'extS', title: 'Sandboxed', archetype: 'attachment', created_at: T, updated_at: T,
       body: serializeAttachmentBody({
-        name: 't.html', mime: 'text/html', asset_key: 'ext-html', pkc_extension: true,
-        extension_manifest: { tier: 'trusted', capabilities: ['downloads'] },
+        name: 's.html', mime: 'text/html', asset_key: 'ext-html', pkc_extension: true,
+        extension_manifest: { tier: 'sandboxed', capabilities: ['downloads'] },
       } as never),
     });
     d.dispatch({ type: 'SYS_INIT_COMPLETE', container: c });
     const { launch, records } = fakeLaunch();
     host = createExtensionHost(d, launch);
-    host.openExtension('extT');
-    expect(records[0]!.opts.manifest).toEqual({ tier: 'trusted', capabilities: ['downloads'] });
+    host.openExtension('extS');
+    expect(records[0]!.opts.manifest).toEqual({ tier: 'sandboxed', capabilities: ['downloads'] });
     // manifest 無し拡張は undefined(channel 側で Tier S 最小に落ちる)。
     host.openExtension('ext1');
     expect(records[1]!.opts.manifest).toBeUndefined();
@@ -232,6 +236,97 @@ describe('onWrite(T2、6/6): 検証して既存 data-safe 経路で適用', () =
     const { onWrite } = openHost();
     expect(onWrite({ ops: [] })).toBe(false);
     expect(onWrite({ ops: [{}] })).toBe(false);
+  });
+});
+
+describe('Tier T 明示同意(#796 PR-4)', () => {
+  function trustedSetup() {
+    const d = createDispatcher();
+    const c = container();
+    c.entries.push({
+      lid: 'extT', title: 'Trusted Ext', archetype: 'attachment', created_at: T, updated_at: T,
+      body: serializeAttachmentBody({
+        name: 't.html', mime: 'text/html', asset_key: 'ext-html', pkc_extension: true,
+        extension_manifest: { tier: 'trusted', capabilities: ['downloads'] },
+      } as never),
+    });
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: c });
+    const { launch, records } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    return { d, records };
+  }
+
+  function dialog(): HTMLElement | null {
+    return document.querySelector('[data-pkc-region="extension-trust-consent"]');
+  }
+  function clickChoice(action: string): void {
+    const btn = dialog()!.querySelector<HTMLElement>(`[data-pkc-action="${action}"]`);
+    expect(btn).not.toBeNull();
+    btn!.click();
+  }
+
+  it('trusted 宣言は即起動せず同意ダイアログを出す(警告文 + 3 択)', () => {
+    const { records } = trustedSetup();
+    const h = host!.openExtension('extT');
+    expect(h).toBeNull();
+    expect(records).toHaveLength(0); // launch されていない
+    expect(host!.hasPendingConsent('extT')).toBe(true);
+    const dlg = dialog();
+    expect(dlg).not.toBeNull();
+    expect(dlg!.textContent).toContain('Trusted Ext');
+    expect(dlg!.textContent).toContain('コンテナ全体');
+    expect(dlg!.textContent).toContain('downloads');
+  });
+
+  it('「全権で開く」で trusted のまま起動する', () => {
+    const { records } = trustedSetup();
+    host!.openExtension('extT');
+    clickChoice('ext-consent-trusted');
+    expect(dialog()).toBeNull();
+    expect(records).toHaveLength(1);
+    expect(records[0]!.opts.manifest?.tier).toBe('trusted');
+    expect(host!.hasPendingConsent('extT')).toBe(false);
+    expect(host!.openLids()).toEqual(['extT']);
+  });
+
+  it('「サンドボックスで開く(推奨)」で Tier S に降格して起動する', () => {
+    const { records } = trustedSetup();
+    host!.openExtension('extT');
+    clickChoice('ext-consent-sandboxed');
+    expect(records).toHaveLength(1);
+    expect(records[0]!.opts.manifest?.tier).toBe('sandboxed');
+    // capability 宣言は維持される(sandbox トークン写像に使う)。
+    expect(records[0]!.opts.manifest?.capabilities).toEqual(['downloads']);
+  });
+
+  it('キャンセルで起動しない', () => {
+    const { records } = trustedSetup();
+    host!.openExtension('extT');
+    clickChoice('ext-consent-cancel');
+    expect(dialog()).toBeNull();
+    expect(records).toHaveLength(0);
+    expect(host!.hasPendingConsent('extT')).toBe(false);
+    expect(host!.openLids()).toEqual([]);
+  });
+
+  it('同意待ち中の send は積まれ、同意後に flush される', () => {
+    const { records } = trustedSetup();
+    expect(host!.sendToExtension('extT', 'e1')).toBe(true); // ダイアログ表示 + 積み
+    expect(records).toHaveLength(0);
+    clickChoice('ext-consent-trusted');
+    expect(records).toHaveLength(1);
+    expect(records[0]!.delivers[0]).toMatchObject({ kind: 'entry', lid: 'e1', body: 'send me' });
+  });
+
+  it('キャンセル時は積まれた send も破棄される', () => {
+    const { records } = trustedSetup();
+    host!.sendToExtension('extT', 'e1');
+    clickChoice('ext-consent-cancel');
+    expect(records).toHaveLength(0);
+    // 次の open で改めてダイアログが出る(毎起動確認)。
+    host!.openExtension('extT');
+    expect(dialog()).not.toBeNull();
+    clickChoice('ext-consent-cancel');
   });
 });
 

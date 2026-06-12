@@ -1,6 +1,6 @@
 # PKC-Extension 封じ込め設計 — sandbox opaque origin と信頼 2 層モデル(2026-06-11)
 
-**Status**: 設計 doc(#796)。**§7 の PR-1〜3 相当は実装済み(2026-06-12)**: `pkc-ext` チャネル(`extension-channel.ts`)が Tier S sandbox を既定で実装、graph 含む全拡張起動経路が直接切替済み(normative は v2 spec §3.8)。残 = PR-4(Tier T 明示同意 UI)+ §4.2 capability 語彙の拡充。前提だったトランスポート基盤(#795)は着地済み。
+**Status**: 設計 doc(#796)。**§7 の PR-1〜4 すべて実装済み(2026-06-12)**: `pkc-ext` チャネル(`extension-channel.ts`)が Tier S sandbox を既定で実装、graph 含む全拡張起動経路が直接切替済み、Tier T は起動毎の明示同意ダイアログ(全権 / Tier S 降格 / キャンセル)を必須化(normative は v2 spec §3.8)。残 = §4.2 capability 語彙の拡充と永続 grant(OQ-4、v2.2 予約)。前提だったトランスポート基盤(#795)は着地済み。
 **Issues**: #796(封じ込めモデル)/ #795(transport 監査 — 基盤側)/ #791(graph channel v2、パイロットと同一書き換え)/ #773(sandbox iframe workspace)
 **user 決定(2026-06-11)**: ① load 機構は sandbox 一本化ではなく **2 層**(same-origin で動かしたいアプリの席を残す)② capability manifest 採用 ③ graph をパイロット第 1 号、**PKC-Extension を名乗るものは封じ込め準拠を原則** ④ 着手順は**トランスポート(基盤)先行**
 
