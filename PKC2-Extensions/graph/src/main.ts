@@ -15,7 +15,7 @@ import { createElement, isSystemArchetype } from './util';
 import { archetypeColor, archetypeEmoji, relationColor } from './colors';
 import type { ArchetypeId, Entry, Relation, RelationKind } from './types';
 import { makeDemoContainer } from './demo-container';
-import { GraphChannel, type GraphProjection } from './protocol';
+import { GraphChannel, type ContainerProjection } from './protocol';
 import { EXT_INFO } from './deps.generated';
 
 /** Toggle a small ⓘ panel listing version + dependency licenses (build-resolved). */
@@ -154,8 +154,10 @@ function ensureLayout(): void {
   );
 }
 
-function applyProjection(p: GraphProjection): void {
-  state.entries = p.nodes.map((n) => ({
+function applyProjection(p: ContainerProjection): void {
+  // pkc-ext の ContainerProjection(2026-06-12 移行): nodes→entries /
+  // edges→relations / hyperlinks→links.internal / externalLinks→links.external。
+  state.entries = p.entries.map((n) => ({
     lid: n.lid,
     title: n.title,
     body: '',
@@ -165,7 +167,7 @@ function applyProjection(p: GraphProjection): void {
     ...(n.tags ? { tags: n.tags } : {}),
     ...(n.color_tag !== undefined ? { color_tag: n.color_tag } : {}),
   }));
-  state.relations = p.edges.map((e, i) => ({
+  state.relations = p.relations.map((e, i) => ({
     id: `e${i}`,
     from: e.from,
     to: e.to,
@@ -173,9 +175,9 @@ function applyProjection(p: GraphProjection): void {
     created_at: '',
     updated_at: '',
   }));
-  state.hyperlinks = p.hyperlinks ?? [];
-  state.externalLinks = p.externalLinks ?? [];
-  state.folderOf = new Map(p.nodes.filter((n) => n.folder).map((n) => [n.lid, n.folder!]));
+  state.hyperlinks = p.links?.internal ?? [];
+  state.externalLinks = p.links?.external ?? [];
+  state.folderOf = new Map(p.entries.filter((n) => n.folder).map((n) => [n.lid, n.folder!]));
   state.title = p.title;
   state.source = 'host';
   render();

@@ -5,7 +5,7 @@ export const EXT_INFO = {
   "name": "pkc2-graph-extension",
   "version": "0.1.0",
   "license": "AGPL-3.0",
-  "builtAt": "2026-06-10",
+  "builtAt": "2026-06-12",
   "dependencies": [
     {
       "name": "cytoscape",

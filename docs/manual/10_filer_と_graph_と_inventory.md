@@ -1,8 +1,10 @@
-# 10 ファイラビュー / グラフビュー / インベントリ
+# 10 ファイラビュー / グラフ拡張 / インベントリ
 
-PKC2 v2.3 から、センターペインの表示タブが **5 種類** になりました。Detail / Calendar / Kanban に加えて **Filer**(ファイラ)と **Graph**(グラフ)が独立タブとして並びます。
+PKC2 v2.3 から、センターペインの表示タブが **5 種類** になりました。Detail / Calendar / Kanban に加えて **Filer**(ファイラ)と **Launcher**(ランチャー)が独立タブとして並びます。
 
 ![view-mode toolbar with 5 tabs](images/M01-view-mode-toolbar-5tabs.png)
+
+> **Graph について(2026-06 更新)**: 以前センターペインの第 5 タブだった Graph ビューは、**独立した「グラフ拡張」(別ウィンドウで動く単一 HTML)** に生まれ変わりました。本体からは切り離されたため、使いたい人だけが取り込んで起動するオプトイン機能です(§10.2)。
 
 新しいタブと、それを支える機能群(frontmatter / fragment / bookmarklet 取込 / 画像 PiP プレビュー)はすべて **既存の 5 archetype**(TEXT / TEXTLOG / TODO / ATTACHMENT / FOLDER)と TAG / RELATION の組み合わせで動作します。新しい archetype を覚える必要はありません。
 
@@ -47,15 +49,14 @@ Filer ヘッダ内で folder の **名前変更** と **説明文** を直接編
 - **Video base**: YouTube / niconico / Vimeo / Twitch / bilibili
 - **Novel base**: 小説家になろう / カクヨム / pixiv 小説 / 青空文庫 / Wattpad
 
-### 10.1.4 Contact sheet(album)/ Inventory / Graph
+### 10.1.4 Contact sheet(album)/ Inventory
 
 | subset | 用途 | 内容 |
 |---|---|---|
 | Contact sheet | 画像 attachment 主体 folder | サムネイル grid + キャプション |
 | Inventory | Bases 風クエリ | 動的 column / 行ごと filter / column ヘッダで sort / Group by |
-| Graph | 関係性可視化(filer 範囲) | folder 内 entry を network 表示 |
 
-> Note: Graph は filer subset としても残っていますが、独立 view-mode 「Graph」のほうが container 全体の俯瞰や entry 単位 focus に便利です(§10.2)。
+> Note: かつての filer 内 Graph subset は廃止されました。古い container に `kind: graph` の表示設定が残っていてもエラーにはならず、Explorer テーブル表示に静かにフォールバックします。関係性の可視化は **グラフ拡張**(§10.2)を使ってください。
 
 ### 10.1.5 Trash(ゴミ箱)を Filer で開く
 
@@ -71,51 +72,43 @@ Filer ヘッダの 🗑️ ゴミ箱 ボタン → 削除済みエントリの�
 
 ---
 
-## 10.2 Graph ビュー — 4 つの可視化モード
+## 10.2 グラフ拡張 — 別ウィンドウで動く関係性可視化
 
-Graph タブはセンターペインの第 5 タブで、container 全体または 1 エントリ周辺を **力学レイアウト** で可視化します。
+グラフは **PKC-Extension(拡張)** として提供されます。単一 HTML ファイル(`pkc2-graph.html`)を PKC2 に取り込み、拡張として起動すると、**別ウィンドウ**で container 全体の関係ネットワークが表示されます。本体とはメッセージ(postMessage)だけで通信し、エントリの **index / 関係 / リンク統計** だけが渡ります — 本文やアセットの中身は渡りません。
 
-```
-ツールバー
-  └─ モード select(4 種)
-  └─ 🎯 focus indicator + 全体に戻る button
-SVG canvas
-  └─ ノード(archetype 別 / モード別カラー)
-  └─ エッジ(構造的 / 意味的 / 同タグ chain など)
-```
+![graph extension](images/M06-graph-extension.png)
 
-### 10.2.1 Relations モード(default)
+### 10.2.1 導入と起動
 
-structural と semantic の relation をエッジとして描画。archetype 別にノード塗り分け(folder = 黄色、text = 青、todo = 赤、textlog = 緑、attachment = 灰)。
+1. `pkc2-graph.html` を PKC2 にドラッグ&ドロップして取り込む
+2. 取り込んだ attachment を選択し、カード内の「**PKC-Extension として扱う**」チェックを ON にする
+3. そのまま「**スタートアップ起動**」も ON にすると、PKC2 を開くたびに自動で立ち上がります(ブラウザがポップアップをブロックした場合は画面右下にリトライ用のボタンが出ます)
+4. 起動は attachment カードの「🌐 Open in New Window」、または Launcher タブのタイルから
 
-![graph view relations](images/M06-graph-view-relations.png)
+> **困ったとき**: 拡張が原因で起動が固まる場合は、URL に `?pkc-safe-mode=1` を付けて開くと自動起動がスキップされます。
 
-### 10.2.2 Color tags モード
+> **サンドボックス実行(2026-06 更新)**: 拡張は既定で**サンドボックス内**(隔離された iframe)で実行されます。拡張からホストの保存データや画面には触れず、通信はメッセージ経由のみです。詳しくは [13 章 §13.1.5](13_アプリランチャーと出力機能.md) を参照。
 
-同じ color_tag(エントリの色マーカー)を共有するエントリを chain edge で繋ぎ、ノードを color_tag のパレット色に塗ります。
+### 10.2.2 何ができるか
 
-![graph view color tags](images/M06b-graph-color-tags.png)
+- **4 つのビュー**: 🧭 探索(全体)/ 📁 フォルダ整理(compound 箱)/ 🔗 つながり / 🕒 時系列
+- **5 つの色分け軸**: 種別 / カラータグ / タグ / フォルダ深さ / クラスタ(自動コミュニティ検出)
+- **検索**: タイトル・タグで live 絞り込み(レイアウトは動かさずハイライト)
+- **内部リンク / 外部リンク**: 本文中のエントリ参照(`entry:` リンク)を辺として表示、外部 URL はドメイン別に集約したノードで表示
+- **集約**: attachment / todo を 1 ノードにまとめて俯瞰(クリックで展開)
+- **ミニマップ**: 右下に全体図 + 現在の表示範囲の矩形。クリックでその位置へパン
 
-### 10.2.3 Folder hierarchy モード
+### 10.2.3 PKC2 本体との同期
 
-structural relation のみをエッジに、root から BFS で計算した深さで **緑→水色→青→紫** のグラデーションを塗ります。フォルダ構造の浅さ / 深さが直感的に把握できます。
+- グラフでノードを **クリック** → PKC2 側でそのエントリが選択されます
+- **ダブルクリック** → PKC2 側で開いて前面化します
+- PKC2 側で選択を変えると、グラフがそのノードへ **フォーカス移動** します(フォルダを選ぶとそのフォルダのサブツリー表示に)
+- 「✏️ 整理」モードでノードをフォルダ箱へドラッグ → **フォルダ移動**、「🔗+ リンク作成」モードでノード間をドラッグ → **関連(semantic relation)作成**。どちらも PKC2 本体が内容を検証してから適用するので、グラフ側の操作でデータが壊れることはありません
+- container を編集すると、開いているグラフへ**自動で反映**されます(配置は崩れません。並べ直したいときは「⟳ 再配置」)
 
-![graph view folder hierarchy](images/M06c-graph-folder-hierarchy.png)
+### 10.2.4 スタンドアロン demo
 
-### 10.2.4 Tag groups モード
-
-タグを共有するエントリを chain edge で繋ぎ、tag 別に palette 7 色を循環割当します。「同じタグで括れるグループはどこか」を可視化するのに便利です。
-
-### 10.2.5 グラフチューニング
-
-Tier 0 flag で力学パラメータを runtime 変更できます(URL `?pkc-flag=...` で指定):
-
-- `graph.link_distance`(default 70)
-- `graph.charge`(default -180)
-- `graph.collide_radius`(default 20)
-- `graph.center_strength` / `graph.damping` / `graph.max_speed` / `graph.iterations`
-
-PKC1 の d3-force で利用者が体感調整した数値をそのまま流用しています。
+`pkc2-graph.html` を単体でブラウザに開くと、ホスト接続なしの **demo モード**(サンプルデータ)で動きます。動作確認に便利です。
 
 ---
 

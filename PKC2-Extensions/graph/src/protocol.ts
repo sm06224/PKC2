@@ -1,36 +1,40 @@
 /**
- * PKC-Graph extension channel — the secure PKC-Message flow between a host
- * PKC2 (the opener/parent) and this graph extension launched from PKC2's
- * `container.assets` via the launcher (`window.open('') + document.write`,
- * so the child is **same-origin** with the host).
+ * PKC-Extension channel(child 側)— host PKC2 との `pkc-ext` チャネル。
  *
- * This is the host→child direction the formal PKC-Message docs do not cover
- * (`export:request` is embedded-only = the inverse). It is intentionally
- * minimal and replaces the earlier fabricated `pkc.container.*` methods.
+ * 2026-06-12: bespoke `pkc-graph-ext` v1 から汎用 **`pkc-ext` チャネル**へ
+ * 全面移行(host 側は v1 を削除済み = 互換切り捨て、normative は host repo
+ * `docs/spec/pkc-message-api-v2.md` §3.8)。
  *
- * ## Payload — only what the graph needs
- * The host sends a `GraphProjection` (node/edge metadata only). Entry
- * `body`, `assets` (base64 blobs) and `revisions` are **never** sent.
+ * ## 実行環境 — Tier S sandbox が既定
+ * host は本拡張を popup shell 内の `<iframe sandbox="allow-scripts" srcdoc>`
+ * で起動する(opaque origin)。子から host への送信先は **`window.parent`**
+ * (shell)。Tier T(trusted 宣言)や standalone 検証では `window.opener`。
+ * targetOrigin は `'*'` — opaque origin に exact origin は指定できず、
+ * security は window identity + nonce が担う(host 側 gate が正)。
  *
- * ## Secure handshake (must start safely)
- *   1. host opens the child window (keeps the `Window` ref) and listens.
- *   2. child → host  `hello`            — host accepts ONLY if
- *      `event.source === openedWindow && event.origin === location.origin`.
- *      The window identity is unforgeable (no other frame *is* that window).
- *   3. host → child  `welcome {nonce, projection}` — child pins the nonce +
- *      `event.source === window.opener` + origin for all later messages.
- *   4. child → host  `select {nonce, lid}` / host → child `projection {nonce}`
- *      (live updates) — both sides validate source + origin + nonce.
+ * ## Wire(graph が使う部分)
+ *   - 受信 `projection`  ContainerProjection(entries / relations /
+ *     links.internal / links.external / stats。body・assets は来ない)
+ *   - 受信 `selected`    host 側の選択変更(focus 追従)
+ *   - 送信 `hello`       handshake(これだけ nonce 不要)
+ *   - 送信 `hint`        `{kind:'select'|'open', lid}`(nonce 必須)
+ *   - 送信 `write`       `{ops:[{op:'move',...}|{op:'relate',...}]}`
+ *                        (nonce 必須、host が検証して適用)
  *
- * `targetOrigin` is the exact origin; for `file://` (origin string `"null"`,
- * which is not a valid `postMessage` targetOrigin) it falls back to `'*'`,
- * with security carried by the window-identity + nonce binding.
+ * ## 子側 gate — TOFU(trust on first use)
+ * Tier S では host の push は main window から直接 iframe へ届くため、
+ * `ev.source` は `window.parent` と一致しない(shell ≠ main)。子は
+ * **最初の有効な `projection`(nonce 同梱)で source + nonce を pin** し、
+ * 以後は両方の一致を要求する。opaque iframe への参照は same-origin 連鎖
+ * (shell / main)しか持てないため、第三者 window が最初の 1 通を割り込む
+ * 経路は無い。
  */
 
-export const PKC_GRAPH = 'pkc-graph-ext';
-export const PKC_GRAPH_V = 1;
+export const PKC_EXT = 'pkc-ext';
+export const PKC_EXT_V = 1;
 
-export interface GraphNodeProjection {
+/** host の `ContainerProjection`(graph が使う field のみ型定義)。 */
+export interface ProjectionEntry {
   lid: string;
   title: string;
   archetype: string;
@@ -41,135 +45,122 @@ export interface GraphNodeProjection {
   /** Parent folder lid (structural) — for compound/grouped layout. */
   folder?: string;
 }
-export interface GraphEdgeProjection {
+export interface ProjectionRelation {
   from: string;
   to: string;
   kind: string;
 }
 /** In-document internal link (entry → entry). */
-export interface GraphHyperlink {
+export interface ProjectionInternalLink {
   from: string;
   to: string;
 }
 /** In-document external link (entry → outside URL). */
-export interface GraphExternalLink {
+export interface ProjectionExternalLink {
   from: string;
   url: string;
 }
-export interface GraphProjection {
+export interface ContainerProjection {
   containerId: string;
   title: string;
-  nodes: GraphNodeProjection[];
-  edges: GraphEdgeProjection[];
-  hyperlinks?: GraphHyperlink[];
-  externalLinks?: GraphExternalLink[];
+  entries: ProjectionEntry[];
+  relations: ProjectionRelation[];
+  links?: {
+    internal: ProjectionInternalLink[];
+    external: ProjectionExternalLink[];
+  };
 }
 
-export type ChildToHost =
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'hello' }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'select'; nonce: string; lid: string }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'open'; nonce: string; lid: string }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'move'; nonce: string; lid: string; folderLid: string }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'relate'; nonce: string; from: string; to: string };
-
-export type HostToChild =
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'welcome'; nonce: string; projection: GraphProjection }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'projection'; nonce: string; projection: GraphProjection }
-  | { pkc: typeof PKC_GRAPH; v: 1; t: 'selected'; nonce: string; lid: string };
-
-/** Valid postMessage targetOrigin — exact origin, or '*' for opaque file://. */
-export function safeTargetOrigin(): string {
-  const o = window.location.origin;
-  return o && o !== 'null' ? o : '*';
-}
-
-function isPkcGraph(data: unknown): data is { pkc: string; v: number; t: string } {
+function isPkcExt(data: unknown): data is Record<string, unknown> {
   return !!data && typeof data === 'object'
-    && (data as { pkc?: unknown }).pkc === PKC_GRAPH
-    && (data as { v?: unknown }).v === PKC_GRAPH_V;
+    && (data as { pkc?: unknown }).pkc === PKC_EXT
+    && (data as { v?: unknown }).v === PKC_EXT_V;
 }
 
 /**
  * Child-side channel to the host PKC2. Returns false from `start()` when
- * there is no opener (extension opened standalone) so the caller can fall
- * back to a local/demo container.
+ * there is no host window (extension opened standalone) so the caller can
+ * fall back to a local/demo container.
  */
 export class GraphChannel {
   private nonce: string | null = null;
-  private host: Window | null = null;
+  /** Where we SEND(Tier S = parent shell / Tier T・popup = opener)。 */
+  private sendTo: Window | null = null;
+  /** Pinned identity of the host push source(TOFU、最初の projection で確定)。 */
+  private hostSource: MessageEventSource | null = null;
 
   constructor(
-    private readonly onProjection: (p: GraphProjection) => void,
+    private readonly onProjection: (p: ContainerProjection) => void,
     private readonly onSelected?: (lid: string) => void,
   ) {}
 
-  /** Begin the secure handshake with the host. */
+  /** Begin the handshake with the host. */
   start(): boolean {
-    // The host is the opener (popup launch) or the parent (iframe overlay).
-    const host = (window.opener as Window | null)
+    // Tier T(popup 直書き)は opener、Tier S(sandboxed iframe)は parent。
+    const sendTo = (window.opener as Window | null)
       ?? (window.parent !== window ? window.parent : null);
-    if (!host) return false; // standalone — no host
-    this.host = host;
+    if (!sendTo) return false; // standalone — no host
+    this.sendTo = sendTo;
     window.addEventListener('message', (ev) => this.onMessage(ev));
-    // Kick the handshake. Host binds us by `event.source` (the window it
-    // opened) — identity it cannot be fooled about.
-    host.postMessage({ pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'hello' } satisfies ChildToHost, safeTargetOrigin());
+    // Kick the handshake. Host binds us by `event.source`(偽造不能)。
+    this.post({ t: 'hello' });
     return true;
   }
 
   /** Tell the host a node was selected (after the channel is established). */
   select(lid: string): void {
-    if (!this.host || this.nonce === null) return;
-    this.host.postMessage(
-      { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'select', nonce: this.nonce, lid } satisfies ChildToHost,
-      safeTargetOrigin(),
-    );
+    if (this.nonce === null) return;
+    this.post({ t: 'hint', kind: 'select', lid, nonce: this.nonce });
   }
 
   /** Ask the host to open / focus the entry in PKC2 (double-click). */
   open(lid: string): void {
-    if (!this.host || this.nonce === null) return;
-    this.host.postMessage(
-      { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'open', nonce: this.nonce, lid } satisfies ChildToHost,
-      safeTargetOrigin(),
-    );
+    if (this.nonce === null) return;
+    this.post({ t: 'hint', kind: 'open', lid, nonce: this.nonce });
   }
 
   /** Ask the host to move an entry into a folder (drag-drop reparent). */
   move(lid: string, folderLid: string): void {
-    if (!this.host || this.nonce === null) return;
-    this.host.postMessage(
-      { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'move', nonce: this.nonce, lid, folderLid } satisfies ChildToHost,
-      safeTargetOrigin(),
-    );
+    if (this.nonce === null) return;
+    this.post({ t: 'write', ops: [{ op: 'move', lid, folderLid }], nonce: this.nonce });
   }
 
   /** Ask the host to create a relation between two entries (draw edge). */
   relate(from: string, to: string): void {
-    if (!this.host || this.nonce === null) return;
-    this.host.postMessage(
-      { pkc: PKC_GRAPH, v: PKC_GRAPH_V, t: 'relate', nonce: this.nonce, from, to } satisfies ChildToHost,
-      safeTargetOrigin(),
-    );
+    if (this.nonce === null) return;
+    this.post({ t: 'write', ops: [{ op: 'relate', from, to }], nonce: this.nonce });
+  }
+
+  private post(msg: Record<string, unknown>): void {
+    if (!this.sendTo) return;
+    try {
+      // '*': opaque origin からは exact targetOrigin を指定できない。
+      // security は host 側の identity + nonce gate が担う。
+      this.sendTo.postMessage({ pkc: PKC_EXT, v: PKC_EXT_V, ...msg }, '*');
+    } catch {
+      /* host torn down mid-send */
+    }
   }
 
   private onMessage(ev: MessageEvent): void {
-    // Security: only the opener, only same-origin.
-    if (ev.source !== this.host) return;
-    if (ev.origin !== window.location.origin) return;
     const data = ev.data;
-    if (!isPkcGraph(data)) return;
-    const msg = data as HostToChild;
-    if (msg.t === 'welcome') {
-      // Pin the nonce the host assigned to this channel.
-      this.nonce = msg.nonce;
-      this.onProjection(msg.projection);
-    } else if (msg.t === 'projection') {
-      if (this.nonce === null || msg.nonce !== this.nonce) return; // nonce gate
-      this.onProjection(msg.projection);
-    } else if (msg.t === 'selected') {
-      if (this.nonce === null || msg.nonce !== this.nonce) return; // nonce gate
-      this.onSelected?.(msg.lid);
+    if (!isPkcExt(data)) return;
+    if (this.nonce === null) {
+      // TOFU: 最初の有効な projection(nonce 同梱)で host を pin する。
+      if (data.t !== 'projection' || typeof data.nonce !== 'string') return;
+      this.nonce = data.nonce;
+      this.hostSource = ev.source;
+      this.onProjection(data.projection as ContainerProjection);
+      return;
     }
+    // 以後は pin 済み identity + nonce の両方を要求。
+    if (ev.source !== this.hostSource) return;
+    if (data.nonce !== this.nonce) return;
+    if (data.t === 'projection') {
+      this.onProjection(data.projection as ContainerProjection);
+    } else if (data.t === 'selected' && typeof data.lid === 'string') {
+      this.onSelected?.(data.lid);
+    }
+    // deliver / write-result は graph では未使用(黙殺)。
   }
 }
