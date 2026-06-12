@@ -273,6 +273,19 @@ describe('token 写像 helper', () => {
   });
 });
 
+describe('isClosed — 再起動判定(host は child close を event で検知できない)', () => {
+  it('window.closed を反映し、close() 後も true', () => {
+    const { child } = stubChild();
+    handle = launchExtensionChannel({ html: '<x>', getProjection: () => ({}), ...TRUSTED })!;
+    expect(handle.isClosed()).toBe(false);
+    (child as { closed: boolean }).closed = true; // = ユーザーが閉じた
+    expect(handle.isClosed()).toBe(true);
+    (child as { closed: boolean }).closed = false;
+    handle.close();
+    expect(handle.isClosed()).toBe(true);
+  });
+});
+
 describe('popup blocked', () => {
   it('window.open が null なら handle も null(画面ハイジャックしない)', () => {
     vi.spyOn(window, 'open').mockReturnValue(null);

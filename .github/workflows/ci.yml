@@ -76,7 +76,21 @@ jobs:
         # noise 抑制方針:moderate / low / info は本 gate では無視(Tier 0 +
         # CHANGELOG で「次 wave 候補」として記録)。high+ のみ即対応の
         # discipline を保つ。
-        run: npm audit --audit-level=high
+        #
+        # 2026-06-12 `--omit=dev` 追加:blocking gate は **出荷物(単一
+        # HTML)に bundle される prod dependencies のみ**を対象にする。
+        # 契機 = esbuild ≤0.28.0 の HIGH advisory(GHSA-gv7w-rqvm-qjhr、
+        # Deno 経由 RCE / Windows dev-server file read — どちらも dev
+        # tooling 限定で出荷物に非搭載)が全 PR を赤化。patched 0.28.1 は
+        # vite 6 の build target と非互換(destructuring transform 未対応)
+        # で override 不可、vite major bump は別 wave。dev 側 advisory の
+        # 可視性は直後の non-blocking full audit + Dependabot で維持する。
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Full audit (informational, non-blocking)
+        # dev dependencies を含む全量 audit。可視性のためログに残すが
+        # gate にはしない(上記 2026-06-12 注記)。
+        run: npm audit || true
 
       - name: Typecheck
         run: npm run typecheck

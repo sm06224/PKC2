@@ -63,6 +63,8 @@ function fakeLaunch() {
       notifySelected: (lid) => rec.selected.push(lid),
       close: () => { rec.closed = true; established = false; },
       isEstablished: () => established,
+      // テストから rec.closed を立てると「ユーザーが window を閉じた」を模せる。
+      isClosed: () => rec.closed,
     };
   };
   return { launch, records };
@@ -107,6 +109,26 @@ describe('openExtension', () => {
     const h2 = host.openExtension('ext1');
     expect(h1).toBe(h2);
     expect(records).toHaveLength(1);
+  });
+
+  it('window を閉じた後は開き直せる(user 報告「起動が一度しかできない」)', () => {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
+    const { launch, records } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    const h1 = host.openExtension('ext1');
+    expect(h1).not.toBeNull();
+    records[0]!.closed = true; // = ユーザーが拡張 window を閉じた
+    const h2 = host.openExtension('ext1');
+    expect(h2).not.toBeNull();
+    expect(h2).not.toBe(h1);
+    expect(records).toHaveLength(2);
+    expect(host!.openLids()).toEqual(['ext1']); // 古い handle は掃除済み
+    // 死んだ handle 越しの送付も自動で開き直して届く。
+    records[1]!.closed = true;
+    expect(host!.sendToExtension('ext1', 'e1')).toBe(true);
+    expect(records).toHaveLength(3);
+    expect(records[2]!.delivers[0]).toMatchObject({ kind: 'entry', lid: 'e1' });
   });
 
   it('container 変化で projection が push される', () => {

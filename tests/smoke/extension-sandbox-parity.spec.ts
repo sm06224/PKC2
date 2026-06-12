@@ -104,4 +104,13 @@ test('parity: Tier S 起動 — opaque handshake 成立 + storage/IDB 封じ込�
   await expect(ext.locator('#idb')).toHaveText('idb:blocked');
 
   await popup.screenshot({ path: 'test-results/extension-sandbox-parity.png' });
+
+  // (5) window を閉じても開き直せる(user 報告 2026-06-12「アプリ起動が
+  // 一度しかできない」の回帰網)。
+  await popup.close();
+  const [popup2] = await Promise.all([
+    page.context().waitForEvent('page'),
+    openBtn.click(),
+  ]);
+  await expect(popup2.frameLocator('iframe').locator('#proj')).toHaveText('proj:2', { timeout: 10_000 });
 });
