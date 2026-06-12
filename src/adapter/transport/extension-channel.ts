@@ -23,9 +23,13 @@
  */
 
 import { pinTargetOrigin } from './message-bridge';
+import type { DeliverPayload } from '@features/extension-host/deliver';
 
 export const PKC_EXT = 'pkc-ext';
 export const PKC_EXT_V = 1;
+
+/** host → ext で渡す実体 1 件(features の `DeliverPayload` 正本の re-export)。 */
+export type ExtDeliverPayload = DeliverPayload;
 
 /** host → ext: 既定露出。projection は `ContainerProjection`(features 層)。 */
 export interface ExtProjectionMsg {
@@ -34,20 +38,6 @@ export interface ExtProjectionMsg {
   t: 'projection';
   nonce: string;
   projection: unknown;
-}
-
-/** host → ext: ユーザー send ジェスチャで届く実体 1 件。 */
-export interface ExtDeliverPayload {
-  kind: 'asset' | 'entry';
-  lid?: string;
-  asset_key?: string;
-  mime?: string;
-  filename?: string;
-  /** kind==='entry' の本文。 */
-  body?: string;
-  /** kind==='asset' の base64。 */
-  data_base64?: string;
-  correlation_id?: string;
 }
 
 /** ext → host: T2 editor の書き戻し要求(host が op を検証)。 */

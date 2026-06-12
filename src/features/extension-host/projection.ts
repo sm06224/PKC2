@@ -68,7 +68,7 @@ export interface ContainerProjection {
  * (features → adapter は層違反)ため、必要 3 field だけの最小 reader。
  * 壊れた JSON は全 undefined(projection は落とさない)。
  */
-function peekAttachmentMeta(body: string): { mime?: string; name?: string; asset_key?: string } {
+export function peekAttachmentMeta(body: string): { mime?: string; name?: string; asset_key?: string } {
   try {
     const parsed = JSON.parse(body) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object') return {};
