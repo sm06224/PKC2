@@ -192,6 +192,81 @@ describe('紐付け toggle(拡張 entry 自身の menu)', () => {
   });
 });
 
+describe('attachment カードの可視導線(user 報告 2026-06-12「開く動線が出てこない」)', () => {
+  function selectAndRender(d: ReturnType<typeof createDispatcher>, lid: string): void {
+    d.dispatch({ type: 'SELECT_ENTRY', lid });
+    render(d.getState(), root);
+  }
+
+  it('紐付け済み拡張があると添付カードに「🧩 ○○で開く」が出てクリックで送付', () => {
+    bindExtension('ext1');
+    const host = fakeHost();
+    const d = mount(host);
+    selectAndRender(d, 'pdf1');
+    const btn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="attachment-actions"] [data-pkc-action="ctx-send-to-extension"][data-pkc-ext-lid="ext1"]',
+    );
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toContain('Graph Ext');
+    expect(btn!.textContent).toContain('で開く');
+    click(btn!);
+    expect(host.sendToExtension).toHaveBeenCalledWith('ext1', 'pdf1');
+  });
+
+  it('既定送り先は ★ 付きで先頭に並ぶ', () => {
+    bindExtension('ext1');
+    bindExtension('ext2');
+    setDefaultTarget('mime:application/pdf', 'ext2');
+    const d = mount(fakeHost());
+    selectAndRender(d, 'pdf1');
+    const btns = [...root.querySelectorAll(
+      '[data-pkc-region="attachment-actions"] [data-pkc-action="ctx-send-to-extension"]',
+    )];
+    expect(btns.map((b) => b.getAttribute('data-pkc-ext-lid'))).toEqual(['ext2', 'ext1']);
+    expect(btns[0]!.textContent).toContain('★');
+  });
+
+  it('紐付けゼロならボタンは出ない', () => {
+    const d = mount(fakeHost());
+    selectAndRender(d, 'pdf1');
+    expect(root.querySelector(
+      '[data-pkc-region="attachment-actions"] [data-pkc-action="ctx-send-to-extension"]',
+    )).toBeNull();
+  });
+
+  it('拡張カードの紐付けチェックボックスで bind / unbind できる', () => {
+    const d = mount(fakeHost());
+    selectAndRender(d, 'ext1');
+    const box = root.querySelector<HTMLInputElement>(
+      '[data-pkc-action="toggle-attachment-extension-binding"][data-pkc-lid="ext1"]',
+    );
+    expect(box).not.toBeNull();
+    expect(box!.checked).toBe(false);
+    box!.click(); // check → bind
+    expect(isExtensionBound('ext1')).toBe(true);
+    selectAndRender(d, 'ext1'); // 再 render で checked が反映される
+    const box2 = root.querySelector<HTMLInputElement>(
+      '[data-pkc-action="toggle-attachment-extension-binding"][data-pkc-lid="ext1"]',
+    );
+    expect(box2!.checked).toBe(true);
+    box2!.click(); // uncheck → unbind
+    expect(isExtensionBound('ext1')).toBe(false);
+  });
+
+  it('「PKC-Extension として扱う」を OFF にすると紐付けも解除される', () => {
+    bindExtension('ext1');
+    const d = mount(fakeHost());
+    selectAndRender(d, 'ext1');
+    const extToggle = root.querySelector<HTMLInputElement>(
+      '[data-pkc-action="toggle-attachment-pkc-extension"][data-pkc-lid="ext1"]',
+    );
+    expect(extToggle).not.toBeNull();
+    expect(extToggle!.checked).toBe(true);
+    extToggle!.click(); // OFF
+    expect(isExtensionBound('ext1')).toBe(false);
+  });
+});
+
 describe('shell menu Extensions section(G3: 可視・取消)', () => {
   function openShellMenu(d: ReturnType<typeof createDispatcher>): HTMLElement {
     d.dispatch({ type: 'TOGGLE_MENU' });

@@ -144,7 +144,7 @@ import type { LinkIndex, LinkRef } from '../../features/link-index/link-index';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
-import { loadExtensionBindings } from '../platform/extension-bindings';
+import { loadExtensionBindings, getDefaultTarget, matchKeyForEntry } from '../platform/extension-bindings';
 import { contrastRatio, wcagGrade, formatContrastRatio } from '../../features/color/wcag-contrast';
 import { setFormatContext, getFormatLocale } from './format-context';
 
@@ -7234,6 +7234,47 @@ function hydrateAppIconAssetOptions(view: HTMLElement, container: Container): vo
   }
 }
 
+/**
+ * #806 host-push: attachment カードの action 列に「🧩 ○○で開く」送付
+ * ボタンを hydrate する(user 報告 2026-06-12「ファイル名は表示されるけど、
+ * 開く動線が出てこない」への可視導線)。紐付け済み拡張(自分以外)が宛先。
+ * 既定送り先は ★ 付きで先頭。click は右クリック menu と同じ
+ * `ctx-send-to-extension` handler に乗る(送付 = 同意のジェスチャ)。
+ * presenter は container access を持たないため renderer 経路で補完する
+ * (`hydrateAppIconAssetOptions` と同パターン)。
+ */
+function hydrateExtensionSendButtons(view: HTMLElement, entry: Entry, container: Container): void {
+  const actionRow = view.querySelector<HTMLElement>('[data-pkc-region="attachment-actions"]');
+  if (!actionRow) return; // data 無し / stripped の card には出さない
+  const bindings = loadExtensionBindings();
+  if (bindings.bound.length === 0) return;
+  const defaultLid = getDefaultTarget(matchKeyForEntry(entry));
+  const targets: { extLid: string; title: string; isDefault: boolean }[] = [];
+  for (const extLid of bindings.bound) {
+    if (extLid === entry.lid) continue;
+    const ext = container.entries.find((e) => e.lid === extLid);
+    if (!ext || ext.archetype !== 'attachment') continue;
+    if (!parseAttachmentBody(ext.body, ext).pkc_extension) continue;
+    targets.push({ extLid, title: ext.title || extLid, isDefault: extLid === defaultLid });
+  }
+  if (targets.length === 0) return;
+  targets.sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+  for (const t of targets) {
+    const btn = createElement('button', 'pkc-btn pkc-btn-small pkc-attachment-send-ext');
+    btn.setAttribute('data-pkc-action', 'ctx-send-to-extension');
+    btn.setAttribute('data-pkc-lid', entry.lid);
+    btn.setAttribute('data-pkc-ext-lid', t.extLid);
+    btn.setAttribute(
+      'title',
+      t.isDefault
+        ? 'この種類の既定送り先です。このファイルを拡張へ送って開きます(閉じていれば起動)'
+        : 'このファイルを拡張へ送って開きます(閉じていれば起動)',
+    );
+    btn.textContent = t.isDefault ? `🧩 ★ ${t.title}で開く` : `🧩 ${t.title}で開く`;
+    actionRow.appendChild(btn);
+  }
+}
+
 function renderLauncherView(state: AppState): HTMLElement {
   const view = createElement('section', 'pkc-launcher-view');
   view.setAttribute('data-pkc-region', 'launcher-view');
@@ -7876,6 +7917,8 @@ function renderView(
     // image attachment から hydrate。presenter 単体では container に access
     // できないため、ここで補完する。
     hydrateAppIconAssetOptions(view, container);
+    // #806: 紐付け済み拡張への「🧩 ○○で開く」送付ボタンを action 列へ。
+    hydrateExtensionSendButtons(view, entry, container);
   } else if (container?.assets) {
     // pgc-229:`buildAssetMimeMap` / `buildAssetNameMap` は container.entries
     // 全件を walk して attachment archetype entry を filter。c-5000 で

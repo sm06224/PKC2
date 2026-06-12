@@ -2814,16 +2814,30 @@ export function bindActions(
       case 'toggle-attachment-pkc-extension': {
         // #790:HTML attachment を PKC-Extension として扱う(起動時に secure
         // PKC-Message channel)。OFF にするときは startup も落とす(拡張で
-        // ないものを autostart できない)。
+        // ないものを autostart できない)。紐付け(送付宛先)も解除する —
+        // 拡張でないものへ実体は送れない。
         if (!lid) break;
         const curEntry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
         if (!curEntry || curEntry.archetype !== 'attachment') break;
         const att = parseAttachmentBody(curEntry.body);
         const checked = (target as HTMLInputElement).checked;
+        if (!checked) unbindExtension(lid);
         const next = { ...att, pkc_extension: checked, startup: checked ? att.startup : false };
         preserveCenterPaneScroll(() => {
           dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: serializeAttachmentBody(next) });
         });
+        break;
+      }
+      case 'toggle-attachment-extension-binding': {
+        // #806 host-push: 紐付け = 「この拡張は送ったものを受け取れる」
+        // standing opt-in 契約。card 上の可視 toggle(右クリック menu の
+        // ctx-bind-extension と同じ registry を更新する)。
+        if (!lid) break;
+        const curEntry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+        if (!curEntry || curEntry.archetype !== 'attachment') break;
+        if (!parseAttachmentBody(curEntry.body).pkc_extension) break;
+        const checked = (target as HTMLInputElement).checked;
+        if (checked) bindExtension(lid); else unbindExtension(lid);
         break;
       }
       case 'toggle-attachment-startup': {

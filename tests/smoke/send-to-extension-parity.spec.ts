@@ -45,7 +45,7 @@ const EXT_HTML = [
   "  if (d.t === 'deliver') {",
   "    var el = document.createElement('div');",
   "    el.id = 'delivered';",
-  "    el.textContent = d.payload.kind + ':' + (d.payload.body || '');",
+  "    el.textContent = d.payload.kind + ':' + (d.payload.body || d.payload.filename || '');",
   '    document.body.appendChild(el);',
   '  }',
   '});',
@@ -109,4 +109,57 @@ test('parity: 右クリック「拡張へ送る」→ popup が deliver を受�
   await expect(ext.locator('#status')).toHaveText('proj:2');
   // host 側 menu は閉じている。
   await expect(menu).toHaveCount(0);
+});
+
+test('parity: 添付カードの「🧩 ○○で開く」→ docx が deliver される(user 報告再現)', async ({ page }) => {
+  await page.goto('/pkc2.html');
+  await bootReady(page);
+
+  const now = '2026-06-12T00:00:00.000Z';
+  const extBody = JSON.stringify({
+    name: 'mini-ext.html', mime: 'text/html', size: EXT_HTML.length,
+    asset_key: 'ext-html', pkc_extension: true,
+  });
+  const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  await seedContainer(page, {
+    meta: { container_id: 'cid-806b', title: 'open-with-ext', created_at: now, updated_at: now, schema_version: 1 },
+    entries: [
+      { lid: 'ext1', title: 'Docx Viewer', archetype: 'attachment', body: extBody, created_at: now, updated_at: now },
+      {
+        lid: 'doc1', title: 'Report', archetype: 'attachment', created_at: now, updated_at: now,
+        body: JSON.stringify({ name: 'report.docx', mime: DOCX_MIME, size: 8, asset_key: 'doc-data' }),
+      },
+    ],
+    relations: [], revisions: [],
+    assets: {
+      'ext-html': Buffer.from(EXT_HTML, 'utf8').toString('base64'),
+      'doc-data': Buffer.from('DOCXDATA', 'utf8').toString('base64'),
+    },
+  });
+  await page.evaluate(() => {
+    localStorage.setItem('pkc2.extensionBindings', JSON.stringify({ bound: ['ext1'], defaults: {} }));
+  });
+  await page.reload();
+  await bootReady(page);
+
+  // docx エントリを開く → カードに「🧩 Docx Viewer で開く」が見えている。
+  await page.locator(
+    '[data-pkc-region="entry-list"] [data-pkc-action="select-entry"][data-pkc-lid="doc1"]',
+  ).first().click();
+  const openWith = page.locator(
+    '[data-pkc-region="attachment-actions"] [data-pkc-action="ctx-send-to-extension"][data-pkc-ext-lid="ext1"]',
+  );
+  await expect(openWith).toBeVisible();
+  await expect(openWith).toContainText('Docx Viewer');
+  await page.screenshot({ path: 'test-results/attachment-open-with-extension.png' });
+
+  // 実クリック座標で送付 → popup(sandboxed iframe)に asset deliver が届く。
+  const box = await openWith.boundingBox();
+  if (!box) throw new Error('open-with button bbox missing');
+  const [popup] = await Promise.all([
+    page.context().waitForEvent('page'),
+    page.mouse.click(box.x + box.width / 2, box.y + box.height / 2),
+  ]);
+  const ext = popup.frameLocator('iframe');
+  await expect(ext.locator('#delivered')).toHaveText('asset:report.docx', { timeout: 10_000 });
 });
