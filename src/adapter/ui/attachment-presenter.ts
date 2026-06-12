@@ -1,6 +1,7 @@
 import type { Entry } from '../../core/model/record';
 import type { DetailPresenter } from './detail-presenter';
 import { classifyFileSize, fileSizeWarningMessage, isFileTooLarge } from './guardrails';
+import { isExtensionBound } from '../platform/extension-bindings';
 
 /**
  * Attachment body schema (file-like archetype).
@@ -553,6 +554,24 @@ export const attachmentPresenter: DetailPresenter = {
         startupLabel.appendChild(document.createTextNode(' スタートアップ起動'));
         startupLabel.title = 'PKC2 起動時に自動で開く(?pkc-safe-mode=1 では skip)';
         extRow.appendChild(startupLabel);
+
+        // #806 host-push: 紐付け(送付宛先化)の可視 toggle。従来は右クリック
+        // menu(ctx-bind-extension)だけで発見性が悪かった(user 報告
+        // 2026-06-12「拡張を紐付けってどこでやるの?」)。同じ registry を
+        // 更新するので、どちらで操作しても等価。
+        const bindLabel = document.createElement('label');
+        const bindInput = document.createElement('input');
+        bindInput.type = 'checkbox';
+        bindInput.checked = isExtensionBound(entry.lid);
+        bindInput.disabled = att.pkc_extension !== true;
+        bindInput.setAttribute('data-pkc-action', 'toggle-attachment-extension-binding');
+        bindInput.setAttribute('data-pkc-lid', entry.lid);
+        bindLabel.appendChild(bindInput);
+        bindLabel.appendChild(document.createTextNode(' 「拡張へ送る」の宛先にする'));
+        bindLabel.title =
+          'ON にすると、エントリの右クリック「🧩 拡張へ送る」や添付カードの'
+          + '「🧩 ○○で開く」の宛先になり、送った実体(本文 / ファイル)をこの拡張が受け取れます';
+        extRow.appendChild(bindLabel);
 
         card.appendChild(extRow);
       }

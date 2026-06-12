@@ -77,6 +77,12 @@ export interface ExtensionChannelHandle {
   close: () => void;
   /** established 済みか(テスト/呼び出し側の判定用)。 */
   isEstablished: () => boolean;
+  /**
+   * 拡張 window がユーザー操作等で閉じられたか。host は child close を
+   * event では検知できない(heartbeat 未導入)ため、再起動判定はこの
+   * polling で行う(orchestrator が openExtension 時に確認)。
+   */
+  isClosed: () => boolean;
 }
 
 function makeNonce(): string {
@@ -247,5 +253,12 @@ export function launchExtensionChannel(
       childWin = null;
     },
     isEstablished: () => established,
+    isClosed: () => {
+      try {
+        return childWin === null || win.closed === true;
+      } catch {
+        return true;
+      }
+    },
   };
 }

@@ -271,7 +271,11 @@ export function createExtensionHost(
 
   function openExtension(extLid: string): ExtensionChannelHandle | null {
     const existing = handles.get(extLid);
-    if (existing) return existing;
+    if (existing && !existing.isClosed()) return existing;
+    // 拡張 window をユーザーが手で閉じた後の再起動(user 報告 2026-06-12
+    // 「アプリ起動が一度しかできない」): host は child close を event で
+    // 検知できないため、死んだ handle はここで掃除して開き直す。
+    if (existing) closeOne(extLid);
     const resolved = resolveExtension(dispatcher, extLid);
     if (!resolved) return null;
 
