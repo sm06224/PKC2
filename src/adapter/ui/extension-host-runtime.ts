@@ -17,6 +17,7 @@
 import type { Dispatcher } from '../state/dispatcher';
 import { buildContainerProjection } from '@features/extension-host/projection';
 import { buildDeliverPayload } from '@features/extension-host/deliver';
+import { validateWriteOps, type WriteOp } from '@features/extension-host/write';
 import {
   launchExtensionChannel,
   type ExtensionChannelHandle,
@@ -24,6 +25,7 @@ import {
   type ExtWriteRequest,
 } from '../transport/extension-channel';
 import { parseAttachmentBody, decodeAttachmentText } from './attachment-presenter';
+import { moveEntryToFolder, relateEntries } from './pkc-extension-startup';
 
 export type LaunchFn = (opts: LaunchExtensionOptions) => ExtensionChannelHandle | null;
 
@@ -52,6 +54,33 @@ function resolveExtensionHtml(dispatcher: Dispatcher, extLid: string): string | 
   return decodeAttachmentText(att, container.assets) || null;
 }
 
+/**
+ * T2 書き戻しを検証して適用する(#806 6/6、G2)。readonly / light-source /
+ * 検証 NG は適用せず false。各 op は既存 data-safe 経路:
+ *   - update-body → QUICK_UPDATE_ENTRY(body のみ、phase 遷移なし)
+ *   - move        → moveEntryToFolder(cycle guard 含む)
+ *   - relate      → relateEntries
+ * 検証は all-or-nothing。1 件でも NG なら全体を拒否(部分適用しない)。
+ */
+function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
+  const state = dispatcher.getState();
+  if (state.readonly || state.lightSource || state.viewOnlySource) return false;
+  const container = state.container;
+  if (!container) return false;
+  const validation = validateWriteOps(container, req.ops);
+  if (!validation.ok) return false;
+  for (const op of validation.ops as WriteOp[]) {
+    if (op.op === 'update-body') {
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: op.lid, body: op.body });
+    } else if (op.op === 'move') {
+      moveEntryToFolder(dispatcher, op.lid, op.folderLid);
+    } else if (op.op === 'relate') {
+      relateEntries(dispatcher, op.from, op.to);
+    }
+  }
+  return true;
+}
+
 export function createExtensionHost(
   dispatcher: Dispatcher,
   launch: LaunchFn = launchExtensionChannel,
@@ -71,8 +100,9 @@ export function createExtensionHost(
         const c = dispatcher.getState().container;
         return c ? buildContainerProjection(c) : null;
       },
-      // T2 書き戻しは 6/6 で検証付き配線。本 PR は既定拒否(安全側)。
-      onWrite: (_req: ExtWriteRequest) => false,
+      // T2 書き戻し(#806 G2): host が op を検証してから既存 data-safe
+      // 経路で適用する。readonly / 検証 NG は false。
+      onWrite: (req: ExtWriteRequest) => applyWrite(dispatcher, req),
       onHint: (hint) => {
         // ext からの軽量ヒント(pull ではない)。entry を開くだけ許す。
         if (hint.kind === 'open' && hint.lid) {
