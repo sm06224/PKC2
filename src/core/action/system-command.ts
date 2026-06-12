@@ -24,6 +24,9 @@ export interface PendingOfferRef {
    */
   tags?: string[] | null;
   color_tag?: string | null;
+  /** SR-14 additive(#806): 出典 mime / filename(accept 時 frontmatter 注入)。 */
+  mime_type?: string | null;
+  filename?: string | null;
 }
 
 /**

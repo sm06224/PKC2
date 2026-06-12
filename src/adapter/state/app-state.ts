@@ -941,6 +941,9 @@ function injectCaptureFrontmatter(
     // PR-JJ additive
     author?: string | null;
     brand?: string | null;
+    // SR-14 additive(#806)
+    mime_type?: string | null;
+    filename?: string | null;
   },
 ): string {
   // Sender が既に frontmatter を build している場合は手出ししない。
@@ -955,7 +958,9 @@ function injectCaptureFrontmatter(
     || typeof fields.pages === 'number'
     || !!fields.isbn
     // PR-JJ additive trigger
-    || !!fields.author || !!fields.brand;
+    || !!fields.author || !!fields.brand
+    // SR-14 additive trigger
+    || !!fields.mime_type || !!fields.filename;
   if (!hasV11) return body;
   const yamlString = (v: string): string => {
     // YAML safe scalar:URL chars(query ? & =、fragment #、segment :)を
@@ -975,6 +980,9 @@ function injectCaptureFrontmatter(
   if (typeof fields.duration_sec === 'number') lines.push(`duration_sec: ${fields.duration_sec}`);
   if (typeof fields.pages === 'number') lines.push(`pages: ${fields.pages}`);
   if (fields.isbn) lines.push(`isbn: ${yamlString(fields.isbn)}`);
+  // SR-14 additive: 出典メタ。
+  if (fields.mime_type) lines.push(`mime_type: ${yamlString(fields.mime_type)}`);
+  if (fields.filename) lines.push(`filename: ${yamlString(fields.filename)}`);
   if (fields.captured_at) lines.push(`captured_at: ${yamlString(fields.captured_at)}`);
   lines.push('---');
   lines.push('');
@@ -1837,7 +1845,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         || typeof offer.pages === 'number'
         || !!offer.isbn
         // PR-JJ additive
-        || !!offer.author || !!offer.brand;
+        || !!offer.author || !!offer.brand
+        // SR-14 additive(#806)
+        || !!offer.mime_type || !!offer.filename;
       const finalBody = hasV11Capture
         ? injectCaptureFrontmatter(offer.body, {
             kind: offer.kind ?? null,
@@ -1851,6 +1861,9 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
             // PR-JJ additive
             author: offer.author ?? null,
             brand: offer.brand ?? null,
+            // SR-14 additive
+            mime_type: offer.mime_type ?? null,
+            filename: offer.filename ?? null,
           })
         : injectCaptureHeader(offer.body, offer.source_url ?? null, offer.captured_at ?? null);
       // Set body on the newly added entry
