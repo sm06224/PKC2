@@ -68,7 +68,11 @@ export function autostartPkcExtensions(dispatcher: Dispatcher): ExtensionChannel
       // can click (a gesture, so the popup is then allowed).
       const handle = launchPkcExtensionEntry(e.lid, dispatcher);
       if (handle) handles.push(handle);
-      else blocked.push({ lid: e.lid, title: e.title });
+      // trusted 同意ダイアログ表示中(#796 PR-4)は「blocked」ではない —
+      // ダイアログ自体が起動導線なので retry prompt を重ねない。
+      else if (!getSharedExtensionHost(dispatcher).hasPendingConsent(e.lid)) {
+        blocked.push({ lid: e.lid, title: e.title });
+      }
     }
   }
   if (blocked.length > 0) showAutostartRetryPrompt(blocked, dispatcher);

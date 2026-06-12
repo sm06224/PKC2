@@ -178,6 +178,7 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | 送信 targetOrigin | `'*'`(identity が宛先を一意化) | `location.origin` にピン留め(#797) |
 | 子の送信先 | `window.parent`(= shell。host が shell に listener を張る) | `window.opener` |
 | 永続化 | **不可**(opaque で localStorage / IDB は SecurityError)。Tier S 拡張は再起動で状態を失う。永続化はホスト経由 API(将来) | 可(全権ゆえ) |
+| 同意 | 不要(構造的に封じ込め済み) | **起動毎に明示同意ダイアログ**(MUST、#796 PR-4): 全権で開く / サンドボックスで開く(Tier S 降格、capability 宣言は維持)/ キャンセル。永続 grant(OQ-4 `extensionGrants`)は v2.2 予約 |
 
 manifest は `AttachmentBody.extension_manifest`(additive): `{ tier?: 'sandboxed'|'trusted', capabilities?: string[] }`。capability → トークン写像(#796 §4.2): `downloads`→`allow-downloads` / `popups`→`allow-popups` / `forms`→`allow-forms` / `clipboard-write`・`fullscreen`→iframe `allow` 属性。未知 capability は無視(forward 互換)。
 

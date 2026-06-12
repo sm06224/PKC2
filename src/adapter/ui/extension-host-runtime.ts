@@ -34,10 +34,19 @@ import { getAncestorFolderLids } from '@features/relation/tree';
 export type LaunchFn = (opts: LaunchExtensionOptions) => ExtensionChannelHandle | null;
 
 export interface ExtensionHost {
-  /** 拡張を開く(既に開いていれば既存 handle)。失敗時 null。 */
+  /**
+   * 拡張を開く(既に開いていれば既存 handle)。失敗時 null。trusted 宣言の
+   * 拡張は明示同意ダイアログ(#796 PR-4)が先に出るため null を返す —
+   * 起動は同意ボタンの click(user gesture)から行われる。
+   */
   openExtension: (extLid: string) => ExtensionChannelHandle | null;
-  /** 実体 1 件を拡張へ送る(必要なら起動)。送れたら true。 */
+  /**
+   * 実体 1 件を拡張へ送る(必要なら起動)。送れたら true。trusted の
+   * 同意待ち中は送付が積まれ、同意後に flush される(この場合も true)。
+   */
   sendToExtension: (extLid: string, entryLid: string) => boolean;
+  /** trusted 同意ダイアログ表示中か(autostart の retry prompt 抑制用)。 */
+  hasPendingConsent: (extLid: string) => boolean;
   /** 開いている拡張 lid 一覧。 */
   openLids: () => string[];
   /** 全 channel を閉じる。 */
@@ -128,19 +137,94 @@ function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
   return true;
 }
 
+/**
+ * #796 PR-4: Tier T(trusted = same-origin 全権)の明示同意ダイアログ。
+ * 「このアプリはコンテナ全体にアクセスできます」級の警告(§2)+ 3 択:
+ * 全権で開く / サンドボックスで開く(推奨、Tier S への降格)/ キャンセル。
+ * 自己完結 DOM(autostart retry prompt と同パターン)— renderer の state
+ * 描画とは独立した runtime-only overlay。
+ */
+function showTrustConsentDialog(
+  title: string,
+  capabilities: readonly string[] | undefined,
+  onChoice: (mode: 'trusted' | 'sandboxed' | null) => void,
+): void {
+  document.querySelector('[data-pkc-region="extension-trust-consent"]')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.setAttribute('data-pkc-region', 'extension-trust-consent');
+  // z-index はアプリ最上位(IDB banner の 30000 帯より上)。全権同意は
+  // セキュリティ判断なので、いかなる overlay にも隠されてはならない。
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:30500;background:rgba(0,0,0,0.55);'
+    + 'display:flex;align-items:center;justify-content:center;';
+
+  const card = document.createElement('div');
+  card.style.cssText =
+    'max-width:440px;margin:16px;background:var(--c-surface,#111510);'
+    + 'color:var(--c-fg,#c8d8b0);border:1px solid var(--c-warn,#b54708);'
+    + 'border-radius:6px;padding:16px 18px;font-size:0.85rem;'
+    + 'box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+
+  const heading = document.createElement('div');
+  heading.textContent = '🔓 全権アクセスの確認';
+  heading.style.cssText = 'font-weight:600;margin-bottom:8px;color:var(--c-warn,#b54708);';
+  card.appendChild(heading);
+
+  const body = document.createElement('div');
+  body.textContent =
+    `「${title}」は trusted(同一オリジン)実行を要求しています。許可すると、`
+    + 'このアプリは PKC2 のコンテナ全体(全エントリ・アセット・保存データ)へ'
+    + '直接アクセスできます。配布元を信頼できる場合のみ許可してください。';
+  body.style.marginBottom = '10px';
+  card.appendChild(body);
+
+  if (capabilities && capabilities.length > 0) {
+    const caps = document.createElement('div');
+    caps.textContent = `宣言 capability: ${capabilities.join(', ')}`;
+    caps.style.cssText = 'font-size:0.75rem;opacity:0.8;margin-bottom:10px;';
+    card.appendChild(caps);
+  }
+
+  const buttons = document.createElement('div');
+  buttons.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+  const choices: { label: string; mode: 'trusted' | 'sandboxed' | null; action: string }[] = [
+    { label: '🔒 サンドボックスで開く(推奨)', mode: 'sandboxed', action: 'ext-consent-sandboxed' },
+    { label: '🔓 全権で開く', mode: 'trusted', action: 'ext-consent-trusted' },
+    { label: 'キャンセル', mode: null, action: 'ext-consent-cancel' },
+  ];
+  for (const c of choices) {
+    const btn = document.createElement('button');
+    btn.textContent = c.label;
+    btn.setAttribute('data-pkc-action', c.action);
+    btn.style.cssText = 'cursor:pointer;padding:6px 10px;text-align:left;';
+    btn.addEventListener('click', () => {
+      overlay.remove();
+      onChoice(c.mode);
+    });
+    buttons.appendChild(btn);
+  }
+  card.appendChild(buttons);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
 export function createExtensionHost(
   dispatcher: Dispatcher,
   launch: LaunchFn = launchExtensionChannel,
 ): ExtensionHost {
   const handles = new Map<string, ExtensionChannelHandle>();
   const unsubs = new Map<string, () => void>();
+  // #796 PR-4: trusted 宣言拡張の同意待ち集合と、同意待ち中に積まれた
+  // 送付ジェスチャ(同意後に flush)。永続 grant(OQ-4 extensionGrants)
+  // は v2.2 予約のため、**毎起動確認**(最も安全)とする。
+  const pendingConsent = new Set<string>();
+  const pendingSends = new Map<string, string[]>();
 
-  function openExtension(extLid: string): ExtensionChannelHandle | null {
-    const existing = handles.get(extLid);
-    if (existing) return existing;
-    const resolved = resolveExtension(dispatcher, extLid);
-    if (!resolved) return null;
-
+  function launchResolved(
+    extLid: string,
+    resolved: { html: string; manifest?: ExtensionManifest },
+  ): ExtensionChannelHandle | null {
     const handle = launch({
       html: resolved.html,
       manifest: resolved.manifest,
@@ -185,9 +269,56 @@ export function createExtensionHost(
     return handle;
   }
 
+  function openExtension(extLid: string): ExtensionChannelHandle | null {
+    const existing = handles.get(extLid);
+    if (existing) return existing;
+    const resolved = resolveExtension(dispatcher, extLid);
+    if (!resolved) return null;
+
+    // #796 PR-4 — Tier T は「逃げ道であって既定にしない」(§2)。trusted
+    // 宣言は same-origin 全権 = コンテナ全体への直接アクセスなので、起動
+    // 前に明示同意を取る。ダイアログのボタン click は user gesture なので
+    // 同意後の window.open は popup block されない。
+    if (resolved.manifest?.tier === 'trusted') {
+      if (!pendingConsent.has(extLid)) {
+        pendingConsent.add(extLid);
+        const entry = dispatcher.getState().container?.entries.find((e) => e.lid === extLid);
+        showTrustConsentDialog(entry?.title || extLid, resolved.manifest.capabilities, (mode) => {
+          pendingConsent.delete(extLid);
+          const queued = pendingSends.get(extLid) ?? [];
+          pendingSends.delete(extLid);
+          if (!mode) return; // キャンセル: 起動しない(積まれた送付も破棄)
+          // 同意時点の container で再解決(ダイアログ表示中の変化に追従)。
+          const fresh = resolveExtension(dispatcher, extLid);
+          if (!fresh) return;
+          const manifest: ExtensionManifest | undefined = mode === 'sandboxed'
+            ? { ...fresh.manifest, tier: 'sandboxed' }
+            : fresh.manifest;
+          const handle = launchResolved(extLid, { html: fresh.html, manifest });
+          if (handle) {
+            for (const lid of queued) sendToExtension(extLid, lid);
+          }
+        });
+      }
+      return null;
+    }
+
+    return launchResolved(extLid, resolved);
+  }
+
   function sendToExtension(extLid: string, entryLid: string): boolean {
     const handle = openExtension(extLid);
-    if (!handle) return false;
+    if (!handle) {
+      // trusted の同意待ちなら送付を積んでおき、同意後に flush する
+      // (ユーザーの send ジェスチャを黙って失わない)。
+      if (pendingConsent.has(extLid)) {
+        const queue = pendingSends.get(extLid) ?? [];
+        queue.push(entryLid);
+        pendingSends.set(extLid, queue);
+        return true;
+      }
+      return false;
+    }
     const container = dispatcher.getState().container;
     if (!container) return false;
     const payload = buildDeliverPayload(container, entryLid);
@@ -206,6 +337,7 @@ export function createExtensionHost(
   return {
     openExtension,
     sendToExtension,
+    hasPendingConsent: (extLid: string) => pendingConsent.has(extLid),
     openLids: () => [...handles.keys()],
     closeAll: () => {
       for (const lid of [...handles.keys()]) closeOne(lid);
