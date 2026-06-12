@@ -1,130 +1,108 @@
-# asset 経路 + 統合 consent モデル 設計 — #806 × #796(2026-06-11)
+# 拡張へのデータ受け渡しモデル 設計 — #806 × #796(2026-06-11、rev.2)
 
-**Status**: 設計 doc。**実装はプライム・ディレクティブ下で凍結 — go は user 判断**(順序判断は user が C 案を採用済み 2026-06-11)
-**Issues**: #806(asset 経路 — SR-13/14/15)/ #796(封じ込め — capability manifest)/ #795(transport 基盤、着地済み)/ 別 repo `PKC2-Extension` SR-13/14/15・F カテゴリ・壁 #80
-**前提 doc**: `pkc-extension-containment-design-2026-06.md`(#796 信頼 2 層 + manifest)/ `pkc-message-api-v1.md` §6(storage boundary)/ `pkc-message-api-v2.md` §3(host↔extension)
+**Status**: 設計 doc。**実装はプライム・ディレクティブ下で凍結 — go は user 判断**
+**Issues**: #806(asset 経路 — SR-13/14/15)/ #796(封じ込め)/ #795(transport 基盤、着地済み)
+**前提 doc**: `pkc-extension-containment-design-2026-06.md`(#796 sandbox)/ `pkc-message-api-v1.md` §6(storage boundary)/ `pkc-message-api-v2.md` §3
+**改訂**: 同日 rev.1 の **pull 型(拡張が `asset:request` で要求 → 毎回 consent banner)** は、user direction(2026-06-11)により **host 主体の push 型**へ全面差し替え。rev.1 の consent-fatigue 弱点を構造的に解消する。
 
 ---
 
-## 0. この doc の位置づけ
+## 0. 設計原理(host direction 2026-06-11)
 
-#806(asset 経路)と #796(封じ込め)は **consent モデルを共有する**ため、user 決定(C 案 = 同時設計・統合実装)に従い**1 枚に統合**して設計する。本書は実装 go の判断材料であり、コードは書かない。
+1. **既定の露出は projection だけ**。PKC はコンテナ丸ごとを既定では渡さない。拡張に既定で見せるのは **汎用 index / list / 統計**(= `GraphProjection`(#790)の一般化:メタのみ、body/assets/revisions を含まない)。
+2. **実体(asset / entry 本文)の受け渡しは host 主体の明示ジェスチャ**。ユーザーが右クリック等で「この拡張へ送る」を選ぶ、または「既定送り先拡張」を事前設定する。**送る行為そのものが同意**(意図と consent が融合 = consent-fatigue が起きない)。
+3. **オプトインは紐付け(導入)で成立**。graph は「ユーザーが自分で起動する」ことがオプトイン(projection のみ)。asset/entry を欲しがる拡張は「ユーザーが紐付けて導入する」ことがオプトイン契約。
 
-主務 = **「asset 読み取り(SR-15)の consent を、#796 の capability manifest と二段で統合する」**ことの設計。
+> rev.1 の核心的誤り = **矢印の向き**。拡張が pull する設計は consent を per-request banner に押し込み、高頻度 read で banner が形骸化する。push 型は「ユーザーが送らない限り何も出ない」ので、idle / 侵害された拡張が探りを入れる経路自体が無い。
 
 ## 1. 解く問題(実証済みブロッカー)
 
-v1 には asset に触れる経路が両方向とも無い(`pkc-message-api-v1.md` §6.1/§6.3):
-
+v1 で拡張が触れられるのは projection 系のみで、**実体に触れる正規経路が無い**:
+- **読み**: 任意 entry/asset の read API 無し(`export:request` は container 全文一括のみ。これは embed/parent 全エクスポート用で残すが、拡張向けの常用経路ではない)
 - **書き**: offer への asset 同送は §6.3 で意図的禁止 → asset 付き attachment offer は中身が空
-- **読み**: 任意 entry/asset の read API 無し(`export:request` は container 全文一括のみ)
 
-結果: `PKC2-Extension` の **F カテゴリ全 10 ツール(email/docx/pptx/xlsx/pdf ビューア等)+ B12 screenshot-attacher が機能不能**(壁 #80)。
+結果、高度な viewer / editor(添付ビューア類)が機能不能。本書はこれを **host-push** で解く。
 
-## 2. 三層の consent モデル(統合の核心)
+## 2. 信頼 3 tier(オプトインの強度に対応)
 
-asset 読み取りは機微(base64 全文 = `export:result` 級)。**3 層で守る**:
+| tier | オプトインの成立条件 | 拡張が得るもの | 例 |
+|---|---|---|---|
+| **T0 起動 viewer** | ユーザーが**自分で起動**(launch = opt-in) | projection のみ(index/list/統計)。**実体は受け取らない** | graph(#790)— **特殊事例**。projection で完結 |
+| **T1 紐付け受信** | ユーザーが**紐付けて導入**(bind = 標準 opt-in 契約) | projection + **ユーザーが send したもの**(asset/entry の実体) | PDF / docx / 画像 viewer |
+| **T2 io権(editor)** | T1 + **書き戻し権限の付与**(最も重い別 grant) | T1 + **検証付き書き戻しチャネル** | エディタ系 |
 
-```
-層1: 封じ込め(#796)      — 拡張は postMessage しか持たない(opaque sandbox or 同一オリジン Tier T)
-層2: capability manifest  — 拡張が要る能力を install 時宣言、host が grant を決定(静的)
-層3: per-request 同意      — asset key ごとの banner(動的)、同一拡張×同一 key は session grant 持続
-```
+- **graph は T0 に固定**。launch=opt-in / projection-only を T0 として明文化し、「起動した拡張は asset を pull できる」という抜け穴に発展させない。graph は asset を一切要求しない。
+- T1/T2 の拡張は **紐付け(導入)時にオプトイン**。紐付け = 「この拡張は、あなたが送ったものを受け取れる」という standing contract。
 
-### 2.1 なぜ二段(manifest + per-request)か
+## 3. 受け渡し機構(host 主体)
 
-- **manifest だけ**(#796 単独)= install 時に `asset-read` を一括許可 → 「install = 広い権限」へ逆戻り(粒度が粗い)
-- **per-request だけ**(SR-15 単独案 (a))= 高頻度 read でも毎回 banner → banner 疲れ → 無思考 accept に堕ちる
-- **二段** = manifest で**能力の有無**を絞り(未宣言拡張は asset:request を即 reject)、per-request で**個別の同意**を取る(同一 key 再読は session grant で抑制)。静的 gate × 動的 consent の積。
+### 3.1 ジェスチャ(consent = この操作)
 
-## 3. capability manifest(#796 §4 と統合)
+- **右クリック → 「拡張へ送る」→ 送り先選択**(紐付け済み拡張のリスト)。または
+- **既定送り先拡張を事前設定**(archetype / mime 別。例:`.pdf` は既定で pdf-viewer へ)。設定済みなら右クリック→「○○で開く」一発
 
-`AttachmentBody` に additive(schema 不変、§9.2 互換):
+どちらも **host が発火点**。拡張は「送れ」と命令できない。送られるまで実体は host 内に留まる。
 
-```ts
-interface ExtensionManifest {
-  /** 信頼層(#796): 'sandbox'(opaque、既定) | 'trusted'(same-origin、全権・明示 opt-in)。 */
-  tier?: 'sandbox' | 'trusted';
-  /** 要求能力。host が sandbox/allow トークン + PKC-Message method 許可へ写像。 */
-  capabilities?: ExtensionCapability[];
-}
-type ExtensionCapability =
-  | 'asset-read'        // asset:request を送れる(本 doc の主対象)
-  | 'entry-write'       // moveToFolder / relation.create(既存 graph 拡張が暗黙に使用)
-  | 'downloads'         // sandbox allow-downloads
-  | 'clipboard-write'
-  | 'popups';
-```
+### 3.2 wire(host → extension の push)
 
-- **`asset-read` 未宣言の拡張が `asset:request` を送ったら host は即 reject**(per-request banner すら出さない)。manifest = 能力の門。
-- Tier T(trusted same-origin)拡張は manifest なしでも従来どおり全権(後方互換)。Tier S(sandbox)が capabilities の主対象。
-- grant の永続化は #796 の `Container.meta.extensionGrants`(OQ-4)に乗せる。
+rev.1 の pull 型 `asset:request`(拡張発)を廃し、**host 発の deliver** を一次経路にする:
 
-## 4. asset 読み経路 wire(SR-15、設計)
+| type | 方向 | payload | 用途 |
+|---|---|---|---|
+| `pkc:projection` | host → ext | index/list/統計(メタのみ) | T0/T1/T2 既定。起動/紐付け時に push |
+| `pkc:deliver` | host → ext | `{ kind:'asset'|'entry', key/lid, mime?, filename?, data_base64?/body?, correlation_id? }` | 送付ジェスチャで実体を 1 件 push(T1/T2) |
+| `pkc:write` | ext → host | `{ lid?, ops:[...], correlation_id? }` | T2 の書き戻し。**host が全 op を検証**してから dispatch |
+| `pkc:write-result` | host → ext | `{ ok, correlation_id?, reason? }` | 書き戻しの成否 |
 
-### 4.1 method(v1 additive、新 type 2 つ)
+- 拡張が「item Y が欲しい」を**示唆**することは許す(UI ヒント)が、**pull は不可**。host が send 導線を提示するに留め、実際に流れるのはユーザーの send ジェスチャ後のみ。
+- `correlation_id` は #804 の相関トークンを流用。
 
-| type | 方向 | payload |
-|---|---|---|
-| `asset:request` | extension → host | `{ asset_key: string, correlation_id?: string }` |
-| `asset:result` | host → extension | `{ asset_key, mime?, filename?, data_base64, correlation_id? }` |
-| `asset:reject` | host → extension | `{ asset_key, reason: 'denied'\|'not-found'\|'no-capability', correlation_id? }` |
+### 3.3 マルチ送付
 
-`correlation_id` は #804 で確立した相関トークンを流用。
+「多数を渡したい」は **host 側 multi-select → まとめて send**(拡張側 enumerate-then-pull ではない)。breadth は projection で navigate、depth は host-push で渡す。
 
-### 4.2 host 側フロー(consent gate)
+## 4. 店主判断で足す関門(ジェスチャでは自動で埋まらない穴)
 
-```
-asset:request 受信
-  → ① flood guard(#795 A-4: サイズ・rate)
-  → ② origin / identity 検証(#795 A-3 / #797)
-  → ③ manifest gate: 送信元拡張が 'asset-read' 宣言済みか?
-        未宣言 → asset:reject{ reason: 'no-capability' }
-  → ④ session grant 確認: (extension_id, asset_key) が許可済みか?
-        済 → ⑥へ
-  → ⑤ per-request 同意 banner(PendingOffer 同型の「asset 提供」UI):
-        「拡張 X が asset <key>(<filename>, <mime>, <size>)を要求しています [許可] [拒否]」
-        許可 → session grant に (extension_id, asset_key) を記録 → ⑥
-        拒否 → asset:reject{ reason: 'denied' }
-  → ⑥ asset 取得 → asset:result{ data_base64, mime, filename }(targetOrigin pin 必須)
-```
+1. **G1 — 渡した後の封じ込めは #796 の担当**。send は「何を・いつ」を制御するが、渡したバイトを拡張がどう扱うかは sandbox(opaque origin / postMessage 唯一通路)が握る。push 型と封じ込めは**相補**(代替ではない)。T1/T2 拡張は #796 の sandbox 上で動かす。
+2. **G2 — io権(T2)は viewer の上位の別 grant**。viewer(T1)は片方向コピーで完結。editor(T2)は `pkc:write` を**既存 data-safe パターン(`moveEntryToFolder`/`relateEntries` = 検証+dispatch+永続化)で必ず検証**してから適用。host は拡張の write を決して無検証適用しない。push モデルは「entry E を editor X に渡した」を host が知っているので、E への write-back の相関検証が容易。
+3. **G3 — 紐付け時開示 + 既定送り先の可視性**。紐付け(導入)時に「この拡張は send したものを受け取れる」を明示(= per-bind 開示が per-request banner を置換)。既定送り先は設定 UI で**一覧・変更・取消**可能(set-and-forget で全 send が黙って 1 拡張に流れるのを防ぐ)。
+4. **G4 — deliver の targetOrigin pin 必須**。`pkc:deliver` の asset payload は base64 全文 = 機微。`pinTargetOrigin(対象 window origin)`(#797)で受け取り窓に固定。B-1 `onTraffic`(#807)で deliver/write を観測、payload preview は base64 自動 redaction(spec §Observability)。
 
-### 4.3 `asset:result` の安全条件(MUST)
+## 5. コスト(正直な評価)
 
-1. **targetOrigin pin**: `pinTargetOrigin(受信時 origin)`(#797)。base64 全文 = `export:result` 級の機微 payload。応答先は受信時 window + origin に固定
-2. **観測**: B-1 `onTraffic`(#807、着地済み)で request/result/reject ともメタデータ観測。**payload preview の redaction(spec §Observability)で base64 は自動伏字** — asset 往復こそ redaction の主対象
-3. **size / chunking**: asset は MB 級。`asset:result` の単発上限 + chunking(別 repo SR-09)の要否は**本 doc では言及のみ**(実装設計で詰める)。A-4 の受信粗サイズ上限は inbound 用なので outbound `asset:result` には別途上限が要る
+- **host UI 増**: 「拡張へ送る」右クリック導線 + 既定送り先設定。プライム・ディレクティブとの緊張はあるが、**rev.1 の pull+banner 機構を置換する**ものでネット増ではない。新 UI mode ではなく既存 context-menu / settings への項目追加に収める。
+- **拡張の自律性低下**: 拡張は欲しい実体を勝手に取れない。viewer/editor には適合(ユーザーが対象を選んで開く自然な流れ)。composition 重視の拡張は projection で navigate して必要分を送ってもらう degrade で吸収。これは**意図した制約**(攻撃面の縮小)。
 
-## 5. SR-13(attachment offer)/ SR-14(mime/filename)
+## 6. SR-13/14 の位置づけ
 
-- **SR-14(`record:offer` に `mime_type` / `filename`)= 純 additive、consent 非依存** → **#805 と同じ小物枠で先行 go 可能**(本 doc の凍結とは独立)
-- **SR-13(attachment offer 規約)= asset 書き方向 = §6.3 境界変更** → SR-15 と同じテーブル(本 doc 内)。asset を伴う attachment offer の form(offer に asset_key + 別経路 asset 送付 or インライン許可)は実装設計で詰める
+- **SR-14(`record:offer` に mime_type / filename)= consent 非依存の純 additive** → #805 と同枠で**先行 go 可能**(本モデルの凍結とは独立)。`pkc:deliver` の `mime?/filename?` とも整合。
+- **SR-13(attachment offer に asset を伴う書き)= asset 書き方向**。本モデルでは「ユーザーが host 側で attachment を作る/送る」で代替できる可能性が高く、拡張発の asset 書き込みは T2 の `pkc:write` 経由に寄せる。SR-13 単独の必要性は実装設計で再評価。
 
-## 6. パイロット順(C 案)
+## 7. パイロット順(変わらず妥当)
 
-1. **graph 拡張(#791)** — asset 不要(projection のみ)。封じ込め(Tier S 化 + manifest `entry-write`)と origin 判定改修(identity+nonce)を**先に検証**。asset 経路を一切使わないので consent UI 抜きで sandbox 化を実機確認できる
-2. **F6 pdf-viewer 等の単純ケース** — `asset-read` manifest + 単一 asset の per-request consent を最小構成で検証
-3. F カテゴリ全体 → B12 screenshot-attacher(asset 書き = SR-13)
+1. **graph(T0)**= projection-only + #796 sandbox 化を先行実証(asset 不要なので consent UI 抜きで sandbox/identity 改修を検証)
+2. **単純 viewer(T1、例 pdf)**= 紐付け + 右クリック send + `pkc:deliver` の最小実証
+3. **editor(T2)**= `pkc:write` の検証書き戻し
 
-## 7. 実装順の提案(go 後、各独立 PR)
+## 8. 実装順(go 後、各独立 PR)
 
 1. **SR-14**(mime/filename additive)— consent 非依存、即着手可
-2. **capability manifest の型 + gate**(#796 §4)— asset gate の前提
-3. **asset:request/result/reject + per-request consent banner**(SR-15)
-4. **graph パイロットの Tier S 化**(#791 + #796)— manifest `entry-write` で実証
-5. **SR-13**(attachment 書き)— 最後(境界が最も深い)
+2. **projection 一般化**(`pkc:projection`、GraphProjection を汎用化)
+3. **送付導線**(右クリック「拡張へ送る」+ 紐付けレジストリ + 既定送り先設定)
+4. **`pkc:deliver`**(T1 viewer 経路、targetOrigin pin + B-1 観測)
+5. **graph の T0/sandbox 化**(#796 + #791)
+6. **`pkc:write`**(T2 editor、検証書き戻し)
 
-## 8. 判断事項(user 確認待ち)
+## 9. 判断事項(user 確認待ち)
 
-- **D-806-1**: 三層 consent モデル(封じ込め × manifest × per-request)+ 二段(manifest gate + session grant 付き per-request)で確定してよいか
-- **D-806-2**: SR-14(mime/filename)を本凍結から外して #805 枠で先行実装してよいか
-- **D-806-3**: パイロット順(graph → F6 → F全体 → B12)で良いか
-- **D-806-4**: `asset:result` の単発 size 上限の提案値(例: 8 MiB)と chunking の要否判断を実装設計まで保留してよいか
-- **D-806-5**: 各 PR の実装 go(順序 §7)を出すタイミング(一括 / 段階)
+- **D-1**: 信頼 3 tier(T0 起動/T1 紐付け受信/T2 io権)+ host-push 受け渡しで確定してよいか
+- **D-2**: 受け渡し導線 = 右クリック「拡張へ送る」+ archetype/mime 別の既定送り先設定、で良いか
+- **D-3**: SR-14 を本凍結から外して先行実装 go してよいか
+- **D-4**: パイロット順(graph T0 → pdf T1 → editor T2)で良いか
+- **D-5**: 実装 go の出し方(§8 を一括 / 段階)
 
 ## 関連
 
 - 封じ込め: [`pkc-extension-containment-design-2026-06.md`](./pkc-extension-containment-design-2026-06.md)
 - transport 基盤: [`transport-hardening-and-observability-design-2026-06.md`](./transport-hardening-and-observability-design-2026-06.md)
-- v1 spec §6(storage boundary)/ v2 spec §3
 - INDEX: [`INDEX.md`](./INDEX.md)
