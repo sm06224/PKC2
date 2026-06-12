@@ -131,6 +131,11 @@ export interface RecordOfferPayload {
   tags?: string[];
   /** Entry.color_tag へ。不正値は field のみ null 化(offer は生かす)。 */
   color_tag?: string;
+  // ── SR-14 additive(#806、2026-06-12)──
+  /** 出典の MIME(出典メタ。attachment 化と独立に有用)。 */
+  mime_type?: string;
+  /** 出典の filename。 */
+  filename?: string;
 }
 
 /**
@@ -210,6 +215,11 @@ export interface PendingOffer {
   tags?: string[] | null;
   /** mint 時に Entry.color_tag へ付与(検証済み既知 ID、それ以外は null)。 */
   color_tag?: string | null;
+  // ── SR-14 additive(#806)──
+  /** 出典 MIME(accept 時 frontmatter に注入)。 */
+  mime_type?: string | null;
+  /** 出典 filename(accept 時 frontmatter に注入)。 */
+  filename?: string | null;
 }
 
 // ── Validation ────────────────────────
@@ -269,6 +279,9 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
     if (!res.ok) return null;
     normalizedTags = res.tags;
   }
+  // SR-14(#806): mime_type / filename は string のみ(他 string field と同じ寛容)。
+  if (p.mime_type !== undefined && typeof p.mime_type !== 'string') return null;
+  if (p.filename !== undefined && typeof p.filename !== 'string') return null;
   // #805: color_tag は string check のみ通れば採用。string 以外は reject、
   // 既知 ID 不一致は **field のみ null 化**(offer は生かす — 色 ID 語彙は
   // 将来拡張されうるため payload ごと殺さない、user 判断 2026-06-11)。
@@ -296,6 +309,9 @@ function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
     // #805 additive
     tags: normalizedTags,
     color_tag: colorTag,
+    // SR-14 additive
+    mime_type: typeof p.mime_type === 'string' ? p.mime_type : undefined,
+    filename: typeof p.filename === 'string' ? p.filename : undefined,
   };
 }
 
@@ -347,6 +363,9 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
     // #805 additive
     tags: payload.tags ?? null,
     color_tag: payload.color_tag ?? null,
+    // SR-14 additive
+    mime_type: payload.mime_type ?? null,
+    filename: payload.filename ?? null,
   };
 
   // Stash the sender's window AND origin so a later `record:reject`

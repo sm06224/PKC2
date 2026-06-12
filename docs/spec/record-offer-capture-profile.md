@@ -435,6 +435,23 @@ interface RecordOfferPayload_805 extends RecordOfferPayload {
 
 §6.2 の原理「**user が見たものだけが entry に入る**」を維持する。`PendingOffer` が `tags` / `color_tag` を保持し、**pending offer banner に色ドット + tags チップを表示**する(`renderPendingOffers`、既存 `.pkc-filer-tag-chip` CSS 流用、新 UI mode は足さない)。`ACCEPT_OFFER` reducer は mint 後に `updateEntryTags` / `updateEntryColorTag` で付与する。dismiss すれば付与されない。
 
+### 8.8 mime_type / filename additive fields(SR-14 / #806、2026-06-12)
+
+§8.6/§8.7 と同じく v1 内 additive(spec §9.2):
+
+```ts
+interface RecordOfferPayload_SR14 extends RecordOfferPayload {
+  /** 出典の MIME(出典メタ。attachment 化と独立に有用)。 */
+  mime_type?: string;
+  /** 出典の filename。 */
+  filename?: string;
+}
+```
+
+- **validate**: いずれも `string` のみ(非 string は payload 全体 reject、§8.3)。値の意味検証はしない(出典メタであり権限ではない)
+- **accept 時**: 値があれば v1.1 frontmatter(§8.6.2)に `mime_type:` / `filename:` として注入(これ単独でも frontmatter 生成 trigger になる)。sender が frontmatter を自前 build 済みなら従来どおり手出ししない(§8.6.3)
+- **host-push モデルとの関係**: 将来の `pkc:deliver`(`asset-access-and-consent-design-2026-06.md`)の `mime?/filename?` と同じ語彙。consent 非依存の純メタなので先行導入する
+
 ---
 
 ## 9. Security / UX constraints
