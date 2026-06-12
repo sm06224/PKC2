@@ -12,7 +12,7 @@ import cytoscape, { type Core, type ElementDefinition, type StylesheetJson } fro
 import fcose from 'cytoscape-fcose';
 import edgehandles from 'cytoscape-edgehandles';
 import type { Entry, Relation } from './types';
-import type { GraphHyperlink, GraphExternalLink } from './protocol';
+import type { ProjectionInternalLink, ProjectionExternalLink } from './protocol';
 import { isSystemArchetype, getAncestorFolderLids } from './util';
 import { archetypeColor, archetypeEmoji, relationColor, colorTagColor, hashColor, depthColor, emojiSvgUrl } from './colors';
 
@@ -34,8 +34,8 @@ const COMPOUND_VIEWS: ReadonlySet<GraphView> = new Set(['explore', 'folders']);
 export interface GraphRenderInput {
   entries: Entry[];
   relations: Relation[];
-  hyperlinks: GraphHyperlink[];
-  externalLinks: GraphExternalLink[];
+  hyperlinks: ProjectionInternalLink[];
+  externalLinks: ProjectionExternalLink[];
   folderOf: Map<string, string>;
   view: GraphView;
   colorBy: ColorBy;
@@ -493,10 +493,12 @@ export function createCytoscapeGraph(
   });
 
   // Minimap: a small read-only overview; click to pan the main view.
+  const MINI_W = 180;
+  const MINI_H = 120;
   const mini = document.createElement('div');
   mini.setAttribute('data-pkc-region', 'graph-minimap');
   mini.style.cssText =
-    'position:absolute;right:8px;bottom:8px;width:180px;height:120px;z-index:40;'
+    `position:absolute;right:8px;bottom:8px;width:${MINI_W}px;height:${MINI_H}px;z-index:40;`
     + 'background:rgba(13,15,10,0.85);border:1px solid #1e2a16;border-radius:3px;overflow:hidden;';
   container.appendChild(mini);
   const miniCy: Core = cytoscape({
@@ -508,6 +510,26 @@ export function createCytoscapeGraph(
     style: [{ selector: 'node', style: { 'background-color': 'data(color)', width: 6, height: 6, label: '' } },
       { selector: 'edge', style: { width: 0.5, 'line-color': '#3a4632', 'curve-style': 'haystack' } }] as unknown as StylesheetJson,
   });
+  // 現在のメイン表示範囲を示す矩形(2026-06-12 修正: 従来は矩形が無く、
+  // ノードも fit 後の zoom で 1px 未満に縮んで「何も映らない」状態だった)。
+  const viewRect = document.createElement('div');
+  viewRect.setAttribute('data-pkc-region', 'graph-minimap-viewport');
+  viewRect.style.cssText =
+    'position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;'
+    + 'border:1px solid #9ec27a;background:rgba(158,194,122,0.12);box-sizing:border-box;';
+  mini.appendChild(viewRect);
+  function updateMiniViewport(): void {
+    if (miniCy.nodes().length === 0) { viewRect.style.display = 'none'; return; }
+    const ext = cy.extent(); // main viewport in model coords
+    const mz = miniCy.zoom();
+    const mpan = miniCy.pan();
+    viewRect.style.display = 'block';
+    viewRect.style.left = `${ext.x1 * mz + mpan.x}px`;
+    viewRect.style.top = `${ext.y1 * mz + mpan.y}px`;
+    viewRect.style.width = `${ext.w * mz}px`;
+    viewRect.style.height = `${ext.h * mz}px`;
+  }
+  cy.on('viewport', () => updateMiniViewport());
   mini.addEventListener('click', (ev) => {
     const r = mini.getBoundingClientRect();
     const mx = ev.clientX - r.left;
@@ -545,13 +567,31 @@ export function createCytoscapeGraph(
     miniCy.elements().remove();
     const defs: ElementDefinition[] = [];
     cy.nodes().forEach((n) => {
-      defs.push({ group: 'nodes', data: { id: n.id(), color: n.data('color') }, position: { ...n.position() } });
+      // compound 親(フォルダ箱)は子の重心に描かれるだけでノイズになる
+      // ので minimap では除外。`color` が無い仮想ノードは灰色に落とす
+      // (style mapper の missing-data warning も消える)。
+      if (n.isParent()) return;
+      defs.push({
+        group: 'nodes',
+        data: { id: n.id(), color: (n.data('color') as string | undefined) ?? '#999' },
+        position: { ...n.position() },
+      });
     });
+    const miniIds = new Set(defs.map((d) => String(d.data.id)));
     cy.edges().forEach((e) => {
+      if (!miniIds.has(e.source().id()) || !miniIds.has(e.target().id())) return;
       defs.push({ group: 'edges', data: { id: e.id(), source: e.source().id(), target: e.target().id() } });
     });
     miniCy.add(defs);
-    miniCy.fit(undefined, 4);
+    miniCy.fit(undefined, 6);
+    // fit の zoom は容易に 0.1 を割る。node 径は model px 指定なので、
+    // zoom の逆数を掛けて **画面上 ~4px** を維持する(従来は 6 model px
+    // 固定 → fit 後に 1px 未満となり実質不可視 = 「ミニマップが動いて
+    // いない」と見える根本原因)。
+    const z = miniCy.zoom() || 1;
+    miniCy.nodes().style({ width: 4 / z, height: 4 / z });
+    miniCy.edges().style({ width: Math.min(1 / z, 1.5) });
+    updateMiniViewport();
   }
   cy.on('layoutstop', () => syncMinimap());
 
