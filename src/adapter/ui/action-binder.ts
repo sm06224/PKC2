@@ -105,7 +105,7 @@ import { openTextReplaceDialog } from './text-replace-dialog';
 import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
-import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, clampMenuToViewport } from './renderer';
+import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, clampMenuToViewport, type ContextMenuOptions } from './renderer';
 import {
   isSelectionModeActive as isTextlogSelectionModeActive,
   getActiveSelectionLid as getActiveTextlogSelectionLid,
@@ -150,6 +150,18 @@ import { handleKeymapKeydown } from './keymap-binder';
 import { handleEditorFormatShortcut } from './editor-format-shortcuts';
 import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
+// #806 host-push 送付導線: 右クリック「拡張へ送る」+ 紐付け / 既定送り先。
+import { createExtensionHost, type ExtensionHost } from './extension-host-runtime';
+import {
+  loadExtensionBindings,
+  bindExtension,
+  unbindExtension,
+  isExtensionBound,
+  getDefaultTarget,
+  setDefaultTarget,
+  clearDefaultTarget,
+  matchKeyForEntry,
+} from '../platform/extension-bindings';
 import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab } from './tab-strip';
 import { toggleSplitView } from './split-view';
 import { setActivityBarActiveTab, toggleActivityBarSide } from './activity-bar';
@@ -267,7 +279,14 @@ const touchTapThresholdPx = defineFlag<number>(
   },
 );
 
-export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => void {
+export function bindActions(
+  root: HTMLElement,
+  dispatcher: Dispatcher,
+  deps?: { extensionHost?: ExtensionHost },
+): () => void {
+  // #806 host-push: 「拡張へ送る」の実体。テストは fake host を注入する。
+  // 実 host は openExtension まで副作用ゼロなので eager 生成で問題ない。
+  const extensionHost: ExtensionHost = deps?.extensionHost ?? createExtensionHost(dispatcher);
   // Wire the slash-menu /asset command through to the asset picker.
   // Kept as a callback so slash-menu does not have to know about the
   // dispatcher or container access.
@@ -3703,6 +3722,51 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         });
         break;
       }
+      // ── #806 host-push: 紐付け / 送付ジェスチャ / 既定送り先 ──
+      case 'ctx-bind-extension': {
+        if (!lid) break;
+        bindExtension(lid);
+        break;
+      }
+      case 'ctx-unbind-extension': {
+        if (!lid) break;
+        unbindExtension(lid);
+        break;
+      }
+      case 'ctx-send-to-extension':
+      case 'ctx-send-to-extension-default': {
+        if (!lid) break;
+        const extLid = target.getAttribute('data-pkc-ext-lid');
+        if (!extLid) break;
+        if (action === 'ctx-send-to-extension-default') {
+          const ent = dispatcher.getState().container?.entries.find((en) => en.lid === lid);
+          if (ent) setDefaultTarget(matchKeyForEntry(ent), extLid);
+        }
+        // click = user gesture なので popup は許可される(blocked なら no-op)。
+        extensionHost.sendToExtension(extLid, lid);
+        break;
+      }
+      case 'unbind-extension': {
+        // shell menu Extensions section。menu は state 由来でないため、
+        // row は imperative に消す(close-detached と同 pattern)。
+        const extLid = target.getAttribute('data-pkc-ext-lid');
+        if (!extLid) break;
+        unbindExtension(extLid);
+        target.closest('[data-pkc-ext-binding-row]')?.remove();
+        // unbind は当該拡張への既定送り先も消す(registry 側整合)ので
+        // 表示中の default row も道連れにする。
+        for (const row of root.querySelectorAll('[data-pkc-ext-default-row]')) {
+          if (row.getAttribute('data-pkc-ext-default-target') === extLid) row.remove();
+        }
+        break;
+      }
+      case 'clear-default-extension': {
+        const matchKey = target.getAttribute('data-pkc-match-key');
+        if (!matchKey) break;
+        clearDefaultTarget(matchKey);
+        target.closest('[data-pkc-ext-default-row]')?.remove();
+        break;
+      }
       case 'copy-entry-embed-ref': {
         if (!lid) break;
         const st = dispatcher.getState();
@@ -6810,6 +6874,42 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
     if (existing) existing.remove();
   }
 
+  /**
+   * #806 host-push: entry 右クリック menu に足す拡張系 option を組む。
+   * - sendTargets: 紐付け済み拡張(container に実在する pkc_extension
+   *   attachment のみ。自分自身は除外)。entry の matchKey に既定送り先が
+   *   あれば isDefault を立てる。
+   * - extensionBindState: entry 自身が拡張なら紐付け toggle を出す。
+   * readonly でも送付 / 紐付けは可(container を変更しない)。
+   */
+  function extensionContextMenuOptions(
+    state: AppState,
+    entryLid: string,
+  ): Pick<ContextMenuOptions, 'sendTargets' | 'extensionBindState'> {
+    const container = state.container;
+    if (!container) return {};
+    const entry = container.entries.find((e) => e.lid === entryLid);
+    if (!entry) return {};
+    const out: Pick<ContextMenuOptions, 'sendTargets' | 'extensionBindState'> = {};
+    if (entry.archetype === 'attachment' && parseAttachmentBody(entry.body).pkc_extension) {
+      out.extensionBindState = isExtensionBound(entryLid) ? 'bound' : 'unbound';
+    }
+    const bound = loadExtensionBindings().bound;
+    if (bound.length > 0) {
+      const defaultLid = getDefaultTarget(matchKeyForEntry(entry));
+      const targets: { extLid: string; title: string; isDefault?: boolean }[] = [];
+      for (const extLid of bound) {
+        if (extLid === entryLid) continue;
+        const ext = container.entries.find((e) => e.lid === extLid);
+        if (!ext || ext.archetype !== 'attachment') continue;
+        if (!parseAttachmentBody(ext.body).pkc_extension) continue;
+        targets.push({ extLid, title: ext.title, isDefault: extLid === defaultLid });
+      }
+      if (targets.length > 0) out.sendTargets = targets;
+    }
+    return out;
+  }
+
   function handleContextMenu(e: MouseEvent): void {
     const state = dispatcher.getState();
     if (state.phase !== 'ready') return;
@@ -6894,6 +6994,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
         archetype: entry.archetype,
         canEdit,
         hasParent,
+        ...extensionContextMenuOptions(state, lid),
       });
       root.appendChild(menu);
       clampMenuToViewport(menu);
@@ -6922,6 +7023,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
           canEdit,
           hasParent,
           folders,
+          ...extensionContextMenuOptions(state, lid),
         });
         root.appendChild(menu);
         clampMenuToViewport(menu);
@@ -8774,6 +8876,7 @@ export function bindActions(root: HTMLElement, dispatcher: Dispatcher): () => vo
 
   // Return cleanup function
   return () => {
+    extensionHost.closeAll();
     closeColorPicker();
     root.removeEventListener('mousedown', handleResizeMouseDown);
     root.removeEventListener('mousedown', handleColorPickerMouseDown);

@@ -144,6 +144,7 @@ import type { LinkIndex, LinkRef } from '../../features/link-index/link-index';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
+import { loadExtensionBindings } from '../platform/extension-bindings';
 import { contrastRatio, wcagGrade, formatContrastRatio } from '../../features/color/wcag-contrast';
 import { setFormatContext, getFormatLocale } from './format-context';
 
@@ -2180,6 +2181,60 @@ function renderShellMenu(
   toolsButtons.appendChild(normalizeBtn);
   toolsSection.appendChild(toolsButtons);
   card.appendChild(toolsSection);
+
+  // Extensions — #806 host-push の G3(既定送り先は可視・取消可能)。
+  // 紐付け済み拡張と archetype/mime 別の既定送り先を一覧し、その場で
+  // 解除 / 取消できる。何も無ければ section ごと出さない(clutter 回避)。
+  // localStorage 直読みは pane-prefs / filer column widths と同じ前例。
+  {
+    const extBindings = loadExtensionBindings();
+    const defaultEntries = Object.entries(extBindings.defaults);
+    if (extBindings.bound.length > 0 || defaultEntries.length > 0) {
+      const extSection = createElement('div', 'pkc-shell-menu-section');
+      extSection.setAttribute('data-pkc-region', 'shell-menu-extensions');
+      const extLabel = createElement('span', 'pkc-shell-menu-label');
+      extLabel.textContent = 'Extensions';
+      extSection.appendChild(extLabel);
+
+      const titleOf = (lid: string): string =>
+        state.container?.entries.find((e) => e.lid === lid)?.title || lid;
+
+      for (const extLid of extBindings.bound) {
+        const row = createElement('div', 'pkc-shell-menu-ext-row');
+        row.setAttribute('data-pkc-ext-binding-row', extLid);
+        const name = createElement('span', 'pkc-shell-menu-ext-name');
+        name.textContent = `🧩 ${titleOf(extLid)}`;
+        name.setAttribute('title', '紐付け済み拡張(「拡張へ送る」の宛先)');
+        row.appendChild(name);
+        const btn = createElement('button', 'pkc-btn-small');
+        btn.setAttribute('data-pkc-action', 'unbind-extension');
+        btn.setAttribute('data-pkc-ext-lid', extLid);
+        btn.setAttribute('title', '紐付けを解除(この拡張への既定送り先設定も消えます)');
+        btn.textContent = '解除';
+        row.appendChild(btn);
+        extSection.appendChild(row);
+      }
+
+      for (const [matchKey, extLid] of defaultEntries) {
+        const row = createElement('div', 'pkc-shell-menu-ext-row');
+        row.setAttribute('data-pkc-ext-default-row', matchKey);
+        row.setAttribute('data-pkc-ext-default-target', extLid);
+        const name = createElement('span', 'pkc-shell-menu-ext-name');
+        name.textContent = `📌 ${matchKey} → ${titleOf(extLid)}`;
+        name.setAttribute('title', 'この種類を「拡張へ送る」時の既定送り先');
+        row.appendChild(name);
+        const btn = createElement('button', 'pkc-btn-small');
+        btn.setAttribute('data-pkc-action', 'clear-default-extension');
+        btn.setAttribute('data-pkc-match-key', matchKey);
+        btn.setAttribute('title', 'この既定送り先を取り消す');
+        btn.textContent = '✕';
+        row.appendChild(btn);
+        extSection.appendChild(row);
+      }
+
+      card.appendChild(extSection);
+    }
+  }
 
   // Debug toggle — three-state segmented control mirroring the Theme
   // and Scanline rows above. Off / Structural / + Contents matches
@@ -10891,6 +10946,13 @@ export interface ContextMenuOptions {
   folders?: { lid: string; title: string }[];
   /** PR-Δ34: graph view 等から呼ばれる時に「開く」item を先頭に出す。 */
   showOpen?: boolean;
+  /**
+   * #806 host-push 送付導線: 紐付け済み拡張(「拡張へ送る」の宛先)。
+   * isDefault = この entry の matchKey の既定送り先。
+   */
+  sendTargets?: { extLid: string; title: string; isDefault?: boolean }[];
+  /** #806: この entry 自身が PKC-Extension の時の紐付け状態(toggle 表示用)。 */
+  extensionBindState?: 'bound' | 'unbound';
 }
 
 export function renderContextMenu(
@@ -10951,6 +11013,10 @@ export function renderContextMenu(
     { action: 'ctx-open-window', label: '🪟 別ウィンドウで開く', tip: 'このエントリを独立した編集ウィンドウで開く', lid, show: true },
     { action: 'ctx-preview', label: '👁️ Preview', tip: 'レンダリング済みプレビューを新しいウィンドウで開く', lid, show: isPreviewable || isSandboxable },
     { action: 'ctx-sandbox-run', label: '🔒 Sandbox', tip: 'サンドボックス環境で安全に開く（HTML/SVG）', lid, show: isSandboxable },
+    // #806 host-push: 紐付け(導入)= 「この拡張は送ったものを受け取れる」
+    // という standing opt-in 契約(G3: 紐付け時開示は tip で行う)。
+    { action: 'ctx-bind-extension', label: '🧩 拡張として紐付け', tip: '紐付けると「拡張へ送る」の宛先になり、送ったエントリ / アセットをこの拡張が受け取れるようになります', lid, show: opts.extensionBindState === 'unbound' },
+    { action: 'ctx-unbind-extension', label: '🧩 紐付けを解除', tip: 'この拡張を「拡張へ送る」の宛先から外します（既定送り先設定も解除されます）', lid, show: opts.extensionBindState === 'bound' },
     { action: 'delete-entry', label: '🗑️ Delete', tip: 'このエントリを完全に削除（元に戻せません）', lid, show: canEdit },
     { action: 'delete-log-entry', label: '✕ Delete log', tip: 'このログ行を削除', lid, logId: opts.logId, show: canEdit && !!(opts.archetype === 'textlog' && opts.logId) },
     { action: 'ctx-move-to-root', label: '↑ Move to Root', tip: '現在のフォルダから取り出してルートに移動', lid, show: canEdit && hasParent },
@@ -11097,6 +11163,53 @@ export function renderContextMenu(
       btn.setAttribute('data-pkc-folder-lid', folder.lid);
       btn.setAttribute('title', `Move into ${folder.title || '(untitled)'}`);
       btn.textContent = `  → ${folder.title || '(untitled)'}`;
+      menu.appendChild(btn);
+    }
+  }
+
+  // #806 host-push 送付ジェスチャ: 「拡張へ送る」 sub-menu。送るクリック
+  // そのものが同意(banner なし)。既定送り先は ★ 付きで先頭、その他は
+  // 「📌 既定にして送る」 row で送付と同時に既定登録できる(OS の
+  // 「常にこのアプリで開く」 idiom)。readonly でも表示する(送付 = 読み
+  // 方向のジェスチャで、container を変更しない)。
+  if (opts.sendTargets && opts.sendTargets.length > 0) {
+    const sep = createElement('div', 'pkc-context-menu-separator');
+    menu.appendChild(sep);
+    const label = createElement('div', 'pkc-context-menu-label');
+    label.setAttribute('data-pkc-region', 'context-menu-send-extension');
+    label.textContent = '🧩 拡張へ送る';
+    menu.appendChild(label);
+
+    const ordered = [...opts.sendTargets].sort(
+      (a, b) => Number(!!b.isDefault) - Number(!!a.isDefault),
+    );
+    for (const t of ordered) {
+      const btn = createElement('button', 'pkc-context-menu-item');
+      btn.setAttribute('data-pkc-action', 'ctx-send-to-extension');
+      btn.setAttribute('data-pkc-lid', lid);
+      btn.setAttribute('data-pkc-ext-lid', t.extLid);
+      btn.setAttribute(
+        'title',
+        t.isDefault
+          ? 'この種類の既定送り先です。クリックで送ります（拡張が閉じていれば起動）'
+          : 'この拡張のウィンドウへ送ります（拡張が閉じていれば起動）',
+      );
+      btn.textContent = t.isDefault
+        ? `  ★ ${t.title || '(untitled)'}（既定）`
+        : `  → ${t.title || '(untitled)'}`;
+      menu.appendChild(btn);
+    }
+    for (const t of ordered) {
+      if (t.isDefault) continue;
+      const btn = createElement('button', 'pkc-context-menu-item');
+      btn.setAttribute('data-pkc-action', 'ctx-send-to-extension-default');
+      btn.setAttribute('data-pkc-lid', lid);
+      btn.setAttribute('data-pkc-ext-lid', t.extLid);
+      btn.setAttribute(
+        'title',
+        'この種類（mime / archetype）の既定送り先として記憶してから送ります。設定はメニュー（⚙）の Extensions で取消できます',
+      );
+      btn.textContent = `  📌 ${t.title || '(untitled)'} を既定にして送る`;
       menu.appendChild(btn);
     }
   }

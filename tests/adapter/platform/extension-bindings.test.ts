@@ -14,6 +14,7 @@ import {
   clearDefaultTarget,
   matchKeyForArchetype,
   matchKeyForMime,
+  matchKeyForEntry,
   __resetExtensionBindingsCacheForTest,
   EXTENSION_BINDINGS_KEY,
 } from '@adapter/platform/extension-bindings';
@@ -64,6 +65,22 @@ describe('default target', () => {
     localStorage.setItem(EXTENSION_BINDINGS_KEY, JSON.stringify({ bound: [], defaults: { 'mime:image/png': 'extX' } }));
     __resetExtensionBindingsCacheForTest();
     expect(getDefaultTarget(matchKeyForMime('image/png'))).toBeNull();
+  });
+});
+
+describe('matchKeyForEntry', () => {
+  it('attachment は mime 優先', () => {
+    const body = JSON.stringify({ name: 'r.pdf', mime: 'application/pdf', asset_key: 'k' });
+    expect(matchKeyForEntry({ archetype: 'attachment', body })).toBe('mime:application/pdf');
+  });
+
+  it('mime 不明の attachment は archetype に縮退', () => {
+    expect(matchKeyForEntry({ archetype: 'attachment', body: '{}' })).toBe('archetype:attachment');
+    expect(matchKeyForEntry({ archetype: 'attachment', body: 'not json' })).toBe('archetype:attachment');
+  });
+
+  it('非 attachment は archetype', () => {
+    expect(matchKeyForEntry({ archetype: 'text', body: 'plain' })).toBe('archetype:text');
   });
 });
 

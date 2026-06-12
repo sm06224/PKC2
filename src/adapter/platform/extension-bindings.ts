@@ -16,6 +16,8 @@
  * は `list*` / `clear*` を提供し、設定 UI(別 PR)がそれを使う。
  */
 
+import { peekAttachmentMeta } from '@features/extension-host/projection';
+
 export const EXTENSION_BINDINGS_KEY = 'pkc2.extensionBindings';
 
 export interface ExtensionBindings {
@@ -104,6 +106,18 @@ export function matchKeyForArchetype(archetype: string): string {
 }
 export function matchKeyForMime(mime: string): string {
   return `mime:${mime}`;
+}
+
+/**
+ * entry の既定送り先 lookup key。attachment は mime 優先(`.pdf` の既定 =
+ * pdf-viewer、のような種類別設定)、mime 不明 / 非 attachment は archetype。
+ */
+export function matchKeyForEntry(entry: { archetype: string; body: string }): string {
+  if (entry.archetype === 'attachment') {
+    const meta = peekAttachmentMeta(entry.body);
+    if (meta.mime) return matchKeyForMime(meta.mime);
+  }
+  return matchKeyForArchetype(entry.archetype);
 }
 
 /**
