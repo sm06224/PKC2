@@ -160,7 +160,7 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 |---|---|---|---|
 | `hello` | child→host | — | handshake。host が established → projection を返す |
 | `projection` | host→child | `ContainerProjection`(index/list/統計、**body/assets/revisions を含まない**、MUST) | 既定露出。container 変化で再 push |
-| `deliver` | host→child | `{ kind:'asset'|'entry', lid?, asset_key?, mime?, filename?, body?, data_base64?, correlation_id? }` | **ユーザーの send ジェスチャ**で実体 1 件。pull 経路は無い(MUST NOT) |
+| `deliver` | host→child | `{ kind:'asset'|'entry', lid?, asset_key?, mime?, filename?, body?, data_base64?, correlation_id? }` | **ユーザーの send ジェスチャ**で実体 1 件。pull 経路は無い(MUST NOT)。handshake 前の send は host が buffer し、`hello` 後に projection → deliver の順で配送 |
 | `write` | child→host | `{ lid?, ops:[...], correlation_id? }` | T2 書き戻し。host が `validateWriteOps` で検証してから適用(G2、MUST) |
 | `write-result` | host→child | `{ ok, correlation_id? }` | 書き戻しの成否 |
 | `hint` | child→host | `{ kind, lid? }` | 軽量ヒント(open のみ)。実体は流れない |

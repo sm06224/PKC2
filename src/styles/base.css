@@ -5963,6 +5963,21 @@ mark.pkc-search-mark {
   border-color: var(--c-warn, #b54708);
 }
 
+/* #806 host-push: Extensions section — 紐付け済み拡張 / 既定送り先の
+ * 一覧 row(G3: 可視・取消可能)。name + 取消ボタンの 2 カラム。 */
+.pkc-shell-menu-ext-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2-5);
+  font-size: var(--fs-xs);
+}
+.pkc-shell-menu-ext-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pkc-shell-menu-version {
   font-size: var(--fs-2xs);
   color: var(--c-muted);

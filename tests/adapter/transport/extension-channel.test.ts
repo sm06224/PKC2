@@ -70,6 +70,24 @@ describe('launchExtensionChannel — handshake & push', () => {
     expect(posted.filter((p) => p.msg.t === 'projection').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('handshake 前の deliver はバッファされ、hello で projection の後に flush される', () => {
+    const { child, posted } = stubChild();
+    handle = launchExtensionChannel({ html: '<x>', getProjection: () => ({}) })!;
+    // auto-open 直後の送付ジェスチャ: hello 到着前に deliver が呼ばれる。
+    handle.deliver({ kind: 'entry', lid: 'e1', body: 'queued-1' });
+    handle.deliver({ kind: 'entry', lid: 'e2', body: 'queued-2' });
+    expect(posted.filter((p) => p.msg.t === 'deliver')).toHaveLength(0);
+
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, t: 'hello' });
+
+    const types = posted.map((p) => p.msg.t);
+    expect(types.indexOf('projection')).toBeLessThan(types.indexOf('deliver'));
+    const delivers = posted.filter((p) => p.msg.t === 'deliver');
+    expect(delivers).toHaveLength(2);
+    expect(delivers.map((p) => (p.msg.payload as { body: string }).body)).toEqual(['queued-1', 'queued-2']);
+    expect(delivers.every((p) => p.targetOrigin === ORIGIN)).toBe(true);
+  });
+
   it('deliver は実体 1 件を push(送付ジェスチャの結果)', () => {
     const { child, posted } = stubChild();
     handle = launchExtensionChannel({ html: '<x>', getProjection: () => ({}) })!;

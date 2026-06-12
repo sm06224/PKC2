@@ -89,6 +89,11 @@ export function launchExtensionChannel(
   const nonce = makeNonce();
   let established = false;
   let childWin: Window | null = null;
+  // 送付ジェスチャ(deliver)が handshake より先に来た場合に備えるバッファ。
+  // 「未開封なら開いてから送る」auto-open 経路では deliver が hello 到着前に
+  // 呼ばれるのが常態(hello は子 window の script 実行後に async で届く)。
+  // 黙って捨てるとユーザーの send が消えるため、hello で flush する。
+  const pendingDelivers: ExtDeliverPayload[] = [];
 
   const target = (): string => pinTargetOrigin(window.location.origin);
 
@@ -117,6 +122,9 @@ export function launchExtensionChannel(
       established = true;
       opts.onEstablished?.();
       sendProjection();
+      while (pendingDelivers.length > 0) {
+        post({ t: 'deliver', payload: pendingDelivers.shift() });
+      }
       return;
     }
     if (d.nonce !== nonce) return; // hello 以外は nonce 必須
@@ -149,7 +157,10 @@ export function launchExtensionChannel(
   return {
     pushProjection: () => { if (established) sendProjection(); },
     deliver: (payload: ExtDeliverPayload) => {
-      if (!established) return;
+      if (!established) {
+        pendingDelivers.push(payload);
+        return;
+      }
       post({ t: 'deliver', payload });
     },
     close: () => {
