@@ -81,6 +81,8 @@ PKC-Message v2 は wire を **JSON-RPC 2.0** に全面移行する(prior-art 調
 
 **PKC-Extension** = `container.assets` 内の単一 HTML(`AttachmentBody.pkc_extension === true`)として配布され、host PKC2 が起動して双方向通信する拡張。v1 spec が扱った「外部 sender → host」と逆向きの **host 起動・host 主導 push** を本章で定義する。前例実装は graph 拡張(#790)の bespoke channel `pkc-graph-ext` v1(§3.7)。
 
+> **改訂(2026-06-12、#806 host-push 体系を実装)**: `asset-access-and-consent-design-2026-06.md` rev.2 の確定モデルに基づき、**実装済みの host-push wire は §3.8 を正とする**。§3.2-3.6 の `initialize`/`source_id`/heartbeat 等の写像は将来計画で、現行実装は §3.8 の `pkc-ext` チャネル(`src/adapter/transport/extension-channel.ts`)。**拡張から実体を pull する経路は存在しない**(consent は host 側の send ジェスチャと紐付けで成立)。
+
 ### 3.1 実行モデル
 
 - 拡張本体は **classic IIFE の単一 HTML** でなければならない(MUST)。`type="module"` script は `document.write` 注入で動作しない browser があるため不可。
@@ -138,8 +140,36 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 ### 3.7 Legacy: bespoke `pkc-graph-ext` v1(deprecated 予定)
 
 - graph 拡張(#790)が使用中の bespoke channel。v2 ではない独自 message 形(`hello` / `welcome` / `select` / `projection` + `PKC_GRAPH_V = 1`)。
-- **host は v1 bespoke と v2 envelope を両受理する**(`jsonrpc: '2.0'` の有無で discriminate)。§3.3 のセキュリティ検証は両経路共通の前段で行う(MUST)。
-- 既に asset として配布済みの旧拡張 HTML は v1 経路で動作し続けなければならない(後方互換 invariant 5、MUST)。deprecation の期限は定めない(v2 拡張の普及後に別途判断)。
+- 互換性切り捨ての user 決定(2026-06-12)により、§3.8 の `pkc-ext` チャネルへ**直接移行**してよい(both-accept 併存期間は不要)。graph の移行は host 側で実施。
+
+### 3.8 host-push `pkc-ext` チャネル(normative、実装済み 2026-06-12)
+
+実装 = `src/adapter/transport/extension-channel.ts`。envelope は `{ pkc: 'pkc-ext', v: 1, nonce, t, ... }`。
+
+**信頼 3 tier**(`asset-access-and-consent-design-2026-06.md` rev.2):
+
+| tier | opt-in | 受け取るもの |
+|---|---|---|
+| T0 起動 viewer(graph) | ユーザーが起動 | projection のみ |
+| T1 紐付け受信 | ユーザーが紐付け導入 | projection + send された実体 |
+| T2 io権(editor) | T1 + 書き戻し付与 | T1 + 検証付き `pkc:write` |
+
+**wire**:
+
+| t | 方向 | payload | 意味 |
+|---|---|---|---|
+| `hello` | child→host | — | handshake。host が established → projection を返す |
+| `projection` | host→child | `ContainerProjection`(index/list/統計、**body/assets/revisions を含まない**、MUST) | 既定露出。container 変化で再 push |
+| `deliver` | host→child | `{ kind:'asset'|'entry', lid?, asset_key?, mime?, filename?, body?, data_base64?, correlation_id? }` | **ユーザーの send ジェスチャ**で実体 1 件。pull 経路は無い(MUST NOT) |
+| `write` | child→host | `{ lid?, ops:[...], correlation_id? }` | T2 書き戻し。host が `validateWriteOps` で検証してから適用(G2、MUST) |
+| `write-result` | host→child | `{ ok, correlation_id? }` | 書き戻しの成否 |
+| `hint` | child→host | `{ kind, lid? }` | 軽量ヒント(open のみ)。実体は流れない |
+
+**write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
+
+**security gate**(§3.3 と同一 primitive、MUST): window identity(`event.source === childWin`)+ origin + per-launch nonce(`hello` 以外必須)。送信 targetOrigin は受信 origin にピン留め(#797、opaque は `'*'`)。
+
+**consent**: 拡張は asset を pull できない。実体は (a) ユーザーの右クリック「拡張へ送る」/ 既定送り先(`extension-bindings`)、(b) 紐付け(導入)= standing opt-in、の 2 段で host が制御する。banner は出さない(send ジェスチャ自体が同意)。
 
 ## 4. Versioning / v1 互換
 

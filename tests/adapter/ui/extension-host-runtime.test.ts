@@ -150,14 +150,32 @@ describe('sendToExtension', () => {
   });
 });
 
-describe('onWrite は 5/6 では既定拒否(T2 は 6/6)', () => {
-  it('注入された onWrite が false を返す', () => {
+describe('onWrite(T2、6/6): 検証して既存 data-safe 経路で適用', () => {
+  function openHost() {
     const d = createDispatcher();
     d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
     const { launch, records: recs } = fakeLaunch();
     host = createExtensionHost(d, launch);
     host.openExtension('ext1');
-    const onWrite = recs[0]!.opts.onWrite!;
+    return { d, onWrite: recs[0]!.opts.onWrite! };
+  }
+
+  it('update-body は QUICK_UPDATE_ENTRY で body を差し替える', () => {
+    const { d, onWrite } = openHost();
+    expect(onWrite({ ops: [{ op: 'update-body', lid: 'e1', body: 'rewritten' }] })).toBe(true);
+    expect(d.getState().container!.entries.find((e) => e.lid === 'e1')!.body).toBe('rewritten');
+  });
+
+  it('検証 NG(未知 lid)は false で副作用なし', () => {
+    const { d, onWrite } = openHost();
+    const before = d.getState().container;
+    expect(onWrite({ ops: [{ op: 'update-body', lid: 'nope', body: 'x' }] })).toBe(false);
+    expect(d.getState().container).toBe(before);
+  });
+
+  it('空 ops / 未知 op は false', () => {
+    const { onWrite } = openHost();
+    expect(onWrite({ ops: [] })).toBe(false);
     expect(onWrite({ ops: [{}] })).toBe(false);
   });
 });
