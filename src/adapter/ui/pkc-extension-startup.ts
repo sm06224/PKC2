@@ -1,18 +1,25 @@
 /**
- * PKC-Extension startup + launch (#790).
+ * PKC-Extension startup + launch (#790 → #806/#796 で pkc-ext channel へ
+ * 直接切替)。
  *
  * A PKC-Extension is an HTML asset (`AttachmentBody.pkc_extension`) that, when
- * opened, talks to the host PKC2 over the secure PKC-Message channel
- * (`graph-extension-launcher.ts`) — distinct from a plain "registered app".
+ * opened, talks to the host PKC2 over the generic `pkc-ext` channel
+ * (`extension-channel.ts`, 既定 Tier S sandbox) — distinct from a plain
+ * "registered app". 旧 bespoke `pkc-graph-ext` v1 チャネルは廃止(互換切り
+ * 捨ては user 決定 2026-06-12、both-accept 併存なし)。
+ *
  * Extensions marked `startup` auto-launch at boot, unless the page was opened
  * in safe mode (`?pkc-safe-mode=1`), which exists precisely so a hanging
  * extension cannot brick startup: reload with the flag to recover.
  */
 
 import type { Dispatcher } from '../state/dispatcher';
-import { getAncestorFolderLids } from '@features/relation/tree';
-import { parseAttachmentBody, decodeAttachmentText } from './attachment-presenter';
-import { launchGraphExtension, type GraphExtensionHandle } from './graph-extension-launcher';
+import { parseAttachmentBody } from './attachment-presenter';
+import type { ExtensionChannelHandle } from '../transport/extension-channel';
+import { getSharedExtensionHost } from './extension-host-runtime';
+
+// 後方互換 re-export(既存テスト / 呼び出し元の import 経路を維持)。
+export { moveEntryToFolder, relateEntries } from './extension-host-runtime';
 
 /** True when the page was opened with `?pkc-safe-mode` — autostart is skipped. */
 export function isSafeMode(): boolean {
@@ -24,110 +31,32 @@ export function isSafeMode(): boolean {
 }
 
 /**
- * Launch a single PKC-Extension entry (an HTML attachment with
- * `pkc_extension: true`). Resolves its HTML from `container.assets`, opens it
- * via the secure channel, and wires node-selection back to `SELECT_ENTRY`.
+ * Launch a single PKC-Extension entry over the shared host(pkc-ext channel)。
+ * projection / selected push、hint(open/select)、T2 write はすべて
+ * orchestrator(`extension-host-runtime.ts`)側で配線済み。
  * Returns null if the entry is not a launchable extension or the popup was
  * blocked.
  */
 export function launchPkcExtensionEntry(
   entryLid: string,
   dispatcher: Dispatcher,
-): GraphExtensionHandle | null {
-  const container = dispatcher.getState().container;
-  if (!container) return null;
-  const entry = container.entries.find((e) => e.lid === entryLid);
-  if (!entry || entry.archetype !== 'attachment') return null;
-  const att = parseAttachmentBody(entry.body);
-  if (!att.pkc_extension) return null;
-  const html = decodeAttachmentText(att, container.assets);
-  if (!html) return null;
-  const handle = launchGraphExtension({
-    html,
-    getContainer: () => dispatcher.getState().container,
-    onSelect: (lid) => dispatcher.dispatch({ type: 'SELECT_ENTRY', lid }),
-    onOpen: (lid) => {
-      // Double-click in the graph → open the entry here and bring PKC2 forward.
-      dispatcher.dispatch({ type: 'SELECT_ENTRY', lid, revealInSidebar: true });
-      try { window.focus(); } catch { /* noop */ }
-    },
-    onMove: (lid, folderLid) => moveEntryToFolder(dispatcher, lid, folderLid),
-    onRelate: (from, to) => relateEntries(dispatcher, from, to),
-  });
-  if (handle) {
-    // Live updates — but only when something the graph shows actually changed.
-    // The container is immutably updated, so a reference compare suffices;
-    // pushing on every state mutation made each save re-render the graph.
-    // Selection changes flow as a lightweight `selected` (the graph focuses
-    // there, e.g. into the opened folder) instead of a full projection.
-    let lastContainer = dispatcher.getState().container;
-    let lastSelected = dispatcher.getState().selectedLid;
-    dispatcher.onState((s) => {
-      if (s.container !== lastContainer) {
-        lastContainer = s.container;
-        handle.pushUpdate();
-      }
-      if (s.selectedLid !== lastSelected) {
-        lastSelected = s.selectedLid;
-        if (s.selectedLid) handle.pushSelected(s.selectedLid);
-      }
-    });
-  }
-  return handle;
-}
-
-/**
- * Move an entry into a folder via the normal dispatch + persistence path
- * (DELETE_RELATION on the old structural parent, CREATE_RELATION on the new).
- * All inputs are validated; an invalid request is a safe no-op so graph-driven
- * edits cannot corrupt the container.
- */
-export function moveEntryToFolder(dispatcher: Dispatcher, lid: string, folderLid: string): void {
-  const container = dispatcher.getState().container;
-  if (!container || dispatcher.getState().readonly) return;
-  const entry = container.entries.find((e) => e.lid === lid);
-  const folder = container.entries.find((e) => e.lid === folderLid);
-  if (!entry || !folder || folder.archetype !== 'folder' || lid === folderLid) return;
-  // Cycle guard: cannot move a folder into its own descendant.
-  if (entry.archetype === 'folder') {
-    const ancestors = getAncestorFolderLids(container.relations, container.entries, folderLid);
-    if (ancestors.includes(lid)) return;
-  }
-  // Already in that folder → no-op.
-  const cur = container.relations.find((r) => r.kind === 'structural' && r.to === lid);
-  if (cur && cur.from === folderLid) return;
-  for (const r of container.relations) {
-    if (r.kind === 'structural' && r.to === lid) dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
-  }
-  dispatcher.dispatch({ type: 'CREATE_RELATION', from: folderLid, to: lid, kind: 'structural' });
-}
-
-/** Create a semantic relation between two entries (validated, persisted). */
-export function relateEntries(dispatcher: Dispatcher, from: string, to: string): void {
-  const container = dispatcher.getState().container;
-  if (!container || dispatcher.getState().readonly) return;
-  if (from === to) return;
-  const hasFrom = container.entries.some((e) => e.lid === from);
-  const hasTo = container.entries.some((e) => e.lid === to);
-  if (!hasFrom || !hasTo) return;
-  // Skip if an identical relation already exists.
-  if (container.relations.some((r) => r.from === from && r.to === to && r.kind === 'semantic')) return;
-  dispatcher.dispatch({ type: 'CREATE_RELATION', from, to, kind: 'semantic' });
+): ExtensionChannelHandle | null {
+  return getSharedExtensionHost(dispatcher).openExtension(entryLid);
 }
 
 /**
  * Auto-launch every `pkc_extension && startup` attachment in the current
  * container. No-op in safe mode. Returns the live handles (for teardown /
- * pushUpdate by the caller).
+ * inspection by the caller).
  */
-export function autostartPkcExtensions(dispatcher: Dispatcher): GraphExtensionHandle[] {
+export function autostartPkcExtensions(dispatcher: Dispatcher): ExtensionChannelHandle[] {
   if (isSafeMode()) {
     console.info('[PKC2] safe mode (?pkc-safe-mode): skipping PKC-Extension autostart');
     return [];
   }
   const container = dispatcher.getState().container;
   if (!container) return [];
-  const handles: GraphExtensionHandle[] = [];
+  const handles: ExtensionChannelHandle[] = [];
   const blocked: { lid: string; title: string }[] = [];
   for (const e of container.entries) {
     if (e.archetype !== 'attachment') continue;

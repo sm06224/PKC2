@@ -41,7 +41,6 @@ import {
   isMediaViewerOpen,
 } from './media-viewer';
 import { openImagePreview } from './image-preview';
-import { launchPkcExtensionEntry } from './pkc-extension-startup';
 import {
   enhanceTable,
   sortColumn,
@@ -151,7 +150,7 @@ import { handleEditorFormatShortcut } from './editor-format-shortcuts';
 import { renderRegionContextMenu, detectContextMenuRegion } from './context-menu-region';
 import { detectObjectContext, renderObjectContextMenu } from './context-menu-object';
 // #806 host-push 送付導線: 右クリック「拡張へ送る」+ 紐付け / 既定送り先。
-import { createExtensionHost, type ExtensionHost } from './extension-host-runtime';
+import { getSharedExtensionHost, type ExtensionHost } from './extension-host-runtime';
 import {
   loadExtensionBindings,
   bindExtension,
@@ -284,9 +283,10 @@ export function bindActions(
   dispatcher: Dispatcher,
   deps?: { extensionHost?: ExtensionHost },
 ): () => void {
-  // #806 host-push: 「拡張へ送る」の実体。テストは fake host を注入する。
-  // 実 host は openExtension まで副作用ゼロなので eager 生成で問題ない。
-  const extensionHost: ExtensionHost = deps?.extensionHost ?? createExtensionHost(dispatcher);
+  // #806 host-push: 「拡張へ送る」「launcher tile 起動」の実体。autostart
+  // (main.ts)と同じ共有 host を使う(同一拡張の二重起動防止)。テストは
+  // fake host を注入する。
+  const extensionHost: ExtensionHost = deps?.extensionHost ?? getSharedExtensionHost(dispatcher);
   // Wire the slash-menu /asset command through to the asset picker.
   // Kept as a callback so slash-menu does not have to know about the
   // dispatcher or container access.
@@ -2899,13 +2899,13 @@ export function bindActions(
         // Safari は user 設定次第)。これにより App Launcher tile click と
         // 既存 「🌐 Open in New Window」button の両方が別窓化される。
         if (!lid) break;
-        // PKC-Extension (#790): launch over the secure PKC-Message channel
-        // (host serves a minimal projection) rather than as a plain
-        // document.write app.
+        // PKC-Extension (#790 → #806/#796): launch over the generic pkc-ext
+        // channel(既定 Tier S sandbox、host serves a projection)rather
+        // than as a plain document.write app.
         {
           const extEntry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
           if (extEntry && parseAttachmentBody(extEntry.body).pkc_extension === true) {
-            launchPkcExtensionEntry(lid, dispatcher);
+            extensionHost.openExtension(lid);
             break;
           }
         }

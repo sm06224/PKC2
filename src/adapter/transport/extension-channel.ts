@@ -1,25 +1,32 @@
 /**
- * PKC-Extension host channel(host-push 体系、#806 設計 doc rev.2 §3.2 —
- * 一括実装 3/6)。
+ * PKC-Extension host channel(host-push 体系、#806 設計 doc rev.2 §3.2 +
+ * #796 封じ込め設計)。
  *
- * graph の bespoke `pkc-graph-ext`(`graph-extension-launcher.ts`)を
- * 汎用語彙へ一般化した host 側チャネル。**host 主体の push** が一次経路:
+ * graph の bespoke `pkc-graph-ext` を一般化した host 側チャネル。
+ * **host 主体の push** が一次経路:
  *
- *   - host → ext  `pkc:projection`  既定露出(index/list/統計、メタのみ)
- *   - host → ext  `pkc:deliver`     ユーザーの send ジェスチャで実体 1 件
- *   - ext  → host `pkc:write`       T2 editor の書き戻し(host が検証)
- *   - host → ext  `pkc:write-result`書き戻しの成否
+ *   - host → ext  `projection`   既定露出(index/list/統計、メタのみ)
+ *   - host → ext  `deliver`      ユーザーの send ジェスチャで実体 1 件
+ *   - host → ext  `selected`     host 側の選択変更(graph 等が focus を追従)
+ *   - ext  → host `write`        T2 editor の書き戻し(host が検証)
+ *   - host → ext  `write-result` 書き戻しの成否
+ *   - ext  → host `hint`         軽量ヒント(open / select)。実体は流れない
  *
  * **拡張から実体を pull する経路は無い**(rev.1 の `asset:request` は廃止)。
  *
- * セキュリティ(graph と同じ primitive、#796 の opaque 移行でも生存):
- *   1. window identity: `event.source === childWin`(偽造不能の錨)
- *   2. origin: `event.origin === location.origin`(opaque 化前の現行)
- *   3. per-launch nonce: 全 ext→host message に必須
- * 送信 targetOrigin は `pinTargetOrigin(location.origin)`(#797 規則)。
+ * 封じ込め 2 層(#796 §2、既定 = Tier S):
+ *   - **Tier S sandboxed(既定)**: popup shell(same-origin)内の
+ *     `<iframe sandbox="allow-scripts" srcdoc>` で load → opaque origin。
+ *     ホスト DOM / IDB / localStorage へ構造的に到達不能、postMessage が
+ *     唯一の通路。gate は identity + nonce(origin は `'null'` で自滅する
+ *     ため捨てる、#796 §3)。送信 targetOrigin は `'*'`(identity が宛先を
+ *     一意化)。子は `window.parent` へ送る。
+ *   - **Tier T trusted(manifest 明示 opt-in)**: 現行どおり
+ *     `window.open('') + document.write`(same-origin 全権)。gate は
+ *     identity + origin + nonce。子は `window.opener` へ送る。
  *
- * このモジュールは wire のみ。送付ジェスチャ(右クリック「拡張へ送る」)の
- * UI 導線は 4/6、graph の本チャネルへの移行は 5/6 で行う。
+ * capability → sandbox/allow トークン写像(#796 §4.2 初版語彙)は
+ * `sandboxTokensFor` を参照。未知 capability は無視(forward 互換)。
  */
 
 import { pinTargetOrigin } from './message-bridge';
@@ -31,15 +38,6 @@ export const PKC_EXT_V = 1;
 /** host → ext で渡す実体 1 件(features の `DeliverPayload` 正本の re-export)。 */
 export type ExtDeliverPayload = DeliverPayload;
 
-/** host → ext: 既定露出。projection は `ContainerProjection`(features 層)。 */
-export interface ExtProjectionMsg {
-  pkc: typeof PKC_EXT;
-  v: typeof PKC_EXT_V;
-  t: 'projection';
-  nonce: string;
-  projection: unknown;
-}
-
 /** ext → host: T2 editor の書き戻し要求(host が op を検証)。 */
 export interface ExtWriteRequest {
   lid?: string;
@@ -47,24 +45,34 @@ export interface ExtWriteRequest {
   correlation_id?: string;
 }
 
+/** #796 §4.1 manifest(AttachmentBody additive)。tier 既定 'sandboxed'。 */
+export interface ExtensionManifest {
+  tier?: 'sandboxed' | 'trusted';
+  capabilities?: string[];
+}
+
 export interface LaunchExtensionOptions {
   /** 拡張の単一 HTML(asset 由来)。 */
   html: string;
   /** projection を (再)構築するための provider。 */
   getProjection: () => unknown;
+  /** 封じ込め manifest。未指定 = Tier S 最小(`allow-scripts` のみ)。 */
+  manifest?: ExtensionManifest;
   /** ext→host `hello` 受信時に established になったら呼ばれる。 */
   onEstablished?: () => void;
-  /** ext→host `pkc:write`(T2)。host 側で検証して `ok` を返す。 */
+  /** ext→host `write`(T2)。host 側で検証して `ok` を返す。 */
   onWrite?: (req: ExtWriteRequest) => boolean;
-  /** ext が「この entry を開いてほしい」等の軽量ヒント(pull ではない)。 */
+  /** ext が「この entry を開いて / 選択して」等の軽量ヒント(pull ではない)。 */
   onHint?: (hint: { kind: string; lid?: string }) => void;
 }
 
 export interface ExtensionChannelHandle {
   /** 最新 projection を再送(container 変化時)。 */
   pushProjection: () => void;
-  /** 実体 1 件を push(送付ジェスチャの結果)。 */
+  /** 実体 1 件を push(送付ジェスチャの結果)。handshake 前は buffer。 */
   deliver: (payload: ExtDeliverPayload) => void;
+  /** host 側の選択変更を通知(graph 等が focus を追従)。 */
+  notifySelected: (lid: string) => void;
   /** チャネルを閉じる。 */
   close: () => void;
   /** established 済みか(テスト/呼び出し側の判定用)。 */
@@ -78,15 +86,45 @@ function makeNonce(): string {
 }
 
 /**
- * 拡張を別ウィンドウで起動し、host-push チャネルを配線する。popup が
- * ブロックされたら null(呼び出し側は retry prompt 等で対応、画面ハイジャック
- * はしない)。同一オリジン(`window.open('') + document.write`)で childWin
- * identity + nonce が成立する。
+ * capability → `sandbox` 属性トークン(#796 §4.2)。`allow-scripts` は常時
+ * (拡張は script で動く)。`allow-same-origin` は**決して**付けない(opaque
+ * 化こそが封じ込めの核)。
+ */
+export function sandboxTokensFor(capabilities: readonly string[] | undefined): string[] {
+  const tokens = ['allow-scripts'];
+  for (const c of capabilities ?? []) {
+    if (c === 'downloads') tokens.push('allow-downloads');
+    else if (c === 'popups') tokens.push('allow-popups');
+    else if (c === 'forms') tokens.push('allow-forms');
+    // 未知 capability は無視(forward 互換)。
+  }
+  return tokens;
+}
+
+/** capability → iframe `allow` 属性(#796 §4.2)。 */
+export function allowAttributeFor(capabilities: readonly string[] | undefined): string {
+  const parts: string[] = [];
+  for (const c of capabilities ?? []) {
+    if (c === 'clipboard-write') parts.push('clipboard-write');
+    else if (c === 'fullscreen') parts.push('fullscreen');
+  }
+  return parts.join('; ');
+}
+
+/**
+ * 拡張を起動して host-push チャネルを配線する。popup がブロックされたら
+ * null(呼び出し側は retry prompt 等で対応、画面ハイジャックはしない)。
+ *
+ * Tier S: popup shell に sandboxed iframe を立て、その `contentWindow` を
+ * identity の錨にする。message listener は **popup window 側**に張る(子の
+ * `window.parent` = popup shell)。
+ * Tier T: 子 window 自体が identity。listener は host(main)window。
  */
 export function launchExtensionChannel(
   opts: LaunchExtensionOptions,
 ): ExtensionChannelHandle | null {
   const nonce = makeNonce();
+  const trusted = opts.manifest?.tier === 'trusted';
   let established = false;
   let childWin: Window | null = null;
   // 送付ジェスチャ(deliver)が handshake より先に来た場合に備えるバッファ。
@@ -95,7 +133,10 @@ export function launchExtensionChannel(
   // 黙って捨てるとユーザーの send が消えるため、hello で flush する。
   const pendingDelivers: ExtDeliverPayload[] = [];
 
-  const target = (): string => pinTargetOrigin(window.location.origin);
+  // Tier S は opaque origin への送信なので '*'(#796 §3 — identity が宛先を
+  // 一意化)。Tier T は同一オリジンへピン留め(#797 規則)。
+  const target = (): string =>
+    trusted ? pinTargetOrigin(window.location.origin) : pinTargetOrigin('null');
 
   const post = (msg: Record<string, unknown>): void => {
     if (!childWin) return;
@@ -113,9 +154,12 @@ export function launchExtensionChannel(
   };
 
   const onMessage = (ev: MessageEvent): void => {
-    // ── security gate(graph と同一 primitive)──
+    // ── security gate(#796 §3)──
+    // identity は両 tier で必須(偽造不能の錨)。origin は Tier T のみ
+    // 検証(Tier S は opaque = 'null' で同一オリジン検証が自滅するため、
+    // identity + nonce が境界を担う)。
     if (ev.source !== childWin) return;
-    if (ev.origin !== window.location.origin) return;
+    if (trusted && ev.origin !== window.location.origin) return;
     const d = ev.data as Record<string, unknown> | null;
     if (!d || d.pkc !== PKC_EXT || d.v !== PKC_EXT_V) return;
     if (d.t === 'hello') {
@@ -147,12 +191,43 @@ export function launchExtensionChannel(
 
   const win = window.open('', '_blank', 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes');
   if (!win) return null;
-  win.document.open();
-  win.document.write(opts.html);
-  win.document.close();
-  childWin = win;
 
-  window.addEventListener('message', onMessage);
+  let removeListener: () => void;
+  if (trusted) {
+    // Tier T: 現行どおり popup へ直接 document.write(same-origin 全権)。
+    win.document.open();
+    win.document.write(opts.html);
+    win.document.close();
+    childWin = win;
+    window.addEventListener('message', onMessage);
+    removeListener = () => window.removeEventListener('message', onMessage);
+  } else {
+    // Tier S: same-origin の shell を書き、その中の sandboxed iframe に
+    // srcdoc で拡張を立てる。shell は host と同一オリジンなので host が
+    // listener を直接張れる(子の `window.parent` = shell window)。
+    win.document.open();
+    win.document.write(
+      '<!doctype html><html><head><meta charset="utf-8"><title>PKC-Extension</title>'
+      + '<style>html,body{margin:0;height:100%;overflow:hidden}'
+      + 'iframe{border:0;width:100%;height:100%}</style></head><body></body></html>',
+    );
+    win.document.close();
+    const frame = win.document.createElement('iframe');
+    frame.setAttribute('sandbox', sandboxTokensFor(opts.manifest?.capabilities).join(' '));
+    const allow = allowAttributeFor(opts.manifest?.capabilities);
+    if (allow) frame.setAttribute('allow', allow);
+    frame.setAttribute('srcdoc', opts.html);
+    win.document.body.appendChild(frame);
+    childWin = frame.contentWindow;
+    win.addEventListener('message', onMessage);
+    removeListener = () => {
+      try {
+        win.removeEventListener('message', onMessage);
+      } catch {
+        /* popup already closed */
+      }
+    };
+  }
 
   return {
     pushProjection: () => { if (established) sendProjection(); },
@@ -163,9 +238,12 @@ export function launchExtensionChannel(
       }
       post({ t: 'deliver', payload });
     },
+    notifySelected: (lid: string) => {
+      if (established) post({ t: 'selected', lid });
+    },
     close: () => {
-      window.removeEventListener('message', onMessage);
-      try { childWin?.close(); } catch { /* noop */ }
+      removeListener();
+      try { win.close(); } catch { /* noop */ }
       childWin = null;
     },
     isEstablished: () => established,

@@ -137,10 +137,10 @@ PKC-Message v2 は wire を **JSON-RPC 2.0** に全面移行する(prior-art 調
 
 container 内 asset 由来・同一オリジンの拡張は、外部 origin の sender(v1 spec の主対象)と信頼レベルが異なる。`Container.meta.extensionGrants`(OQ-4、v2.2)への接続 — 特に asset 由来拡張への `granted_by:'auto'` 暗黙 grant の可否(D4)— は実装 go まで保留。本版では §3.4 の catalog を超える method を host が拒否すること(MUST)のみ定める。
 
-### 3.7 Legacy: bespoke `pkc-graph-ext` v1(deprecated 予定)
+### 3.7 Legacy: bespoke `pkc-graph-ext` v1(**廃止済み 2026-06-12**)
 
-- graph 拡張(#790)が使用中の bespoke channel。v2 ではない独自 message 形(`hello` / `welcome` / `select` / `projection` + `PKC_GRAPH_V = 1`)。
-- 互換性切り捨ての user 決定(2026-06-12)により、§3.8 の `pkc-ext` チャネルへ**直接移行**してよい(both-accept 併存期間は不要)。graph の移行は host 側で実施。
+- graph 拡張(#790)が使用していた bespoke channel(`hello` / `welcome` / `select` / `projection` + `PKC_GRAPH_V = 1`)。
+- 互換性切り捨ての user 決定(2026-06-12)により **host 実装から削除済み**(both-accept 併存なし)。全 PKC-Extension 起動経路(launcher tile / autostart / 送付ジェスチャ)は §3.8 の `pkc-ext` チャネルに一本化。旧 channel しか話せない拡張 HTML は handshake しない(再ビルド要)。
 
 ### 3.8 host-push `pkc-ext` チャネル(normative、実装済み 2026-06-12)
 
@@ -159,15 +159,29 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | t | 方向 | payload | 意味 |
 |---|---|---|---|
 | `hello` | child→host | — | handshake。host が established → projection を返す |
-| `projection` | host→child | `ContainerProjection`(index/list/統計、**body/assets/revisions を含まない**、MUST) | 既定露出。container 変化で再 push |
+| `projection` | host→child | `ContainerProjection`(index/list/統計 + body 由来の **link 集計** `links.internal/external`。**body/assets/revisions を含まない**、MUST) | 既定露出。container 変化で再 push |
 | `deliver` | host→child | `{ kind:'asset'|'entry', lid?, asset_key?, mime?, filename?, body?, data_base64?, correlation_id? }` | **ユーザーの send ジェスチャ**で実体 1 件。pull 経路は無い(MUST NOT)。handshake 前の send は host が buffer し、`hello` 後に projection → deliver の順で配送 |
+| `selected` | host→child | `{ lid }` | host 側の選択変更(graph 等が focus を追従)。established 後のみ |
 | `write` | child→host | `{ lid?, ops:[...], correlation_id? }` | T2 書き戻し。host が `validateWriteOps` で検証してから適用(G2、MUST) |
 | `write-result` | host→child | `{ ok, correlation_id? }` | 書き戻しの成否 |
-| `hint` | child→host | `{ kind, lid? }` | 軽量ヒント(open のみ)。実体は流れない |
+| `hint` | child→host | `{ kind, lid? }` | 軽量ヒント。host が処理するのは `open`(選択 + sidebar reveal + host 前面化)と `select`(選択のみ)。実体は流れない |
 
 **write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
 
-**security gate**(§3.3 と同一 primitive、MUST): window identity(`event.source === childWin`)+ origin + per-launch nonce(`hello` 以外必須)。送信 targetOrigin は受信 origin にピン留め(#797、opaque は `'*'`)。
+**封じ込め 2 層**(#796、`pkc-extension-containment-design-2026-06.md` §2/§3 — 実装済み):
+
+| | Tier S sandboxed(**既定**) | Tier T trusted(manifest 明示 opt-in) |
+|---|---|---|
+| load | popup shell(same-origin)内 `<iframe sandbox="allow-scripts" srcdoc>`。`allow-same-origin` は**決して付かない**(MUST NOT) | `window.open + document.write`(same-origin 全権) |
+| 子の origin | opaque(`'null'`) | `location.origin` |
+| gate | window identity + nonce(origin 検証は opaque で自滅するため捨てる) | identity + origin + nonce |
+| 送信 targetOrigin | `'*'`(identity が宛先を一意化) | `location.origin` にピン留め(#797) |
+| 子の送信先 | `window.parent`(= shell。host が shell に listener を張る) | `window.opener` |
+| 永続化 | **不可**(opaque で localStorage / IDB は SecurityError)。Tier S 拡張は再起動で状態を失う。永続化はホスト経由 API(将来) | 可(全権ゆえ) |
+
+manifest は `AttachmentBody.extension_manifest`(additive): `{ tier?: 'sandboxed'|'trusted', capabilities?: string[] }`。capability → トークン写像(#796 §4.2): `downloads`→`allow-downloads` / `popups`→`allow-popups` / `forms`→`allow-forms` / `clipboard-write`・`fullscreen`→iframe `allow` 属性。未知 capability は無視(forward 互換)。
+
+**security gate**(§3.3 と同一 primitive、MUST): window identity(`event.source === childWin`)+ per-launch nonce(`hello` 以外必須)+ Tier T のみ origin 検証。
 
 **consent**: 拡張は asset を pull できない。実体は (a) ユーザーの右クリック「拡張へ送る」/ 既定送り先(`extension-bindings`)、(b) 紐付け(導入)= standing opt-in、の 2 段で host が制御する。banner は出さない(send ジェスチャ自体が同意)。
 

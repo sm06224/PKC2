@@ -57,6 +57,17 @@ export interface AttachmentBody {
    * 付いている起動では skip される(extension 起因ハングからの復旧導線)。
    */
   startup?: boolean;
+  /**
+   * 封じ込め manifest(#796 §4.1、additive)。tier 既定は 'sandboxed'
+   * (= `<iframe sandbox>` opaque origin で load、ホスト資産へ構造的に
+   * 到達不能)。'trusted' は same-origin 全権の明示 opt-in。capabilities
+   * は sandbox/allow トークンへの写像語彙(#796 §4.2)。未知 capability
+   * はホストが無視する(forward 互換)。
+   */
+  extension_manifest?: {
+    tier?: 'sandboxed' | 'trusted';
+    capabilities?: string[];
+  };
 }
 
 export function parseAttachmentBody(body: string): AttachmentBody {
@@ -80,10 +91,23 @@ export function parseAttachmentBody(body: string): AttachmentBody {
         : undefined,
       pkc_extension: typeof parsed.pkc_extension === 'boolean' ? parsed.pkc_extension : undefined,
       startup: typeof parsed.startup === 'boolean' ? parsed.startup : undefined,
+      extension_manifest: parseExtensionManifest(parsed.extension_manifest),
     };
   } catch {
     return { name: '', mime: 'application/octet-stream' };
   }
+}
+
+/** #796 §4.1: extension_manifest を防御的に parse(不正形は undefined)。 */
+function parseExtensionManifest(raw: unknown): AttachmentBody['extension_manifest'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const tier = o.tier === 'trusted' || o.tier === 'sandboxed' ? o.tier : undefined;
+  const capabilities = Array.isArray(o.capabilities)
+    ? o.capabilities.filter((c): c is string => typeof c === 'string')
+    : undefined;
+  if (tier === undefined && capabilities === undefined) return undefined;
+  return { ...(tier ? { tier } : {}), ...(capabilities ? { capabilities } : {}) };
 }
 
 /**
@@ -140,6 +164,7 @@ export function serializeAttachmentBody(att: AttachmentBody): string {
   }
   if (att.pkc_extension === true) obj.pkc_extension = true;
   if (att.startup === true) obj.startup = true;
+  if (att.extension_manifest !== undefined) obj.extension_manifest = att.extension_manifest;
   return JSON.stringify(obj);
 }
 

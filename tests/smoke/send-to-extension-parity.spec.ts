@@ -30,6 +30,8 @@ async function seedContainer(page: Page, container: Record<string, unknown>): Pr
 }
 
 // pkc-ext を話す最小拡張: hello を送り、projection / deliver を DOM に書く。
+// Tier S(sandboxed iframe)では host への送信先は `window.parent`(shell)、
+// Tier T(popup 直書き)では `window.opener` — 両対応にしておく。
 const EXT_HTML = [
   '<!doctype html><html><head><meta charset="utf-8"><title>ext</title></head><body>',
   '<div id="status">waiting</div>',
@@ -47,7 +49,7 @@ const EXT_HTML = [
   '    document.body.appendChild(el);',
   '  }',
   '});',
-  "window.opener.postMessage({ pkc: 'pkc-ext', v: 1, t: 'hello' }, '*');",
+  "(window.opener || window.parent).postMessage({ pkc: 'pkc-ext', v: 1, t: 'hello' }, '*');",
   '</script></body></html>',
 ].join('\n');
 
@@ -100,9 +102,11 @@ test('parity: 右クリック「拡張へ送る」→ popup が deliver を受�
     page.mouse.click(btnBox.x + btnBox.width / 2, btnBox.y + btnBox.height / 2),
   ]);
 
-  // popup 側: handshake → projection(2 entries)→ buffered deliver の順で届く。
-  await expect(popup.locator('#delivered')).toHaveText('entry:send me', { timeout: 10_000 });
-  await expect(popup.locator('#status')).toHaveText('proj:2');
+  // Tier S 既定: 拡張は popup shell 内の sandboxed iframe で動く。
+  // handshake → projection(2 entries)→ buffered deliver の順で届く。
+  const ext = popup.frameLocator('iframe');
+  await expect(ext.locator('#delivered')).toHaveText('entry:send me', { timeout: 10_000 });
+  await expect(ext.locator('#status')).toHaveText('proj:2');
   // host 側 menu は閉じている。
   await expect(menu).toHaveCount(0);
 });

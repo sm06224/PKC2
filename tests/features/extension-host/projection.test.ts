@@ -83,14 +83,29 @@ describe('buildContainerProjection', () => {
   });
 });
 
-describe('buildGraphProjection は汎用 projection の上で従来出力を維持する', () => {
-  it('nodes / edges が汎用 projection と一致し、graph 固有統計を重ねる', async () => {
-    const { buildGraphProjection } = await import('@features/graph-extension/projection');
+describe('links — body から導出する link 統計(旧 graph projection を吸収、#796 切替)', () => {
+  it('external: body 中の外部 URL を (entry, url) で dedupe して集計', () => {
     const c = makeContainer();
-    c.entries.find((e) => e.lid === 'e1')!.body = 'see https://example.com/x and more';
-    const g = buildGraphProjection(c);
-    expect(g.nodes.map((n) => n.lid).sort()).toEqual(['a1', 'e1', 'f1']);
-    expect(g.edges).toEqual([{ from: 'f1', to: 'e1', kind: 'structural' }]);
-    expect(g.externalLinks).toEqual([{ from: 'e1', url: 'https://example.com/x' }]);
+    c.entries.find((e) => e.lid === 'e1')!.body =
+      'see https://example.com/x and again https://example.com/x.';
+    const p = buildContainerProjection(c);
+    expect(p.links.external).toEqual([{ from: 'e1', url: 'https://example.com/x' }]);
+  });
+
+  it('internal: 解決済み entry 参照を from/to で集計(self / 未解決は除外)', () => {
+    const c = makeContainer();
+    c.entries.push({
+      lid: 't2', title: 'Linker', archetype: 'text', created_at: T, updated_at: T,
+      body: 'see [Text](entry:e1) and [ghost](entry:nope) and [me](entry:t2)',
+    });
+    const p = buildContainerProjection(c);
+    expect(p.links.internal).toEqual([{ from: 't2', to: 'e1' }]);
+  });
+
+  it('links も body そのものは含まない(lid / url のみ)', () => {
+    const c = makeContainer();
+    c.entries.find((e) => e.lid === 'e1')!.body = 'SECRET https://example.com/y BODY';
+    const p = buildContainerProjection(c);
+    expect(JSON.stringify(p)).not.toContain('SECRET');
   });
 });
