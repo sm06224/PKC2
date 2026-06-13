@@ -310,3 +310,121 @@ describe('FI-03 hydrate failure isolation', () => {
     expect(all.length).toBe(12);
   });
 });
+
+// ── scroll-settle gating(user 報告 2026-06-13「スクロールが空回りする」)──
+//
+// スクロール中の placeholder→実体差し替えは高さ差分を生み、ブラウザの
+// scroll anchoring が scrollTop 補正で打ち消す = つまみだけ動いて視界が
+// 進まない。hydrator はスクロール中の hydrate をキューに退避し、静定
+// (SCROLL_SETTLE_MS)後に flush する。
+
+describe('scroll-settle gating', () => {
+  let originalIO: typeof IntersectionObserver;
+  let intersectionCallback: IntersectionObserverCallback;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    originalIO = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class MockIO {
+      constructor(cb: IntersectionObserverCallback) {
+        intersectionCallback = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return []; }
+      root = null;
+      rootMargin = '';
+      thresholds = [0];
+    } as unknown as typeof IntersectionObserver;
+  });
+
+  afterEach(() => {
+    globalThis.IntersectionObserver = originalIO;
+    vi.useRealTimers();
+    document.body.innerHTML = '';
+  });
+
+  /** center pane 相当の scroll host に接続した textlog doc を作る。 */
+  function mountInCenter(count: number): { host: HTMLElement; el: HTMLElement } {
+    const host = document.createElement('div');
+    host.className = 'pkc-center-content';
+    const el = textlogPresenter.renderBody(makeEntry({ entries: generateLogs(count) }));
+    host.appendChild(el);
+    document.body.appendChild(host);
+    return { host, el };
+  }
+
+  function fireIntersect(target: HTMLElement): void {
+    intersectionCallback(
+      [{ isIntersecting: true, target } as unknown as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+  }
+
+  it('スクロール中は hydrate せず、静定後に flush する', () => {
+    const { host, el } = mountInCenter(12);
+    const target = el.querySelector<HTMLElement>('[data-pkc-hydrated="false"]')!;
+    const logId = target.getAttribute('data-pkc-log-id')!;
+
+    // アクティブスクロール中(capture で document に届く)。
+    host.dispatchEvent(new Event('scroll'));
+    fireIntersect(target);
+    expect(
+      el.querySelector(`[data-pkc-log-id="${logId}"]`)!.getAttribute('data-pkc-hydrated'),
+    ).toBe('false'); // 据え置き
+
+    // 静定(SCROLL_SETTLE_MS=160 経過)→ flush。
+    vi.advanceTimersByTime(200);
+    expect(
+      el.querySelector(`[data-pkc-log-id="${logId}"]`)!.getAttribute('data-pkc-hydrated'),
+    ).toBe('true');
+  });
+
+  it('スクロールが続く限り flush は延期される(debounce)', () => {
+    const { host, el } = mountInCenter(12);
+    const target = el.querySelector<HTMLElement>('[data-pkc-hydrated="false"]')!;
+    const logId = target.getAttribute('data-pkc-log-id')!;
+
+    host.dispatchEvent(new Event('scroll'));
+    fireIntersect(target);
+    vi.advanceTimersByTime(100);
+    host.dispatchEvent(new Event('scroll')); // 連続スクロール
+    vi.advanceTimersByTime(100); // 前回 scroll から 100ms — まだ静定していない
+    expect(
+      el.querySelector(`[data-pkc-log-id="${logId}"]`)!.getAttribute('data-pkc-hydrated'),
+    ).toBe('false');
+    vi.advanceTimersByTime(100); // 計 200ms 無スクロール → flush
+    expect(
+      el.querySelector(`[data-pkc-log-id="${logId}"]`)!.getAttribute('data-pkc-hydrated'),
+    ).toBe('true');
+  });
+
+  it('docEl の祖先でない要素のスクロール(sidebar 等)はゲートしない', () => {
+    const { el } = mountInCenter(12);
+    const sidebar = document.createElement('div');
+    document.body.appendChild(sidebar);
+    const target = el.querySelector<HTMLElement>('[data-pkc-hydrated="false"]')!;
+
+    sidebar.dispatchEvent(new Event('scroll'));
+    fireIntersect(target);
+    expect(target.isConnected).toBe(false); // 即 hydrate(置換済み)
+  });
+
+  it('スクロール中でなければ従来どおり即 hydrate', () => {
+    const { el } = mountInCenter(12);
+    const target = el.querySelector<HTMLElement>('[data-pkc-hydrated="false"]')!;
+    fireIntersect(target);
+    expect(target.isConnected).toBe(false);
+  });
+
+  it('disconnect 後は scroll listener が外れる(据え置きキューも破棄)', () => {
+    const { host, el } = mountInCenter(12);
+    const target = el.querySelector<HTMLElement>('[data-pkc-hydrated="false"]')!;
+    host.dispatchEvent(new Event('scroll'));
+    fireIntersect(target); // キューに退避
+    getActiveHydrator()!.disconnect();
+    vi.advanceTimersByTime(300); // settle timer は disconnect で破棄済み
+    expect(target.getAttribute('data-pkc-hydrated')).toBe('false');
+  });
+});

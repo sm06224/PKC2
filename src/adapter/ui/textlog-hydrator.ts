@@ -60,6 +60,14 @@ const placeholderMinHeightPx = defineFlag<number>(
   },
 );
 const IO_ROOT_MARGIN = '400px 0px';
+// user 報告 2026-06-13「センターペインのスクロールが空回りする(スクロール
+// バーは動くのに実際のスクロールがしない)」: hydration の `replaceWith` は
+// placeholder(min-height 160px)と実体の高さ差を生む。これが**アクティブ
+// スクロール中**に起きると、ブラウザの scroll anchoring が高さ差分を
+// scrollTop 補正で打ち消し続ける = つまみだけ動いて視界が進まない。
+// 対策: スクロール中は hydrate をキューに退避し、静定後に flush する
+// (静止中の差し替えなら anchoring はむしろ読書位置を守る側に働く)。
+const SCROLL_SETTLE_MS = 160;
 
 export interface HydratorContext {
   lid: string;
@@ -224,12 +232,54 @@ export function attachHydrator(
     return { disconnect() {}, forceHydrateAll: doForceHydrateAll };
   }
 
+  // ── scroll-settle gating(冒頭 SCROLL_SETTLE_MS 注記)──
+  let scrolling = false;
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingDuringScroll = new Set<HTMLElement>();
+  let scrollHost: EventTarget | null = null;
+
+  function flushPendingHydrations(): void {
+    for (const el of [...pendingDuringScroll]) {
+      pendingDuringScroll.delete(el);
+      if (el.getAttribute('data-pkc-hydrated') !== 'false') continue;
+      const logId = el.getAttribute('data-pkc-log-id');
+      const ctx = logId ? ctxMap.get(logId) : undefined;
+      if (ctx) hydrateArticle(el, ctx, renderFn);
+    }
+  }
+
+  const onScroll = (ev: Event): void => {
+    // docEl の祖先以外のスクロール(sidebar 等)はこの doc の hydration と
+    // 無関係なので無視する。document / window スクロールは受ける。
+    const t = ev.target;
+    if (t instanceof Element && !t.contains(docEl)) return;
+    scrolling = true;
+    if (settleTimer !== null) clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+      scrolling = false;
+      settleTimer = null;
+      flushPendingHydrations();
+    }, SCROLL_SETTLE_MS);
+  };
+
+  // scroll イベントは bubble しないが capture では document に届く。
+  // renderBody 時点で docEl が未接続でも ownerDocument は確定しているため、
+  // scroll container(`.pkc-center-content`)の解決待ちが不要になる。
+  scrollHost = docEl.ownerDocument ?? null;
+  scrollHost?.addEventListener('scroll', onScroll, { capture: true, passive: true });
+
   const observer = new IntersectionObserver(
     (entries) => {
       for (const ioEntry of entries) {
         if (!ioEntry.isIntersecting) continue;
         const el = ioEntry.target as HTMLElement;
         if (el.getAttribute('data-pkc-hydrated') !== 'false') {
+          observer.unobserve(el);
+          continue;
+        }
+        if (scrolling) {
+          // スクロール中の差し替えは空回りの原因 — 静定後に flush する。
+          pendingDuringScroll.add(el);
           observer.unobserve(el);
           continue;
         }
@@ -254,6 +304,11 @@ export function attachHydrator(
     lookaheadDone = true;
     let i = 0;
     function tick(): void {
+      if (scrolling) {
+        // 先読みの差し替えもスクロール中は止める(同じ空回り源)。
+        setTimeout(tick, SCROLL_SETTLE_MS);
+        return;
+      }
       const remaining = docEl.querySelectorAll<HTMLElement>(
         '[data-pkc-hydrated="false"]',
       );
@@ -282,6 +337,13 @@ export function attachHydrator(
   return {
     disconnect() {
       observer.disconnect();
+      if (settleTimer !== null) {
+        clearTimeout(settleTimer);
+        settleTimer = null;
+      }
+      pendingDuringScroll.clear();
+      scrollHost?.removeEventListener('scroll', onScroll, { capture: true });
+      scrollHost = null;
       if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
         window.removeEventListener('beforeprint', beforePrintHandler);
       }
