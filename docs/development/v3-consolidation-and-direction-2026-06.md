@@ -72,8 +72,9 @@ user 提示の長期像(2026-06-06)。**現時点では設計 doc 化までで�
 プライム・ディレクティブと両立する範囲で順次設計する。
 
 1. **コアを薄く** — 基本機能をシンプルに抑える
-2. **ランチャー + PKC-Extensions** — 多機能を core から退避させる器(launcher view は既存、
-   Extension host は未実装 = 新規設計)
+2. **ランチャー + PKC-Extensions** — 多機能を core から退避させる器(launcher view は既存。
+   **Extension host は 2026-06-12/13 に実装着地** — host-push 体系 + Tier S 封じ込め。
+   棚卸しは `extension-host-status-2026-06.md`)
 3. **OPFS をコアに / idb はブラウザ専用レガシーモード** — `storage-adapter.ts` は既に
    `opfs-adapter.ts`(未実装)を構造的に予約済。土台あり
 4. **workspace 概念の導入** — 現 `BucketName='containers'|'assets'` 固定を workspace 軸へ拡張
@@ -143,3 +144,4 @@ archive 実施済(#775、2026-06-06):roadmap / v3-proposals / Phase β plan + 3 
 |---|---|
 | 2026-06-02 | user direction(PR #760 起源):AI tab / filer 入替 / header sizing 却下、「デバッグと取捨選択だけ」表明、rollup #760 を main 着地 vehicle に |
 | 2026-06-06 | user review session:「機能どれもイマイチ / もっさり / 肥大化」+ North Star(OPFS/extensions/workspace/container 分離)提示。Claude が 50 PR stack + bundle 2.7× + docs 乖離を診断、本書で集約・凍結 |
+| 2026-06-12/13 | **North Star §4-2(Extension host)実装着地**: transport 監査(#795)→ host-push 体系(#806、PR #807–#820)→ 封じ込め Tier S/T(#796、PR #821–#822)→ graph pkc-ext 切替 + manual 改訂(PR #823–#824)。棚卸し = `extension-host-status-2026-06.md`、関連 issue #791/#796/#804/#805/#806 close |

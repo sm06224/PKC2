@@ -47,7 +47,7 @@ adapter/      → Runtime integration: state machine, UI rendering, persistence,
   state/      → AppState + Dispatcher (Redux-like pure reducer)
   ui/         → renderer.ts, action-binder.ts, *-presenter.ts
   platform/   → IndexedDB, compression, export/import, embed detection
-  transport/  → PostMessage protocol for cross-origin communication
+  transport/  → PostMessage protocol (PKC-Message) + pkc-ext 拡張チャネル(v2 spec §3.8)
 runtime/      → Build constants, version, DOM slot contracts
 main.ts       → Bootstrap: wires everything together
 ```
@@ -79,7 +79,7 @@ AppPhase: 'initializing' → 'ready' ↔ 'editing' / 'exporting' → 'error'
 
 **Dispatchable** = `UserAction | SystemCommand` → pure **reducer** → `(state', DomainEvent[])`
 
-Key state fields: `container`, `selectedLid`, `editingLid`, `viewMode ('detail'|'calendar'|'kanban')`, `phase`
+Key state fields: `container`, `selectedLid`, `editingLid`, `viewMode ('detail'|'calendar'|'kanban'|'filer'|'launcher')`, `phase`
 
 The **Dispatcher** is the single coordination point: dispatch → reduce → notify state listeners → emit events.
 
