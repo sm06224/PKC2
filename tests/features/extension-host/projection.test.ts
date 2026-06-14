@@ -71,6 +71,34 @@ describe('buildContainerProjection', () => {
     }
   });
 
+  it('todo は status / date / archived メタを持つが description は含めない(#830 R1)', () => {
+    const c = makeContainer();
+    c.entries.push({
+      lid: 'td1', title: 'Buy milk', archetype: 'todo', created_at: T, updated_at: T,
+      body: JSON.stringify({ status: 'done', description: 'SECRET TODO DESC', date: '2026-07-01', archived: true }),
+    });
+    const p = buildContainerProjection(c);
+    const td1 = p.entries.find((e) => e.lid === 'td1')!;
+    expect(td1.todo).toEqual({ status: 'done', date: '2026-07-01', archived: true });
+    // description(body の中身)は projection に載らない。
+    expect(JSON.stringify(p)).not.toContain('SECRET TODO DESC');
+  });
+
+  it('todo メタは date/archived が無ければ status のみ、壊れた JSON でも落ちない(#830 R1)', () => {
+    const c = makeContainer();
+    c.entries.push({
+      lid: 'td2', title: 'Open task', archetype: 'todo', created_at: T, updated_at: T,
+      body: JSON.stringify({ status: 'open', description: 'd' }),
+    });
+    c.entries.push({
+      lid: 'td3', title: 'Legacy', archetype: 'todo', created_at: T, updated_at: T,
+      body: 'not json',
+    });
+    const p = buildContainerProjection(c);
+    expect(p.entries.find((e) => e.lid === 'td2')!.todo).toEqual({ status: 'open' });
+    expect(p.entries.find((e) => e.lid === 'td3')!.todo).toEqual({ status: 'open' });
+  });
+
   it('壊れた attachment JSON でも projection は落ちない', () => {
     const c = makeContainer();
     c.entries.push({
