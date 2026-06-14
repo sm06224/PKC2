@@ -166,7 +166,7 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | `write-result` | host→child | `{ ok, correlation_id? }` | 書き戻しの成否 |
 | `hint` | child→host | `{ kind, lid? }` | 軽量ヒント。host が処理するのは `open`(選択 + sidebar reveal + host 前面化)と `select`(選択のみ)。実体は流れない |
 
-**write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
+**write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)/ `set-todo-status`(#830 R2: todo の `status` のみ差し替え。host が archetype==='todo' を検証し、現 body を parse→swap→serialize で `description`/`date`/`archived` を保全。拡張は body を持たないため status 専用 op)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
 
 **封じ込め 2 層**(#796、`pkc-extension-containment-design-2026-06.md` §2/§3 — 実装済み):
 
