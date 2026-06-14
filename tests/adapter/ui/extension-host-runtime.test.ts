@@ -261,6 +261,39 @@ describe('onWrite(T2、6/6): 検証して既存 data-safe 経路で適用', () =
   });
 });
 
+describe('onWrite set-todo-status(#830 R2): host が description を保全', () => {
+  function openHostWithTodo() {
+    const d = createDispatcher();
+    const c = container();
+    c.entries.push({
+      lid: 'todo1', title: 'Task', archetype: 'todo', created_at: T, updated_at: T,
+      body: JSON.stringify({ status: 'open', description: 'keep me', date: '2026-07-01' }),
+    });
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: c });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    return { d, onWrite: recs[0]!.opts.onWrite! };
+  }
+
+  it('status を done に差し替えても description / date は保全される', () => {
+    const { d, onWrite } = openHostWithTodo();
+    expect(onWrite({ ops: [{ op: 'set-todo-status', lid: 'todo1', status: 'done' }] })).toBe(true);
+    const body = d.getState().container!.entries.find((e) => e.lid === 'todo1')!.body;
+    const parsed = JSON.parse(body) as { status: string; description: string; date?: string };
+    expect(parsed.status).toBe('done');
+    expect(parsed.description).toBe('keep me'); // 拡張は body を見ずに status だけ変えられる
+    expect(parsed.date).toBe('2026-07-01');
+  });
+
+  it('todo でない entry への set-todo-status は検証 NG で false・副作用なし', () => {
+    const { d, onWrite } = openHostWithTodo();
+    const before = d.getState().container;
+    expect(onWrite({ ops: [{ op: 'set-todo-status', lid: 'e1', status: 'done' }] })).toBe(false);
+    expect(d.getState().container).toBe(before);
+  });
+});
+
 describe('Tier T 明示同意(#796 PR-4)', () => {
   function trustedSetup() {
     const d = createDispatcher();

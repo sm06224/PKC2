@@ -8,9 +8,12 @@
  * 実際の dispatch(永続化)は orchestrator が既存 data-safe 経路で行う。
  *
  * op 語彙(最小):
- *   - `update-body`  entry の body を差し替え(QUICK_UPDATE_ENTRY)
- *   - `move`         entry を folder 配下へ(既存 moveEntryToFolder)
- *   - `relate`       entry 間に semantic relation(既存 relateEntries)
+ *   - `update-body`     entry の body を差し替え(QUICK_UPDATE_ENTRY)
+ *   - `move`            entry を folder 配下へ(既存 moveEntryToFolder)
+ *   - `relate`          entry 間に semantic relation(既存 relateEntries)
+ *   - `set-todo-status` todo の status のみ差し替え(#830 R2)。拡張は body
+ *                       (description)を持たないため status 専用 op が要る。
+ *                       host が parse→swap→serialize で description を保全する。
  *
  * Pure: no browser APIs(features 層、core のみ)。
  */
@@ -20,7 +23,8 @@ import type { Container } from '@core/model/container';
 export type WriteOp =
   | { op: 'update-body'; lid: string; body: string }
   | { op: 'move'; lid: string; folderLid: string }
-  | { op: 'relate'; from: string; to: string };
+  | { op: 'relate'; from: string; to: string }
+  | { op: 'set-todo-status'; lid: string; status: 'open' | 'done' };
 
 export type WriteValidation =
   | { ok: true; ops: WriteOp[] }
@@ -32,6 +36,10 @@ function entryExists(container: Container, lid: string): boolean {
 function isFolder(container: Container, lid: string): boolean {
   const e = container.entries.find((x) => x.lid === lid);
   return !!e && e.archetype === 'folder';
+}
+function isTodo(container: Container, lid: string): boolean {
+  const e = container.entries.find((x) => x.lid === lid);
+  return !!e && e.archetype === 'todo';
 }
 
 /**
@@ -69,6 +77,13 @@ export function validateWriteOps(container: Container, raw: unknown): WriteValid
       }
       if (o.from === o.to) return { ok: false, reason: 'relate endpoints must differ' };
       out.push({ op: 'relate', from: o.from, to: o.to });
+    } else if (o.op === 'set-todo-status') {
+      if (typeof o.lid !== 'string' || (o.status !== 'open' && o.status !== 'done')) {
+        return { ok: false, reason: "set-todo-status requires lid + status 'open'|'done'" };
+      }
+      if (!entryExists(container, o.lid)) return { ok: false, reason: `unknown lid: ${o.lid}` };
+      if (!isTodo(container, o.lid)) return { ok: false, reason: `not a todo: ${o.lid}` };
+      out.push({ op: 'set-todo-status', lid: o.lid, status: o.status });
     } else {
       return { ok: false, reason: `unknown op: ${String(o.op)}` };
     }

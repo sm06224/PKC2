@@ -13,6 +13,7 @@ const container: Container = {
     { lid: 'e1', title: 'A', body: 'a', archetype: 'text', created_at: T, updated_at: T },
     { lid: 'e2', title: 'B', body: 'b', archetype: 'text', created_at: T, updated_at: T },
     { lid: 'f1', title: 'F', body: '', archetype: 'folder', created_at: T, updated_at: T },
+    { lid: 't1', title: 'Todo', body: '{"status":"open","description":"d"}', archetype: 'todo', created_at: T, updated_at: T },
   ],
   relations: [],
   revisions: [],
@@ -51,6 +52,18 @@ describe('validateWriteOps', () => {
   it('未知 op / 型不正は拒否', () => {
     expect(validateWriteOps(container, [{ op: 'delete', lid: 'e1' }]).ok).toBe(false);
     expect(validateWriteOps(container, [{ op: 'update-body', lid: 'e1', body: 5 }]).ok).toBe(false);
+  });
+
+  it('set-todo-status を正規化(#830 R2)', () => {
+    const r = validateWriteOps(container, [{ op: 'set-todo-status', lid: 't1', status: 'done' }]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.ops).toEqual([{ op: 'set-todo-status', lid: 't1', status: 'done' }]);
+  });
+
+  it('set-todo-status は todo でない / 未知 status / 未知 lid を拒否(#830 R2)', () => {
+    expect(validateWriteOps(container, [{ op: 'set-todo-status', lid: 'e1', status: 'done' }]).ok).toBe(false); // text
+    expect(validateWriteOps(container, [{ op: 'set-todo-status', lid: 't1', status: 'archived' }]).ok).toBe(false);
+    expect(validateWriteOps(container, [{ op: 'set-todo-status', lid: 'nope', status: 'open' }]).ok).toBe(false);
   });
 
   it('1 件でも NG なら全体拒否(部分適用しない)', () => {

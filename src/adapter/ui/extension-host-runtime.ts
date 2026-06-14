@@ -30,6 +30,7 @@ import {
 } from '../transport/extension-channel';
 import { parseAttachmentBody, decodeAttachmentText } from './attachment-presenter';
 import { getAncestorFolderLids } from '@features/relation/tree';
+import { parseTodoBody, serializeTodoBody } from '@features/todo/todo-body';
 
 export type LaunchFn = (opts: LaunchExtensionOptions) => ExtensionChannelHandle | null;
 
@@ -111,11 +112,32 @@ export function relateEntries(dispatcher: Dispatcher, from: string, to: string):
 }
 
 /**
+ * todo の status だけを差し替える(#830 R2、検証済み・永続化)。拡張は
+ * body(description)を projection に持たないため、host が現 body を
+ * parse → status swap → serialize して **description / date / archived を
+ * 保全**する。readonly / 非 todo / 同値は安全な no-op。
+ */
+export function applyTodoStatus(
+  dispatcher: Dispatcher,
+  lid: string,
+  status: 'open' | 'done',
+): void {
+  const container = dispatcher.getState().container;
+  if (!container || dispatcher.getState().readonly) return;
+  const entry = container.entries.find((e) => e.lid === lid);
+  if (!entry || entry.archetype !== 'todo') return;
+  const todo = parseTodoBody(entry.body);
+  if (todo.status === status) return; // already in that state → no-op
+  dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: serializeTodoBody({ ...todo, status }) });
+}
+
+/**
  * T2 書き戻しを検証して適用する(#806 6/6、G2)。readonly / light-source /
  * 検証 NG は適用せず false。各 op は既存 data-safe 経路:
- *   - update-body → QUICK_UPDATE_ENTRY(body のみ、phase 遷移なし)
- *   - move        → moveEntryToFolder(cycle guard 含む)
- *   - relate      → relateEntries
+ *   - update-body     → QUICK_UPDATE_ENTRY(body のみ、phase 遷移なし)
+ *   - move            → moveEntryToFolder(cycle guard 含む)
+ *   - relate          → relateEntries
+ *   - set-todo-status → applyTodoStatus(host が description を保全、#830 R2)
  * 検証は all-or-nothing。1 件でも NG なら全体を拒否(部分適用しない)。
  */
 function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
@@ -132,6 +154,8 @@ function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
       moveEntryToFolder(dispatcher, op.lid, op.folderLid);
     } else if (op.op === 'relate') {
       relateEntries(dispatcher, op.from, op.to);
+    } else if (op.op === 'set-todo-status') {
+      applyTodoStatus(dispatcher, op.lid, op.status);
     }
   }
   return true;
