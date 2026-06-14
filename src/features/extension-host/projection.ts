@@ -22,6 +22,7 @@
 import type { Container } from '@core/model/container';
 import { isSystemArchetype } from '@core/model/record';
 import { collectLinkRefs } from '@features/link-index/link-index';
+import { parseTodoBody } from '@features/todo/todo-body';
 
 /** 1 entry のメタ投影(body は決して含まない)。 */
 export interface ProjectionEntry {
@@ -40,6 +41,13 @@ export interface ProjectionEntry {
   filename?: string;
   /** attachment のみ: asset の base64 長(サイズ概算、bytes ≒ ×3/4)。 */
   asset_size?: number;
+  /**
+   * todo のみ: body JSON から導出した状態メタ(#830 R1)。`description`
+   * は含めない(body そのものは依然 projection に載せない — data
+   * minimization 不変条件)。status/date/archived は core の Kanban /
+   * カレンダーが既に body から導出して表示している値の範疇。
+   */
+  todo?: { status: 'open' | 'done'; date?: string; archived?: boolean };
 }
 
 export interface ProjectionRelation {
@@ -144,6 +152,17 @@ export function buildContainerProjection(container: Container): ContainerProject
         const b64 = container.assets[meta.asset_key];
         if (typeof b64 === 'string') entry.asset_size = b64.length;
       }
+    } else if (e.archetype === 'todo') {
+      // #830 R1: status/date/archived のみを派生メタとして載せる。
+      // parseTodoBody は features 層・防御的(壊れた JSON でも open に
+      // フォールバック)。description は意図的に捨てる。
+      const todo = parseTodoBody(e.body);
+      const todoMeta: { status: 'open' | 'done'; date?: string; archived?: boolean } = {
+        status: todo.status,
+      };
+      if (todo.date) todoMeta.date = todo.date;
+      if (todo.archived) todoMeta.archived = true;
+      entry.todo = todoMeta;
     }
     entries.push(entry);
   }

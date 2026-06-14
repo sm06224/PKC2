@@ -159,7 +159,7 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | t | 方向 | payload | 意味 |
 |---|---|---|---|
 | `hello` | child→host | — | handshake。host が established → projection を返す |
-| `projection` | host→child | `ContainerProjection`(index/list/統計 + body 由来の **link 集計** `links.internal/external`。**body/assets/revisions を含まない**、MUST) | 既定露出。container 変化で再 push |
+| `projection` | host→child | `ContainerProjection`(index/list/統計 + body 由来の **link 集計** `links.internal/external` + body から導出した **per-entry 派生メタ**: attachment は `mime`/`filename`/`asset_size`、todo は `todo:{status,date?,archived?}`(#830 R1、`description` は載せない)。**body/assets/revisions を含まない**、MUST) | 既定露出。container 変化で再 push |
 | `deliver` | host→child | `{ kind:'asset'|'entry', lid?, asset_key?, mime?, filename?, body?, data_base64?, correlation_id? }` | **ユーザーの send ジェスチャ**で実体 1 件。pull 経路は無い(MUST NOT)。handshake 前の send は host が buffer し、`hello` 後に projection → deliver の順で配送 |
 | `selected` | host→child | `{ lid }` | host 側の選択変更(graph 等が focus を追従)。established 後のみ |
 | `write` | child→host | `{ lid?, ops:[...], correlation_id? }` | T2 書き戻し。host が `validateWriteOps` で検証してから適用(G2、MUST) |
