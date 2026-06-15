@@ -168,7 +168,7 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | `propose` | child→host | `{ offer:{ title, body, archetype?, ... }, correlation_id? }` | **新規 entry の作成提案**(#830 R5)。host は `offer` を検証して既存 `record:offer` 同意 banner に流す。**silent 作成は無い**(ユーザー accept で初めて mint)。`offer` は record:offer payload と同型 |
 | `propose-result` | host→child | `{ accepted, assigned_lid?, correlation_id? }` | 作成の成否。accept なら `assigned_lid`、reject/dismiss なら `accepted:false`。検証 NG は即 `accepted:false` |
 
-**write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)/ `set-todo-status`(#830 R2: todo の `status` のみ差し替え。host が archetype==='todo' を検証し、現 body を parse→swap→serialize で `description`/`date`/`archived` を保全。拡張は body を持たないため status 専用 op)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
+**write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)/ `set-todo-status`(#830 R2: todo の `status` のみ差し替え。host が archetype==='todo' を検証し、現 body を parse→swap→serialize で `description`/`date`/`archived` を保全。拡張は body を持たないため status 専用 op)/ `rename`(#830 R3: `{lid,title}` で title のみ差し替え。host が trim、非空を検証)/ `unfile`(#830 R7: `{lid}` で structural relation を除去し未整理(root)へ。`move` は folderLid が folder 必須で root を表現できないための専用 op)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
 
 **封じ込め 2 層**(#796、`pkc-extension-containment-design-2026-06.md` §2/§3 — 実装済み):
 

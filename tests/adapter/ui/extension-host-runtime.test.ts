@@ -298,6 +298,34 @@ describe('onWrite set-todo-status(#830 R2): host が description を保全', () 
   });
 });
 
+describe('onWrite rename / unfile(#830 R3 / R7)', () => {
+  function openHost(c?: Container) {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: c ?? container() });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    return { d, onWrite: recs[0]!.opts.onWrite! };
+  }
+
+  it('rename は title だけ差し替え、body は保全(#830 R3)', () => {
+    const { d, onWrite } = openHost();
+    expect(onWrite({ ops: [{ op: 'rename', lid: 'e1', title: 'Renamed' }] })).toBe(true);
+    const e1 = d.getState().container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.title).toBe('Renamed');
+    expect(e1.body).toBe('send me');
+  });
+
+  it('unfile は structural relation を外して未整理(root)へ(#830 R7)', () => {
+    const c = container();
+    c.entries.push({ lid: 'f1', title: 'Folder', body: '', archetype: 'folder', created_at: T, updated_at: T });
+    c.relations.push({ id: 'rel-f1-e1', from: 'f1', to: 'e1', kind: 'structural', created_at: T, updated_at: T });
+    const { d, onWrite } = openHost(c);
+    expect(onWrite({ ops: [{ op: 'unfile', lid: 'e1' }] })).toBe(true);
+    expect(d.getState().container!.relations.some((r) => r.kind === 'structural' && r.to === 'e1')).toBe(false);
+  });
+});
+
 describe('onPropose(#830 R5): create を既存 record:offer 同意経路へ', () => {
   function openHost() {
     const d = createDispatcher();

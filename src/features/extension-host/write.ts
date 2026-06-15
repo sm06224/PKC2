@@ -14,6 +14,11 @@
  *   - `set-todo-status` todo の status のみ差し替え(#830 R2)。拡張は body
  *                       (description)を持たないため status 専用 op が要る。
  *                       host が parse→swap→serialize で description を保全する。
+ *   - `rename`          entry の title だけ差し替え(#830 R3)。title は既に
+ *                       projection にあるので新規露出ゼロ。
+ *   - `unfile`          entry を folder から外して未整理(root)へ(#830 R7)。
+ *                       `move` は folderLid が folder 必須で root を表現でき
+ *                       ないため、structural relation の除去専用 op を分ける。
  *
  * Pure: no browser APIs(features 層、core のみ)。
  */
@@ -24,7 +29,9 @@ export type WriteOp =
   | { op: 'update-body'; lid: string; body: string }
   | { op: 'move'; lid: string; folderLid: string }
   | { op: 'relate'; from: string; to: string }
-  | { op: 'set-todo-status'; lid: string; status: 'open' | 'done' };
+  | { op: 'set-todo-status'; lid: string; status: 'open' | 'done' }
+  | { op: 'rename'; lid: string; title: string }
+  | { op: 'unfile'; lid: string };
 
 export type WriteValidation =
   | { ok: true; ops: WriteOp[] }
@@ -84,6 +91,19 @@ export function validateWriteOps(container: Container, raw: unknown): WriteValid
       if (!entryExists(container, o.lid)) return { ok: false, reason: `unknown lid: ${o.lid}` };
       if (!isTodo(container, o.lid)) return { ok: false, reason: `not a todo: ${o.lid}` };
       out.push({ op: 'set-todo-status', lid: o.lid, status: o.status });
+    } else if (o.op === 'rename') {
+      if (typeof o.lid !== 'string' || typeof o.title !== 'string') {
+        return { ok: false, reason: 'rename requires lid + title strings' };
+      }
+      // reducer 側で trim するため、trim 後が空になる rename は拒否(空 title
+      // 化は拡張側のバグ — fail-closed)。長さ上限は既存 title ルールに委ねる。
+      if (o.title.trim().length === 0) return { ok: false, reason: 'rename title must be non-empty' };
+      if (!entryExists(container, o.lid)) return { ok: false, reason: `unknown lid: ${o.lid}` };
+      out.push({ op: 'rename', lid: o.lid, title: o.title });
+    } else if (o.op === 'unfile') {
+      if (typeof o.lid !== 'string') return { ok: false, reason: 'unfile requires lid string' };
+      if (!entryExists(container, o.lid)) return { ok: false, reason: `unknown lid: ${o.lid}` };
+      out.push({ op: 'unfile', lid: o.lid });
     } else {
       return { ok: false, reason: `unknown op: ${String(o.op)}` };
     }
