@@ -87,7 +87,7 @@ PKC2 のデータモデル — **markdown 本文 + YAML frontmatter + 型付き�
 | [Design Principles](docs/planning/05_設計原則.md) | Core values and constraints |
 | [Architecture](docs/planning/12_基盤方針追補_責務分離.md) | 5-layer structure and rules |
 | [Data Model](docs/planning/17_保存再水和可搬モデル.md) | Storage, export, compression |
-| [Pre-Release Notes](docs/planning/19_pre_release.md) | Current status, constraints, future |
+| [Pre-Release Notes](docs/planning/19_pre_release.md) | v0.1.0 時点の凍結スナップショット（履歴、現状の正本ではない） |
 
 ## PKC2 Extensions
 
