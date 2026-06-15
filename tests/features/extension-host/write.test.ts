@@ -66,6 +66,22 @@ describe('validateWriteOps', () => {
     expect(validateWriteOps(container, [{ op: 'set-todo-status', lid: 'nope', status: 'open' }]).ok).toBe(false);
   });
 
+  it('rename を正規化、空 title / 未知 lid / 型不正は拒否(#830 R3)', () => {
+    const r = validateWriteOps(container, [{ op: 'rename', lid: 'e1', title: 'New Name' }]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.ops).toEqual([{ op: 'rename', lid: 'e1', title: 'New Name' }]);
+    expect(validateWriteOps(container, [{ op: 'rename', lid: 'e1', title: '   ' }]).ok).toBe(false); // 空(trim 後)
+    expect(validateWriteOps(container, [{ op: 'rename', lid: 'nope', title: 'x' }]).ok).toBe(false);
+    expect(validateWriteOps(container, [{ op: 'rename', lid: 'e1', title: 5 }]).ok).toBe(false);
+  });
+
+  it('unfile を正規化、未知 lid は拒否(#830 R7)', () => {
+    const r = validateWriteOps(container, [{ op: 'unfile', lid: 'e1' }]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.ops).toEqual([{ op: 'unfile', lid: 'e1' }]);
+    expect(validateWriteOps(container, [{ op: 'unfile', lid: 'nope' }]).ok).toBe(false);
+  });
+
   it('1 件でも NG なら全体拒否(部分適用しない)', () => {
     const r = validateWriteOps(container, [
       { op: 'update-body', lid: 'e1', body: 'ok' },

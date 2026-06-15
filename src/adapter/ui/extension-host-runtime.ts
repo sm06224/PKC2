@@ -99,6 +99,21 @@ export function moveEntryToFolder(dispatcher: Dispatcher, lid: string, folderLid
   dispatcher.dispatch({ type: 'CREATE_RELATION', from: folderLid, to: lid, kind: 'structural' });
 }
 
+/**
+ * entry を folder から外して未整理(root)へ戻す(#830 R7、検証済み・永続化)。
+ * `moveEntryToFolder` の「既存 structural relation を DELETE」部分のみを行い、
+ * 新規 CREATE はしない(= どの folder にも属さない = root)。既に root の
+ * entry は no-op。readonly は安全に no-op。
+ */
+export function unfileEntry(dispatcher: Dispatcher, lid: string): void {
+  const container = dispatcher.getState().container;
+  if (!container || dispatcher.getState().readonly) return;
+  if (!container.entries.some((e) => e.lid === lid)) return;
+  for (const r of container.relations) {
+    if (r.kind === 'structural' && r.to === lid) dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
+  }
+}
+
 /** entry 間に semantic relation を張る(検証済み、永続化)。 */
 export function relateEntries(dispatcher: Dispatcher, from: string, to: string): void {
   const container = dispatcher.getState().container;
@@ -139,6 +154,8 @@ export function applyTodoStatus(
  *   - move            → moveEntryToFolder(cycle guard 含む)
  *   - relate          → relateEntries
  *   - set-todo-status → applyTodoStatus(host が description を保全、#830 R2)
+ *   - rename          → RENAME_ENTRY_TITLE(title のみ、#830 R3)
+ *   - unfile          → unfileEntry(structural relation 除去、#830 R7)
  * 検証は all-or-nothing。1 件でも NG なら全体を拒否(部分適用しない)。
  */
 function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
@@ -157,6 +174,10 @@ function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
       relateEntries(dispatcher, op.from, op.to);
     } else if (op.op === 'set-todo-status') {
       applyTodoStatus(dispatcher, op.lid, op.status);
+    } else if (op.op === 'rename') {
+      dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid: op.lid, title: op.title });
+    } else if (op.op === 'unfile') {
+      unfileEntry(dispatcher, op.lid);
     }
   }
   return true;
