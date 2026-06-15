@@ -170,8 +170,9 @@ export function applyTodoStatus(
  *   - set-todo-status → applyTodoStatus(host が description を保全、#830 R2)
  *   - rename          → RENAME_ENTRY_TITLE(title のみ、#830 R3)
  *   - unfile          → unfileEntry(structural relation 除去、#830 R7)
- *   - delete          → DELETE_ENTRY(soft delete、#830 R4。purge は非開放)
+ *   - delete          → DELETE_ENTRY(soft delete、#830 R4。entry の purge は非開放)
  *   - restore         → restoreDeleted(最新 revision を解決、#830 R4)
+ *   - purge-orphan-assets → PURGE_ORPHAN_ASSETS(孤児アセット一括掃除、#830 R8)
  * 検証は all-or-nothing。1 件でも NG なら全体を拒否(部分適用しない)。
  */
 function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
@@ -198,6 +199,8 @@ function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
       dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: op.lid });
     } else if (op.op === 'restore') {
       restoreDeleted(dispatcher, op.lid);
+    } else if (op.op === 'purge-orphan-assets') {
+      dispatcher.dispatch({ type: 'PURGE_ORPHAN_ASSETS' });
     }
   }
   return true;

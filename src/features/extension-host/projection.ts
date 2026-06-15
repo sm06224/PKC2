@@ -22,6 +22,7 @@
 import type { Container } from '@core/model/container';
 import { isSystemArchetype } from '@core/model/record';
 import { getRestoreCandidates, parseRevisionSnapshot } from '@core/operations/container-ops';
+import { collectOrphanAssetKeys } from '@features/asset/asset-scan';
 import { collectLinkRefs } from '@features/link-index/link-index';
 import { parseTodoBody } from '@features/todo/todo-body';
 
@@ -88,6 +89,16 @@ export interface ProjectionRestoreCandidate {
   archetype: string;
 }
 
+/**
+ * どの entry からも参照されていない孤児アセットの派生メタ(#830 R8)。
+ * 拡張のストレージ掃除 UI 用に key と size(base64 文字列長、attachment
+ * の `asset_size` と同単位)のみ載せる。base64 本体は含めない。
+ */
+export interface ProjectionOrphanAsset {
+  key: string;
+  size: number;
+}
+
 export interface ContainerProjection {
   containerId: string;
   title: string;
@@ -100,6 +111,8 @@ export interface ContainerProjection {
   };
   /** 削除済みで復元可能な entry(#830 R4、ゴミ箱 UI 用。body は含まない)。 */
   restoreCandidates: ProjectionRestoreCandidate[];
+  /** どの entry からも参照されない孤児アセット(#830 R8、掃除 UI 用。base64 は含まない)。 */
+  orphanAssets: ProjectionOrphanAsset[];
   stats: ProjectionStats;
 }
 
@@ -223,6 +236,15 @@ export function buildContainerProjection(container: Container): ContainerProject
     restoreCandidates.push({ lid: snap.lid, title: snap.title, archetype: snap.archetype });
   }
 
+  // 孤児アセット(#830 R8)。collectOrphanAssetKeys = container.assets に在る
+  // が、どの entry からも参照されない key。base64 本体は載せず key+size のみ。
+  const assets = container.assets ?? {};
+  const orphanAssets: ProjectionOrphanAsset[] = [];
+  for (const key of collectOrphanAssetKeys(container)) {
+    const b64 = assets[key];
+    orphanAssets.push({ key, size: typeof b64 === 'string' ? b64.length : 0 });
+  }
+
   return {
     containerId: container.meta.container_id,
     title: container.meta.title,
@@ -230,6 +252,7 @@ export function buildContainerProjection(container: Container): ContainerProject
     relations,
     links: { internal, external },
     restoreCandidates,
+    orphanAssets,
     stats: {
       totalEntries: entries.length,
       byArchetype,

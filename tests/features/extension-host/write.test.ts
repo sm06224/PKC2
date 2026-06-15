@@ -99,6 +99,12 @@ describe('validateWriteOps', () => {
     expect(validateWriteOps(withDeleted, [{ op: 'restore', lid: 'nope' }]).ok).toBe(false);
   });
 
+  it('purge-orphan-assets は引数なしで許可(#830 R8)', () => {
+    const r = validateWriteOps(container, [{ op: 'purge-orphan-assets' }]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.ops).toEqual([{ op: 'purge-orphan-assets' }]);
+  });
+
   it('1 件でも NG なら全体拒否(部分適用しない)', () => {
     const r = validateWriteOps(container, [
       { op: 'update-body', lid: 'e1', body: 'ok' },

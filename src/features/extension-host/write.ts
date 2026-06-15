@@ -24,6 +24,11 @@
  *                       (hard delete)は host-only で開放しない。
  *   - `restore`         soft delete 済み entry を復元(#830 R4)。host が最新
  *                       revision を解決して RESTORE_ENTRY に流す。
+ *   - `purge-orphan-assets` どの entry からも参照されない孤児アセットを
+ *                       一括削除(#830 R8)。既存ユーザー向け PURGE_ORPHAN_ASSETS
+ *                       を再利用。参照中アセットは消えない。container 単位の
+ *                       op なので lid/key を取らない。per-key の hard delete は
+ *                       開放しない。
  *
  * Pure: no browser APIs(features 層、core のみ)。
  */
@@ -38,7 +43,8 @@ export type WriteOp =
   | { op: 'rename'; lid: string; title: string }
   | { op: 'unfile'; lid: string }
   | { op: 'delete'; lid: string }
-  | { op: 'restore'; lid: string };
+  | { op: 'restore'; lid: string }
+  | { op: 'purge-orphan-assets' };
 
 export type WriteValidation =
   | { ok: true; ops: WriteOp[] }
@@ -130,6 +136,10 @@ export function validateWriteOps(container: Container, raw: unknown): WriteValid
         return { ok: false, reason: `not a restore candidate: ${o.lid}` };
       }
       out.push({ op: 'restore', lid: o.lid });
+    } else if (o.op === 'purge-orphan-assets') {
+      // container 単位。引数なし(全孤児を一括掃除)。常に許可(参照中
+      // アセットは removeOrphanAssets が消さない)。
+      out.push({ op: 'purge-orphan-assets' });
     } else {
       return { ok: false, reason: `unknown op: ${String(o.op)}` };
     }
