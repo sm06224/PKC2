@@ -61,6 +61,14 @@ core → adapter → feature → runtime → builder
 
 Runtime has zero external npm dependencies.
 
+## OKF (Open Knowledge Format) との関係
+
+PKC2 のデータモデル — **markdown 本文 + YAML frontmatter + 型付きエントリ(archetype)+ markdown リンクによる知識グラフ** — は、Google Cloud が 2026-06 に公開した **Open Knowledge Format (OKF)** と構造的にほぼ同型です。PKC2 は OKF 公開前から、ローカル完結・単一 HTML の個人知識ツールとして「markdown + frontmatter の知識グラフ」を実装してきました。
+
+> A local-first **personal knowledge container** whose model (markdown bodies + YAML frontmatter + typed entries + markdown-link knowledge graph) is structurally close to Google's **Open Knowledge Format (OKF)** for AI agents.
+
+**現状**: OKF バンドルとの import / export 相互運用は **設計段階**(未実装)です。設計と論点は [`docs/development/okf-interop-design-2026-06.md`](docs/development/okf-interop-design-2026-06.md)、進行管理は [issue #838](https://github.com/sm06224/PKC2/issues/838) を参照してください。OKF 仕様本体は [GoogleCloudPlatform/knowledge-catalog](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) にあります。
+
 ## Documentation
 
 ### ユーザー向け

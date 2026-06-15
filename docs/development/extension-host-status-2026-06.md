@@ -65,6 +65,21 @@ Extension host が**設計から実装まで完了**し、graph 拡張が第 1 �
 ではなく専用チャネル化に設計変更)/ **#796**(封じ込め PR-1〜4)/ **#804** / **#805** /
 **#806**(host-push 体系として全着地 + 拡張側通達済)。
 
+## §6 #830 host hook 申し送りの着地(2026-06-15)
+
+拡張側からの追加申し送り #830(host 側 8 hook)を順次着地。いずれも既存
+projection / write チャネル(v2 §3.8)への additive で、新 archetype / UI mode は
+足していない。normative は v2 spec §3.8。
+
+| 項目 | 内容 | PR |
+|---|---|---|
+| R1 | projection に todo 派生メタ(status/date/archived、description 非露出)| #831 |
+| R2 | `set-todo-status` write op(host が description 保全)| #832 |
+| R5 + R6 | `propose` で create 解禁(既存 record:offer 同意 banner 再利用)+ Tier S 境界に v1 record:offer が届かない gap の恒久解 | #833 |
+| R3 / R7 | `rename` / `unfile` write op | #834 |
+| R4 | 既存 soft-delete/restore trash を開放(新 trash 概念を作らず再利用、purge=hard delete は host-only)| #835 |
+| R8 | 孤児アセット可視化(projection `orphanAssets`)+ `purge-orphan-assets`(既存 PURGE_ORPHAN_ASSETS 再利用、per-key hard delete は非新設)| #836 |
+
 ## 関連
 
 - [`../spec/pkc-message-api-v2.md`](../spec/pkc-message-api-v2.md) §3.8(wire normative)
