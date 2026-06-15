@@ -133,6 +133,7 @@ describe('restoreRenderContinuity', () => {
     restoreRenderContinuity(root, {
       scrolls: [{ region: 'center-content', top: 99 }],
       focus: null,
+      editorFields: [],
     });
     expect(center.scrollTop).toBe(99);
   });
@@ -143,6 +144,7 @@ describe('restoreRenderContinuity', () => {
       restoreRenderContinuity(root, {
         scrolls: [{ region: 'center-content', top: 40 }],
         focus: null,
+        editorFields: [],
       }),
     ).not.toThrow();
   });
@@ -160,6 +162,7 @@ describe('restoreRenderContinuity', () => {
     restoreRenderContinuity(root, {
       scrolls: [],
       focus: { field: 'search', lid: null, logId: null, caretStart: 1, caretEnd: 3 },
+      editorFields: [],
     });
 
     expect(document.activeElement).toBe(input);
@@ -176,6 +179,7 @@ describe('restoreRenderContinuity', () => {
     restoreRenderContinuity(root, {
       scrolls: [],
       focus: { field: value, lid: null, logId: null, caretStart: null, caretEnd: null },
+      editorFields: [],
     });
     expect(document.activeElement).toBe(input);
   });
@@ -184,8 +188,90 @@ describe('restoreRenderContinuity', () => {
     root.innerHTML = `<input data-pkc-field="search" />`;
     const input = root.querySelector<HTMLInputElement>('input')!;
     expect(document.activeElement).not.toBe(input);
-    restoreRenderContinuity(root, { scrolls: [], focus: null });
+    restoreRenderContinuity(root, { scrolls: [], focus: null, editorFields: [] });
     expect(document.activeElement).not.toBe(input);
+  });
+});
+
+// ── Editor draft preservation (2026-06-15「書式パネルを開くと入力が消える」)──
+
+describe('editor draft continuity', () => {
+  let root: HTMLElement;
+  beforeEach(() => {
+    root = document.createElement('div');
+    document.body.appendChild(root);
+  });
+  afterEach(() => {
+    root.remove();
+  });
+
+  /** 編集中エディタ(body textarea + title input)を組む。 */
+  function mountEditor(bodyValue: string, title = 'T'): void {
+    root.innerHTML =
+      '<div class="pkc-editor" data-pkc-mode="edit">' +
+      `<input data-pkc-field="title" value="${title}" />` +
+      `<textarea data-pkc-field="body">${bodyValue}</textarea>` +
+      '</div>';
+  }
+
+  it('未コミットの textarea 値を再描画跨ぎで保持し、caret も戻す', () => {
+    // 1) 編集中に "draft typing" まで入力された DOM をキャプチャ。
+    mountEditor('draft typing');
+    const before = root.querySelector<HTMLTextAreaElement>('textarea')!;
+    before.focus();
+    before.setSelectionRange(5, 5);
+    const snap = captureRenderContinuity(root);
+
+    // 2) フル再描画でエディタが committed("") から作り直された状態を模す。
+    mountEditor('');
+
+    // 3) 復元 → 入力テキストが戻る(空回りで消えない)+ caret 復元。
+    restoreRenderContinuity(root, snap);
+    const after = root.querySelector<HTMLTextAreaElement>('textarea')!;
+    expect(after.value).toBe('draft typing');
+    expect(after.selectionStart).toBe(5);
+  });
+
+  it('title の未コミット入力も保持する', () => {
+    mountEditor('body', 'new draft title');
+    const snap = captureRenderContinuity(root);
+    mountEditor('body', 'committed');
+    restoreRenderContinuity(root, snap);
+    expect(root.querySelector<HTMLInputElement>('[data-pkc-field="title"]')!.value).toBe('new draft title');
+  });
+
+  it('編集を抜けて(エディタ消失)いれば復元は no-op(committed が勝つ)', () => {
+    mountEditor('draft');
+    const snap = captureRenderContinuity(root);
+    // 保存して detail ビュー(編集モードでない)に戻った状態。
+    root.innerHTML = '<div class="pkc-detail"><textarea data-pkc-field="body">committed</textarea></div>';
+    restoreRenderContinuity(root, snap);
+    expect(root.querySelector<HTMLTextAreaElement>('textarea')!.value).toBe('committed');
+  });
+
+  it('編集中でない検索窓などの値は捕捉しない(エディタ subtree 限定)', () => {
+    root.innerHTML = '<input data-pkc-field="search" value="query" />';
+    const snap = captureRenderContinuity(root);
+    expect(snap.editorFields).toHaveLength(0);
+  });
+
+  it('textlog の行 textarea は data-pkc-log-id で正しく対応付ける', () => {
+    root.innerHTML =
+      '<div class="pkc-editor" data-pkc-mode="edit">' +
+      '<textarea data-pkc-field="textlog-entry-text" data-pkc-log-id="l1">draft A</textarea>' +
+      '<textarea data-pkc-field="textlog-entry-text" data-pkc-log-id="l2">draft B</textarea>' +
+      '</div>';
+    const snap = captureRenderContinuity(root);
+    // 再描画(両行 committed で空)。
+    root.innerHTML =
+      '<div class="pkc-editor" data-pkc-mode="edit">' +
+      '<textarea data-pkc-field="textlog-entry-text" data-pkc-log-id="l1"></textarea>' +
+      '<textarea data-pkc-field="textlog-entry-text" data-pkc-log-id="l2"></textarea>' +
+      '</div>';
+    restoreRenderContinuity(root, snap);
+    const rows = root.querySelectorAll<HTMLTextAreaElement>('textarea');
+    expect(rows[0]!.value).toBe('draft A');
+    expect(rows[1]!.value).toBe('draft B');
   });
 });
 

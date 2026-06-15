@@ -21,6 +21,17 @@
  *     `data-pkc-lid`).
  *   - for `<input>` / `<textarea>` the caret (`selectionStart` /
  *     `selectionEnd`) when it can be read.
+ *   - **uncommitted editor draft values** — the value (+ caret) of every
+ *     text field inside the open editor (`[data-pkc-mode="edit"]`). The
+ *     editor textarea holds the in-progress edit as DOM-only state until
+ *     COMMIT_EDIT; a full re-render (e.g. toggling the format panel, which
+ *     dispatches SYS_SYNC_CHILD_WINDOWS → `'full'` scope) rebuilds it from
+ *     the *committed* `entry.body` and would otherwise discard whatever the
+ *     user had typed (user report 2026-06-15「編集時の書式パネルを開くと
+ *     入力していたテキストが消える」). Capturing it here — unlike the
+ *     focus snapshot — does NOT require the field to be focused, because the
+ *     click that triggers the re-render (the format toggle button) moves
+ *     focus off the textarea before capture runs.
  *
  * What is *not* preserved:
  *   - contenteditable caret (browsers do not expose enough
@@ -67,15 +78,44 @@ export interface RenderFocusSnapshot {
   readonly caretEnd: number | null;
 }
 
+/**
+ * One uncommitted draft field inside the open editor. Captured by value
+ * (+ caret) so a full re-render that rebuilds the editor from committed
+ * state does not erase in-progress typing.
+ */
+export interface EditorFieldSnapshot {
+  /** `data-pkc-field` of the field (e.g. `title`, `body`, `textlog-entry-text`). */
+  readonly field: string;
+  /** `data-pkc-log-id` (textlog per-row textareas); `null` when absent. */
+  readonly logId: string | null;
+  /** Current value. */
+  readonly value: string;
+  /** Caret start, when readable. */
+  readonly caretStart: number | null;
+  /** Caret end, when readable. */
+  readonly caretEnd: number | null;
+}
+
 export interface RenderContinuitySnapshot {
   readonly scrolls: ReadonlyArray<{ region: string; top: number }>;
   readonly focus: RenderFocusSnapshot | null;
+  /** Uncommitted editor draft fields (empty when not editing). */
+  readonly editorFields: ReadonlyArray<EditorFieldSnapshot>;
 }
 
 const EMPTY_SNAPSHOT: RenderContinuitySnapshot = {
   scrolls: [],
   focus: null,
+  editorFields: [],
 };
+
+/**
+ * Input types whose meaningful state is `checked` (or otherwise not a
+ * typed-text value), so we never restore their `.value` as a "draft".
+ */
+const NON_TEXT_INPUT_TYPES = new Set([
+  'checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'image', 'range', 'color',
+]);
 
 /**
  * Read scroll + focus + caret state from `root` into a snapshot.
@@ -94,7 +134,47 @@ export function captureRenderContinuity(root: HTMLElement): RenderContinuitySnap
   }
 
   const focus = captureFocus(root);
-  return { scrolls, focus };
+  const editorFields = captureEditorFields(root);
+  return { scrolls, focus, editorFields };
+}
+
+/**
+ * Snapshot the value + caret of every text field inside the open editor
+ * (`[data-pkc-mode="edit"]`). Scoped to the editor subtree so unrelated
+ * fields (sidebar search, settings inputs) are never captured. Returns
+ * an empty array when no editor is open.
+ */
+function captureEditorFields(root: HTMLElement): EditorFieldSnapshot[] {
+  const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]');
+  if (!editor) return [];
+  const out: EditorFieldSnapshot[] = [];
+  const fields = editor.querySelectorAll<HTMLElement>(
+    'input[data-pkc-field], textarea[data-pkc-field]',
+  );
+  for (const el of fields) {
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) continue;
+    // checkbox / radio / file 等は「入力テキスト」ではない — 値復元しない。
+    if (el instanceof HTMLInputElement && NON_TEXT_INPUT_TYPES.has(el.type)) continue;
+    const field = el.getAttribute('data-pkc-field');
+    if (!field) continue;
+    let caretStart: number | null = null;
+    let caretEnd: number | null = null;
+    try {
+      caretStart = el.selectionStart;
+      caretEnd = el.selectionEnd;
+    } catch {
+      caretStart = null;
+      caretEnd = null;
+    }
+    out.push({
+      field,
+      logId: el.getAttribute('data-pkc-log-id'),
+      value: el.value,
+      caretStart,
+      caretEnd,
+    });
+  }
+  return out;
 }
 
 /**
@@ -143,7 +223,56 @@ export function restoreRenderContinuity(
     }, 200);
   }
 
+  // Editor draft values BEFORE focus, so the caret restore below (and
+  // main.ts's edit-mode focus default) act on the restored text.
+  restoreEditorFields(root, snapshot.editorFields);
+
   restoreFocus(root, snapshot.focus);
+}
+
+/**
+ * Write captured editor draft values (+ caret) back into the freshly
+ * rendered editor. No-op when the editor is gone (left edit mode) or a
+ * field cannot be re-found — same silent-skip contract as the rest of
+ * continuity. Matches fields by `data-pkc-field` + `data-pkc-log-id`
+ * (the latter disambiguates textlog per-row textareas).
+ */
+function restoreEditorFields(
+  root: HTMLElement,
+  fields: ReadonlyArray<EditorFieldSnapshot>,
+): void {
+  if (fields.length === 0) return;
+  const editor = root.querySelector<HTMLElement>('[data-pkc-mode="edit"]');
+  if (!editor) return;
+  for (const f of fields) {
+    const el = findEditorField(editor, f);
+    if (!el) continue;
+    if (el.value !== f.value) el.value = f.value;
+    if (f.caretStart !== null) {
+      try {
+        el.setSelectionRange(f.caretStart, f.caretEnd ?? f.caretStart);
+      } catch {
+        /* input types without selection support — value restore already won */
+      }
+    }
+  }
+}
+
+/** Re-find a captured editor field by `data-pkc-field` (+ `data-pkc-log-id`). */
+function findEditorField(
+  editor: HTMLElement,
+  f: EditorFieldSnapshot,
+): HTMLInputElement | HTMLTextAreaElement | null {
+  const selector =
+    `input[data-pkc-field="${escapeAttributeValue(f.field)}"],` +
+    `textarea[data-pkc-field="${escapeAttributeValue(f.field)}"]`;
+  const candidates = editor.querySelectorAll<HTMLElement>(selector);
+  for (const el of candidates) {
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) continue;
+    // null === null (field has no log id) or equal string (same textlog row).
+    if (el.getAttribute('data-pkc-log-id') === f.logId) return el;
+  }
+  return null;
 }
 
 function applyScrollSnapshot(
