@@ -18,7 +18,7 @@ PKC2 は、以下を1つにまとめたツールです:
 
 - **Single HTML, zero dependencies** — works offline, from a USB drive, or as an email attachment
 - **Auto-save** — IndexedDB persistence, no manual save needed
-- **4 entry types** — Note, Todo, Form, File (attachment)
+- **6 entry types** — Text, Log (textlog), Todo, Sheet (spreadsheet), File (attachment), Folder
 - **HTML / ZIP export** — light sharing, full archive, or lossless backup
 - **Rehydrate** — turn a readonly HTML back into an editable workspace
 - **Relations and tags** — connect entries structurally
@@ -29,7 +29,7 @@ PKC2 は、以下を1つにまとめたツールです:
 ## Quick Start
 
 1. **Open** `dist/pkc2.html` in any modern browser
-2. **Create** entries with `+ Note`, `+ Todo`, `+ Form`, or `+ File`
+2. **Create** entries from the toolbar — Text, Log, Todo, Sheet, File, or Folder
 3. **Export** via the Export panel — choose HTML or ZIP
 
 詳しい使い方は [ユーザーマニュアル（Markdown）](docs/manual/00_index.md) または [PKC2 マニュアル HTML](PKC2-Extensions/pkc2-manual.html) を参照してください。
@@ -47,17 +47,18 @@ For detailed usage, see the [Operation Guide](docs/planning/18_運用ガイド_e
 
 ## Architecture
 
-5-layer architecture with strict dependency direction:
+5-layer architecture with a strict, one-way import direction
+(`core ← features ← adapter`; core imports nothing and has zero browser APIs):
 
 ```
-core → adapter → feature → runtime → builder
+core  ←  features  ←  adapter        ·  runtime (build constants / DOM contracts)  ·  build/ (Stage 2 HTML)
 ```
 
-- **core** — data model, operations (zero browser API)
-- **adapter** — UI, state, browser abstraction
-- **features** — search, relations (orthogonal modules)
-- **runtime** — contract validation, metadata
-- **builder** — Stage 2 HTML generation
+- **core** — domain model: pure types + operations (zero browser API, imports nothing)
+- **features** — pure algorithmic modules (search, relations, tree, calendar, kanban); imports core only
+- **adapter** — runtime integration: state machine, UI rendering, persistence, transport (orchestrates everything)
+- **runtime** — build constants, version, DOM slot contracts
+- **build/** — Stage 2 single-HTML generation (release-builder)
 
 Runtime has zero external npm dependencies.
 
@@ -112,7 +113,7 @@ npm test             # Run tests
 
 ## Status
 
-**Pre-Release v0.1.0** — Core features stable. Specification stabilizing.
+**v2.3.0 (pre-release)** — Core features stable. Specification stabilizing.
 
 ## License
 
