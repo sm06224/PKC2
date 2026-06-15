@@ -45,6 +45,7 @@ function fakeLaunch() {
     projections: unknown[];
     delivers: unknown[];
     selected: string[];
+    proposeResults: { accepted: boolean; assignedLid: string | null; correlationId: string | null }[];
     closed: boolean;
   }[] = [];
   const launch = (opts: LaunchExtensionOptions): ExtensionChannelHandle => {
@@ -53,6 +54,7 @@ function fakeLaunch() {
       projections: [] as unknown[],
       delivers: [] as unknown[],
       selected: [] as string[],
+      proposeResults: [] as { accepted: boolean; assignedLid: string | null; correlationId: string | null }[],
       closed: false,
     };
     records.push(rec);
@@ -61,6 +63,8 @@ function fakeLaunch() {
       pushProjection: () => rec.projections.push(opts.getProjection()),
       deliver: (p) => rec.delivers.push(p),
       notifySelected: (lid) => rec.selected.push(lid),
+      notifyProposeResult: (accepted, assignedLid, correlationId) =>
+        rec.proposeResults.push({ accepted, assignedLid, correlationId }),
       close: () => { rec.closed = true; established = false; },
       isEstablished: () => established,
       // テストから rec.closed を立てると「ユーザーが window を閉じた」を模せる。
@@ -291,6 +295,50 @@ describe('onWrite set-todo-status(#830 R2): host が description を保全', () 
     const before = d.getState().container;
     expect(onWrite({ ops: [{ op: 'set-todo-status', lid: 'e1', status: 'done' }] })).toBe(false);
     expect(d.getState().container).toBe(before);
+  });
+});
+
+describe('onPropose(#830 R5): create を既存 record:offer 同意経路へ', () => {
+  function openHost() {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    return { d, recs };
+  }
+
+  it('propose は SYS_RECORD_OFFERED で pendingOffer 化し、accept で propose-result(assigned_lid 付き)を返す', () => {
+    const { d, recs } = openHost();
+    recs[0]!.opts.onPropose!({ offer: { title: 'New', body: 'b', archetype: 'text' }, correlation_id: 'c1' });
+    // silent 作成はしない: banner 待ちの pendingOffer になるだけ。
+    expect(d.getState().pendingOffers).toHaveLength(1);
+    expect(recs[0]!.proposeResults).toHaveLength(0);
+    const offerId = d.getState().pendingOffers[0]!.offer_id;
+    // ユーザーが banner で accept(= entry mint)。
+    d.dispatch({ type: 'ACCEPT_OFFER', offer_id: offerId });
+    expect(recs[0]!.proposeResults).toHaveLength(1);
+    const res = recs[0]!.proposeResults[0]!;
+    expect(res.accepted).toBe(true);
+    expect(res.correlationId).toBe('c1');
+    expect(typeof res.assignedLid).toBe('string');
+    // 払い出された lid の entry が実在する。
+    expect(d.getState().container!.entries.some((e) => e.lid === res.assignedLid)).toBe(true);
+  });
+
+  it('dismiss は accepted=false を返す', () => {
+    const { d, recs } = openHost();
+    recs[0]!.opts.onPropose!({ offer: { title: 'X', body: 'y' }, correlation_id: 'c2' });
+    const offerId = d.getState().pendingOffers[0]!.offer_id;
+    d.dispatch({ type: 'DISMISS_OFFER', offer_id: offerId });
+    expect(recs[0]!.proposeResults[0]).toEqual({ accepted: false, assignedLid: null, correlationId: 'c2' });
+  });
+
+  it('不正 offer は即 accepted=false、pendingOffer を作らない', () => {
+    const { d, recs } = openHost();
+    recs[0]!.opts.onPropose!({ offer: { body: 'no title' } }); // title 欠落 = 検証 NG
+    expect(d.getState().pendingOffers).toHaveLength(0);
+    expect(recs[0]!.proposeResults[0]).toEqual({ accepted: false, assignedLid: null, correlationId: null });
   });
 });
 

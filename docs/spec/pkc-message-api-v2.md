@@ -165,6 +165,8 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | `write` | child→host | `{ lid?, ops:[...], correlation_id? }` | T2 書き戻し。host が `validateWriteOps` で検証してから適用(G2、MUST) |
 | `write-result` | host→child | `{ ok, correlation_id? }` | 書き戻しの成否 |
 | `hint` | child→host | `{ kind, lid? }` | 軽量ヒント。host が処理するのは `open`(選択 + sidebar reveal + host 前面化)と `select`(選択のみ)。実体は流れない |
+| `propose` | child→host | `{ offer:{ title, body, archetype?, ... }, correlation_id? }` | **新規 entry の作成提案**(#830 R5)。host は `offer` を検証して既存 `record:offer` 同意 banner に流す。**silent 作成は無い**(ユーザー accept で初めて mint)。`offer` は record:offer payload と同型 |
+| `propose-result` | host→child | `{ accepted, assigned_lid?, correlation_id? }` | 作成の成否。accept なら `assigned_lid`、reject/dismiss なら `accepted:false`。検証 NG は即 `accepted:false` |
 
 **write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)/ `set-todo-status`(#830 R2: todo の `status` のみ差し替え。host が archetype==='todo' を検証し、現 body を parse→swap→serialize で `description`/`date`/`archived` を保全。拡張は body を持たないため status 専用 op)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
 
@@ -184,7 +186,7 @@ manifest は `AttachmentBody.extension_manifest`(additive): `{ tier?: 'sandboxed
 
 **security gate**(§3.3 と同一 primitive、MUST): window identity(`event.source === childWin`)+ per-launch nonce(`hello` 以外必須)+ Tier T のみ origin 検証。
 
-**consent**: 拡張は asset を pull できない。実体は (a) ユーザーの右クリック「拡張へ送る」/ 既定送り先(`extension-bindings`)、(b) 紐付け(導入)= standing opt-in、の 2 段で host が制御する。banner は出さない(send ジェスチャ自体が同意)。
+**consent**: 拡張は asset を pull できない。実体は (a) ユーザーの右クリック「拡張へ送る」/ 既定送り先(`extension-bindings`)、(b) 紐付け(導入)= standing opt-in、の 2 段で host が制御する。banner は出さない(send ジェスチャ自体が同意)。**ただし `propose`(新規 entry 作成、#830 R5)だけは例外** — 作成は既存 entry の編集と信頼の質が違うため、既存 `record:offer` の PendingOffer banner(ユーザー accept)を必ず経る。**Tier S sandboxed 拡張の offer 正本は `propose`**(v1 envelope `record:offer` は子の送信先=shell に届くが host main window の message-bridge には到達しないため、#830 R6)。
 
 ## 4. Versioning / v1 互換
 

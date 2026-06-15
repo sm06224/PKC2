@@ -264,6 +264,32 @@ describe('pkc:write(T2)は host 検証を通る', () => {
   });
 });
 
+describe('pkc:propose(#830 R5)— 作成提案を onPropose へ、結果を propose-result で返す', () => {
+  it('nonce 付き propose は onPropose へ渡り、notifyProposeResult が propose-result を push', () => {
+    const { child, posted } = stubChild();
+    const onPropose = vi.fn();
+    handle = launchExtensionChannel({ html: '<x>', getProjection: () => ({}), onPropose, ...TRUSTED })!;
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, t: 'hello' });
+    const nonce = posted.find((p) => p.msg.t === 'projection')!.msg.nonce as string;
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, nonce, t: 'propose', offer: { title: 'N', body: 'b' }, correlation_id: 'c9' });
+    expect(onPropose).toHaveBeenCalledWith({ offer: { title: 'N', body: 'b' }, correlation_id: 'c9' });
+    // host が後から結果を返す(banner accept 相当)。
+    handle.notifyProposeResult(true, 'lid-123', 'c9');
+    const res = posted.find((p) => p.msg.t === 'propose-result')!;
+    expect(res.msg).toMatchObject({ accepted: true, assigned_lid: 'lid-123', correlation_id: 'c9' });
+    expect(res.targetOrigin).toBe(ORIGIN);
+  });
+
+  it('nonce 不一致の propose は無視', () => {
+    const { child } = stubChild();
+    const onPropose = vi.fn();
+    handle = launchExtensionChannel({ html: '<x>', getProjection: () => ({}), onPropose, ...TRUSTED })!;
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, t: 'hello' });
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, t: 'propose', offer: { title: 'N', body: 'b' } }); // nonce 無し
+    expect(onPropose).not.toHaveBeenCalled();
+  });
+});
+
 describe('token 写像 helper', () => {
   it('sandboxTokensFor / allowAttributeFor の語彙', () => {
     expect(sandboxTokensFor(undefined)).toEqual(['allow-scripts']);

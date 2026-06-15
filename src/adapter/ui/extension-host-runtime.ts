@@ -31,6 +31,7 @@ import {
 import { parseAttachmentBody, decodeAttachmentText } from './attachment-presenter';
 import { getAncestorFolderLids } from '@features/relation/tree';
 import { parseTodoBody, serializeTodoBody } from '@features/todo/todo-body';
+import { validateOfferPayload, buildPendingOffer } from '../transport/record-offer-handler';
 
 export type LaunchFn = (opts: LaunchExtensionOptions) => ExtensionChannelHandle | null;
 
@@ -244,6 +245,25 @@ export function createExtensionHost(
   // は v2.2 予約のため、**毎起動確認**(最も安全)とする。
   const pendingConsent = new Set<string>();
   const pendingSends = new Map<string, string[]>();
+  // #830 R5: pkc-ext `propose` で投げられ、同意 banner 待ちの offer。
+  // offer_id → 起源拡張 + 相関 id。accept/dismiss event でチャネルに結果を返す。
+  const pendingProposals = new Map<string, { extLid: string; correlationId: string | null }>();
+
+  // propose 経由の offer は postMessage の reply window を持たない(結果は
+  // pkc-ext で返す)。OFFER_ACCEPTED/DISMISSED を購読し、自分が起こした
+  // offer_id だけ拾って `propose-result` を起源拡張へ push する。
+  const offProposeEvents = dispatcher.onEvent((event) => {
+    if (event.type !== 'OFFER_ACCEPTED' && event.type !== 'OFFER_DISMISSED') return;
+    const pending = pendingProposals.get(event.offer_id);
+    if (!pending) return;
+    pendingProposals.delete(event.offer_id);
+    const handle = handles.get(pending.extLid);
+    if (event.type === 'OFFER_ACCEPTED') {
+      handle?.notifyProposeResult(true, event.lid, pending.correlationId);
+    } else {
+      handle?.notifyProposeResult(false, null, pending.correlationId);
+    }
+  });
 
   function launchResolved(
     extLid: string,
@@ -270,6 +290,23 @@ export function createExtensionHost(
           // graph の single-click 相当: 選択のみ(前面化しない)。
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: hint.lid });
         }
+      },
+      // #830 R5: 新規 entry の作成提案。host が payload を検証し、既存の
+      // record:offer 同意 banner に流す(silent 作成は無い)。検証 NG は
+      // 即 accepted=false。accept/dismiss の結果は offProposeEvents が返す。
+      onPropose: (req) => {
+        const handle = handles.get(extLid);
+        const payload = validateOfferPayload(req.offer);
+        if (!payload) {
+          handle?.notifyProposeResult(false, null, req.correlation_id ?? null);
+          return;
+        }
+        const offer = buildPendingOffer(payload, {
+          correlation_id: req.correlation_id ?? null,
+          reply_to_id: null,
+        });
+        pendingProposals.set(offer.offer_id, { extLid, correlationId: req.correlation_id ?? null });
+        dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
       },
     });
     if (!handle) return null;
@@ -369,6 +406,8 @@ export function createExtensionHost(
     openLids: () => [...handles.keys()],
     closeAll: () => {
       for (const lid of [...handles.keys()]) closeOne(lid);
+      offProposeEvents();
+      pendingProposals.clear();
     },
   };
 }
