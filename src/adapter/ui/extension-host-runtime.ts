@@ -31,6 +31,7 @@ import {
 import { parseAttachmentBody, decodeAttachmentText } from './attachment-presenter';
 import { getAncestorFolderLids } from '@features/relation/tree';
 import { parseTodoBody, serializeTodoBody } from '@features/todo/todo-body';
+import { getRestoreCandidates } from '@core/operations/container-ops';
 import { validateOfferPayload, buildPendingOffer } from '../transport/record-offer-handler';
 
 export type LaunchFn = (opts: LaunchExtensionOptions) => ExtensionChannelHandle | null;
@@ -114,6 +115,19 @@ export function unfileEntry(dispatcher: Dispatcher, lid: string): void {
   }
 }
 
+/**
+ * soft delete 済み entry を復元する(#830 R4、検証済み・永続化)。host が
+ * 最新 revision を `getRestoreCandidates` で解決し、既存 RESTORE_ENTRY に
+ * 流す(拡張は revision_id を知らなくてよい)。復元候補でなければ no-op。
+ */
+export function restoreDeleted(dispatcher: Dispatcher, lid: string): void {
+  const container = dispatcher.getState().container;
+  if (!container || dispatcher.getState().readonly) return;
+  const rev = getRestoreCandidates(container).find((r) => r.entry_lid === lid);
+  if (!rev) return;
+  dispatcher.dispatch({ type: 'RESTORE_ENTRY', lid, revision_id: rev.id });
+}
+
 /** entry 間に semantic relation を張る(検証済み、永続化)。 */
 export function relateEntries(dispatcher: Dispatcher, from: string, to: string): void {
   const container = dispatcher.getState().container;
@@ -156,6 +170,8 @@ export function applyTodoStatus(
  *   - set-todo-status → applyTodoStatus(host が description を保全、#830 R2)
  *   - rename          → RENAME_ENTRY_TITLE(title のみ、#830 R3)
  *   - unfile          → unfileEntry(structural relation 除去、#830 R7)
+ *   - delete          → DELETE_ENTRY(soft delete、#830 R4。purge は非開放)
+ *   - restore         → restoreDeleted(最新 revision を解決、#830 R4)
  * 検証は all-or-nothing。1 件でも NG なら全体を拒否(部分適用しない)。
  */
 function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
@@ -178,6 +194,10 @@ function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
       dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid: op.lid, title: op.title });
     } else if (op.op === 'unfile') {
       unfileEntry(dispatcher, op.lid);
+    } else if (op.op === 'delete') {
+      dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: op.lid });
+    } else if (op.op === 'restore') {
+      restoreDeleted(dispatcher, op.lid);
     }
   }
   return true;

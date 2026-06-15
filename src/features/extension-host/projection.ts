@@ -21,6 +21,7 @@
 
 import type { Container } from '@core/model/container';
 import { isSystemArchetype } from '@core/model/record';
+import { getRestoreCandidates, parseRevisionSnapshot } from '@core/operations/container-ops';
 import { collectLinkRefs } from '@features/link-index/link-index';
 import { parseTodoBody } from '@features/todo/todo-body';
 
@@ -75,6 +76,18 @@ export interface ProjectionExternalLink {
   url: string;
 }
 
+/**
+ * 削除済みで復元可能な entry の派生メタ(#830 R4)。PKC2 の delete は
+ * soft(revision snapshot を残す物理削除)で、`getRestoreCandidates` が
+ * 復元候補を返す。拡張のゴミ箱 UI 用に lid/title/archetype のみ載せる
+ * (body/snapshot 本体は含めない — data minimization 不変)。
+ */
+export interface ProjectionRestoreCandidate {
+  lid: string;
+  title: string;
+  archetype: string;
+}
+
 export interface ContainerProjection {
   containerId: string;
   title: string;
@@ -85,6 +98,8 @@ export interface ContainerProjection {
     internal: ProjectionInternalLink[];
     external: ProjectionExternalLink[];
   };
+  /** 削除済みで復元可能な entry(#830 R4、ゴミ箱 UI 用。body は含まない)。 */
+  restoreCandidates: ProjectionRestoreCandidate[];
   stats: ProjectionStats;
 }
 
@@ -199,12 +214,22 @@ export function buildContainerProjection(container: Container): ContainerProject
     }
   }
 
+  // 削除済み復元候補(#830 R4)。snapshot から lid/title/archetype のみ拾い、
+  // body は載せない。system archetype は projection の他部分と同様に除外。
+  const restoreCandidates: ProjectionRestoreCandidate[] = [];
+  for (const rev of getRestoreCandidates(container)) {
+    const snap = parseRevisionSnapshot(rev);
+    if (!snap || isSystemArchetype(snap.archetype)) continue;
+    restoreCandidates.push({ lid: snap.lid, title: snap.title, archetype: snap.archetype });
+  }
+
   return {
     containerId: container.meta.container_id,
     title: container.meta.title,
     entries,
     relations,
     links: { internal, external },
+    restoreCandidates,
     stats: {
       totalEntries: entries.length,
       byArchetype,

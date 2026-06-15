@@ -60,6 +60,21 @@ describe('buildContainerProjection', () => {
     expect(a1.asset_size).toBe('QkFTRTY0REFUQQ=='.length);
   });
 
+  it('restoreCandidates は soft-delete 済み entry のメタを載せる(body/snapshot は非露出)(#830 R4)', () => {
+    const c = makeContainer();
+    // 'gone' は revision はあるが entries に無い = 復元候補。
+    c.revisions.push({
+      id: 'rev-gone', entry_lid: 'gone', created_at: T,
+      snapshot: JSON.stringify({
+        lid: 'gone', title: 'Deleted Note', body: 'SECRET DELETED BODY',
+        archetype: 'text', created_at: T, updated_at: T,
+      }),
+    });
+    const p = buildContainerProjection(c);
+    expect(p.restoreCandidates).toEqual([{ lid: 'gone', title: 'Deleted Note', archetype: 'text' }]);
+    expect(JSON.stringify(p)).not.toContain('SECRET DELETED BODY');
+  });
+
   it('【不変条件】body / assets(base64)/ revisions を一切含まない', () => {
     const p = buildContainerProjection(makeContainer());
     const json = JSON.stringify(p);
