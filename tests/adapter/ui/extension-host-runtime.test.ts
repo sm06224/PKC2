@@ -326,6 +326,38 @@ describe('onWrite rename / unfile(#830 R3 / R7)', () => {
   });
 });
 
+describe('onWrite delete / restore(#830 R4: 既存 soft-delete trash 開放)', () => {
+  function openHost() {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    return { d, recs };
+  }
+
+  it('delete は soft(復元候補になる)、restore で復活する', () => {
+    const { d, recs } = openHost();
+    const onWrite = recs[0]!.opts.onWrite!;
+    expect(onWrite({ ops: [{ op: 'delete', lid: 'e1' }] })).toBe(true);
+    expect(d.getState().container!.entries.some((e) => e.lid === 'e1')).toBe(false);
+    // ゴミ箱 UI 用に projection.restoreCandidates へ出る。
+    const proj = recs[0]!.opts.getProjection() as { restoreCandidates: { lid: string }[] };
+    expect(proj.restoreCandidates.some((rc) => rc.lid === 'e1')).toBe(true);
+    // restore で entries に戻る。
+    expect(onWrite({ ops: [{ op: 'restore', lid: 'e1' }] })).toBe(true);
+    expect(d.getState().container!.entries.some((e) => e.lid === 'e1')).toBe(true);
+  });
+
+  it('active entry の restore は検証 NG で副作用なし(復元候補でない)', () => {
+    const { d, recs } = openHost();
+    const onWrite = recs[0]!.opts.onWrite!;
+    const before = d.getState().container;
+    expect(onWrite({ ops: [{ op: 'restore', lid: 'e1' }] })).toBe(false);
+    expect(d.getState().container).toBe(before);
+  });
+});
+
 describe('onPropose(#830 R5): create を既存 record:offer 同意経路へ', () => {
   function openHost() {
     const d = createDispatcher();

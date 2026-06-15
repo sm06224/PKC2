@@ -50,7 +50,8 @@ describe('validateWriteOps', () => {
   });
 
   it('未知 op / 型不正は拒否', () => {
-    expect(validateWriteOps(container, [{ op: 'delete', lid: 'e1' }]).ok).toBe(false);
+    // purge(hard delete)は意図的に非開放 = 未知 op として弾く(#830 R4)。
+    expect(validateWriteOps(container, [{ op: 'purge', lid: 'e1' }]).ok).toBe(false);
     expect(validateWriteOps(container, [{ op: 'update-body', lid: 'e1', body: 5 }]).ok).toBe(false);
   });
 
@@ -80,6 +81,22 @@ describe('validateWriteOps', () => {
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.ops).toEqual([{ op: 'unfile', lid: 'e1' }]);
     expect(validateWriteOps(container, [{ op: 'unfile', lid: 'nope' }]).ok).toBe(false);
+  });
+
+  it('delete は existing entry のみ、restore は復元候補のみ(#830 R4)', () => {
+    expect(validateWriteOps(container, [{ op: 'delete', lid: 'e1' }]).ok).toBe(true);
+    expect(validateWriteOps(container, [{ op: 'delete', lid: 'nope' }]).ok).toBe(false);
+    // active entry は復元候補でない。
+    expect(validateWriteOps(container, [{ op: 'restore', lid: 'e1' }]).ok).toBe(false);
+    const withDeleted: Container = {
+      ...container,
+      revisions: [{
+        id: 'r-del1', entry_lid: 'del1', created_at: T,
+        snapshot: JSON.stringify({ lid: 'del1', title: 'D', body: '', archetype: 'text', created_at: T, updated_at: T }),
+      }],
+    };
+    expect(validateWriteOps(withDeleted, [{ op: 'restore', lid: 'del1' }]).ok).toBe(true);
+    expect(validateWriteOps(withDeleted, [{ op: 'restore', lid: 'nope' }]).ok).toBe(false);
   });
 
   it('1 件でも NG なら全体拒否(部分適用しない)', () => {

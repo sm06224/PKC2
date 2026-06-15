@@ -159,7 +159,7 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | t | 方向 | payload | 意味 |
 |---|---|---|---|
 | `hello` | child→host | — | handshake。host が established → projection を返す |
-| `projection` | host→child | `ContainerProjection`(index/list/統計 + body 由来の **link 集計** `links.internal/external` + body から導出した **per-entry 派生メタ**: attachment は `mime`/`filename`/`asset_size`、todo は `todo:{status,date?,archived?}`(#830 R1、`description` は載せない)。**body/assets/revisions を含まない**、MUST) | 既定露出。container 変化で再 push |
+| `projection` | host→child | `ContainerProjection`(index/list/統計 + body 由来の **link 集計** `links.internal/external` + body から導出した **per-entry 派生メタ**: attachment は `mime`/`filename`/`asset_size`、todo は `todo:{status,date?,archived?}`(#830 R1、`description` は載せない)+ soft delete 済み復元候補 `restoreCandidates:{lid,title,archetype}[]`(#830 R4、body/snapshot は載せない)。**body/assets/revisions を含まない**、MUST) | 既定露出。container 変化で再 push |
 | `deliver` | host→child | `{ kind:'asset'|'entry', lid?, asset_key?, mime?, filename?, body?, data_base64?, correlation_id? }` | **ユーザーの send ジェスチャ**で実体 1 件。pull 経路は無い(MUST NOT)。handshake 前の send は host が buffer し、`hello` 後に projection → deliver の順で配送 |
 | `selected` | host→child | `{ lid }` | host 側の選択変更(graph 等が focus を追従)。established 後のみ |
 | `write` | child→host | `{ lid?, ops:[...], correlation_id? }` | T2 書き戻し。host が `validateWriteOps` で検証してから適用(G2、MUST) |
@@ -168,7 +168,7 @@ container 内 asset 由来・同一オリジンの拡張は、外部 origin の 
 | `propose` | child→host | `{ offer:{ title, body, archetype?, ... }, correlation_id? }` | **新規 entry の作成提案**(#830 R5)。host は `offer` を検証して既存 `record:offer` 同意 banner に流す。**silent 作成は無い**(ユーザー accept で初めて mint)。`offer` は record:offer payload と同型 |
 | `propose-result` | host→child | `{ accepted, assigned_lid?, correlation_id? }` | 作成の成否。accept なら `assigned_lid`、reject/dismiss なら `accepted:false`。検証 NG は即 `accepted:false` |
 
-**write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)/ `set-todo-status`(#830 R2: todo の `status` のみ差し替え。host が archetype==='todo' を検証し、現 body を parse→swap→serialize で `description`/`date`/`archived` を保全。拡張は body を持たないため status 専用 op)/ `rename`(#830 R3: `{lid,title}` で title のみ差し替え。host が trim、非空を検証)/ `unfile`(#830 R7: `{lid}` で structural relation を除去し未整理(root)へ。`move` は folderLid が folder 必須で root を表現できないための専用 op)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
+**write op 語彙**(最小、検証必須): `update-body`(QUICK_UPDATE_ENTRY)/ `move`(検証済み folder 移動)/ `relate`(semantic relation)/ `set-todo-status`(#830 R2: todo の `status` のみ差し替え。host が archetype==='todo' を検証し、現 body を parse→swap→serialize で `description`/`date`/`archived` を保全。拡張は body を持たないため status 専用 op)/ `rename`(#830 R3: `{lid,title}` で title のみ差し替え。host が trim、非空を検証)/ `unfile`(#830 R7: `{lid}` で structural relation を除去し未整理(root)へ。`move` は folderLid が folder 必須で root を表現できないための専用 op)/ `delete`(#830 R4: `{lid}` で soft delete。PKC2 の delete は revision snapshot を残す物理削除で復元可能。**purge=hard delete は host-only で開放しない**)/ `restore`(#830 R4: `{lid}` で soft delete 済み entry を復元。host が最新 revision を解決して RESTORE_ENTRY に流す)。1 件でも不正なら全体拒否(部分適用しない、MUST)。
 
 **封じ込め 2 層**(#796、`pkc-extension-containment-design-2026-06.md` §2/§3 — 実装済み):
 
