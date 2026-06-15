@@ -356,6 +356,21 @@ describe('onWrite delete / restore(#830 R4: 既存 soft-delete trash 開放)', (
     expect(onWrite({ ops: [{ op: 'restore', lid: 'e1' }] })).toBe(false);
     expect(d.getState().container).toBe(before);
   });
+
+  it('purge-orphan-assets は孤児アセットを掃除し、参照中は残す(#830 R8)', () => {
+    const c = container();
+    c.assets = { ...c.assets, orphan1: btoa('ORPHAN') }; // どの entry からも未参照
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: c });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    const onWrite = recs[0]!.opts.onWrite!;
+    expect(d.getState().container!.assets.orphan1).toBeDefined();
+    expect(onWrite({ ops: [{ op: 'purge-orphan-assets' }] })).toBe(true);
+    expect(d.getState().container!.assets.orphan1).toBeUndefined();
+    expect(d.getState().container!.assets['ext-html']).toBeDefined(); // 参照中は残る
+  });
 });
 
 describe('onPropose(#830 R5): create を既存 record:offer 同意経路へ', () => {
