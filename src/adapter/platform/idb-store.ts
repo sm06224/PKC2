@@ -44,6 +44,24 @@ export interface ContainerStore {
   /** Set the active (`__default__`) container without rewriting it. */
   setDefaultContainer(containerId: string): Promise<void>;
 
+  // ── Workspace layer (#773) ──
+  // Workspaces bundle containers into named workspaces. Persisted as
+  // reserved `workspace:<id>` keys in the containers bucket (design §3
+  // option B — no new bucket / seam change). `__active_workspace__`
+  // points at the active one.
+  /** Enumerate stored workspaces (by name, then id). */
+  listWorkspaces(): Promise<Workspace[]>;
+  /** Load a workspace by id, or `null`. */
+  loadWorkspace(id: string): Promise<Workspace | null>;
+  /** Create / overwrite a workspace record. */
+  saveWorkspace(workspace: Workspace): Promise<void>;
+  /** Delete a workspace record (does NOT delete its member containers). */
+  deleteWorkspace(id: string): Promise<void>;
+  /** Active workspace id (`__active_workspace__`), or `null`. */
+  getActiveWorkspaceId(): Promise<string | null>;
+  /** Set the active workspace id. */
+  setActiveWorkspaceId(id: string): Promise<void>;
+
   // Per-asset CRUD (Phase 1 contract)
   saveAsset(cid: string, key: string, data: string): Promise<void>;
   loadAsset(cid: string, key: string): Promise<string | null>;
@@ -57,7 +75,23 @@ export interface ContainerSummary {
   title: string;
 }
 
+/**
+ * A workspace bundles containers into a named work area (#773). It
+ * **references** containers by id (does not own them); the same
+ * container may appear in multiple workspaces.
+ */
+export interface Workspace {
+  id: string;
+  name: string;
+  containerIds: string[];
+  activeContainerId: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const DEFAULT_KEY = '__default__';
+const WORKSPACE_PREFIX = 'workspace:';
+const ACTIVE_WORKSPACE_KEY = '__active_workspace__';
 
 function assetFullKey(cid: string, assetKey: string): string {
   return `${cid}:${assetKey}`;
@@ -192,6 +226,45 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     await containers.put(DEFAULT_KEY, containerId);
   }
 
+  function isWorkspace(v: unknown): v is Workspace {
+    const w = v as Workspace | null;
+    return (
+      !!w && typeof w.id === 'string' && typeof w.name === 'string' && Array.isArray(w.containerIds)
+    );
+  }
+
+  async function listWorkspaces(): Promise<Workspace[]> {
+    const pairs = await containers.getAllByPrefix(WORKSPACE_PREFIX);
+    const out: Workspace[] = [];
+    for (const { value } of pairs) {
+      if (isWorkspace(value)) out.push(value);
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    return out;
+  }
+
+  async function loadWorkspace(id: string): Promise<Workspace | null> {
+    const v = await containers.get(WORKSPACE_PREFIX + id);
+    return isWorkspace(v) ? v : null;
+  }
+
+  async function saveWorkspace(workspace: Workspace): Promise<void> {
+    await containers.put(WORKSPACE_PREFIX + workspace.id, workspace);
+  }
+
+  async function deleteWorkspace(id: string): Promise<void> {
+    await containers.delete(WORKSPACE_PREFIX + id);
+  }
+
+  async function getActiveWorkspaceId(): Promise<string | null> {
+    const v = await containers.get(ACTIVE_WORKSPACE_KEY);
+    return typeof v === 'string' ? v : null;
+  }
+
+  async function setActiveWorkspaceId(id: string): Promise<void> {
+    await containers.put(ACTIVE_WORKSPACE_KEY, id);
+  }
+
   return {
     save,
     load,
@@ -200,6 +273,12 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     clearAll,
     listContainers,
     setDefaultContainer,
+    listWorkspaces,
+    loadWorkspace,
+    saveWorkspace,
+    deleteWorkspace,
+    getActiveWorkspaceId,
+    setActiveWorkspaceId,
     saveAsset,
     loadAsset,
     deleteAsset,
