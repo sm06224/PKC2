@@ -6285,6 +6285,49 @@ mark.pkc-search-mark {
   border-top: none;
 }
 
+/* #771/#773: storage backend + workspace + container switchers. */
+.pkc-storage-backend-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+.pkc-storage-backend-option[data-pkc-active='true'] {
+  font-weight: 600;
+  border-color: var(--c-accent);
+}
+.pkc-workspace-switcher-list,
+.pkc-container-switcher-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pkc-workspace-switcher-row,
+.pkc-container-switcher-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1) var(--space-1-5);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+}
+.pkc-workspace-switcher-row[data-pkc-active],
+.pkc-container-switcher-row[data-pkc-active] {
+  border-color: var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 8%, transparent);
+}
+.pkc-workspace-switcher-name,
+.pkc-container-switcher-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkc-workspace-switcher-new,
+.pkc-container-switcher-new {
+  align-self: flex-start;
+}
+
 .pkc-storage-profile-summary-list {
   list-style: none;
   margin: 0;
