@@ -128,6 +128,15 @@ export interface AppState {
   embedded: boolean;
   /** Pending record offers (runtime-only, not persisted). */
   pendingOffers: PendingOffer[];
+  /**
+   * Stored containers for the same-origin container switcher
+   * (#771/#773 MVP). Populated asynchronously at boot from
+   * `store.listContainers()`, consumed by the Storage Profile dialog.
+   * Runtime-only; **optional** because it is absent until that async
+   * population lands (and so test fixtures need not set it). The
+   * initial state seeds it to `[]`.
+   */
+  availableContainers?: { id: string; title: string }[];
   /** Import preview awaiting user confirmation (runtime-only). */
   importPreview: ImportPreviewRef | null;
   /**
@@ -603,6 +612,7 @@ export function createInitialState(): AppState {
     error: null,
     embedded: false,
     pendingOffers: [],
+    availableContainers: [],
     importPreview: null,
     importMode: 'replace',
     pendingNav: null,
@@ -696,6 +706,9 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
   // 取りこぼさない。
   if (action.type === 'SYS_SYNC_CHILD_WINDOWS') {
     return { state: { ...state, childWindowLids: [...action.lids] }, events: [] };
+  }
+  if (action.type === 'SYS_SET_AVAILABLE_CONTAINERS') {
+    return { state: { ...state, availableContainers: action.containers.map((c) => ({ ...c })) }, events: [] };
   }
   switch (state.phase) {
     case 'initializing':
