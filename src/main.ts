@@ -51,7 +51,8 @@ import { wireWindowLayoutRestore } from './adapter/ui/window-layout-restore-prom
 import { getOpenEntryWindowLids, setEntryWindowsChangedListener, setEntryWindowCurrentContainer } from './adapter/ui/entry-window';
 import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
-import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
+import { probeIDBAvailability } from './adapter/platform/idb-store';
+import { createConfiguredStoreFromEnv } from './adapter/platform/storage-backend';
 import {
   showIdbWarningBanner,
   showIdbSaveFailureBanner,
@@ -566,7 +567,13 @@ async function boot(): Promise<void> {
   // banner is idempotent per-region, so repeated failures update the
   // reason string on the existing banner rather than stacking. See
   // docs/development/idb-availability.md § "Runtime save failure".
-  const store = createIDBStore();
+  //
+  // #771: the active backend is chosen from the localStorage preference
+  // (`pkc2.storageBackend`). Default = 'idb' (unchanged behaviour). When
+  // set to 'opfs' and OPFS is usable (secure context — NOT file://), the
+  // store is OPFS-backed, migrating the existing IDB default container
+  // across once. Falls back to IDB safely otherwise.
+  const { store } = await createConfiguredStoreFromEnv();
   mountPersistence(dispatcher, {
     store,
     onError: (err) => {
