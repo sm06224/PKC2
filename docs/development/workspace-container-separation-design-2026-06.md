@@ -1,8 +1,22 @@
 # Workspace 概念 + Container 化の分離 設計
 
-> **状態: 📐 設計のみ・実装は凍結**(2026-06、North Star L3 / プライム・ディレクティブ「実装は go まで凍結」)。
-> tracking issue: **#773**(`lane:arch-v3` / `type:design`)。本書は実装を伴わない。着手は user の明示 go が前提。
+> **状態: 🟡 MVP 実装済み(2026-06-16、PR #847 / #848)/ 完全 workspace 層は未実装**。user 明示 go により「同一オリジン container 切替」の MVP を実装した(下記)。本書の **container 層 ⇄ workspace 層 分離**のうち、MVP は container 切替のみ実装し、**workspace レコード(複数 container を束ねる §3 の層)は未導入**。
+> tracking issue: **#773**(`lane:arch-v3`)。
 > 正本方針: [`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md) §4 North Star。
+
+## 実装メモ(MVP、2026-06-16 着地)
+
+ストレージ層は元から多 container 対応(cid キー保存 + `__default__` active ポインタ)。MVP はこれを UI 開放しただけで、**workspace 抽象は未導入**。
+
+| PR | 内容 |
+|---|---|
+| #847 | `ContainerStore.listContainers()`(多 container 列挙)+ `setDefaultContainer()`(active 切替の軽量 primitive)|
+| #848 | Storage Profile「Containers (this origin)」UI(一覧/切替/新規/削除)+ `availableContainers` state + boot 列挙。切替/新規/削除は store 変更 + reload |
+
+**MVP がカバーしない #773 の残り**(= 完全 workspace 層、次段): workspace レコード(`{id, name, containerIds[], activeContainerId, windowAssignments?}`)/ `__active_workspace__` ポインタ(§3.「アクティブポインタの再設計」)/ 複数 workspace の作成・切替・命名 UI / multi-window 結線(§4)/ `__default__` → default workspace 化の移行(§5)。MVP は単一の暗黙 workspace(= 全 container が 1 つの作業空間)に相当。
+
+---
+
 
 ## 0. 目的とスコープ
 
