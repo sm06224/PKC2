@@ -137,6 +137,12 @@ export interface AppState {
    * initial state seeds it to `[]`.
    */
   availableContainers?: { id: string; title: string }[];
+  /**
+   * Stored workspaces + active workspace id for the workspace switcher
+   * (#773). Runtime-only; optional (async-populated at boot).
+   */
+  workspaces?: { id: string; name: string }[];
+  activeWorkspaceId?: string | null;
   /** Import preview awaiting user confirmation (runtime-only). */
   importPreview: ImportPreviewRef | null;
   /**
@@ -613,6 +619,8 @@ export function createInitialState(): AppState {
     embedded: false,
     pendingOffers: [],
     availableContainers: [],
+    workspaces: [],
+    activeWorkspaceId: null,
     importPreview: null,
     importMode: 'replace',
     pendingNav: null,
@@ -709,6 +717,16 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
   }
   if (action.type === 'SYS_SET_AVAILABLE_CONTAINERS') {
     return { state: { ...state, availableContainers: action.containers.map((c) => ({ ...c })) }, events: [] };
+  }
+  if (action.type === 'SYS_SET_WORKSPACES') {
+    return {
+      state: {
+        ...state,
+        workspaces: action.workspaces.map((w) => ({ ...w })),
+        activeWorkspaceId: action.activeWorkspaceId,
+      },
+      events: [],
+    };
   }
   switch (state.phase) {
     case 'initializing':

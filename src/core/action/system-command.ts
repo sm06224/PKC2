@@ -193,6 +193,12 @@ export type SystemCommand =
    * dialog. Runtime-only (never persisted).
    */
   | { type: 'SYS_SET_AVAILABLE_CONTAINERS'; containers: readonly { id: string; title: string }[] }
+  /**
+   * Set the stored workspaces + active workspace id for the workspace
+   * switcher (#773). Populated at boot; consumed by the Storage Profile
+   * dialog. Runtime-only.
+   */
+  | { type: 'SYS_SET_WORKSPACES'; workspaces: readonly { id: string; name: string }[]; activeWorkspaceId: string | null }
   | { type: 'SYS_ERROR'; error: string };
 
 /** Extract the type literal from a SystemCommand. */

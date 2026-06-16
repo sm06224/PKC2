@@ -1,19 +1,20 @@
 # Workspace 概念 + Container 化の分離 設計
 
-> **状態: 🟡 MVP 実装済み(2026-06-16、PR #847 / #848)/ 完全 workspace 層は未実装**。user 明示 go により「同一オリジン container 切替」の MVP を実装した(下記)。本書の **container 層 ⇄ workspace 層 分離**のうち、MVP は container 切替のみ実装し、**workspace レコード(複数 container を束ねる §3 の層)は未導入**。
+> **状態: ✅ 実装済み(2026-06-16、PR #847 / #848 / #851 / #852 / #853)**。container 層 ⇄ workspace 層 分離を実装(workspace レコード + active ポインタ + 複数 workspace UI + `__default__`→default workspace 移行)。multi-window 結線(§4)のみ #4 凍結との整合待ちで未実装(受け皿のみ)。
 > tracking issue: **#773**(`lane:arch-v3`)。
 > 正本方針: [`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md) §4 North Star。
 
-## 実装メモ(MVP、2026-06-16 着地)
-
-ストレージ層は元から多 container 対応(cid キー保存 + `__default__` active ポインタ)。MVP はこれを UI 開放しただけで、**workspace 抽象は未導入**。
+## 実装メモ(2026-06-16 着地)
 
 | PR | 内容 |
 |---|---|
-| #847 | `ContainerStore.listContainers()`(多 container 列挙)+ `setDefaultContainer()`(active 切替の軽量 primitive)|
-| #848 | Storage Profile「Containers (this origin)」UI(一覧/切替/新規/削除)+ `availableContainers` state + boot 列挙。切替/新規/削除は store 変更 + reload |
+| #847 | `ContainerStore.listContainers()` + `setDefaultContainer()`(多 container 列挙 + active 切替 primitive)|
+| #848 | Storage Profile「Containers」UI(一覧/切替/新規/削除)+ `availableContainers` state + boot 列挙(MVP)|
+| #851 | workspace store CRUD(`workspace:<id>` 予約 key=設計 §3 option B、bucket 追加なし)+ `__active_workspace__` ポインタ |
+| #852 | `workspace.ts` orchestration + boot で `ensureDefaultWorkspace`(§5 非破壊移行)+ container 切替/新規/削除を **active workspace 内**操作に |
+| #853 | Storage Profile「Workspaces」UI(複数 workspace の作成/切替/命名)+ `workspaces`/`activeWorkspaceId` state。container 一覧は active workspace に scope |
 
-**MVP がカバーしない #773 の残り**(= 完全 workspace 層、次段): workspace レコード(`{id, name, containerIds[], activeContainerId, windowAssignments?}`)/ `__active_workspace__` ポインタ(§3.「アクティブポインタの再設計」)/ 複数 workspace の作成・切替・命名 UI / multi-window 結線(§4)/ `__default__` → default workspace 化の移行(§5)。MVP は単一の暗黙 workspace(= 全 container が 1 つの作業空間)に相当。
+**採った決定**: Q-WS-1 = (B) `containers` bucket 予約 key(seam/bucket 追加なし)/ アクティブポインタ = `__active_workspace__` + workspace 内 `activeContainerId`、`__default__` は active container と同期(boot の loadDefault 不変)/ Q-WS-5(multi-window 結線)= #4 凍結待ちで受け皿のみ(`windowAssignments` 未使用)。後方互換 = 既存単一 container を「Default」workspace に非破壊で包む。
 
 ---
 

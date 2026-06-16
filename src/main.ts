@@ -59,6 +59,9 @@ import {
   switchActiveContainer,
   addContainerToActiveWorkspace,
   removeContainerFromActiveWorkspace,
+  switchWorkspace,
+  createWorkspace,
+  renameWorkspace,
 } from './adapter/platform/workspace';
 import {
   showIdbWarningBanner,
@@ -608,6 +611,13 @@ async function boot(): Promise<void> {
     await ensureDefaultWorkspace(store);
     const containers = await activeWorkspaceContainers(store);
     dispatcher.dispatch({ type: 'SYS_SET_AVAILABLE_CONTAINERS', containers });
+    const workspaces = await store.listWorkspaces();
+    const activeWorkspaceId = await store.getActiveWorkspaceId();
+    dispatcher.dispatch({
+      type: 'SYS_SET_WORKSPACES',
+      workspaces: workspaces.map((w) => ({ id: w.id, name: w.name })),
+      activeWorkspaceId,
+    });
   })().catch(() => {});
   mountContainerSwitchHandler(root, store);
 
@@ -2040,6 +2050,38 @@ function mountContainerSwitchHandler(root: HTMLElement, store: ContainerStore): 
       if (!confirm('このコンテナを削除しますか？元に戻せません。')) return;
       void (async (): Promise<void> => {
         await removeContainerFromActiveWorkspace(store, cid);
+        location.reload();
+      })();
+      return;
+    }
+    // ── Workspace actions (#773 PR-WS-B2) ──
+    const wsSwitchEl = el.closest<HTMLElement>('[data-pkc-action="switch-workspace"]');
+    if (wsSwitchEl) {
+      const wid = wsSwitchEl.getAttribute('data-pkc-wid');
+      if (!wid) return;
+      void (async (): Promise<void> => {
+        await switchWorkspace(store, wid);
+        location.reload();
+      })();
+      return;
+    }
+    if (el.closest<HTMLElement>('[data-pkc-action="new-workspace"]')) {
+      const name = prompt('新しいワークスペース名:', 'Workspace');
+      if (name === null) return; // cancelled
+      void (async (): Promise<void> => {
+        await createWorkspace(store, name, createEmptyContainer());
+        location.reload();
+      })();
+      return;
+    }
+    const wsRenameEl = el.closest<HTMLElement>('[data-pkc-action="rename-workspace"]');
+    if (wsRenameEl) {
+      const wid = wsRenameEl.getAttribute('data-pkc-wid');
+      if (!wid) return;
+      const name = prompt('ワークスペース名を変更:', wsRenameEl.getAttribute('data-pkc-wname') ?? '');
+      if (name === null) return;
+      void (async (): Promise<void> => {
+        await renameWorkspace(store, wid, name);
         location.reload();
       })();
       return;
