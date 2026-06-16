@@ -80,3 +80,27 @@ test('parity: container switcher lists, switches, and creates', async ({ page })
   await openStorageProfile(page);
   await expect(switcher.locator('.pkc-container-switcher-row')).toHaveCount(3);
 });
+
+test('parity: container switcher deletes a non-active container', async ({ page }) => {
+  await page.goto('/pkc2.html');
+  await bootReady(page);
+  await seedTwoContainers(page); // Alpha (active) + Beta
+  await page.reload();
+  await bootReady(page);
+
+  await openStorageProfile(page);
+  const switcher = page.locator('[data-pkc-region="container-switcher"]');
+  await expect(switcher.locator('.pkc-container-switcher-row')).toHaveCount(2);
+
+  // delete-container fires a confirm() — auto-accept it.
+  page.on('dialog', (d) => { void d.accept(); });
+  await reloadVia(page, () =>
+    page.locator('[data-pkc-action="delete-container"][data-pkc-cid="cid-beta"]').click(),
+  );
+
+  // Beta is gone; Alpha (active) remains.
+  await openStorageProfile(page);
+  await expect(switcher.locator('.pkc-container-switcher-row')).toHaveCount(1);
+  await expect(switcher.locator('.pkc-container-switcher-row[data-pkc-cid="cid-alpha"]')).toBeVisible();
+  await expect(page.locator('[data-pkc-region="entry-list"]').getByText('ALPHA-ENTRY').first()).toBeVisible();
+});

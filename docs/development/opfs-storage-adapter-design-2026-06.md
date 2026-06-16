@@ -1,8 +1,22 @@
 # OPFS Storage Adapter 設計(`opfs-adapter.ts`)
 
-> **状態: 📐 設計のみ・実装は凍結**(2026-06、North Star L3 / プライム・ディレクティブ「実装は go まで凍結」)。
-> tracking issue: **#771**(`lane:arch-v3` / `type:design`)。本書は実装を伴わない。着手は user の明示 go が前提。
+> **状態: ✅ 実装済み**(2026-06-16、PR #842 / #844 / #845 / #846)。本書は当初「設計のみ・実装は凍結」で起草したが、user 明示 go によりストレージ悲願(OPFS + FSA + 明示切替)として実装着地した。以下は設計記録 + 実装メモ。
+> tracking issue: **#771**(`lane:arch-v3`)。
 > 正本方針: [`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md) §4 North Star。
+
+## 実装メモ(2026-06-16 着地)
+
+| PR | 内容 |
+|---|---|
+| #842 | `fs-directory-adapter.ts`(OPFS/FSA 共有コア、`StorageAdapter` 充足)+ `opfs-adapter.ts`(`createOpfsAdapter` / `isOpfsSupported` / `probeOpfsAvailable`)。contract テスト(fake FileSystemDirectoryHandle)|
+| #844 | `storage-backend.ts`(`pkc2.storageBackend` pref + `createConfiguredStore` chooser + IDB→OPFS 非破壊移行)+ boot 配線。OPFS の 1ファイル1writable ロックを直列化 + try/finally close で hardening。localhost smoke |
+| #845 | Storage Profile に明示 backend 切替 UI(`set-storage-backend` + reload)|
+| #846 | FSA ローカルフォルダ(`fsa-adapter.ts` picker/permission + `fsa-handle-store.ts` handle 永続化 + `'fsa'` chooser/UI)|
+
+**採った決定**(本書 §6 の論点): Q-OPFS-1 = key は `encodeURIComponent`(`cid:key` を安全 filename 化)/ Q-OPFS-2 = 値は JSON(containers=object / assets=base64 文字列)/ Q-OPFS-3 = (a) async store factory + boot await / Q-OPFS-4 = best-effort(直列化キューで writable orphan を防止、per-file rename までは未導入)/ Q-OPFS-5 = IDB は非破壊で残置(GC は別判断)/ Q-OPFS-6 = `file://` は OPFS 不可 → IDB 自動フォールバック(看板ユースケース維持)。FSA permission はセッション毎に lapse しうるため boot は query のみ、`'prompt'` は IDB フォールバック + UI から re-pick で再許可。
+
+---
+
 
 ## 0. 目的とスコープ
 
