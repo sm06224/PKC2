@@ -502,7 +502,12 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // render pass so a subsequent `CLOSE_MENU` re-render does not wipe
   // it. `close-storage-profile` dispatches `CLOSE_STORAGE_PROFILE`.
   if (state.storageProfileOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
-    root.appendChild(buildStorageProfileOverlay(state.container, state.availableContainers));
+    root.appendChild(buildStorageProfileOverlay(
+      state.container,
+      state.availableContainers,
+      state.workspaces,
+      state.activeWorkspaceId ?? null,
+    ));
   }
 
   // B1: shortcut-help overlay is state-driven. Rebuilt from
@@ -2883,6 +2888,8 @@ function renderShortcutHelp(): HTMLElement {
 export function buildStorageProfileOverlay(
   container: Container | null,
   availableContainers: ReadonlyArray<{ id: string; title: string }> = [],
+  workspaces: ReadonlyArray<{ id: string; name: string }> = [],
+  activeWorkspaceId: string | null = null,
 ): HTMLElement {
   const overlay = createElement('div', 'pkc-storage-profile-overlay');
   overlay.setAttribute('data-pkc-region', 'storage-profile');
@@ -2920,7 +2927,11 @@ export function buildStorageProfileOverlay(
     card.appendChild(renderStorageProfileRows(profile));
   }
 
-  // #771/#773 MVP: same-origin container switcher.
+  // #773: workspace switcher (above the container switcher, which is
+  // scoped to the active workspace).
+  card.appendChild(renderWorkspaceSwitcher(workspaces, activeWorkspaceId));
+
+  // #771/#773 MVP: same-origin container switcher (active workspace).
   card.appendChild(renderContainerSwitcher(availableContainers, container?.meta.container_id ?? null));
 
   // #771: explicit storage-backend switcher (Browser/IDB ⇄ OPFS).
@@ -2952,6 +2963,63 @@ export function buildStorageProfileOverlay(
 
   overlay.appendChild(card);
   return overlay;
+}
+
+/**
+ * Workspace switcher (#773). Lists workspaces and lets the user switch,
+ * create (with a fresh blank container), or rename. The container
+ * switcher below is scoped to the active workspace.
+ */
+function renderWorkspaceSwitcher(
+  workspaces: ReadonlyArray<{ id: string; name: string }>,
+  activeWorkspaceId: string | null,
+): HTMLElement {
+  const section = createElement('div', 'pkc-storage-profile-section');
+  section.setAttribute('data-pkc-region', 'workspace-switcher');
+  if (activeWorkspaceId) section.setAttribute('data-pkc-active-workspace', activeWorkspaceId);
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = 'Workspaces';
+  section.appendChild(label);
+
+  const list = createElement('div', 'pkc-workspace-switcher-list');
+  for (const w of workspaces) {
+    const row = createElement('div', 'pkc-workspace-switcher-row');
+    row.setAttribute('data-pkc-wid', w.id);
+    const isActive = w.id === activeWorkspaceId;
+    if (isActive) row.setAttribute('data-pkc-active', 'true');
+
+    const name = createElement('span', 'pkc-workspace-switcher-name');
+    name.textContent = (w.name && w.name.length > 0 ? w.name : '(unnamed)') + (isActive ? ' ●' : '');
+    row.appendChild(name);
+
+    if (!isActive) {
+      const switchBtn = createElement('button', 'pkc-btn-small');
+      switchBtn.setAttribute('data-pkc-action', 'switch-workspace');
+      switchBtn.setAttribute('data-pkc-wid', w.id);
+      switchBtn.textContent = 'Switch';
+      row.appendChild(switchBtn);
+    }
+    const renameBtn = createElement('button', 'pkc-btn-small');
+    renameBtn.setAttribute('data-pkc-action', 'rename-workspace');
+    renameBtn.setAttribute('data-pkc-wid', w.id);
+    renameBtn.setAttribute('data-pkc-wname', w.name);
+    renameBtn.textContent = 'Rename';
+    row.appendChild(renameBtn);
+
+    list.appendChild(row);
+  }
+  section.appendChild(list);
+
+  const newBtn = createElement('button', 'pkc-btn-small pkc-workspace-switcher-new');
+  newBtn.setAttribute('data-pkc-action', 'new-workspace');
+  newBtn.textContent = '+ New workspace';
+  section.appendChild(newBtn);
+
+  const note = createElement('div', 'pkc-storage-profile-note');
+  note.textContent = 'ワークスペースは複数のコンテナを束ねる作業空間です。下の Containers は選択中のワークスペースの内容です。';
+  section.appendChild(note);
+  return section;
 }
 
 /**
