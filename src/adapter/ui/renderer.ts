@@ -125,6 +125,7 @@ import { buildStorageProfile, formatBytes } from '../../features/asset/storage-p
 import type { StorageProfile } from '../../features/asset/storage-profile';
 import { getStorageBackendPref, type StorageBackend } from '../platform/storage-backend';
 import { isOpfsSupported } from '../platform/storage/opfs-adapter';
+import { isFsaSupported } from '../platform/storage/fsa-adapter';
 import { renderMarkdown, renderMarkdownInline, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
@@ -2968,27 +2969,46 @@ function renderStorageBackendSelector(): HTMLElement {
   const current = getStorageBackendPref();
   section.setAttribute('data-pkc-current-backend', current);
   const opfsOk = isOpfsSupported();
+  const fsaOk = isFsaSupported();
 
-  const options: { backend: StorageBackend; text: string; enabled: boolean; hint?: string }[] = [
-    { backend: 'idb', text: '🗄 Browser (IndexedDB)', enabled: true },
+  const secureHint = 'Requires a secure context (https / localhost) — not available from file://';
+  const options: {
+    backend: StorageBackend;
+    text: string;
+    enabled: boolean;
+    /** `set-storage-backend` (pref+reload) or `pick-storage-folder` (picker gesture). */
+    action: 'set-storage-backend' | 'pick-storage-folder';
+    /** Allow clicking even when active (FSA re-pick to re-grant permission). */
+    clickableWhenActive?: boolean;
+    hint?: string;
+  }[] = [
+    { backend: 'idb', text: '🗄 Browser (IndexedDB)', enabled: true, action: 'set-storage-backend' },
     {
       backend: 'opfs',
       text: '📁 Private filesystem (OPFS)',
       enabled: opfsOk,
-      hint: opfsOk ? undefined : 'Requires a secure context (https / localhost) — not available from file://',
+      action: 'set-storage-backend',
+      hint: opfsOk ? undefined : secureHint,
+    },
+    {
+      backend: 'fsa',
+      text: current === 'fsa' ? '📂 Local folder (re-pick…)' : '📂 Local folder (choose…)',
+      enabled: fsaOk,
+      action: 'pick-storage-folder',
+      clickableWhenActive: true, // re-pick to re-grant a lapsed permission
+      hint: fsaOk ? 'Pick a real folder on disk (Chromium)' : secureHint,
     },
   ];
 
   const row = createElement('div', 'pkc-storage-backend-options');
   for (const o of options) {
     const btn = createElement('button', 'pkc-btn-small pkc-storage-backend-option');
-    btn.setAttribute('data-pkc-action', 'set-storage-backend');
+    btn.setAttribute('data-pkc-action', o.action);
     btn.setAttribute('data-pkc-backend', o.backend);
     btn.textContent = o.text;
-    if (o.backend === current) {
-      btn.setAttribute('data-pkc-active', 'true');
-      (btn as HTMLButtonElement).disabled = true;
-    } else if (!o.enabled) {
+    const isActive = o.backend === current;
+    if (isActive) btn.setAttribute('data-pkc-active', 'true');
+    if (!o.enabled || (isActive && !o.clickableWhenActive)) {
       (btn as HTMLButtonElement).disabled = true;
     }
     if (o.hint) btn.setAttribute('title', o.hint);
@@ -2998,7 +3018,8 @@ function renderStorageBackendSelector(): HTMLElement {
 
   const note = createElement('div', 'pkc-storage-profile-note');
   note.textContent =
-    'Switching reloads the app and migrates your data (non-destructive — the previous backend keeps a copy).';
+    'Switching reloads the app and migrates your data (non-destructive — the previous backend keeps a copy). '
+    + 'Local folder needs re-granting access each session.';
   section.appendChild(note);
   return section;
 }

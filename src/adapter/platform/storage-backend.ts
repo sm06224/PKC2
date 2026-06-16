@@ -6,6 +6,9 @@ import {
   createIDBStore,
 } from './idb-store';
 import { createOpfsAdapter, probeOpfsAvailable } from './storage/opfs-adapter';
+import { createFsaAdapter, verifyFsaPermission } from './storage/fsa-adapter';
+import { loadFsaHandle } from './storage/fsa-handle-store';
+import type { FsDirectoryHandle } from './storage/fs-directory-adapter';
 
 /**
  * Storage backend selection (#771, FSA+OPFS 悲願).
@@ -26,10 +29,10 @@ import { createOpfsAdapter, probeOpfsAvailable } from './storage/opfs-adapter';
  * intact as a fallback.
  */
 
-export type StorageBackend = 'idb' | 'opfs';
+export type StorageBackend = 'idb' | 'opfs' | 'fsa';
 
 const PREF_KEY = 'pkc2.storageBackend';
-const VALID: ReadonlySet<string> = new Set<StorageBackend>(['idb', 'opfs']);
+const VALID: ReadonlySet<string> = new Set<StorageBackend>(['idb', 'opfs', 'fsa']);
 
 /** Read the persisted backend preference. Defaults to `'idb'`. */
 export function getStorageBackendPref(): StorageBackend {
@@ -56,6 +59,10 @@ export interface ConfiguredStoreDeps {
   probeOpfs: () => Promise<boolean>;
   makeOpfsAdapter: () => Promise<StorageAdapter>;
   makeIdbStore: () => ContainerStore;
+  // FSA (local folder). Optional so existing callers/tests need no change.
+  loadFsaHandle?: () => Promise<unknown | null>;
+  verifyFsaPermission?: (handle: unknown, requestIfNeeded: boolean) => Promise<boolean>;
+  makeFsaAdapter?: (handle: unknown) => StorageAdapter;
 }
 
 export interface ConfiguredStoreResult {
@@ -76,25 +83,42 @@ export async function createConfiguredStore(
 ): Promise<ConfiguredStoreResult> {
   if (deps.pref === 'opfs' && (await deps.probeOpfs())) {
     const opfsStore = createContainerStore(await deps.makeOpfsAdapter());
-    const migrated = await migrateIdbToOpfsIfEmpty(opfsStore, deps.makeIdbStore);
+    const migrated = await migrateFromIdbIfEmpty(opfsStore, deps.makeIdbStore);
     return { store: opfsStore, backend: 'opfs', migrated };
+  }
+  if (
+    deps.pref === 'fsa' &&
+    deps.loadFsaHandle &&
+    deps.verifyFsaPermission &&
+    deps.makeFsaAdapter
+  ) {
+    const handle = await deps.loadFsaHandle();
+    // Boot has no user gesture, so only QUERY permission (never request).
+    // A lapsed (`'prompt'`) permission falls through to IDB; the user
+    // re-grants by re-picking the folder via the UI.
+    if (handle && (await deps.verifyFsaPermission(handle, false))) {
+      const fsaStore = createContainerStore(deps.makeFsaAdapter(handle));
+      const migrated = await migrateFromIdbIfEmpty(fsaStore, deps.makeIdbStore);
+      return { store: fsaStore, backend: 'fsa', migrated };
+    }
   }
   return { store: deps.makeIdbStore(), backend: 'idb', migrated: false };
 }
 
 /**
- * If OPFS has no default container yet but IDB does, copy it across
- * (one-time, non-destructive). Returns whether a copy happened.
+ * If the target store has no default container yet but IDB does, copy
+ * it across (one-time, non-destructive). Shared by the OPFS and FSA
+ * paths. Returns whether a copy happened.
  */
-async function migrateIdbToOpfsIfEmpty(
-  opfsStore: ContainerStore,
+async function migrateFromIdbIfEmpty(
+  target: ContainerStore,
   makeIdbStore: () => ContainerStore,
 ): Promise<boolean> {
-  const opfsDefault = await opfsStore.loadDefault();
-  if (opfsDefault) return false; // OPFS already populated — nothing to do
+  const targetDefault = await target.loadDefault();
+  if (targetDefault) return false; // already populated — nothing to do
   const idbDefault: Container | null = await makeIdbStore().loadDefault();
   if (!idbDefault) return false; // nothing to migrate
-  await opfsStore.save(idbDefault);
+  await target.save(idbDefault);
   return true;
 }
 
@@ -108,5 +132,8 @@ export function createConfiguredStoreFromEnv(): Promise<ConfiguredStoreResult> {
     probeOpfs: probeOpfsAvailable,
     makeOpfsAdapter: createOpfsAdapter,
     makeIdbStore: createIDBStore,
+    loadFsaHandle,
+    verifyFsaPermission,
+    makeFsaAdapter: (handle) => createFsaAdapter(handle as FsDirectoryHandle),
   });
 }
