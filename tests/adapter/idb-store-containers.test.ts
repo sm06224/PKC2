@@ -50,3 +50,37 @@ describe('ContainerStore — same-origin container switching (#771/#773 MVP)', (
     expect((await store.listContainers()).map((c) => c.id)).toEqual(['c-a']);
   });
 });
+
+describe('ContainerStore — workspace layer (#773)', () => {
+  const ws = (id: string, name: string, containerIds: string[], active: string | null) => ({
+    id, name, containerIds, activeContainerId: active,
+    created_at: '2026-06-16T00:00:00.000Z', updated_at: '2026-06-16T00:00:00.000Z',
+  });
+
+  it('save / load / list / delete workspaces (sorted by name)', async () => {
+    const store = createContainerStore(createMemoryAdapter());
+    await store.saveWorkspace(ws('w-2', 'Work', ['c-a'], 'c-a'));
+    await store.saveWorkspace(ws('w-1', 'Personal', ['c-b', 'c-c'], 'c-b'));
+    const list = await store.listWorkspaces();
+    expect(list.map((w) => w.name)).toEqual(['Personal', 'Work']);
+    expect((await store.loadWorkspace('w-2'))?.containerIds).toEqual(['c-a']);
+    await store.deleteWorkspace('w-1');
+    expect((await store.listWorkspaces()).map((w) => w.id)).toEqual(['w-2']);
+  });
+
+  it('active workspace pointer round-trips', async () => {
+    const store = createContainerStore(createMemoryAdapter());
+    expect(await store.getActiveWorkspaceId()).toBeNull();
+    await store.setActiveWorkspaceId('w-1');
+    expect(await store.getActiveWorkspaceId()).toBe('w-1');
+  });
+
+  it('workspace records do NOT pollute listContainers', async () => {
+    const store = createContainerStore(createMemoryAdapter());
+    await store.save(container('c-a', 'Alpha'));
+    await store.saveWorkspace(ws('w-1', 'Work', ['c-a'], 'c-a'));
+    await store.setActiveWorkspaceId('w-1');
+    // listContainers ignores the workspace:* and __active_workspace__ records
+    expect((await store.listContainers()).map((c) => c.id)).toEqual(['c-a']);
+  });
+});
