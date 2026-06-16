@@ -35,11 +35,26 @@ export interface ContainerStore {
   /** Delete all data from all stores (workspace reset). */
   clearAll(): Promise<void>;
 
+  /**
+   * Enumerate stored containers (id + title only), for same-origin
+   * container switching (#771/#773 MVP). Excludes the `__default__`
+   * pointer record. Order: by title (case-insensitive), then id.
+   */
+  listContainers(): Promise<ContainerSummary[]>;
+  /** Set the active (`__default__`) container without rewriting it. */
+  setDefaultContainer(containerId: string): Promise<void>;
+
   // Per-asset CRUD (Phase 1 contract)
   saveAsset(cid: string, key: string, data: string): Promise<void>;
   loadAsset(cid: string, key: string): Promise<string | null>;
   deleteAsset(cid: string, key: string): Promise<void>;
   listAssetKeys(cid: string): Promise<string[]>;
+}
+
+/** Minimal container descriptor for the switcher list. */
+export interface ContainerSummary {
+  id: string;
+  title: string;
 }
 
 const DEFAULT_KEY = '__default__';
@@ -157,12 +172,34 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     await Promise.all([containers.clear(), assets.clear()]);
   }
 
+  async function listContainers(): Promise<ContainerSummary[]> {
+    // One range scan over the containers bucket. Skip the `__default__`
+    // pointer (its value is a cid string, not a container record) and
+    // any non-container value defensively.
+    const pairs = await containers.getAllByPrefix('');
+    const out: ContainerSummary[] = [];
+    for (const { key, value } of pairs) {
+      if (key === DEFAULT_KEY) continue;
+      const meta = (value as { meta?: { container_id?: unknown; title?: unknown } } | null)?.meta;
+      if (!meta || typeof meta.container_id !== 'string') continue;
+      out.push({ id: meta.container_id, title: typeof meta.title === 'string' ? meta.title : '' });
+    }
+    out.sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+    return out;
+  }
+
+  async function setDefaultContainer(containerId: string): Promise<void> {
+    await containers.put(DEFAULT_KEY, containerId);
+  }
+
   return {
     save,
     load,
     loadDefault,
     delete: del,
     clearAll,
+    listContainers,
+    setDefaultContainer,
     saveAsset,
     loadAsset,
     deleteAsset,
