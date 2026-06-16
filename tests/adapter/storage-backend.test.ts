@@ -113,4 +113,50 @@ describe('createConfiguredStore', () => {
     expect(res.migrated).toBe(false);
     expect(await res.store.loadDefault()).toBeNull();
   });
+
+  // ── FSA (local folder) — memory adapter stands in for the folder ──
+  const fsaDeps = (over: Record<string, unknown>) => ({
+    pref: 'fsa' as const,
+    probeOpfs: async () => false,
+    makeOpfsAdapter: async () => { throw new Error('opfs not expected'); },
+    makeIdbStore: () => createContainerStore(createMemoryAdapter()),
+    loadFsaHandle: async () => ({ name: 'folder' }),
+    verifyFsaPermission: async () => true,
+    makeFsaAdapter: () => createMemoryAdapter(),
+    ...over,
+  });
+
+  it("pref 'fsa' + handle + permission granted + IDB has default → migrates to folder", async () => {
+    const idb = createContainerStore(createMemoryAdapter());
+    await idb.save(container('c-idb', 'From IDB'));
+    const folder = createMemoryAdapter();
+    const res = await createConfiguredStore(fsaDeps({
+      makeIdbStore: () => idb,
+      makeFsaAdapter: () => folder,
+    }));
+    expect(res.backend).toBe('fsa');
+    expect(res.migrated).toBe(true);
+    expect((await res.store.loadDefault())?.meta.container_id).toBe('c-idb');
+  });
+
+  it("pref 'fsa' + no persisted handle → falls back to IDB", async () => {
+    const idb = createContainerStore(createMemoryAdapter());
+    const res = await createConfiguredStore(fsaDeps({
+      makeIdbStore: () => idb,
+      loadFsaHandle: async () => null,
+    }));
+    expect(res.backend).toBe('idb');
+    expect(res.store).toBe(idb);
+  });
+
+  it("pref 'fsa' + permission not granted → falls back to IDB (no data loss)", async () => {
+    const idb = createContainerStore(createMemoryAdapter());
+    const res = await createConfiguredStore(fsaDeps({
+      makeIdbStore: () => idb,
+      verifyFsaPermission: async () => false,
+      makeFsaAdapter: () => { throw new Error('should not build FSA when permission denied'); },
+    }));
+    expect(res.backend).toBe('idb');
+    expect(res.store).toBe(idb);
+  });
 });
