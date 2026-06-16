@@ -186,6 +186,13 @@ export type SystemCommand =
    * state machine が multi-window を前提として扱えるようにする。
    */
   | { type: 'SYS_SYNC_CHILD_WINDOWS'; lids: readonly string[] }
+  /**
+   * Set the list of stored containers for the same-origin container
+   * switcher (#771/#773 MVP). Populated at boot from
+   * `store.listContainers()`; consumed only by the Storage Profile
+   * dialog. Runtime-only (never persisted).
+   */
+  | { type: 'SYS_SET_AVAILABLE_CONTAINERS'; containers: readonly { id: string; title: string }[] }
   | { type: 'SYS_ERROR'; error: string };
 
 /** Extract the type literal from a SystemCommand. */

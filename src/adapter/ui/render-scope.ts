@@ -161,6 +161,7 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.lightSource !== prev.lightSource) return 'full';
   if (state.viewOnlySource !== prev.viewOnlySource) return 'full';
   if (state.pendingOffers !== prev.pendingOffers) return 'full';
+  if (state.availableContainers !== prev.availableContainers) return 'full';
   if (state.importPreview !== prev.importPreview) return 'full';
   if (state.importMode !== prev.importMode) return 'full';
   if (state.mergeConflicts !== prev.mergeConflicts) return 'full';

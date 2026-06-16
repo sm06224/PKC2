@@ -593,6 +593,16 @@ async function boot(): Promise<void> {
     },
   });
 
+  // 6-bis. #771/#773 MVP: populate the same-origin container switcher
+  // list (runtime-only). Non-blocking — the list only feeds the Storage
+  // Profile dialog, which opens later. `mountContainerSwitchHandler`
+  // wires the switch / new / delete actions.
+  void store
+    .listContainers()
+    .then((containers) => dispatcher.dispatch({ type: 'SYS_SET_AVAILABLE_CONTAINERS', containers }))
+    .catch(() => {});
+  mountContainerSwitchHandler(root, store);
+
   // 6a. IDB availability probe — warn the user if persistence is
   // silently broken (file:// on some browsers, private-browsing, etc.).
   // Non-blocking: boot continues regardless, the banner just signals
@@ -1988,6 +1998,54 @@ function mountZipExportHandler(root: HTMLElement, dispatcher: Dispatcher): void 
  * Mount workspace reset handler: clears IDB and reloads page.
  * After clearing, the app falls back to pkc-data (embedded in HTML).
  */
+/**
+ * #771/#773 MVP — same-origin container switcher actions. Mounted with
+ * the active `store` (which may be IDB / OPFS / FSA) so switching
+ * targets the live backend. Each action mutates the store then reloads;
+ * boot loads the new active container. Mirrors
+ * `mountClearLocalDataHandler`'s store-bound delegation.
+ */
+function mountContainerSwitchHandler(root: HTMLElement, store: ContainerStore): void {
+  root.addEventListener('click', (e: Event) => {
+    const el = e.target as HTMLElement;
+    const switchEl = el.closest<HTMLElement>('[data-pkc-action="switch-container"]');
+    if (switchEl) {
+      const cid = switchEl.getAttribute('data-pkc-cid');
+      if (!cid) return;
+      void (async (): Promise<void> => {
+        await store.setDefaultContainer(cid);
+        location.reload();
+      })();
+      return;
+    }
+    if (el.closest<HTMLElement>('[data-pkc-action="new-container"]')) {
+      void (async (): Promise<void> => {
+        await store.save(createEmptyContainer()); // save() makes it the active default
+        location.reload();
+      })();
+      return;
+    }
+    const delEl = el.closest<HTMLElement>('[data-pkc-action="delete-container"]');
+    if (delEl) {
+      const cid = delEl.getAttribute('data-pkc-cid');
+      if (!cid) return;
+      if (!confirm('このコンテナを削除しますか？元に戻せません。')) return;
+      void (async (): Promise<void> => {
+        await store.delete(cid);
+        // If the deleted one happened to be the active pointer, repoint
+        // `__default__` to a survivor so boot does not start empty.
+        const def = await store.loadDefault();
+        if (!def) {
+          const rest = await store.listContainers();
+          if (rest.length > 0) await store.setDefaultContainer(rest[0]!.id);
+        }
+        location.reload();
+      })();
+      return;
+    }
+  });
+}
+
 function mountClearLocalDataHandler(root: HTMLElement, store: ContainerStore): void {
   root.addEventListener('click', async (e: Event) => {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="clear-local-data"]');

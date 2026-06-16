@@ -502,7 +502,7 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // render pass so a subsequent `CLOSE_MENU` re-render does not wipe
   // it. `close-storage-profile` dispatches `CLOSE_STORAGE_PROFILE`.
   if (state.storageProfileOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
-    root.appendChild(buildStorageProfileOverlay(state.container));
+    root.appendChild(buildStorageProfileOverlay(state.container, state.availableContainers));
   }
 
   // B1: shortcut-help overlay is state-driven. Rebuilt from
@@ -2882,6 +2882,7 @@ function renderShortcutHelp(): HTMLElement {
  */
 export function buildStorageProfileOverlay(
   container: Container | null,
+  availableContainers: ReadonlyArray<{ id: string; title: string }> = [],
 ): HTMLElement {
   const overlay = createElement('div', 'pkc-storage-profile-overlay');
   overlay.setAttribute('data-pkc-region', 'storage-profile');
@@ -2919,6 +2920,9 @@ export function buildStorageProfileOverlay(
     card.appendChild(renderStorageProfileRows(profile));
   }
 
+  // #771/#773 MVP: same-origin container switcher.
+  card.appendChild(renderContainerSwitcher(availableContainers, container?.meta.container_id ?? null));
+
   // #771: explicit storage-backend switcher (Browser/IDB ⇄ OPFS).
   card.appendChild(renderStorageBackendSelector());
 
@@ -2948,6 +2952,65 @@ export function buildStorageProfileOverlay(
 
   overlay.appendChild(card);
   return overlay;
+}
+
+/**
+ * Same-origin container switcher (#771/#773 MVP). Lists the stored
+ * containers and lets the user switch the active one, create a new
+ * (blank) container, or delete a non-active one. Switching / creating
+ * / deleting mutate the store and reload (boot loads the new active
+ * container) — wired in `mountContainerSwitchHandler` (main.ts).
+ */
+function renderContainerSwitcher(
+  containers: ReadonlyArray<{ id: string; title: string }>,
+  activeCid: string | null,
+): HTMLElement {
+  const section = createElement('div', 'pkc-storage-profile-section');
+  section.setAttribute('data-pkc-region', 'container-switcher');
+  if (activeCid) section.setAttribute('data-pkc-active-container', activeCid);
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = 'Containers (this origin)';
+  section.appendChild(label);
+
+  const list = createElement('div', 'pkc-container-switcher-list');
+  for (const c of containers) {
+    const row = createElement('div', 'pkc-container-switcher-row');
+    row.setAttribute('data-pkc-cid', c.id);
+    const isActive = c.id === activeCid;
+    if (isActive) row.setAttribute('data-pkc-active', 'true');
+
+    const name = createElement('span', 'pkc-container-switcher-title');
+    name.textContent = (c.title && c.title.length > 0 ? c.title : '(untitled)') + (isActive ? ' ●' : '');
+    row.appendChild(name);
+
+    if (!isActive) {
+      const switchBtn = createElement('button', 'pkc-btn-small');
+      switchBtn.setAttribute('data-pkc-action', 'switch-container');
+      switchBtn.setAttribute('data-pkc-cid', c.id);
+      switchBtn.textContent = 'Switch';
+      row.appendChild(switchBtn);
+
+      const delBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+      delBtn.setAttribute('data-pkc-action', 'delete-container');
+      delBtn.setAttribute('data-pkc-cid', c.id);
+      delBtn.setAttribute('title', 'Delete this container (irreversible)');
+      delBtn.textContent = 'Delete';
+      row.appendChild(delBtn);
+    }
+    list.appendChild(row);
+  }
+  section.appendChild(list);
+
+  const newBtn = createElement('button', 'pkc-btn-small pkc-container-switcher-new');
+  newBtn.setAttribute('data-pkc-action', 'new-container');
+  newBtn.textContent = '+ New container';
+  section.appendChild(newBtn);
+
+  const note = createElement('div', 'pkc-storage-profile-note');
+  note.textContent = 'Switching / creating / deleting reloads the app. Each container is an independent workspace on this origin.';
+  section.appendChild(note);
+  return section;
 }
 
 /**
