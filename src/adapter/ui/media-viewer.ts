@@ -135,6 +135,7 @@ function tryOpenInWindow(source: Element): boolean {
       return false;
     }
     activeWindow = popup;
+    popup.focus?.(); // 新規 media viewer window を前面へ
 
     // popup の document に host の style + theme attribute をコピー。
     cloneStylesheetsInto(popup.document);

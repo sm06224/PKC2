@@ -1055,6 +1055,7 @@ export function openRenderedViewer(
   win.document.open();
   win.document.write(html);
   win.document.close();
+  win.focus?.(); // 新規 Viewer popup を前面へ
   // pgc-203 wave-α' polish #24:built-in mermaid hydration(S2 Viewer popup)。
   // popup の document.body に対して main window context の mermaid module
   // から SVG render を実行。fire-and-forget(非同期、render 完了は次 frame

@@ -235,6 +235,8 @@ export function launchExtensionChannel(
     };
   }
 
+  win.focus?.(); // 拡張ホスト window を前面へ(新規 open 時に背面化しない)
+
   return {
     pushProjection: () => { if (established) sendProjection(); },
     deliver: (payload: ExtDeliverPayload) => {
