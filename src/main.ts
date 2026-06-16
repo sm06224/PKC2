@@ -54,6 +54,13 @@ import { wireEventLogToConsole } from './adapter/ui/event-log';
 import { probeIDBAvailability } from './adapter/platform/idb-store';
 import { createConfiguredStoreFromEnv } from './adapter/platform/storage-backend';
 import {
+  ensureDefaultWorkspace,
+  activeWorkspaceContainers,
+  switchActiveContainer,
+  addContainerToActiveWorkspace,
+  removeContainerFromActiveWorkspace,
+} from './adapter/platform/workspace';
+import {
   showIdbWarningBanner,
   showIdbSaveFailureBanner,
   classifySaveError,
@@ -593,14 +600,15 @@ async function boot(): Promise<void> {
     },
   });
 
-  // 6-bis. #771/#773 MVP: populate the same-origin container switcher
-  // list (runtime-only). Non-blocking — the list only feeds the Storage
-  // Profile dialog, which opens later. `mountContainerSwitchHandler`
-  // wires the switch / new / delete actions.
-  void store
-    .listContainers()
-    .then((containers) => dispatcher.dispatch({ type: 'SYS_SET_AVAILABLE_CONTAINERS', containers }))
-    .catch(() => {});
+  // 6-bis. #773 完全層: ensure a workspace exists (migrating existing
+  // containers into a "Default" workspace on first run), then publish
+  // the ACTIVE workspace's containers to the switcher list (runtime-
+  // only; feeds the Storage Profile dialog). Non-blocking.
+  void (async (): Promise<void> => {
+    await ensureDefaultWorkspace(store);
+    const containers = await activeWorkspaceContainers(store);
+    dispatcher.dispatch({ type: 'SYS_SET_AVAILABLE_CONTAINERS', containers });
+  })().catch(() => {});
   mountContainerSwitchHandler(root, store);
 
   // 6a. IDB availability probe — warn the user if persistence is
@@ -2013,14 +2021,14 @@ function mountContainerSwitchHandler(root: HTMLElement, store: ContainerStore): 
       const cid = switchEl.getAttribute('data-pkc-cid');
       if (!cid) return;
       void (async (): Promise<void> => {
-        await store.setDefaultContainer(cid);
+        await switchActiveContainer(store, cid);
         location.reload();
       })();
       return;
     }
     if (el.closest<HTMLElement>('[data-pkc-action="new-container"]')) {
       void (async (): Promise<void> => {
-        await store.save(createEmptyContainer()); // save() makes it the active default
+        await addContainerToActiveWorkspace(store, createEmptyContainer());
         location.reload();
       })();
       return;
@@ -2031,14 +2039,7 @@ function mountContainerSwitchHandler(root: HTMLElement, store: ContainerStore): 
       if (!cid) return;
       if (!confirm('このコンテナを削除しますか？元に戻せません。')) return;
       void (async (): Promise<void> => {
-        await store.delete(cid);
-        // If the deleted one happened to be the active pointer, repoint
-        // `__default__` to a survivor so boot does not start empty.
-        const def = await store.loadDefault();
-        if (!def) {
-          const rest = await store.listContainers();
-          if (rest.length > 0) await store.setDefaultContainer(rest[0]!.id);
-        }
+        await removeContainerFromActiveWorkspace(store, cid);
         location.reload();
       })();
       return;
