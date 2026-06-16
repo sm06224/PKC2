@@ -74,8 +74,35 @@ function decodeKey(name: string): string {
  * Synchronous (the root handle is already resolved by the caller);
  * per-bucket subdirectory handles are resolved lazily + cached.
  */
+/** Write a file via a single open→write→close, always releasing the lock. */
+async function writeFile(d: FsDirectoryHandle, fileName: string, data: string): Promise<void> {
+  const fh = await d.getFileHandle(fileName, { create: true });
+  const w = await fh.createWritable();
+  try {
+    await w.write(data);
+  } finally {
+    // OPFS keeps the file locked until the writable closes; a skipped
+    // close (on a write error) would orphan the lock and make the file
+    // permanently unreadable. Always close.
+    await w.close();
+  }
+}
+
 export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): StorageAdapter {
   const dirCache = new Map<BucketName, Promise<FsDirectoryHandle>>();
+
+  // OPFS allows only ONE open writable per file at a time; two
+  // overlapping operations (e.g. a migration save racing an autosave)
+  // would throw a lock error and could orphan a stream. Serialize every
+  // adapter operation through a single chain so writes never overlap.
+  // Persistence ops are infrequent (debounced save / boot load), so the
+  // throughput cost is irrelevant.
+  let opChain: Promise<unknown> = Promise.resolve();
+  function serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const run = opChain.then(fn, fn);
+    opChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
 
   function dir(name: BucketName): Promise<FsDirectoryHandle> {
     let p = dirCache.get(name);
@@ -88,7 +115,7 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
 
   function bucket(name: BucketName): StorageBucket {
     return {
-      async get(key) {
+      get: (key) => serialize(async () => {
         const d = await dir(name);
         let fh: FsFileHandle;
         try {
@@ -97,30 +124,25 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
           if (isNotFound(e)) return undefined;
           throw e;
         }
-        const file = await fh.getFile();
-        const text = await file.text();
+        const text = await (await fh.getFile()).text();
         return JSON.parse(text) as unknown;
-      },
+      }),
 
-      async put(key, value) {
+      put: (key, value) => serialize(async () => {
         const d = await dir(name);
-        const fh = await d.getFileHandle(encodeKey(key), { create: true });
-        const w = await fh.createWritable();
-        await w.write(JSON.stringify(value));
-        await w.close();
-      },
+        await writeFile(d, encodeKey(key), JSON.stringify(value));
+      }),
 
-      async delete(key) {
+      delete: (key) => serialize(async () => {
         const d = await dir(name);
         try {
           await d.removeEntry(encodeKey(key));
         } catch (e) {
-          if (isNotFound(e)) return; // no-op on missing
-          throw e;
+          if (!isNotFound(e)) throw e; // no-op on missing
         }
-      },
+      }),
 
-      async getAllByPrefix(prefix) {
+      getAllByPrefix: (prefix) => serialize(async () => {
         const d = await dir(name);
         const matched: string[] = [];
         for await (const fileName of d.keys()) {
@@ -135,9 +157,9 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
           out.push({ key, value: JSON.parse(text) as unknown });
         }
         return out;
-      },
+      }),
 
-      async getKeysByPrefix(prefix) {
+      getKeysByPrefix: (prefix) => serialize(async () => {
         const d = await dir(name);
         const keys: string[] = [];
         for await (const fileName of d.keys()) {
@@ -146,9 +168,9 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
         }
         keys.sort();
         return keys;
-      },
+      }),
 
-      async applyBatch(ops: BatchOp[]) {
+      applyBatch: (ops: BatchOp[]) => serialize(async () => {
         if (ops.length === 0) return;
         const d = await dir(name);
         // No FS transaction primitive → sequential best-effort
@@ -156,10 +178,7 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
         // so a re-save converges after an interrupted batch.
         for (const op of ops) {
           if (op.kind === 'put') {
-            const fh = await d.getFileHandle(encodeKey(op.key), { create: true });
-            const w = await fh.createWritable();
-            await w.write(JSON.stringify(op.value));
-            await w.close();
+            await writeFile(d, encodeKey(op.key), JSON.stringify(op.value));
           } else {
             try {
               await d.removeEntry(encodeKey(op.key));
@@ -168,9 +187,9 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
             }
           }
         }
-      },
+      }),
 
-      async clear() {
+      clear: () => serialize(async () => {
         const d = await dir(name);
         const names: string[] = [];
         for await (const fileName of d.keys()) names.push(fileName);
@@ -181,7 +200,7 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
             if (!isNotFound(e)) throw e;
           }
         }
-      },
+      }),
     };
   }
 
