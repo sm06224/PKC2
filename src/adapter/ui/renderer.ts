@@ -123,6 +123,8 @@ import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
 import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
 import type { StorageProfile } from '../../features/asset/storage-profile';
+import { getStorageBackendPref, type StorageBackend } from '../platform/storage-backend';
+import { isOpfsSupported } from '../platform/storage/opfs-adapter';
 import { renderMarkdown, renderMarkdownInline, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
@@ -2916,6 +2918,9 @@ export function buildStorageProfileOverlay(
     card.appendChild(renderStorageProfileRows(profile));
   }
 
+  // #771: explicit storage-backend switcher (Browser/IDB ⇄ OPFS).
+  card.appendChild(renderStorageBackendSelector());
+
   // Action row: Export CSV (read-only persist-out) + Close. The CSV
   // button is only mounted when the container has at least one
   // byte-contributing row — an empty profile has nothing to export,
@@ -2942,6 +2947,60 @@ export function buildStorageProfileOverlay(
 
   overlay.appendChild(card);
   return overlay;
+}
+
+/**
+ * Storage backend selector (#771). Lets the user explicitly choose
+ * where the container persists: Browser (IndexedDB, default) or the
+ * Private filesystem (OPFS). Switching sets the boot-time preference
+ * and reloads (boot re-runs the chooser + non-destructive migration).
+ * OPFS is offered only when the runtime supports it (secure context —
+ * not file://).
+ */
+function renderStorageBackendSelector(): HTMLElement {
+  const section = createElement('div', 'pkc-storage-profile-section');
+  section.setAttribute('data-pkc-region', 'storage-backend-selector');
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = 'Storage backend';
+  section.appendChild(label);
+
+  const current = getStorageBackendPref();
+  section.setAttribute('data-pkc-current-backend', current);
+  const opfsOk = isOpfsSupported();
+
+  const options: { backend: StorageBackend; text: string; enabled: boolean; hint?: string }[] = [
+    { backend: 'idb', text: '🗄 Browser (IndexedDB)', enabled: true },
+    {
+      backend: 'opfs',
+      text: '📁 Private filesystem (OPFS)',
+      enabled: opfsOk,
+      hint: opfsOk ? undefined : 'Requires a secure context (https / localhost) — not available from file://',
+    },
+  ];
+
+  const row = createElement('div', 'pkc-storage-backend-options');
+  for (const o of options) {
+    const btn = createElement('button', 'pkc-btn-small pkc-storage-backend-option');
+    btn.setAttribute('data-pkc-action', 'set-storage-backend');
+    btn.setAttribute('data-pkc-backend', o.backend);
+    btn.textContent = o.text;
+    if (o.backend === current) {
+      btn.setAttribute('data-pkc-active', 'true');
+      (btn as HTMLButtonElement).disabled = true;
+    } else if (!o.enabled) {
+      (btn as HTMLButtonElement).disabled = true;
+    }
+    if (o.hint) btn.setAttribute('title', o.hint);
+    row.appendChild(btn);
+  }
+  section.appendChild(row);
+
+  const note = createElement('div', 'pkc-storage-profile-note');
+  note.textContent =
+    'Switching reloads the app and migrates your data (non-destructive — the previous backend keeps a copy).';
+  section.appendChild(note);
+  return section;
 }
 
 /**
