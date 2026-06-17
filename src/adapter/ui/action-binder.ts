@@ -2936,6 +2936,7 @@ export function bindActions(
           win.document.open();
           win.document.write(htmlString);
           win.document.close();
+          win.focus?.(); // 新規 window を前面へ
         }
         break;
       }
@@ -10130,6 +10131,7 @@ function createHtmlOpenButton(htmlString: string, name: string): HTMLElement {
       win.document.open();
       win.document.write(htmlString);
       win.document.close();
+      win.focus?.(); // 新規 window を前面へ
     }
   });
   return btn;

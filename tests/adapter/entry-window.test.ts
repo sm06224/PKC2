@@ -1045,11 +1045,11 @@ describe('Entry Window', () => {
         false,
         { previewCtx: ctx } as never,
       );
-      // First open: create child, no focus yet.
+      // First open: create child AND focus it (新規 window を前面へ)。
       expect(openSpy).toHaveBeenCalledTimes(1);
-      expect(childWindow.focus).not.toHaveBeenCalled();
+      expect(childWindow.focus).toHaveBeenCalledTimes(1);
 
-      // Second open (same lid): duplicate path — focus() but no new child.
+      // Second open (same lid): duplicate path — focus() again but no new child.
       openEntryWindow(
         entry as never,
         false,
@@ -1058,7 +1058,7 @@ describe('Entry Window', () => {
         { previewCtx: ctx } as never,
       );
       expect(openSpy).toHaveBeenCalledTimes(1);
-      expect(childWindow.focus).toHaveBeenCalledTimes(1);
+      expect(childWindow.focus).toHaveBeenCalledTimes(2);
     });
 
     it('duplicate open with a new previewCtx refreshes previewResolverContexts', async () => {

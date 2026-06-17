@@ -997,6 +997,7 @@ export function openEntryWindow(
   child.document.open();
   child.document.write(buildWindowHtml(entry, readonly, lightSource, assetContext, startEditing));
   child.document.close();
+  child.focus?.(); // 新規 window を前面へ(再オープン経路の existing.focus() と挙動を揃える)
 
   // Listen for messages from child
   function handleMessage(e: MessageEvent): void {
@@ -1106,6 +1107,7 @@ export function openViewerWindow(
   child.document.open();
   child.document.write(buildWindowHtml(entry, true, lightSource, assetContext, false));
   child.document.close();
+  child.focus?.(); // 新規 window を前面へ(再オープン経路の existing.focus() と挙動を揃える)
 
   function handleMessage(e: MessageEvent): void {
     if (e.source !== child) return;
@@ -1163,6 +1165,7 @@ export function openMonitorWindow(kind: MonitorKind, entry: Entry): void {
   child.document.open();
   child.document.write(buildMonitorHtml(kind, entry, deriveMonitorItems(kind, entry)));
   child.document.close();
+  child.focus?.(); // 新規 window を前面へ(再オープン経路の existing.win.focus() と挙動を揃える)
 
   function handleMessage(e: MessageEvent): void {
     if (e.source !== child) return;
