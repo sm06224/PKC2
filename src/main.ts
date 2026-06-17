@@ -51,7 +51,18 @@ import { wireWindowLayoutRestore } from './adapter/ui/window-layout-restore-prom
 import { getOpenEntryWindowLids, setEntryWindowsChangedListener, setEntryWindowCurrentContainer } from './adapter/ui/entry-window';
 import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
-import { createIDBStore, probeIDBAvailability } from './adapter/platform/idb-store';
+import { probeIDBAvailability } from './adapter/platform/idb-store';
+import { createConfiguredStoreFromEnv } from './adapter/platform/storage-backend';
+import {
+  ensureDefaultWorkspace,
+  activeWorkspaceContainers,
+  switchActiveContainer,
+  addContainerToActiveWorkspace,
+  removeContainerFromActiveWorkspace,
+  switchWorkspace,
+  createWorkspace,
+  renameWorkspace,
+} from './adapter/platform/workspace';
 import {
   showIdbWarningBanner,
   showIdbSaveFailureBanner,
@@ -566,7 +577,13 @@ async function boot(): Promise<void> {
   // banner is idempotent per-region, so repeated failures update the
   // reason string on the existing banner rather than stacking. See
   // docs/development/idb-availability.md § "Runtime save failure".
-  const store = createIDBStore();
+  //
+  // #771: the active backend is chosen from the localStorage preference
+  // (`pkc2.storageBackend`). Default = 'idb' (unchanged behaviour). When
+  // set to 'opfs' and OPFS is usable (secure context — NOT file://), the
+  // store is OPFS-backed, migrating the existing IDB default container
+  // across once. Falls back to IDB safely otherwise.
+  const { store } = await createConfiguredStoreFromEnv();
   mountPersistence(dispatcher, {
     store,
     onError: (err) => {
@@ -585,6 +602,24 @@ async function boot(): Promise<void> {
       });
     },
   });
+
+  // 6-bis. #773 完全層: ensure a workspace exists (migrating existing
+  // containers into a "Default" workspace on first run), then publish
+  // the ACTIVE workspace's containers to the switcher list (runtime-
+  // only; feeds the Storage Profile dialog). Non-blocking.
+  void (async (): Promise<void> => {
+    await ensureDefaultWorkspace(store);
+    const containers = await activeWorkspaceContainers(store);
+    dispatcher.dispatch({ type: 'SYS_SET_AVAILABLE_CONTAINERS', containers });
+    const workspaces = await store.listWorkspaces();
+    const activeWorkspaceId = await store.getActiveWorkspaceId();
+    dispatcher.dispatch({
+      type: 'SYS_SET_WORKSPACES',
+      workspaces: workspaces.map((w) => ({ id: w.id, name: w.name })),
+      activeWorkspaceId,
+    });
+  })().catch(() => {});
+  mountContainerSwitchHandler(root, store);
 
   // 6a. IDB availability probe — warn the user if persistence is
   // silently broken (file:// on some browsers, private-browsing, etc.).
@@ -1981,6 +2016,79 @@ function mountZipExportHandler(root: HTMLElement, dispatcher: Dispatcher): void 
  * Mount workspace reset handler: clears IDB and reloads page.
  * After clearing, the app falls back to pkc-data (embedded in HTML).
  */
+/**
+ * #771/#773 MVP — same-origin container switcher actions. Mounted with
+ * the active `store` (which may be IDB / OPFS / FSA) so switching
+ * targets the live backend. Each action mutates the store then reloads;
+ * boot loads the new active container. Mirrors
+ * `mountClearLocalDataHandler`'s store-bound delegation.
+ */
+function mountContainerSwitchHandler(root: HTMLElement, store: ContainerStore): void {
+  root.addEventListener('click', (e: Event) => {
+    const el = e.target as HTMLElement;
+    const switchEl = el.closest<HTMLElement>('[data-pkc-action="switch-container"]');
+    if (switchEl) {
+      const cid = switchEl.getAttribute('data-pkc-cid');
+      if (!cid) return;
+      void (async (): Promise<void> => {
+        await switchActiveContainer(store, cid);
+        location.reload();
+      })();
+      return;
+    }
+    if (el.closest<HTMLElement>('[data-pkc-action="new-container"]')) {
+      void (async (): Promise<void> => {
+        await addContainerToActiveWorkspace(store, createEmptyContainer());
+        location.reload();
+      })();
+      return;
+    }
+    const delEl = el.closest<HTMLElement>('[data-pkc-action="delete-container"]');
+    if (delEl) {
+      const cid = delEl.getAttribute('data-pkc-cid');
+      if (!cid) return;
+      if (!confirm('このコンテナを削除しますか？元に戻せません。')) return;
+      void (async (): Promise<void> => {
+        await removeContainerFromActiveWorkspace(store, cid);
+        location.reload();
+      })();
+      return;
+    }
+    // ── Workspace actions (#773 PR-WS-B2) ──
+    const wsSwitchEl = el.closest<HTMLElement>('[data-pkc-action="switch-workspace"]');
+    if (wsSwitchEl) {
+      const wid = wsSwitchEl.getAttribute('data-pkc-wid');
+      if (!wid) return;
+      void (async (): Promise<void> => {
+        await switchWorkspace(store, wid);
+        location.reload();
+      })();
+      return;
+    }
+    if (el.closest<HTMLElement>('[data-pkc-action="new-workspace"]')) {
+      const name = prompt('新しいワークスペース名:', 'Workspace');
+      if (name === null) return; // cancelled
+      void (async (): Promise<void> => {
+        await createWorkspace(store, name, createEmptyContainer());
+        location.reload();
+      })();
+      return;
+    }
+    const wsRenameEl = el.closest<HTMLElement>('[data-pkc-action="rename-workspace"]');
+    if (wsRenameEl) {
+      const wid = wsRenameEl.getAttribute('data-pkc-wid');
+      if (!wid) return;
+      const name = prompt('ワークスペース名を変更:', wsRenameEl.getAttribute('data-pkc-wname') ?? '');
+      if (name === null) return;
+      void (async (): Promise<void> => {
+        await renameWorkspace(store, wid, name);
+        location.reload();
+      })();
+      return;
+    }
+  });
+}
+
 function mountClearLocalDataHandler(root: HTMLElement, store: ContainerStore): void {
   root.addEventListener('click', async (e: Event) => {
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="clear-local-data"]');

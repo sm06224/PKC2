@@ -249,7 +249,12 @@ function validateOfferTags(raw: unknown): { ok: true; tags: string[] } | { ok: f
   return { ok: true, tags: out };
 }
 
-function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
+/**
+ * Validate a raw `record:offer` payload (also reused by the PKC-Extension
+ * `propose` path, #830 R5). Returns the normalized payload or `null` if the
+ * payload is malformed (same fail-closed contract used for inbound offers).
+ */
+export function validateOfferPayload(payload: unknown): RecordOfferPayload | null {
   if (!payload || typeof payload !== 'object') return null;
   const p = payload as Record<string, unknown>;
   if (typeof p.title !== 'string' || typeof p.body !== 'string') return null;
@@ -324,6 +329,43 @@ function generateOfferId(): string {
 }
 
 /**
+ * Build a `PendingOffer` from a validated payload. Extracted so both the
+ * inbound `record:offer` handler and the PKC-Extension `propose` path
+ * (#830 R5) mint offers identically. `reply_to_id` is the PKC-Message
+ * source_id for the postMessage reply path; the `propose` path passes
+ * `null` (its result returns over the `pkc-ext` channel, not record:accept).
+ */
+export function buildPendingOffer(
+  payload: RecordOfferPayload,
+  opts: { correlation_id: string | null; reply_to_id: string | null },
+): PendingOffer {
+  return {
+    offer_id: generateOfferId(),
+    title: payload.title,
+    body: payload.body,
+    archetype: payload.archetype ?? 'text',
+    source_container_id: payload.source_container_id ?? null,
+    reply_to_id: opts.reply_to_id,
+    received_at: new Date().toISOString(),
+    correlation_id: opts.correlation_id,
+    source_url: payload.source_url ?? null,
+    captured_at: payload.captured_at ?? null,
+    kind: payload.kind ?? null,
+    thumbnail_url: payload.thumbnail_url ?? null,
+    provider: payload.provider ?? null,
+    duration_sec: payload.duration_sec ?? null,
+    pages: payload.pages ?? null,
+    isbn: payload.isbn ?? null,
+    author: payload.author ?? null,
+    brand: payload.brand ?? null,
+    tags: payload.tags ?? null,
+    color_tag: payload.color_tag ?? null,
+    mime_type: payload.mime_type ?? null,
+    filename: payload.filename ?? null,
+  };
+}
+
+/**
  * Handler for record:offer.
  * Validates payload and dispatches SYS_RECORD_OFFERED to add to pending.
  */
@@ -339,34 +381,10 @@ export const recordOfferHandler: MessageHandler = (ctx: HandlerContext): boolean
   const correlationId =
     typeof ctx.envelope.correlation_id === 'string' ? ctx.envelope.correlation_id : null;
 
-  const offer: PendingOffer = {
-    offer_id: generateOfferId(),
-    title: payload.title,
-    body: payload.body,
-    archetype: payload.archetype ?? 'text',
-    source_container_id: payload.source_container_id ?? null,
-    reply_to_id: ctx.envelope.source_id,
-    received_at: new Date().toISOString(),
+  const offer: PendingOffer = buildPendingOffer(payload, {
     correlation_id: correlationId,
-    source_url: payload.source_url ?? null,
-    captured_at: payload.captured_at ?? null,
-    // PR-U v1.1 capture profile additive(2026-05-06)。
-    kind: payload.kind ?? null,
-    thumbnail_url: payload.thumbnail_url ?? null,
-    provider: payload.provider ?? null,
-    duration_sec: payload.duration_sec ?? null,
-    pages: payload.pages ?? null,
-    isbn: payload.isbn ?? null,
-    // PR-JJ additive
-    author: payload.author ?? null,
-    brand: payload.brand ?? null,
-    // #805 additive
-    tags: payload.tags ?? null,
-    color_tag: payload.color_tag ?? null,
-    // SR-14 additive
-    mime_type: payload.mime_type ?? null,
-    filename: payload.filename ?? null,
-  };
+    reply_to_id: ctx.envelope.source_id,
+  });
 
   // Stash the sender's window AND origin so a later `record:reject`
   // (on dismiss) can travel back to the exact window with its

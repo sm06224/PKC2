@@ -123,6 +123,9 @@ import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
 import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
 import type { StorageProfile } from '../../features/asset/storage-profile';
+import { getStorageBackendPref, type StorageBackend } from '../platform/storage-backend';
+import { isOpfsSupported } from '../platform/storage/opfs-adapter';
+import { isFsaSupported } from '../platform/storage/fsa-adapter';
 import { renderMarkdown, renderMarkdownInline, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
@@ -499,7 +502,12 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // render pass so a subsequent `CLOSE_MENU` re-render does not wipe
   // it. `close-storage-profile` dispatches `CLOSE_STORAGE_PROFILE`.
   if (state.storageProfileOpen && (state.phase === 'ready' || state.phase === 'editing' || state.phase === 'exporting')) {
-    root.appendChild(buildStorageProfileOverlay(state.container));
+    root.appendChild(buildStorageProfileOverlay(
+      state.container,
+      state.availableContainers,
+      state.workspaces,
+      state.activeWorkspaceId ?? null,
+    ));
   }
 
   // B1: shortcut-help overlay is state-driven. Rebuilt from
@@ -2879,6 +2887,9 @@ function renderShortcutHelp(): HTMLElement {
  */
 export function buildStorageProfileOverlay(
   container: Container | null,
+  availableContainers: ReadonlyArray<{ id: string; title: string }> = [],
+  workspaces: ReadonlyArray<{ id: string; name: string }> = [],
+  activeWorkspaceId: string | null = null,
 ): HTMLElement {
   const overlay = createElement('div', 'pkc-storage-profile-overlay');
   overlay.setAttribute('data-pkc-region', 'storage-profile');
@@ -2916,6 +2927,16 @@ export function buildStorageProfileOverlay(
     card.appendChild(renderStorageProfileRows(profile));
   }
 
+  // #773: workspace switcher (above the container switcher, which is
+  // scoped to the active workspace).
+  card.appendChild(renderWorkspaceSwitcher(workspaces, activeWorkspaceId));
+
+  // #771/#773 MVP: same-origin container switcher (active workspace).
+  card.appendChild(renderContainerSwitcher(availableContainers, container?.meta.container_id ?? null));
+
+  // #771: explicit storage-backend switcher (Browser/IDB ⇄ OPFS).
+  card.appendChild(renderStorageBackendSelector());
+
   // Action row: Export CSV (read-only persist-out) + Close. The CSV
   // button is only mounted when the container has at least one
   // byte-contributing row — an empty profile has nothing to export,
@@ -2942,6 +2963,196 @@ export function buildStorageProfileOverlay(
 
   overlay.appendChild(card);
   return overlay;
+}
+
+/**
+ * Workspace switcher (#773). Lists workspaces and lets the user switch,
+ * create (with a fresh blank container), or rename. The container
+ * switcher below is scoped to the active workspace.
+ */
+function renderWorkspaceSwitcher(
+  workspaces: ReadonlyArray<{ id: string; name: string }>,
+  activeWorkspaceId: string | null,
+): HTMLElement {
+  const section = createElement('div', 'pkc-storage-profile-section');
+  section.setAttribute('data-pkc-region', 'workspace-switcher');
+  if (activeWorkspaceId) section.setAttribute('data-pkc-active-workspace', activeWorkspaceId);
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = 'Workspaces';
+  section.appendChild(label);
+
+  const list = createElement('div', 'pkc-workspace-switcher-list');
+  for (const w of workspaces) {
+    const row = createElement('div', 'pkc-workspace-switcher-row');
+    row.setAttribute('data-pkc-wid', w.id);
+    const isActive = w.id === activeWorkspaceId;
+    if (isActive) row.setAttribute('data-pkc-active', 'true');
+
+    const name = createElement('span', 'pkc-workspace-switcher-name');
+    name.textContent = (w.name && w.name.length > 0 ? w.name : '(unnamed)') + (isActive ? ' ●' : '');
+    row.appendChild(name);
+
+    if (!isActive) {
+      const switchBtn = createElement('button', 'pkc-btn-small');
+      switchBtn.setAttribute('data-pkc-action', 'switch-workspace');
+      switchBtn.setAttribute('data-pkc-wid', w.id);
+      switchBtn.textContent = 'Switch';
+      row.appendChild(switchBtn);
+    }
+    const renameBtn = createElement('button', 'pkc-btn-small');
+    renameBtn.setAttribute('data-pkc-action', 'rename-workspace');
+    renameBtn.setAttribute('data-pkc-wid', w.id);
+    renameBtn.setAttribute('data-pkc-wname', w.name);
+    renameBtn.textContent = 'Rename';
+    row.appendChild(renameBtn);
+
+    list.appendChild(row);
+  }
+  section.appendChild(list);
+
+  const newBtn = createElement('button', 'pkc-btn-small pkc-workspace-switcher-new');
+  newBtn.setAttribute('data-pkc-action', 'new-workspace');
+  newBtn.textContent = '+ New workspace';
+  section.appendChild(newBtn);
+
+  const note = createElement('div', 'pkc-storage-profile-note');
+  note.textContent = 'ワークスペースは複数のコンテナを束ねる作業空間です。下の Containers は選択中のワークスペースの内容です。';
+  section.appendChild(note);
+  return section;
+}
+
+/**
+ * Same-origin container switcher (#771/#773 MVP). Lists the stored
+ * containers and lets the user switch the active one, create a new
+ * (blank) container, or delete a non-active one. Switching / creating
+ * / deleting mutate the store and reload (boot loads the new active
+ * container) — wired in `mountContainerSwitchHandler` (main.ts).
+ */
+function renderContainerSwitcher(
+  containers: ReadonlyArray<{ id: string; title: string }>,
+  activeCid: string | null,
+): HTMLElement {
+  const section = createElement('div', 'pkc-storage-profile-section');
+  section.setAttribute('data-pkc-region', 'container-switcher');
+  if (activeCid) section.setAttribute('data-pkc-active-container', activeCid);
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = 'Containers (this origin)';
+  section.appendChild(label);
+
+  const list = createElement('div', 'pkc-container-switcher-list');
+  for (const c of containers) {
+    const row = createElement('div', 'pkc-container-switcher-row');
+    row.setAttribute('data-pkc-cid', c.id);
+    const isActive = c.id === activeCid;
+    if (isActive) row.setAttribute('data-pkc-active', 'true');
+
+    const name = createElement('span', 'pkc-container-switcher-title');
+    name.textContent = (c.title && c.title.length > 0 ? c.title : '(untitled)') + (isActive ? ' ●' : '');
+    row.appendChild(name);
+
+    if (!isActive) {
+      const switchBtn = createElement('button', 'pkc-btn-small');
+      switchBtn.setAttribute('data-pkc-action', 'switch-container');
+      switchBtn.setAttribute('data-pkc-cid', c.id);
+      switchBtn.textContent = 'Switch';
+      row.appendChild(switchBtn);
+
+      const delBtn = createElement('button', 'pkc-btn-small pkc-btn-danger');
+      delBtn.setAttribute('data-pkc-action', 'delete-container');
+      delBtn.setAttribute('data-pkc-cid', c.id);
+      delBtn.setAttribute('title', 'Delete this container (irreversible)');
+      delBtn.textContent = 'Delete';
+      row.appendChild(delBtn);
+    }
+    list.appendChild(row);
+  }
+  section.appendChild(list);
+
+  const newBtn = createElement('button', 'pkc-btn-small pkc-container-switcher-new');
+  newBtn.setAttribute('data-pkc-action', 'new-container');
+  newBtn.textContent = '+ New container';
+  section.appendChild(newBtn);
+
+  const note = createElement('div', 'pkc-storage-profile-note');
+  note.textContent = 'Switching / creating / deleting reloads the app. Each container is an independent workspace on this origin.';
+  section.appendChild(note);
+  return section;
+}
+
+/**
+ * Storage backend selector (#771). Lets the user explicitly choose
+ * where the container persists: Browser (IndexedDB, default) or the
+ * Private filesystem (OPFS). Switching sets the boot-time preference
+ * and reloads (boot re-runs the chooser + non-destructive migration).
+ * OPFS is offered only when the runtime supports it (secure context —
+ * not file://).
+ */
+function renderStorageBackendSelector(): HTMLElement {
+  const section = createElement('div', 'pkc-storage-profile-section');
+  section.setAttribute('data-pkc-region', 'storage-backend-selector');
+
+  const label = createElement('span', 'pkc-shell-menu-label');
+  label.textContent = 'Storage backend';
+  section.appendChild(label);
+
+  const current = getStorageBackendPref();
+  section.setAttribute('data-pkc-current-backend', current);
+  const opfsOk = isOpfsSupported();
+  const fsaOk = isFsaSupported();
+
+  const secureHint = 'Requires a secure context (https / localhost) — not available from file://';
+  const options: {
+    backend: StorageBackend;
+    text: string;
+    enabled: boolean;
+    /** `set-storage-backend` (pref+reload) or `pick-storage-folder` (picker gesture). */
+    action: 'set-storage-backend' | 'pick-storage-folder';
+    /** Allow clicking even when active (FSA re-pick to re-grant permission). */
+    clickableWhenActive?: boolean;
+    hint?: string;
+  }[] = [
+    { backend: 'idb', text: '🗄 Browser (IndexedDB)', enabled: true, action: 'set-storage-backend' },
+    {
+      backend: 'opfs',
+      text: '📁 Private filesystem (OPFS)',
+      enabled: opfsOk,
+      action: 'set-storage-backend',
+      hint: opfsOk ? undefined : secureHint,
+    },
+    {
+      backend: 'fsa',
+      text: current === 'fsa' ? '📂 Local folder (re-pick…)' : '📂 Local folder (choose…)',
+      enabled: fsaOk,
+      action: 'pick-storage-folder',
+      clickableWhenActive: true, // re-pick to re-grant a lapsed permission
+      hint: fsaOk ? 'Pick a real folder on disk (Chromium)' : secureHint,
+    },
+  ];
+
+  const row = createElement('div', 'pkc-storage-backend-options');
+  for (const o of options) {
+    const btn = createElement('button', 'pkc-btn-small pkc-storage-backend-option');
+    btn.setAttribute('data-pkc-action', o.action);
+    btn.setAttribute('data-pkc-backend', o.backend);
+    btn.textContent = o.text;
+    const isActive = o.backend === current;
+    if (isActive) btn.setAttribute('data-pkc-active', 'true');
+    if (!o.enabled || (isActive && !o.clickableWhenActive)) {
+      (btn as HTMLButtonElement).disabled = true;
+    }
+    if (o.hint) btn.setAttribute('title', o.hint);
+    row.appendChild(btn);
+  }
+  section.appendChild(row);
+
+  const note = createElement('div', 'pkc-storage-profile-note');
+  note.textContent =
+    'Switching reloads the app and migrates your data (non-destructive — the previous backend keeps a copy). '
+    + 'Local folder needs re-granting access each session.';
+  section.appendChild(note);
+  return section;
 }
 
 /**

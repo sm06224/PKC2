@@ -69,6 +69,9 @@ import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/te
 import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
 import { buildFolderExportBundle } from '../platform/folder-export';
 import { setPaneCollapsed } from '../platform/pane-prefs';
+import { getStorageBackendPref, setStorageBackendPref } from '../platform/storage-backend';
+import { pickDirectory, verifyFsaPermission } from '../platform/storage/fsa-adapter';
+import { saveFsaHandle } from '../platform/storage/fsa-handle-store';
 import { applyOnePaneCollapsedToDOM } from './pane-apply';
 import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
@@ -4001,6 +4004,34 @@ export function bindActions(
       }
       case 'close-storage-profile': {
         dispatcher.dispatch({ type: 'CLOSE_STORAGE_PROFILE' });
+        break;
+      }
+      case 'set-storage-backend': {
+        // #771: persist the chosen backend and reload so boot re-runs
+        // the backend chooser + non-destructive migration. No-op when
+        // the choice equals the current backend (the active option is
+        // disabled anyway). Side effect (reload) lives here, not in the
+        // reducer — switching the persistence backend is a boot concern.
+        const backend = target.getAttribute('data-pkc-backend');
+        if (backend !== 'idb' && backend !== 'opfs') break;
+        if (backend === getStorageBackendPref()) break;
+        setStorageBackendPref(backend);
+        globalThis.location?.reload?.();
+        break;
+      }
+      case 'pick-storage-folder': {
+        // #771 FSA: the click is the user gesture `showDirectoryPicker`
+        // requires. Pick → ensure readwrite permission → persist the
+        // handle → set pref → reload (boot reconnects + migrates). Any
+        // cancel / denial leaves the current backend untouched.
+        void (async (): Promise<void> => {
+          const handle = await pickDirectory();
+          if (!handle) return;
+          if (!(await verifyFsaPermission(handle, true))) return;
+          await saveFsaHandle(handle);
+          setStorageBackendPref('fsa');
+          globalThis.location?.reload?.();
+        })();
         break;
       }
       case 'select-from-storage-profile': {

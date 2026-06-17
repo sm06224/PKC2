@@ -60,6 +60,30 @@ describe('buildContainerProjection', () => {
     expect(a1.asset_size).toBe('QkFTRTY0REFUQQ=='.length);
   });
 
+  it('restoreCandidates は soft-delete 済み entry のメタを載せる(body/snapshot は非露出)(#830 R4)', () => {
+    const c = makeContainer();
+    // 'gone' は revision はあるが entries に無い = 復元候補。
+    c.revisions.push({
+      id: 'rev-gone', entry_lid: 'gone', created_at: T,
+      snapshot: JSON.stringify({
+        lid: 'gone', title: 'Deleted Note', body: 'SECRET DELETED BODY',
+        archetype: 'text', created_at: T, updated_at: T,
+      }),
+    });
+    const p = buildContainerProjection(c);
+    expect(p.restoreCandidates).toEqual([{ lid: 'gone', title: 'Deleted Note', archetype: 'text' }]);
+    expect(JSON.stringify(p)).not.toContain('SECRET DELETED BODY');
+  });
+
+  it('orphanAssets は未参照アセットのみ(key+size、base64 本体は非露出)(#830 R8)', () => {
+    const c = makeContainer();
+    c.assets.k2 = 'T1JQSEFOQjY0'; // どの entry からも参照されない孤児
+    const p = buildContainerProjection(c);
+    // k1 は a1(attachment)が参照 → 孤児でない。k2 のみ。
+    expect(p.orphanAssets).toEqual([{ key: 'k2', size: 'T1JQSEFOQjY0'.length }]);
+    expect(JSON.stringify(p)).not.toContain('T1JQSEFOQjY0'); // base64 本体は出さない
+  });
+
   it('【不変条件】body / assets(base64)/ revisions を一切含まない', () => {
     const p = buildContainerProjection(makeContainer());
     const json = JSON.stringify(p);

@@ -45,6 +45,7 @@ function fakeLaunch() {
     projections: unknown[];
     delivers: unknown[];
     selected: string[];
+    proposeResults: { accepted: boolean; assignedLid: string | null; correlationId: string | null }[];
     closed: boolean;
   }[] = [];
   const launch = (opts: LaunchExtensionOptions): ExtensionChannelHandle => {
@@ -53,6 +54,7 @@ function fakeLaunch() {
       projections: [] as unknown[],
       delivers: [] as unknown[],
       selected: [] as string[],
+      proposeResults: [] as { accepted: boolean; assignedLid: string | null; correlationId: string | null }[],
       closed: false,
     };
     records.push(rec);
@@ -61,6 +63,8 @@ function fakeLaunch() {
       pushProjection: () => rec.projections.push(opts.getProjection()),
       deliver: (p) => rec.delivers.push(p),
       notifySelected: (lid) => rec.selected.push(lid),
+      notifyProposeResult: (accepted, assignedLid, correlationId) =>
+        rec.proposeResults.push({ accepted, assignedLid, correlationId }),
       close: () => { rec.closed = true; established = false; },
       isEstablished: () => established,
       // テストから rec.closed を立てると「ユーザーが window を閉じた」を模せる。
@@ -291,6 +295,125 @@ describe('onWrite set-todo-status(#830 R2): host が description を保全', () 
     const before = d.getState().container;
     expect(onWrite({ ops: [{ op: 'set-todo-status', lid: 'e1', status: 'done' }] })).toBe(false);
     expect(d.getState().container).toBe(before);
+  });
+});
+
+describe('onWrite rename / unfile(#830 R3 / R7)', () => {
+  function openHost(c?: Container) {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: c ?? container() });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    return { d, onWrite: recs[0]!.opts.onWrite! };
+  }
+
+  it('rename は title だけ差し替え、body は保全(#830 R3)', () => {
+    const { d, onWrite } = openHost();
+    expect(onWrite({ ops: [{ op: 'rename', lid: 'e1', title: 'Renamed' }] })).toBe(true);
+    const e1 = d.getState().container!.entries.find((e) => e.lid === 'e1')!;
+    expect(e1.title).toBe('Renamed');
+    expect(e1.body).toBe('send me');
+  });
+
+  it('unfile は structural relation を外して未整理(root)へ(#830 R7)', () => {
+    const c = container();
+    c.entries.push({ lid: 'f1', title: 'Folder', body: '', archetype: 'folder', created_at: T, updated_at: T });
+    c.relations.push({ id: 'rel-f1-e1', from: 'f1', to: 'e1', kind: 'structural', created_at: T, updated_at: T });
+    const { d, onWrite } = openHost(c);
+    expect(onWrite({ ops: [{ op: 'unfile', lid: 'e1' }] })).toBe(true);
+    expect(d.getState().container!.relations.some((r) => r.kind === 'structural' && r.to === 'e1')).toBe(false);
+  });
+});
+
+describe('onWrite delete / restore(#830 R4: 既存 soft-delete trash 開放)', () => {
+  function openHost() {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    return { d, recs };
+  }
+
+  it('delete は soft(復元候補になる)、restore で復活する', () => {
+    const { d, recs } = openHost();
+    const onWrite = recs[0]!.opts.onWrite!;
+    expect(onWrite({ ops: [{ op: 'delete', lid: 'e1' }] })).toBe(true);
+    expect(d.getState().container!.entries.some((e) => e.lid === 'e1')).toBe(false);
+    // ゴミ箱 UI 用に projection.restoreCandidates へ出る。
+    const proj = recs[0]!.opts.getProjection() as { restoreCandidates: { lid: string }[] };
+    expect(proj.restoreCandidates.some((rc) => rc.lid === 'e1')).toBe(true);
+    // restore で entries に戻る。
+    expect(onWrite({ ops: [{ op: 'restore', lid: 'e1' }] })).toBe(true);
+    expect(d.getState().container!.entries.some((e) => e.lid === 'e1')).toBe(true);
+  });
+
+  it('active entry の restore は検証 NG で副作用なし(復元候補でない)', () => {
+    const { d, recs } = openHost();
+    const onWrite = recs[0]!.opts.onWrite!;
+    const before = d.getState().container;
+    expect(onWrite({ ops: [{ op: 'restore', lid: 'e1' }] })).toBe(false);
+    expect(d.getState().container).toBe(before);
+  });
+
+  it('purge-orphan-assets は孤児アセットを掃除し、参照中は残す(#830 R8)', () => {
+    const c = container();
+    c.assets = { ...c.assets, orphan1: btoa('ORPHAN') }; // どの entry からも未参照
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: c });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    const onWrite = recs[0]!.opts.onWrite!;
+    expect(d.getState().container!.assets.orphan1).toBeDefined();
+    expect(onWrite({ ops: [{ op: 'purge-orphan-assets' }] })).toBe(true);
+    expect(d.getState().container!.assets.orphan1).toBeUndefined();
+    expect(d.getState().container!.assets['ext-html']).toBeDefined(); // 参照中は残る
+  });
+});
+
+describe('onPropose(#830 R5): create を既存 record:offer 同意経路へ', () => {
+  function openHost() {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    return { d, recs };
+  }
+
+  it('propose は SYS_RECORD_OFFERED で pendingOffer 化し、accept で propose-result(assigned_lid 付き)を返す', () => {
+    const { d, recs } = openHost();
+    recs[0]!.opts.onPropose!({ offer: { title: 'New', body: 'b', archetype: 'text' }, correlation_id: 'c1' });
+    // silent 作成はしない: banner 待ちの pendingOffer になるだけ。
+    expect(d.getState().pendingOffers).toHaveLength(1);
+    expect(recs[0]!.proposeResults).toHaveLength(0);
+    const offerId = d.getState().pendingOffers[0]!.offer_id;
+    // ユーザーが banner で accept(= entry mint)。
+    d.dispatch({ type: 'ACCEPT_OFFER', offer_id: offerId });
+    expect(recs[0]!.proposeResults).toHaveLength(1);
+    const res = recs[0]!.proposeResults[0]!;
+    expect(res.accepted).toBe(true);
+    expect(res.correlationId).toBe('c1');
+    expect(typeof res.assignedLid).toBe('string');
+    // 払い出された lid の entry が実在する。
+    expect(d.getState().container!.entries.some((e) => e.lid === res.assignedLid)).toBe(true);
+  });
+
+  it('dismiss は accepted=false を返す', () => {
+    const { d, recs } = openHost();
+    recs[0]!.opts.onPropose!({ offer: { title: 'X', body: 'y' }, correlation_id: 'c2' });
+    const offerId = d.getState().pendingOffers[0]!.offer_id;
+    d.dispatch({ type: 'DISMISS_OFFER', offer_id: offerId });
+    expect(recs[0]!.proposeResults[0]).toEqual({ accepted: false, assignedLid: null, correlationId: 'c2' });
+  });
+
+  it('不正 offer は即 accepted=false、pendingOffer を作らない', () => {
+    const { d, recs } = openHost();
+    recs[0]!.opts.onPropose!({ offer: { body: 'no title' } }); // title 欠落 = 検証 NG
+    expect(d.getState().pendingOffers).toHaveLength(0);
+    expect(recs[0]!.proposeResults[0]).toEqual({ accepted: false, assignedLid: null, correlationId: null });
   });
 });
 

@@ -14,6 +14,21 @@
  *   - `set-todo-status` todo の status のみ差し替え(#830 R2)。拡張は body
  *                       (description)を持たないため status 専用 op が要る。
  *                       host が parse→swap→serialize で description を保全する。
+ *   - `rename`          entry の title だけ差し替え(#830 R3)。title は既に
+ *                       projection にあるので新規露出ゼロ。
+ *   - `unfile`          entry を folder から外して未整理(root)へ(#830 R7)。
+ *                       `move` は folderLid が folder 必須で root を表現でき
+ *                       ないため、structural relation の除去専用 op を分ける。
+ *   - `delete`          entry を soft delete(#830 R4)。PKC2 の delete は
+ *                       revision snapshot を残す物理削除で復元可能。purge
+ *                       (hard delete)は host-only で開放しない。
+ *   - `restore`         soft delete 済み entry を復元(#830 R4)。host が最新
+ *                       revision を解決して RESTORE_ENTRY に流す。
+ *   - `purge-orphan-assets` どの entry からも参照されない孤児アセットを
+ *                       一括削除(#830 R8)。既存ユーザー向け PURGE_ORPHAN_ASSETS
+ *                       を再利用。参照中アセットは消えない。container 単位の
+ *                       op なので lid/key を取らない。per-key の hard delete は
+ *                       開放しない。
  *
  * Pure: no browser APIs(features 層、core のみ)。
  */
@@ -24,7 +39,12 @@ export type WriteOp =
   | { op: 'update-body'; lid: string; body: string }
   | { op: 'move'; lid: string; folderLid: string }
   | { op: 'relate'; from: string; to: string }
-  | { op: 'set-todo-status'; lid: string; status: 'open' | 'done' };
+  | { op: 'set-todo-status'; lid: string; status: 'open' | 'done' }
+  | { op: 'rename'; lid: string; title: string }
+  | { op: 'unfile'; lid: string }
+  | { op: 'delete'; lid: string }
+  | { op: 'restore'; lid: string }
+  | { op: 'purge-orphan-assets' };
 
 export type WriteValidation =
   | { ok: true; ops: WriteOp[] }
@@ -40,6 +60,15 @@ function isFolder(container: Container, lid: string): boolean {
 function isTodo(container: Container, lid: string): boolean {
   const e = container.entries.find((x) => x.lid === lid);
   return !!e && e.archetype === 'todo';
+}
+/**
+ * 復元候補か(= soft delete 済み): active な entry には無いが revision は
+ * 残っている lid。`getRestoreCandidates` と同じ定義をインライン化(import
+ * を避けた軽量チェック)。
+ */
+function isRestoreCandidate(container: Container, lid: string): boolean {
+  if (container.entries.some((e) => e.lid === lid)) return false;
+  return container.revisions.some((r) => r.entry_lid === lid);
 }
 
 /**
@@ -84,6 +113,33 @@ export function validateWriteOps(container: Container, raw: unknown): WriteValid
       if (!entryExists(container, o.lid)) return { ok: false, reason: `unknown lid: ${o.lid}` };
       if (!isTodo(container, o.lid)) return { ok: false, reason: `not a todo: ${o.lid}` };
       out.push({ op: 'set-todo-status', lid: o.lid, status: o.status });
+    } else if (o.op === 'rename') {
+      if (typeof o.lid !== 'string' || typeof o.title !== 'string') {
+        return { ok: false, reason: 'rename requires lid + title strings' };
+      }
+      // reducer 側で trim するため、trim 後が空になる rename は拒否(空 title
+      // 化は拡張側のバグ — fail-closed)。長さ上限は既存 title ルールに委ねる。
+      if (o.title.trim().length === 0) return { ok: false, reason: 'rename title must be non-empty' };
+      if (!entryExists(container, o.lid)) return { ok: false, reason: `unknown lid: ${o.lid}` };
+      out.push({ op: 'rename', lid: o.lid, title: o.title });
+    } else if (o.op === 'unfile') {
+      if (typeof o.lid !== 'string') return { ok: false, reason: 'unfile requires lid string' };
+      if (!entryExists(container, o.lid)) return { ok: false, reason: `unknown lid: ${o.lid}` };
+      out.push({ op: 'unfile', lid: o.lid });
+    } else if (o.op === 'delete') {
+      if (typeof o.lid !== 'string') return { ok: false, reason: 'delete requires lid string' };
+      if (!entryExists(container, o.lid)) return { ok: false, reason: `unknown lid: ${o.lid}` };
+      out.push({ op: 'delete', lid: o.lid });
+    } else if (o.op === 'restore') {
+      if (typeof o.lid !== 'string') return { ok: false, reason: 'restore requires lid string' };
+      if (!isRestoreCandidate(container, o.lid)) {
+        return { ok: false, reason: `not a restore candidate: ${o.lid}` };
+      }
+      out.push({ op: 'restore', lid: o.lid });
+    } else if (o.op === 'purge-orphan-assets') {
+      // container 単位。引数なし(全孤児を一括掃除)。常に許可(参照中
+      // アセットは removeOrphanAssets が消さない)。
+      out.push({ op: 'purge-orphan-assets' });
     } else {
       return { ok: false, reason: `unknown op: ${String(o.op)}` };
     }

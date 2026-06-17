@@ -1,6 +1,10 @@
 /** @vitest-environment happy-dom */
 import { describe, it, expect } from 'vitest';
 import { createMemoryAdapter } from '@adapter/platform/storage/memory-adapter';
+import {
+  createFileSystemDirectoryAdapter,
+  type FsDirectoryHandle,
+} from '@adapter/platform/storage/fs-directory-adapter';
 import type { StorageAdapter } from '@adapter/platform/storage/storage-adapter';
 
 /**
@@ -126,3 +130,56 @@ function suite(name: string, factory: () => StorageAdapter) {
 }
 
 suite('StorageAdapter — memory impl', createMemoryAdapter);
+
+// ── In-memory fake of the File System Access API ──
+// Lets the OPFS/FSA shared core (`fs-directory-adapter.ts`) run the
+// same contract without a real browser (real OPFS is covered by a
+// localhost smoke). Only the narrow surface the adapter uses.
+class FakeFile {
+  content = '';
+  async getFile() {
+    const c = this.content;
+    return { async text() { return c; } };
+  }
+  async createWritable() {
+    return {
+      write: async (data: string) => { this.content = data; },
+      close: async () => {},
+    };
+  }
+}
+class FakeDir {
+  files = new Map<string, FakeFile>();
+  dirs = new Map<string, FakeDir>();
+  async getDirectoryHandle(name: string, opts?: { create?: boolean }): Promise<FakeDir> {
+    let d = this.dirs.get(name);
+    if (!d) {
+      if (!opts?.create) throw new DOMException('missing dir', 'NotFoundError');
+      d = new FakeDir();
+      this.dirs.set(name, d);
+    }
+    return d;
+  }
+  async getFileHandle(name: string, opts?: { create?: boolean }): Promise<FakeFile> {
+    let f = this.files.get(name);
+    if (!f) {
+      if (!opts?.create) throw new DOMException('missing file', 'NotFoundError');
+      f = new FakeFile();
+      this.files.set(name, f);
+    }
+    return f;
+  }
+  async removeEntry(name: string): Promise<void> {
+    if (this.files.delete(name)) return;
+    if (this.dirs.delete(name)) return;
+    throw new DOMException('missing entry', 'NotFoundError');
+  }
+  async *keys(): AsyncIterableIterator<string> {
+    for (const k of this.files.keys()) yield k;
+    for (const k of this.dirs.keys()) yield k;
+  }
+}
+
+suite('StorageAdapter — FS directory impl (OPFS/FSA core)', () =>
+  createFileSystemDirectoryAdapter(new FakeDir() as unknown as FsDirectoryHandle),
+);

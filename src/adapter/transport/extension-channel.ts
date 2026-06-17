@@ -5,12 +5,15 @@
  * graph の bespoke `pkc-graph-ext` を一般化した host 側チャネル。
  * **host 主体の push** が一次経路:
  *
- *   - host → ext  `projection`   既定露出(index/list/統計、メタのみ)
- *   - host → ext  `deliver`      ユーザーの send ジェスチャで実体 1 件
- *   - host → ext  `selected`     host 側の選択変更(graph 等が focus を追従)
- *   - ext  → host `write`        T2 editor の書き戻し(host が検証)
- *   - host → ext  `write-result` 書き戻しの成否
- *   - ext  → host `hint`         軽量ヒント(open / select)。実体は流れない
+ *   - host → ext  `projection`     既定露出(index/list/統計、メタのみ)
+ *   - host → ext  `deliver`        ユーザーの send ジェスチャで実体 1 件
+ *   - host → ext  `selected`       host 側の選択変更(graph 等が focus を追従)
+ *   - ext  → host `write`          T2 editor の書き戻し(host が検証)
+ *   - host → ext  `write-result`   書き戻しの成否
+ *   - ext  → host `hint`           軽量ヒント(open / select)。実体は流れない
+ *   - ext  → host `propose`        新規 entry の作成提案(#830 R5)。host は
+ *                                  既存 record:offer 同意 banner に流す
+ *   - host → ext  `propose-result` 作成の成否(accept で assigned_lid を返す)
  *
  * **拡張から実体を pull する経路は無い**(rev.1 の `asset:request` は廃止)。
  *
@@ -45,6 +48,16 @@ export interface ExtWriteRequest {
   correlation_id?: string;
 }
 
+/**
+ * ext → host: 新規 entry の作成提案(#830 R5)。`offer` は record:offer の
+ * payload と同型(title / body / archetype / ... )。host は検証して既存の
+ * 同意 banner に流し、ユーザー accept で初めて mint する(silent 作成は無い)。
+ */
+export interface ExtProposeRequest {
+  offer: unknown;
+  correlation_id?: string;
+}
+
 /** #796 §4.1 manifest(AttachmentBody additive)。tier 既定 'sandboxed'。 */
 export interface ExtensionManifest {
   tier?: 'sandboxed' | 'trusted';
@@ -64,6 +77,8 @@ export interface LaunchExtensionOptions {
   onWrite?: (req: ExtWriteRequest) => boolean;
   /** ext が「この entry を開いて / 選択して」等の軽量ヒント(pull ではない)。 */
   onHint?: (hint: { kind: string; lid?: string }) => void;
+  /** ext→host `propose`(#830 R5)。host が同意 banner に流す(結果は `notifyProposeResult`)。 */
+  onPropose?: (req: ExtProposeRequest) => void;
 }
 
 export interface ExtensionChannelHandle {
@@ -73,6 +88,11 @@ export interface ExtensionChannelHandle {
   deliver: (payload: ExtDeliverPayload) => void;
   /** host 側の選択変更を通知(graph 等が focus を追従)。 */
   notifySelected: (lid: string) => void;
+  /**
+   * `propose`(#830 R5)の結果を ext へ返す。accept なら assigned_lid 付き、
+   * reject/dismiss なら accepted=false。established 前 / 閉鎖後は no-op。
+   */
+  notifyProposeResult: (accepted: boolean, assignedLid: string | null, correlationId: string | null) => void;
   /** チャネルを閉じる。 */
   close: () => void;
   /** established 済みか(テスト/呼び出し側の判定用)。 */
@@ -191,6 +211,14 @@ export function launchExtensionChannel(
         kind: typeof d.kind === 'string' ? d.kind : 'unknown',
         lid: typeof d.lid === 'string' ? d.lid : undefined,
       });
+    } else if (d.t === 'propose') {
+      // #830 R5: 新規 entry の作成提案。offer の検証 + 同意 banner への流し
+      // 込みは orchestrator(host 側)が行う。結果は notifyProposeResult で
+      // 非同期に返る(ユーザーが banner で accept/dismiss するまで保留)。
+      opts.onPropose?.({
+        offer: d.offer,
+        correlation_id: typeof d.correlation_id === 'string' ? d.correlation_id : undefined,
+      });
     }
     // それ以外の ext→host は無視(pull 経路は存在しない)。
   };
@@ -248,6 +276,11 @@ export function launchExtensionChannel(
     },
     notifySelected: (lid: string) => {
       if (established) post({ t: 'selected', lid });
+    },
+    notifyProposeResult: (accepted, assignedLid, correlationId) => {
+      if (established) {
+        post({ t: 'propose-result', accepted, assigned_lid: assignedLid, correlation_id: correlationId });
+      }
     },
     close: () => {
       removeListener();

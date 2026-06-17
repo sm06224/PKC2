@@ -50,7 +50,8 @@ describe('validateWriteOps', () => {
   });
 
   it('未知 op / 型不正は拒否', () => {
-    expect(validateWriteOps(container, [{ op: 'delete', lid: 'e1' }]).ok).toBe(false);
+    // purge(hard delete)は意図的に非開放 = 未知 op として弾く(#830 R4)。
+    expect(validateWriteOps(container, [{ op: 'purge', lid: 'e1' }]).ok).toBe(false);
     expect(validateWriteOps(container, [{ op: 'update-body', lid: 'e1', body: 5 }]).ok).toBe(false);
   });
 
@@ -64,6 +65,44 @@ describe('validateWriteOps', () => {
     expect(validateWriteOps(container, [{ op: 'set-todo-status', lid: 'e1', status: 'done' }]).ok).toBe(false); // text
     expect(validateWriteOps(container, [{ op: 'set-todo-status', lid: 't1', status: 'archived' }]).ok).toBe(false);
     expect(validateWriteOps(container, [{ op: 'set-todo-status', lid: 'nope', status: 'open' }]).ok).toBe(false);
+  });
+
+  it('rename を正規化、空 title / 未知 lid / 型不正は拒否(#830 R3)', () => {
+    const r = validateWriteOps(container, [{ op: 'rename', lid: 'e1', title: 'New Name' }]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.ops).toEqual([{ op: 'rename', lid: 'e1', title: 'New Name' }]);
+    expect(validateWriteOps(container, [{ op: 'rename', lid: 'e1', title: '   ' }]).ok).toBe(false); // 空(trim 後)
+    expect(validateWriteOps(container, [{ op: 'rename', lid: 'nope', title: 'x' }]).ok).toBe(false);
+    expect(validateWriteOps(container, [{ op: 'rename', lid: 'e1', title: 5 }]).ok).toBe(false);
+  });
+
+  it('unfile を正規化、未知 lid は拒否(#830 R7)', () => {
+    const r = validateWriteOps(container, [{ op: 'unfile', lid: 'e1' }]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.ops).toEqual([{ op: 'unfile', lid: 'e1' }]);
+    expect(validateWriteOps(container, [{ op: 'unfile', lid: 'nope' }]).ok).toBe(false);
+  });
+
+  it('delete は existing entry のみ、restore は復元候補のみ(#830 R4)', () => {
+    expect(validateWriteOps(container, [{ op: 'delete', lid: 'e1' }]).ok).toBe(true);
+    expect(validateWriteOps(container, [{ op: 'delete', lid: 'nope' }]).ok).toBe(false);
+    // active entry は復元候補でない。
+    expect(validateWriteOps(container, [{ op: 'restore', lid: 'e1' }]).ok).toBe(false);
+    const withDeleted: Container = {
+      ...container,
+      revisions: [{
+        id: 'r-del1', entry_lid: 'del1', created_at: T,
+        snapshot: JSON.stringify({ lid: 'del1', title: 'D', body: '', archetype: 'text', created_at: T, updated_at: T }),
+      }],
+    };
+    expect(validateWriteOps(withDeleted, [{ op: 'restore', lid: 'del1' }]).ok).toBe(true);
+    expect(validateWriteOps(withDeleted, [{ op: 'restore', lid: 'nope' }]).ok).toBe(false);
+  });
+
+  it('purge-orphan-assets は引数なしで許可(#830 R8)', () => {
+    const r = validateWriteOps(container, [{ op: 'purge-orphan-assets' }]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.ops).toEqual([{ op: 'purge-orphan-assets' }]);
   });
 
   it('1 件でも NG なら全体拒否(部分適用しない)', () => {

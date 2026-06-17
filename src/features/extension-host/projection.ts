@@ -21,6 +21,8 @@
 
 import type { Container } from '@core/model/container';
 import { isSystemArchetype } from '@core/model/record';
+import { getRestoreCandidates, parseRevisionSnapshot } from '@core/operations/container-ops';
+import { collectOrphanAssetKeys } from '@features/asset/asset-scan';
 import { collectLinkRefs } from '@features/link-index/link-index';
 import { parseTodoBody } from '@features/todo/todo-body';
 
@@ -75,6 +77,28 @@ export interface ProjectionExternalLink {
   url: string;
 }
 
+/**
+ * 削除済みで復元可能な entry の派生メタ(#830 R4)。PKC2 の delete は
+ * soft(revision snapshot を残す物理削除)で、`getRestoreCandidates` が
+ * 復元候補を返す。拡張のゴミ箱 UI 用に lid/title/archetype のみ載せる
+ * (body/snapshot 本体は含めない — data minimization 不変)。
+ */
+export interface ProjectionRestoreCandidate {
+  lid: string;
+  title: string;
+  archetype: string;
+}
+
+/**
+ * どの entry からも参照されていない孤児アセットの派生メタ(#830 R8)。
+ * 拡張のストレージ掃除 UI 用に key と size(base64 文字列長、attachment
+ * の `asset_size` と同単位)のみ載せる。base64 本体は含めない。
+ */
+export interface ProjectionOrphanAsset {
+  key: string;
+  size: number;
+}
+
 export interface ContainerProjection {
   containerId: string;
   title: string;
@@ -85,6 +109,10 @@ export interface ContainerProjection {
     internal: ProjectionInternalLink[];
     external: ProjectionExternalLink[];
   };
+  /** 削除済みで復元可能な entry(#830 R4、ゴミ箱 UI 用。body は含まない)。 */
+  restoreCandidates: ProjectionRestoreCandidate[];
+  /** どの entry からも参照されない孤児アセット(#830 R8、掃除 UI 用。base64 は含まない)。 */
+  orphanAssets: ProjectionOrphanAsset[];
   stats: ProjectionStats;
 }
 
@@ -199,12 +227,32 @@ export function buildContainerProjection(container: Container): ContainerProject
     }
   }
 
+  // 削除済み復元候補(#830 R4)。snapshot から lid/title/archetype のみ拾い、
+  // body は載せない。system archetype は projection の他部分と同様に除外。
+  const restoreCandidates: ProjectionRestoreCandidate[] = [];
+  for (const rev of getRestoreCandidates(container)) {
+    const snap = parseRevisionSnapshot(rev);
+    if (!snap || isSystemArchetype(snap.archetype)) continue;
+    restoreCandidates.push({ lid: snap.lid, title: snap.title, archetype: snap.archetype });
+  }
+
+  // 孤児アセット(#830 R8)。collectOrphanAssetKeys = container.assets に在る
+  // が、どの entry からも参照されない key。base64 本体は載せず key+size のみ。
+  const assets = container.assets ?? {};
+  const orphanAssets: ProjectionOrphanAsset[] = [];
+  for (const key of collectOrphanAssetKeys(container)) {
+    const b64 = assets[key];
+    orphanAssets.push({ key, size: typeof b64 === 'string' ? b64.length : 0 });
+  }
+
   return {
     containerId: container.meta.container_id,
     title: container.meta.title,
     entries,
     relations,
     links: { internal, external },
+    restoreCandidates,
+    orphanAssets,
     stats: {
       totalEntries: entries.length,
       byArchetype,

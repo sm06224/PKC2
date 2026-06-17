@@ -31,6 +31,8 @@ import {
 import { parseAttachmentBody, decodeAttachmentText } from './attachment-presenter';
 import { getAncestorFolderLids } from '@features/relation/tree';
 import { parseTodoBody, serializeTodoBody } from '@features/todo/todo-body';
+import { getRestoreCandidates } from '@core/operations/container-ops';
+import { validateOfferPayload, buildPendingOffer } from '../transport/record-offer-handler';
 
 export type LaunchFn = (opts: LaunchExtensionOptions) => ExtensionChannelHandle | null;
 
@@ -98,6 +100,34 @@ export function moveEntryToFolder(dispatcher: Dispatcher, lid: string, folderLid
   dispatcher.dispatch({ type: 'CREATE_RELATION', from: folderLid, to: lid, kind: 'structural' });
 }
 
+/**
+ * entry を folder から外して未整理(root)へ戻す(#830 R7、検証済み・永続化)。
+ * `moveEntryToFolder` の「既存 structural relation を DELETE」部分のみを行い、
+ * 新規 CREATE はしない(= どの folder にも属さない = root)。既に root の
+ * entry は no-op。readonly は安全に no-op。
+ */
+export function unfileEntry(dispatcher: Dispatcher, lid: string): void {
+  const container = dispatcher.getState().container;
+  if (!container || dispatcher.getState().readonly) return;
+  if (!container.entries.some((e) => e.lid === lid)) return;
+  for (const r of container.relations) {
+    if (r.kind === 'structural' && r.to === lid) dispatcher.dispatch({ type: 'DELETE_RELATION', id: r.id });
+  }
+}
+
+/**
+ * soft delete 済み entry を復元する(#830 R4、検証済み・永続化)。host が
+ * 最新 revision を `getRestoreCandidates` で解決し、既存 RESTORE_ENTRY に
+ * 流す(拡張は revision_id を知らなくてよい)。復元候補でなければ no-op。
+ */
+export function restoreDeleted(dispatcher: Dispatcher, lid: string): void {
+  const container = dispatcher.getState().container;
+  if (!container || dispatcher.getState().readonly) return;
+  const rev = getRestoreCandidates(container).find((r) => r.entry_lid === lid);
+  if (!rev) return;
+  dispatcher.dispatch({ type: 'RESTORE_ENTRY', lid, revision_id: rev.id });
+}
+
 /** entry 間に semantic relation を張る(検証済み、永続化)。 */
 export function relateEntries(dispatcher: Dispatcher, from: string, to: string): void {
   const container = dispatcher.getState().container;
@@ -138,6 +168,11 @@ export function applyTodoStatus(
  *   - move            → moveEntryToFolder(cycle guard 含む)
  *   - relate          → relateEntries
  *   - set-todo-status → applyTodoStatus(host が description を保全、#830 R2)
+ *   - rename          → RENAME_ENTRY_TITLE(title のみ、#830 R3)
+ *   - unfile          → unfileEntry(structural relation 除去、#830 R7)
+ *   - delete          → DELETE_ENTRY(soft delete、#830 R4。entry の purge は非開放)
+ *   - restore         → restoreDeleted(最新 revision を解決、#830 R4)
+ *   - purge-orphan-assets → PURGE_ORPHAN_ASSETS(孤児アセット一括掃除、#830 R8)
  * 検証は all-or-nothing。1 件でも NG なら全体を拒否(部分適用しない)。
  */
 function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
@@ -156,6 +191,16 @@ function applyWrite(dispatcher: Dispatcher, req: ExtWriteRequest): boolean {
       relateEntries(dispatcher, op.from, op.to);
     } else if (op.op === 'set-todo-status') {
       applyTodoStatus(dispatcher, op.lid, op.status);
+    } else if (op.op === 'rename') {
+      dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid: op.lid, title: op.title });
+    } else if (op.op === 'unfile') {
+      unfileEntry(dispatcher, op.lid);
+    } else if (op.op === 'delete') {
+      dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: op.lid });
+    } else if (op.op === 'restore') {
+      restoreDeleted(dispatcher, op.lid);
+    } else if (op.op === 'purge-orphan-assets') {
+      dispatcher.dispatch({ type: 'PURGE_ORPHAN_ASSETS' });
     }
   }
   return true;
@@ -244,6 +289,25 @@ export function createExtensionHost(
   // は v2.2 予約のため、**毎起動確認**(最も安全)とする。
   const pendingConsent = new Set<string>();
   const pendingSends = new Map<string, string[]>();
+  // #830 R5: pkc-ext `propose` で投げられ、同意 banner 待ちの offer。
+  // offer_id → 起源拡張 + 相関 id。accept/dismiss event でチャネルに結果を返す。
+  const pendingProposals = new Map<string, { extLid: string; correlationId: string | null }>();
+
+  // propose 経由の offer は postMessage の reply window を持たない(結果は
+  // pkc-ext で返す)。OFFER_ACCEPTED/DISMISSED を購読し、自分が起こした
+  // offer_id だけ拾って `propose-result` を起源拡張へ push する。
+  const offProposeEvents = dispatcher.onEvent((event) => {
+    if (event.type !== 'OFFER_ACCEPTED' && event.type !== 'OFFER_DISMISSED') return;
+    const pending = pendingProposals.get(event.offer_id);
+    if (!pending) return;
+    pendingProposals.delete(event.offer_id);
+    const handle = handles.get(pending.extLid);
+    if (event.type === 'OFFER_ACCEPTED') {
+      handle?.notifyProposeResult(true, event.lid, pending.correlationId);
+    } else {
+      handle?.notifyProposeResult(false, null, pending.correlationId);
+    }
+  });
 
   function launchResolved(
     extLid: string,
@@ -270,6 +334,23 @@ export function createExtensionHost(
           // graph の single-click 相当: 選択のみ(前面化しない)。
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: hint.lid });
         }
+      },
+      // #830 R5: 新規 entry の作成提案。host が payload を検証し、既存の
+      // record:offer 同意 banner に流す(silent 作成は無い)。検証 NG は
+      // 即 accepted=false。accept/dismiss の結果は offProposeEvents が返す。
+      onPropose: (req) => {
+        const handle = handles.get(extLid);
+        const payload = validateOfferPayload(req.offer);
+        if (!payload) {
+          handle?.notifyProposeResult(false, null, req.correlation_id ?? null);
+          return;
+        }
+        const offer = buildPendingOffer(payload, {
+          correlation_id: req.correlation_id ?? null,
+          reply_to_id: null,
+        });
+        pendingProposals.set(offer.offer_id, { extLid, correlationId: req.correlation_id ?? null });
+        dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
       },
     });
     if (!handle) return null;
@@ -369,6 +450,8 @@ export function createExtensionHost(
     openLids: () => [...handles.keys()],
     closeAll: () => {
       for (const lid of [...handles.keys()]) closeOne(lid);
+      offProposeEvents();
+      pendingProposals.clear();
     },
   };
 }
