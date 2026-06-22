@@ -111,6 +111,36 @@ describe('renderMarkdown (markdown-it)', () => {
     expect(html).toContain('<td>');
   });
 
+  // ── 2026-06-22 user バグレポ:表セル内 `<br>` が生タグで出る ──
+  // `html: false` の副作用で `<br>` が `&lt;br&gt;` に escape されていた。
+  // void 要素 `<br>` のみ許可する narrow allowlist で改行として render する。
+  it('renders <br> inside a pipe-table cell as a real line break', () => {
+    const md = '| A | B |\n|---|---|\n| line1<br>line2 | x |';
+    const html = renderMarkdown(md);
+    expect(html).toContain('line1<br>');
+    expect(html).not.toContain('&lt;br&gt;');
+  });
+
+  it('accepts <br/>, <br />, and <BR> variants', () => {
+    expect(renderMarkdown('a<br/>b')).toContain('a<br>');
+    expect(renderMarkdown('a<br />b')).toContain('a<br>');
+    expect(renderMarkdown('a<BR>b')).toContain('a<br>');
+  });
+
+  it('renders <br> inside a CSV-fence table cell', () => {
+    const html = renderMarkdown('```csv\nA,B\nline1<br>line2,x\n```');
+    expect(html).toContain('line1<br>');
+    expect(html).not.toContain('&lt;br&gt;');
+  });
+
+  it('keeps the XSS posture: only bare <br> is allowed, other HTML stays escaped', () => {
+    // 属性付き br は match させない(event handler 注入面をゼロに保つ)。
+    expect(renderMarkdown('x<br onload="alert(1)">y')).toContain('&lt;br');
+    // 他タグは従来どおり escape。
+    expect(renderMarkdown('<b>hi</b>')).toContain('&lt;b&gt;');
+    expect(renderMarkdown('<img src=x onerror=alert(1)>')).toContain('&lt;img');
+  });
+
   it('renders strikethrough', () => {
     const html = renderMarkdown('~~deleted~~');
     expect(html).toContain('<s>deleted</s>');
