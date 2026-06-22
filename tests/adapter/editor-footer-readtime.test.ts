@@ -15,7 +15,7 @@
  *   - live update に追従
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { __resetRegistry, __resetUrlCache } from '@adapter/flags';
 import { render } from '@adapter/ui/renderer';
 import { bindActions } from '@adapter/ui/action-binder';
@@ -23,6 +23,7 @@ import { createDispatcher } from '@adapter/state/dispatcher';
 import {
   estimateReadTimeMinutes,
   formatReadTime,
+  WORDCOUNT_LIVE_DEBOUNCE_MS,
 } from '@adapter/ui/editor-footer-wordcount';
 import type { Container } from '@core/model/container';
 
@@ -159,14 +160,21 @@ describe('pgc-127 read time が editor footer に表示', () => {
   });
 
   it('flag ON + live update で read time が追従', () => {
-    setFlag(true);
-    bootEditing(makeContainer('short'));
-    expect(metrics()?.textContent).toContain('<1 min');
-    // 1000 words 入力 → 5 min
-    const long = Array(1000).fill('word').join(' ');
-    const ta = bodyTextarea()!;
-    ta.value = long;
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
-    expect(metrics()?.textContent).toContain('~5 min read');
+    // live wordcount は debounce 経由になったので fake timer で flush。
+    vi.useFakeTimers();
+    try {
+      setFlag(true);
+      bootEditing(makeContainer('short'));
+      expect(metrics()?.textContent).toContain('<1 min');
+      // 1000 words 入力 → 5 min
+      const long = Array(1000).fill('word').join(' ');
+      const ta = bodyTextarea()!;
+      ta.value = long;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      vi.advanceTimersByTime(WORDCOUNT_LIVE_DEBOUNCE_MS);
+      expect(metrics()?.textContent).toContain('~5 min read');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

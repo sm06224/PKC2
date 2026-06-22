@@ -10,10 +10,11 @@
  * mutation なし、render pipeline 不介入。
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { __resetRegistry, __resetUrlCache } from '@adapter/flags';
 import { render } from '@adapter/ui/renderer';
 import { bindActions } from '@adapter/ui/action-binder';
+import { WORDCOUNT_LIVE_DEBOUNCE_MS } from '@adapter/ui/editor-footer-wordcount';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import type { Container } from '@core/model/container';
 
@@ -42,6 +43,8 @@ describe('pgc-126 Editor footer wordcount live update', () => {
   let teardown: (() => void) | null = null;
 
   beforeEach(() => {
+    // live wordcount は debounce(setTimeout)経由になったので fake timer で flush。
+    vi.useFakeTimers();
     __resetRegistry();
     __resetUrlCache();
     document.body.innerHTML = '';
@@ -52,6 +55,7 @@ describe('pgc-126 Editor footer wordcount live update', () => {
   afterEach(() => {
     if (teardown) { teardown(); teardown = null; }
     setFlag(false);
+    vi.useRealTimers();
   });
 
   function bootEditing(c: Container): ReturnType<typeof createDispatcher> {
@@ -75,6 +79,8 @@ describe('pgc-126 Editor footer wordcount live update', () => {
   function typeAt(textarea: HTMLTextAreaElement, value: string): void {
     textarea.value = value;
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    // live wordcount は debounce されるので flush して metrics 反映を待つ。
+    vi.advanceTimersByTime(WORDCOUNT_LIVE_DEBOUNCE_MS);
   }
 
   it('flag ON:input event で metrics が realtime に更新される(short → long)', () => {
@@ -143,5 +149,41 @@ describe('pgc-126 Editor footer wordcount live update', () => {
     fake.dispatchEvent(new Event('input', { bubbles: true }));
     // footer は変わらない(body field でないので handler は skip)
     expect(metrics()?.textContent).toContain('5 chars');
+  });
+
+  // ── perf(2026-06-22 user バグレポ:data URI 入り markdown を貼ると重い)──
+  // live wordcount を debounce 化:毎キーストロークで body 全長を走査しない。
+  it('perf:live update は debounce(発火前は未更新、flush 後に 1 回だけ反映)', () => {
+    setFlag(true);
+    bootEditing(makeContainer('start')); // 静的 build → 5 chars
+    expect(metrics()?.getAttribute('data-pkc-char-count')).toBe('5');
+    const ta = bodyTextarea()!;
+    // data URI(大きな base64)を含む body を 1 回入力。
+    const dataUri = '![i](data:image/png;base64,' + 'A'.repeat(20000) + ')';
+    const next = `text ${dataUri} tail`;
+    ta.value = next;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    // debounce 経過前は metrics 未更新(全長走査が走っていない)。
+    expect(metrics()?.getAttribute('data-pkc-char-count')).toBe('5');
+    // 経過後に 1 回だけ反映。
+    vi.advanceTimersByTime(WORDCOUNT_LIVE_DEBOUNCE_MS);
+    expect(metrics()?.getAttribute('data-pkc-char-count')).toBe(String(next.length));
+  });
+
+  it('perf:連続入力は最後の 1 回に coalesce される', () => {
+    setFlag(true);
+    bootEditing(makeContainer('x')); // 1 char
+    const ta = bodyTextarea()!;
+    for (const v of ['aa', 'aaa', 'aaaa', 'aaaaa']) {
+      ta.value = v;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      // debounce 未満の間隔で連打 → 途中では発火しない。
+      vi.advanceTimersByTime(Math.floor(WORDCOUNT_LIVE_DEBOUNCE_MS / 4));
+    }
+    // ここまで一度も発火していない(初期値のまま)。
+    expect(metrics()?.getAttribute('data-pkc-char-count')).toBe('1');
+    // 最後の入力から debounce 経過 → 最終値 'aaaaa'(5)に一度だけ反映。
+    vi.advanceTimersByTime(WORDCOUNT_LIVE_DEBOUNCE_MS);
+    expect(metrics()?.getAttribute('data-pkc-char-count')).toBe('5');
   });
 });
