@@ -145,7 +145,7 @@ import {
 } from '../../features/asset/storage-profile';
 import { openEntryWindow, pushViewBodyUpdate, pushTextlogViewBodyUpdate, focusEntryWindow, type EntryWindowAssetContext } from './entry-window';
 import { shellEditModeEnabled, shellConflictDiffViewEnabled, shellCommandPaletteEnabled, shellQuickOpenEnabled, shellContextMenuUniversalEnabled, shellEditorFooterWordcountEnabled, textTextlogLogSearchEnabled } from './shell-flags';
-import { estimateReadTimeMinutes, formatReadTime } from './editor-footer-wordcount';
+import { estimateReadTimeMinutes, formatReadTime, WORDCOUNT_LIVE_DEBOUNCE_MS } from './editor-footer-wordcount';
 import { toggleCommandPalette, isCommandPaletteOpen } from './command-palette';
 import { toggleQuickOpen, isQuickOpenOpen } from './quick-open';
 import { handleKeymapKeydown } from './keymap-binder';
@@ -8442,6 +8442,7 @@ export function bindActions(
   // ── TEXT split editor: update preview ──
   // Primary: Enter keyup (line commit). Secondary: debounced input (500ms idle).
   let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let wordcountDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function updateTextEditPreview(textarea: HTMLTextAreaElement): void {
     const wrapper = textarea.closest('.pkc-text-split-editor');
@@ -8565,25 +8566,35 @@ export function bindActions(
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
     if (target.getAttribute('data-pkc-field') !== 'body') return;
-    const editor = target.closest('.pkc-editor');
-    if (!editor) return;
-    const footer = editor.querySelector<HTMLElement>(
-      '[data-pkc-region="editor-footer-wordcount"]',
-    );
-    if (!footer) return;
-    const metrics = footer.querySelector<HTMLElement>('.pkc-editor-footer-metrics');
-    if (!metrics) return;
-    const body = target.value;
-    const charCount = body.length;
-    const lineCount = body === '' ? 0 : body.split('\n').length;
-    const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length;
-    // pgc-127 wave-δ #3:read time も live 更新。
-    const readMinutes = estimateReadTimeMinutes(body);
-    metrics.setAttribute('data-pkc-char-count', String(charCount));
-    metrics.setAttribute('data-pkc-word-count', String(wordCount));
-    metrics.setAttribute('data-pkc-line-count', String(lineCount));
-    metrics.setAttribute('data-pkc-read-minutes', readMinutes.toFixed(2));
-    metrics.textContent = `${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
+    if (!target.closest('.pkc-editor')) return;
+    // perf(2026-06-22 user バグレポ:data URI を含む markdown を貼ると重い):
+    // 毎 input で body 全長を trim / split / match する再計算を debounce し、
+    // 入力が落ち着いてから 1 回だけ実行する。data URI(数 MB base64)入り body
+    // でも 1 キーストロークごとの全長走査を avoid。footer は passive metrics
+    // なので遅延は体感に影響しない(preview 再描画も同様に debounce 済 = 上記)。
+    if (wordcountDebounceTimer) clearTimeout(wordcountDebounceTimer);
+    wordcountDebounceTimer = setTimeout(() => {
+      wordcountDebounceTimer = null;
+      // debounce 待機中の re-render で footer が差し替わる可能性に備え、
+      // metrics は timer 発火時点で再 query する。
+      const footer = target
+        .closest('.pkc-editor')
+        ?.querySelector<HTMLElement>('[data-pkc-region="editor-footer-wordcount"]');
+      const metrics = footer?.querySelector<HTMLElement>('.pkc-editor-footer-metrics');
+      if (!metrics) return;
+      const body = target.value;
+      const charCount = body.length;
+      const lineCount = body === '' ? 0 : body.split('\n').length;
+      const trimmed = body.trim();
+      const wordCount = trimmed === '' ? 0 : trimmed.split(/\s+/).length;
+      // pgc-127 wave-δ #3:read time も live 更新。
+      const readMinutes = estimateReadTimeMinutes(body);
+      metrics.setAttribute('data-pkc-char-count', String(charCount));
+      metrics.setAttribute('data-pkc-word-count', String(wordCount));
+      metrics.setAttribute('data-pkc-line-count', String(lineCount));
+      metrics.setAttribute('data-pkc-read-minutes', readMinutes.toFixed(2));
+      metrics.textContent = `${charCount} chars · ${wordCount} words · ${lineCount} lines · ${formatReadTime(readMinutes)}`;
+    }, WORDCOUNT_LIVE_DEBOUNCE_MS);
   }
   root.addEventListener('input', handleEditorFooterWordcountInput);
 

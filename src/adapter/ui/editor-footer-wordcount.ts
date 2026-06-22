@@ -26,6 +26,14 @@ import { textWordcountExcludeNoiseEnabled, textWordcountMobileCompactEnabled } f
 const WORDS_PER_MINUTE = 200;
 const CJK_CHARS_PER_MINUTE = 600;
 
+// perf(2026-06-22 user バグレポ:data URI を含む markdown を貼ると重い):
+// editor footer の live wordcount は body 全長を trim / split / match で走査する。
+// data URI(数 MB の base64)を含む body では 1 キーストロークごとの全長再走査が
+// 重い。入力が落ち着いてから 1 回だけ再計算するための debounce 遅延(ms)。
+// footer は passive な metrics 表示なので、この程度の遅延は体感に影響しない
+// (live preview の再描画も同様に debounce 済 = action-binder handleTextEditPreviewInput)。
+export const WORDCOUNT_LIVE_DEBOUNCE_MS = 200;
+
 export function estimateReadTimeMinutes(body: string): number {
   if (!body) return 0;
   const wordCount = body.trim() === '' ? 0 : body.trim().split(/\s+/).length;
