@@ -997,6 +997,36 @@ md.inline.ruler.after('emphasis', 'pkc_simple_inline', function simpleInlineRule
 
 });
 
+// ── Inline `<br>` 改行(2026-06-22 user バグレポ)────────────────
+//
+// `html: false`(raw HTML を全 escape する XSS 安全既定)の副作用で、表
+// セル内の改行に使う `<br>` がそのまま `&lt;br&gt;` と生タグ表示されてしまう。
+// GFM の表セルは複数行ソースを書けず、`breaks: true` の「改行 → <br>」変換も
+// セルは 1 行のため効かない。よって `<br>` がセル内改行の事実上の標準手段。
+//
+// 緩和は **void 要素 `<br>` だけ** を許す narrow allowlist:`<br>` / `<br/>` /
+// `<br />`(大文字小文字無視・内部空白許容)を hardbreak token 化して `<br>`
+// を emit する。属性付き(`<br onload=…>` 等)や他タグには match しないので
+// script / event handler の注入面はゼロ ── `html: false` の XSS 姿勢を保った
+// まま、共有 md 経由で表 / CSV セル / 段落の全 inline 文脈に一様に効く
+// (center pane / Viewer popup / Split View preview の 3 surface 共通)。
+const HTML_BR_RE = /<br\s*\/?>/iy;
+md.inline.ruler.before('html_inline', 'pkc_html_br', function htmlBrRule(state, silent) {
+  // `<` 以外は即 false(高速 path)。
+  if (state.src.charCodeAt(state.pos) !== 0x3c /* < */) return false;
+  // sticky(`y`)+ lastIndex で state.pos 位置のみを判定。
+  HTML_BR_RE.lastIndex = state.pos;
+  const m = HTML_BR_RE.exec(state.src);
+  if (m === null) return false;
+  if (!silent) {
+    // markdown-it 標準 hardbreak renderer は `<br>\n` を出力。AST 経路
+    // (parse.ts)も hardbreak → AstText '\n' として同等に扱える。
+    state.push('hardbreak', 'br', 0);
+  }
+  state.pos += m[0].length;
+  return true;
+});
+
 // ── M-7 Variables `{{vars.x}}`(2026-05-08、wave-10-2 Phase 2)──
 //
 // Spec §3.6 + OQ-6:frontmatter `vars.x` の値を本文中 `{{vars.x}}` で展開。
