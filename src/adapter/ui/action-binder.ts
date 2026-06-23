@@ -132,6 +132,7 @@ import {
 } from './textlog-conversion-progress';
 // user direction 2026-05-28:blob URL を含む markdown text の paste で asset 化 + rewrite。
 import { rewriteBlobUrlsToAssets, hasBlobUrlImageMarkdown } from './paste-blob-url-rewrite';
+import { rewriteDataUriImagesToAssets, hasDataUriImageMarkdown } from './paste-data-uri-rewrite';
 import {
   getTextToTextlogCommitData,
   isTextToTextlogModalOpen,
@@ -7819,6 +7820,81 @@ export function bindActions(
     return true;
   }
 
+  /**
+   * data URI(inline base64 画像)を含む markdown text の paste 時、画像を asset 化
+   * して本文を `asset:<key>` へ rewrite してから textarea に挿入する。perf 対策:
+   * 数 MB の base64 を本文に居座らせない(2026-06-22 user direction、blob: paste の
+   * data: 版)。data: は base64 内包で fetch 不要(同期)、N 枚は BATCH で 1 再描画。
+   *
+   * - text/plain に対応 MIME(png/jpeg/gif/webp)の data: 画像 syntax が無ければ
+   *   false(別 handler に fallthrough)。
+   * - 描画 parity:対象 MIME は asset-resolver が同一 data: URI へ round-trip するため
+   *   `asset:<key>` 置換後も表示は不変、本文だけ軽くなる。
+   */
+  function maybeHandleDataUriImagePaste(e: ClipboardEvent): boolean {
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return false;
+    const field = target.getAttribute('data-pkc-field');
+    if (!field || !PASTE_LINK_ALLOWED_FIELDS.has(field)) return false;
+
+    const raw = e.clipboardData?.getData('text/plain') ?? '';
+    if (raw === '' || !hasDataUriImageMarkdown(raw)) return false;
+
+    const state = dispatcher.getState();
+    if (!state.container) return false;
+    const contextLid = state.editingLid ?? state.selectedLid;
+    if (!contextLid) return false;
+
+    const result = rewriteDataUriImagesToAssets(raw);
+    if (result.attachments.length === 0) return false;
+
+    e.preventDefault();
+
+    const textarea = target;
+    const cursorPos = textarea.selectionStart ?? textarea.value.length;
+    const cursorEnd = textarea.selectionEnd ?? cursorPos;
+    const currentValue = textarea.value;
+    const fieldAttr = field;
+    const logId = textarea.getAttribute('data-pkc-log-id');
+
+    // 各画像を asset 化。PASTE_ATTACHMENT は editing phase で許可される
+    // (BATCH_PASTE_ATTACHMENTS は editing で blocked)ので、blob: paste と同じく
+    // per-image で dispatch する。通常インライン画像は数枚なので影響は軽微。
+    for (const a of result.attachments) {
+      dispatcher.dispatch({
+        type: 'PASTE_ATTACHMENT',
+        name: a.name,
+        mime: a.mime,
+        size: a.size,
+        assetKey: a.assetKey,
+        assetData: a.assetData,
+        contextLid,
+      });
+    }
+
+    // asset: 参照に置換済の text を cursor 位置に splice。BATCH で center pane が
+    // 再構築されるので textarea を再取得(blob paste と同じ整合処理)。
+    const before = currentValue.slice(0, cursorPos);
+    const after = currentValue.slice(cursorEnd);
+    const merged = before + result.rewrittenText + after;
+    const freshSelector = logId
+      ? `textarea[data-pkc-field="${fieldAttr}"][data-pkc-log-id="${CSS.escape(logId)}"]`
+      : `textarea[data-pkc-field="${fieldAttr}"]`;
+    const freshTextarea = root.querySelector<HTMLTextAreaElement>(freshSelector);
+    const ta = freshTextarea ?? textarea;
+    ta.value = merged;
+    const newCursor = cursorPos + result.rewrittenText.length;
+    ta.selectionStart = newCursor;
+    ta.selectionEnd = newCursor;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+
+    showToast({
+      message: `インライン画像 ${result.processedCount} 件を asset として保存しました`,
+      kind: 'info',
+    });
+    return true;
+  }
+
   function maybeHandleHtmlLinkPaste(e: ClipboardEvent): void {
     const target = e.target;
     if (!(target instanceof HTMLTextAreaElement)) return;
@@ -7888,6 +7964,14 @@ export function bindActions(
       // 挿入する。`fetch(blobUrl)` は同 document 由来の blob のみ resolved。
       // cross-document blob は network error → fallback で原 markdown 維持。
       if (maybeHandleBlobUrlPaste(e)) return;
+
+      // ── data: URI(inline base64 画像)→ asset rewrite(2026-06-22)──
+      //
+      // text/plain に `![alt](data:image/(png|jpeg|gif|webp);base64,...)` があれば、
+      // 巨大な base64 を本文に貼り込まず asset 化して `asset:<key>` に置換する
+      // (perf:本文を軽量に保つ。描画は resolver が同一 data: URI へ round-trip)。
+      // data: は base64 内包で fetch 不要 = 同期。blob: の次に評価(両方在れば blob 優先)。
+      if (maybeHandleDataUriImagePaste(e)) return;
 
       // ── HTML → Markdown link normalization (S-25 / 2026-04-16) ──
       //
