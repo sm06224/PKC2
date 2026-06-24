@@ -125,3 +125,55 @@ describe('text entry 末尾追記(append-only)', () => {
     expect(appendInput().value).toBe('');
   });
 });
+
+describe('② 章への差し挟み(section-target insert)', () => {
+  function targetSelect(): HTMLSelectElement {
+    return root.querySelector<HTMLSelectElement>(
+      '[data-pkc-field="text-append-target"][data-pkc-lid="e1"]',
+    )!;
+  }
+
+  it('見出しがある本文では挿入先 selector(本文末尾 + 各章)が出る', () => {
+    setup('# A\na1\n# B\nb1');
+    const sel = targetSelect();
+    expect(sel).toBeTruthy();
+    const opts = Array.from(sel.options);
+    expect(opts).toHaveLength(3); // 本文末尾 + A + B
+    expect([opts[0]!.value, opts[0]!.textContent]).toEqual(['', '▼ 本文末尾']);
+    expect(opts[1]!.value).toBe('0');
+    expect(opts[1]!.textContent).toContain('A');
+    expect(opts[2]!.value).toBe('1');
+    expect(opts[2]!.textContent).toContain('B');
+  });
+
+  it('見出しが無い本文では selector を出さない', () => {
+    setup('just text, no headings');
+    expect(
+      root.querySelector('[data-pkc-field="text-append-target"][data-pkc-lid="e1"]'),
+    ).toBeFalsy();
+  });
+
+  it('章を選んで差し挟み → その章末尾(次の見出しの直前)へ挿入', () => {
+    const d = setup('# A\na1\n# B\nb1');
+    appendInput().value = 'X';
+    targetSelect().value = '0'; // 章 A
+    root.querySelector<HTMLButtonElement>('[data-pkc-action="append-text"][data-pkc-lid="e1"]')!.click();
+    expect(bodyOf(d)).toBe('# A\na1\n\nX\n# B\nb1');
+  });
+
+  it('挿入先 = 本文末尾(既定)なら doc-end へ', () => {
+    const d = setup('# A\na1\n# B\nb1');
+    appendInput().value = 'Z';
+    // selector は既定 '' のまま
+    root.querySelector<HTMLButtonElement>('[data-pkc-action="append-text"][data-pkc-lid="e1"]')!.click();
+    expect(bodyOf(d)).toBe('# A\na1\n# B\nb1\n\nZ');
+  });
+
+  it('2 つ目の章を選ぶと末尾(文書末)へ差し挟み', () => {
+    const d = setup('# A\na1\n# B\nb1');
+    appendInput().value = 'Y';
+    targetSelect().value = '1'; // 章 B(末尾章)
+    root.querySelector<HTMLButtonElement>('[data-pkc-action="append-text"][data-pkc-lid="e1"]')!.click();
+    expect(bodyOf(d)).toBe('# A\na1\n# B\nb1\n\nY');
+  });
+});

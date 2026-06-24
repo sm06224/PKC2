@@ -133,6 +133,7 @@ import {
 // user direction 2026-05-28:blob URL を含む markdown text の paste で asset 化 + rewrite。
 import { rewriteBlobUrlsToAssets, hasBlobUrlImageMarkdown } from './paste-blob-url-rewrite';
 import { rewriteDataUriImagesToAssets, hasDataUriImageMarkdown } from './paste-data-uri-rewrite';
+import { extractBodySections, getSectionText, replaceSectionText } from '../../features/markdown/body-sections';
 import {
   getTextToTextlogCommitData,
   isTextToTextlogModalOpen,
@@ -4524,12 +4525,13 @@ export function bindActions(
   }
 
   /**
-   * text entry の「末尾追記」を実行する。append button(`append-text`)と
+   * text entry の追記 / 差し挟みを実行する。append button(`append-text`)と
    * append textarea 上の Ctrl/Cmd+Enter の双方から呼ばれる(textlog の
-   * `performTextlogAppend` と同型)。本文は plain markdown なので区切り線は
-   * 入れず段落区切り(空行)で末尾へ連結する(user:text は区切り線なしの
-   * textlog)。全文を editor に載せず `QUICK_UPDATE_ENTRY`(phase 遷移なし)で
-   * 本文だけ更新する。
+   * `performTextlogAppend` と同型)。挿入先 selector(`text-append-target`)が
+   * 空 or 無し なら**本文末尾**へ(①)、章 index が選ばれていれば**その章の末尾**
+   * (次の見出しの直前)へ差し挟む(②)。本文は plain markdown なので区切り線は
+   * 入れず段落区切り(空行)で連結。全文を editor に載せず `QUICK_UPDATE_ENTRY`
+   * (phase 遷移なし)で本文だけ更新する。
    */
   function performTextAppend(lid: string): void {
     const st = dispatcher.getState();
@@ -4541,8 +4543,28 @@ export function bindActions(
     );
     const text = inputEl?.value?.trim();
     if (!text) return;
-    const trimmed = (ent.body ?? '').replace(/\s+$/, '');
-    const newBody = trimmed ? `${trimmed}\n\n${text}` : text;
+
+    // ② 挿入先:selector が空 / 無し = 本文末尾(①)、章 index = その章末尾へ差し挟み。
+    // section が解決できない(body 変化等)時も末尾へ fallback。
+    const body = ent.body ?? '';
+    const targetVal =
+      root
+        .querySelector<HTMLSelectElement>(
+          `[data-pkc-field="text-append-target"][data-pkc-lid="${lid}"]`,
+        )
+        ?.value ?? '';
+    const sec =
+      targetVal === ''
+        ? undefined
+        : extractBodySections(body)[Number.parseInt(targetVal, 10)];
+    let newBody: string;
+    if (sec) {
+      const sectionText = getSectionText(body, sec).replace(/\s+$/, '');
+      newBody = replaceSectionText(body, sec, `${sectionText}\n\n${text}`);
+    } else {
+      const trimmed = body.replace(/\s+$/, '');
+      newBody = trimmed ? `${trimmed}\n\n${text}` : text;
+    }
     dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: newBody });
 
     // append-centric UX:同期 re-render 後の新しい append textarea を取り直し、

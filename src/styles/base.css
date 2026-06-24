@@ -9723,6 +9723,18 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   -moz-tab-size: 4;
 }
 
+/* ② 挿入先 selector(本文末尾 / 章)。 */
+.pkc-text-append-target {
+  align-self: flex-end;
+  max-width: 16rem;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+}
+
 .pkc-text-append-btn {
   white-space: nowrap;
   align-self: flex-end;

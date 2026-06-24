@@ -130,6 +130,7 @@ import { renderMarkdown, renderMarkdownInline, hasMarkdownSyntax } from '../../f
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
+import { extractBodySections } from '../../features/markdown/body-sections';
 import { parseFrontmatter } from '../../features/markdown/frontmatter';
 import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
 import { extractThumbnailRef } from '../../features/auto-fill/thumbnail-frontmatter';
@@ -7757,11 +7758,11 @@ function renderEditModePicker(editMode: 'inline' | 'window'): HTMLElement {
 }
 
 /**
- * テキスト entry 用「末尾追記」小入力エリア。textlog の append area を text に
- * 持ち込んだもの。user direction(2026-06-24):text と textlog は区切り線の
- * 有無の違いでしかなく、テキスト編集の大半は既存文書への**追記**(と差し挟み)──
- * Vim 的発想。全文を editor に載せず、本文末尾へ `QUICK_UPDATE_ENTRY`(phase 遷移
- * なし)で append する。readonly 時は CSS(`[data-pkc-readonly="true"]`)で非表示。
+ * テキスト entry 用の追記 / 差し挟み入力エリア。textlog の append を text に持ち込み、
+ * さらに「どこへ挿すか」(本文末尾 or h1–h3 の章)を選べる。user direction
+ * (2026-06-24):編集の大半は既存文書への**追記**と**差し挟み**(Vim 的発想)。
+ * ①=末尾追記、②=同様の入力で章(節)末尾へ差し挟む focused insert。全文を editor に
+ * 載せず、本文を `QUICK_UPDATE_ENTRY`(phase 遷移なし)で更新。readonly は CSS で非表示。
  */
 function renderTextAppendArea(entry: Entry): HTMLElement {
   const area = createElement('div', 'pkc-text-append');
@@ -7772,15 +7773,38 @@ function renderTextAppendArea(entry: Entry): HTMLElement {
   input.setAttribute('data-pkc-field', 'text-append-text');
   input.setAttribute('data-pkc-lid', entry.lid);
   input.rows = 3;
-  input.placeholder = '末尾に追記…(Ctrl+Enter で追加)';
+  input.placeholder = '追記 / 差し挟むテキスト…(Ctrl+Enter)';
   area.appendChild(input);
+
+  // ② 挿入先 selector:本文末尾(既定)or h1–h3 の章。章があるときだけ出す。
+  // 章を選ぶと、その章の末尾(次の見出しの直前)へ差し挟む。
+  const sections = extractBodySections(entry.body ?? '');
+  if (sections.length > 0) {
+    const select = document.createElement('select');
+    select.className = 'pkc-text-append-target';
+    select.setAttribute('data-pkc-field', 'text-append-target');
+    select.setAttribute('data-pkc-lid', entry.lid);
+    select.setAttribute('title', '挿入先(本文末尾 / 章を選んで差し挟み)');
+    const endOpt = document.createElement('option');
+    endOpt.value = '';
+    endOpt.textContent = '▼ 本文末尾';
+    select.appendChild(endOpt);
+    for (const s of sections) {
+      const opt = document.createElement('option');
+      opt.value = String(s.index);
+      // level で字下げして章構造を見せる(h1=0, h2=1, h3=2 段)。
+      opt.textContent = `${'　'.repeat(s.level - 1)}▸ ${s.text}`;
+      select.appendChild(opt);
+    }
+    area.appendChild(select);
+  }
 
   const btn = document.createElement('button');
   btn.className = 'pkc-btn pkc-btn-create pkc-text-append-btn';
   btn.setAttribute('data-pkc-action', 'append-text');
   btn.setAttribute('data-pkc-lid', entry.lid);
-  btn.setAttribute('title', '本文末尾に追記(Ctrl+Enter)');
-  btn.textContent = '＋ 追記';
+  btn.setAttribute('title', '追記 / 差し挟み(Ctrl+Enter)');
+  btn.textContent = '＋ 挿入';
   area.appendChild(btn);
 
   return area;
