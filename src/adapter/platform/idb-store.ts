@@ -16,9 +16,12 @@ import { createMemoryAdapter } from './storage/memory-adapter';
  *     path
  *   - default-pointer key (`__default__`) tracks the most recently
  *     saved container_id so `loadDefault()` is a single key lookup
- *   - save diff-deletes asset keys that disappeared from
- *     `container.assets` (B5 invariant) so PURGE_ORPHAN_ASSETS +
- *     reload stays purged
+ *   - save is **additive-only** for assets: it puts every key in
+ *     `container.assets` but NEVER deletes. Deletion of asset bytes is
+ *     an explicit, opt-in operation (`purgeAssetsExcept`) so a save
+ *     carrying only a partial working-set (memory-reduction #7 / lazy
+ *     asset loading) can never wipe the assets it didn't load. See the
+ *     `save` / `purgeAssetsExcept` notes below for the B5 invariant.
  *
  * Phase 1 (Issue #36) separated assets from the container record.
  * Phase 2 (PR #180) introduced StorageAdapter and parallelised asset
@@ -26,6 +29,14 @@ import { createMemoryAdapter } from './storage/memory-adapter';
  * key, so cold boot scaled with asset count. The new path issues
  * `getAll(range)` once and zips with `getAllKeys(range)` in the same
  * transaction.
+ *
+ * 段階2 (#868, working-set lazy loading): `save()` dropped its
+ * diff-delete. Earlier it removed any IDB asset key absent from
+ * `container.assets`, which assumed `container.assets` was always the
+ * complete set. Once boot loads only the working-set that assumption
+ * becomes false and a debounced save would delete every un-loaded
+ * asset — silent, total data loss. Diff-delete is replaced by the
+ * explicit `purgeAssetsExcept`, invoked only on orphan-purge.
  */
 export interface ContainerStore {
   save(container: Container): Promise<void>;
@@ -67,6 +78,18 @@ export interface ContainerStore {
   loadAsset(cid: string, key: string): Promise<string | null>;
   deleteAsset(cid: string, key: string): Promise<void>;
   listAssetKeys(cid: string): Promise<string[]>;
+
+  /**
+   * Explicit asset purge (段階2 #868). Delete every stored asset for
+   * `cid` whose key is NOT in `keep`, and return the keys that were
+   * deleted. This is the deliberate counterpart to the now
+   * additive-only `save()`: callers (the orphan-purge persistence
+   * path) hand in the set of keys to retain, derived from a FULL view
+   * of the container (entry references), never from a partial
+   * working-set. Scoped to `cid` only — other containers' assets are
+   * never touched.
+   */
+  purgeAssetsExcept(cid: string, keep: Iterable<string>): Promise<string[]>;
 }
 
 /** Minimal container descriptor for the switcher list. */
@@ -114,22 +137,14 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
 
   async function save(container: Container): Promise<void> {
     const cid = container.meta.container_id;
-    const prefix = assetPrefix(cid);
 
-    // Diff-delete asset keys that vanished from `container.assets`
-    // since the previous save (B5 invariant). One range scan instead
-    // of N gets — still cheap because keys-only.
-    const existingKeys = await assets.getKeysByPrefix(prefix);
-    const incomingFullKeys = new Set(
-      Object.keys(container.assets).map((k) => assetFullKey(cid, k)),
-    );
-
+    // Additive-only (段階2 #868): put every asset in `container.assets`,
+    // delete nothing. `container.assets` may be a partial working-set
+    // (lazy loading) — diff-deleting "keys not present here" would
+    // erase every un-loaded asset, i.e. silent data loss. Deletion is
+    // the explicit job of `purgeAssetsExcept`. Putting a key that
+    // already holds the same bytes is a harmless idempotent overwrite.
     const assetOps: BatchOp[] = [];
-    for (const fullKey of existingKeys) {
-      if (!incomingFullKeys.has(fullKey)) {
-        assetOps.push({ kind: 'delete', key: fullKey });
-      }
-    }
     for (const [key, data] of Object.entries(container.assets)) {
       assetOps.push({ kind: 'put', key: assetFullKey(cid, key), value: data });
     }
@@ -200,6 +215,24 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     const prefix = assetPrefix(cid);
     const keys = await assets.getKeysByPrefix(prefix);
     return keys.map((k) => k.slice(prefix.length));
+  }
+
+  async function purgeAssetsExcept(cid: string, keep: Iterable<string>): Promise<string[]> {
+    const prefix = assetPrefix(cid);
+    const keepSet = keep instanceof Set ? keep : new Set(keep);
+    // One keys-only range scan (cheap), then batch-delete the misses.
+    const existingFullKeys = await assets.getKeysByPrefix(prefix);
+    const deletedKeys: string[] = [];
+    const ops: BatchOp[] = [];
+    for (const fullKey of existingFullKeys) {
+      const assetKey = fullKey.slice(prefix.length);
+      if (!keepSet.has(assetKey)) {
+        ops.push({ kind: 'delete', key: fullKey });
+        deletedKeys.push(assetKey);
+      }
+    }
+    if (ops.length > 0) await assets.applyBatch(ops);
+    return deletedKeys;
   }
 
   async function clearAll(): Promise<void> {
@@ -283,6 +316,7 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     loadAsset,
     deleteAsset,
     listAssetKeys,
+    purgeAssetsExcept,
   };
 }
 

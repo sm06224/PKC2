@@ -114,12 +114,85 @@ describe('mountPersistence', () => {
     await vi.advanceTimersByTimeAsync(100);
     const countAfterInit = saveSpy.mock.calls.length;
 
+    // Store-level precondition: the orphan was written to IDB on init.
+    expect(await store.loadAsset('c1', 'orphan-key')).toBe('base64data');
+    const purgeSpy = vi.spyOn(store, 'purgeAssetsExcept');
+
     dispatcher.dispatch({ type: 'PURGE_ORPHAN_ASSETS' });
     await vi.advanceTimersByTimeAsync(100);
 
     expect(saveSpy.mock.calls.length).toBe(countAfterInit + 1);
     const lastSavedContainer = saveSpy.mock.calls[saveSpy.mock.calls.length - 1]![0] as Container;
     expect(Object.keys(lastSavedContainer.assets)).not.toContain('orphan-key');
+
+    // 段階2 (#868): save() is additive-only, so the B5 invariant
+    // (purge + reload stays purged) now depends on the explicit
+    // purgeAssetsExcept follow-up. Assert it ran and that the orphan
+    // is actually gone from the backing store — a fresh load must not
+    // resurrect it.
+    expect(purgeSpy).toHaveBeenCalledTimes(1);
+    expect(await store.loadAsset('c1', 'orphan-key')).toBeNull();
+    const reloaded = await store.load('c1');
+    expect(reloaded!.assets['orphan-key']).toBeUndefined();
+  });
+
+  it('orphan-purge keeps assets that are still referenced by an entry', async () => {
+    // A referenced asset must survive the purge even though a sibling
+    // orphan is swept. Guards against the purge over-deleting.
+    const containerMixed: Container = {
+      ...mockContainer,
+      entries: [
+        {
+          lid: 'e1',
+          title: 'Has image',
+          body: 'see ![pic](asset:live-key)',
+          archetype: 'text',
+          created_at: T,
+          updated_at: T,
+        },
+      ],
+      assets: { 'live-key': 'kept', 'orphan-key': 'dropped' },
+    };
+    const store = createMemoryStore();
+    const dispatcher = createDispatcher();
+
+    mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerMixed });
+    await vi.advanceTimersByTimeAsync(100);
+
+    dispatcher.dispatch({ type: 'PURGE_ORPHAN_ASSETS' });
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(await store.loadAsset('c1', 'orphan-key')).toBeNull();
+    expect(await store.loadAsset('c1', 'live-key')).toBe('kept');
+  });
+
+  it('a normal (non-purge) save never deletes assets from the store', async () => {
+    // Core data-loss guard for lazy loading: an ordinary edit save —
+    // even one carrying a PARTIAL working-set in container.assets —
+    // must never purge the un-carried assets from IDB.
+    const store = createMemoryStore();
+    const purgeSpy = vi.spyOn(store, 'purgeAssetsExcept');
+    const dispatcher = createDispatcher();
+
+    // Seed IDB with two assets directly (simulating prior full state).
+    await store.saveAsset('c1', 'ast-a', 'A');
+    await store.saveAsset('c1', 'ast-b', 'B');
+
+    mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
+    // Boot with a container whose in-memory assets hold only a subset.
+    const partial: Container = { ...mockContainer, assets: { 'ast-a': 'A' } };
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: partial });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Mutate to force more saves.
+    dispatcher.dispatch({ type: 'CREATE_ENTRY', archetype: 'text', title: 'New' });
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(purgeSpy).not.toHaveBeenCalled();
+    // The un-carried asset 'ast-b' is still intact in the store.
+    expect(await store.loadAsset('c1', 'ast-b')).toBe('B');
+    expect(await store.loadAsset('c1', 'ast-a')).toBe('A');
   });
 
   it('does not save on EDIT_CANCELLED (no persistent change)', async () => {
