@@ -450,6 +450,12 @@ md.renderer.rules.image = function (tokens, idx, options, env, self) {
       ` data-pkc-embed-alt="${altEsc}"></div>`
     );
   }
+  // メモリ:画面外画像のデコード後ビットマップ常駐を抑えるため、描画 <img> を
+  // 遅延ロード + 非同期デコードにする(data-safe、描画ヒントのみで本文・データ・
+  // 契約は不変)。長い image-heavy ドキュメントで viewport 外画像のデコードを
+  // 後回しにし、RAM を削る。明示指定があれば尊重。
+  if (token.attrGet('loading') === null) token.attrSet('loading', 'lazy');
+  if (token.attrGet('decoding') === null) token.attrSet('decoding', 'async');
   return defaultImage(tokens, idx, options, env, self);
 };
 
