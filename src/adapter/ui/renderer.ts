@@ -7756,6 +7756,36 @@ function renderEditModePicker(editMode: 'inline' | 'window'): HTMLElement {
   return picker;
 }
 
+/**
+ * テキスト entry 用「末尾追記」小入力エリア。textlog の append area を text に
+ * 持ち込んだもの。user direction(2026-06-24):text と textlog は区切り線の
+ * 有無の違いでしかなく、テキスト編集の大半は既存文書への**追記**(と差し挟み)──
+ * Vim 的発想。全文を editor に載せず、本文末尾へ `QUICK_UPDATE_ENTRY`(phase 遷移
+ * なし)で append する。readonly 時は CSS(`[data-pkc-readonly="true"]`)で非表示。
+ */
+function renderTextAppendArea(entry: Entry): HTMLElement {
+  const area = createElement('div', 'pkc-text-append');
+  area.setAttribute('data-pkc-region', 'text-append');
+
+  const input = document.createElement('textarea');
+  input.className = 'pkc-text-append-input';
+  input.setAttribute('data-pkc-field', 'text-append-text');
+  input.setAttribute('data-pkc-lid', entry.lid);
+  input.rows = 3;
+  input.placeholder = '末尾に追記…(Ctrl+Enter で追加)';
+  area.appendChild(input);
+
+  const btn = document.createElement('button');
+  btn.className = 'pkc-btn pkc-btn-create pkc-text-append-btn';
+  btn.setAttribute('data-pkc-action', 'append-text');
+  btn.setAttribute('data-pkc-lid', entry.lid);
+  btn.setAttribute('title', '本文末尾に追記(Ctrl+Enter)');
+  btn.textContent = '＋ 追記';
+  area.appendChild(btn);
+
+  return area;
+}
+
 /** Fixed action bar at bottom of center pane. Shows contextual actions. */
 function renderActionBar(
   entry: Entry,
@@ -8159,6 +8189,13 @@ function renderView(
     );
   } else {
     view.appendChild(presenter.renderBody(entry));
+  }
+
+  // テキスト追記エリア:本文末尾へ素早く追記する小入力(全文を editor に載せず
+  // QUICK_UPDATE_ENTRY で append)。view モード(本パス)= 非編集時のみ出る
+  // (編集中は renderEditorBody 経路で本パスを通らない)。
+  if (entry.archetype === 'text') {
+    view.appendChild(renderTextAppendArea(entry));
   }
 
   // Folder contents section (show children for folder entries)

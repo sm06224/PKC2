@@ -2588,6 +2588,11 @@ export function bindActions(
         performTextlogAppend(lid);
         break;
       }
+      case 'append-text': {
+        if (!lid) break;
+        performTextAppend(lid);
+        break;
+      }
       case 'toggle-log-flag': {
         if (!lid) break;
         const logId = target.getAttribute('data-pkc-log-id');
@@ -4519,6 +4524,39 @@ export function bindActions(
   }
 
   /**
+   * text entry の「末尾追記」を実行する。append button(`append-text`)と
+   * append textarea 上の Ctrl/Cmd+Enter の双方から呼ばれる(textlog の
+   * `performTextlogAppend` と同型)。本文は plain markdown なので区切り線は
+   * 入れず段落区切り(空行)で末尾へ連結する(user:text は区切り線なしの
+   * textlog)。全文を editor に載せず `QUICK_UPDATE_ENTRY`(phase 遷移なし)で
+   * 本文だけ更新する。
+   */
+  function performTextAppend(lid: string): void {
+    const st = dispatcher.getState();
+    if (st.readonly) return;
+    const ent = st.container?.entries.find((e) => e.lid === lid);
+    if (!ent || ent.archetype !== 'text') return;
+    const inputEl = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="text-append-text"][data-pkc-lid="${lid}"]`,
+    );
+    const text = inputEl?.value?.trim();
+    if (!text) return;
+    const trimmed = (ent.body ?? '').replace(/\s+$/, '');
+    const newBody = trimmed ? `${trimmed}\n\n${text}` : text;
+    dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: newBody });
+
+    // append-centric UX:同期 re-render 後の新しい append textarea を取り直し、
+    // 値を空にして focus を戻す(続けて追記できる)。
+    const newInput = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="text-append-text"][data-pkc-lid="${lid}"]`,
+    );
+    if (newInput) {
+      newInput.value = '';
+      newInput.focus();
+    }
+  }
+
+  /**
    * Handle a click on a rendered task list checkbox.
    * Toggles the corresponding `- [ ]`/`- [x]` in the entry body
    * via QUICK_UPDATE_ENTRY.
@@ -4598,6 +4636,7 @@ export function bindActions(
       field === 'body'
       || field === 'textlog-entry-text'
       || field === 'textlog-append-text'
+      || field === 'text-append-text'
       || field === 'todo-description'
     );
   }
@@ -4826,6 +4865,7 @@ export function bindActions(
         field === 'body'
         || field === 'textlog-entry-text'
         || field === 'textlog-append-text'
+        || field === 'text-append-text'
         || field === 'todo-description';
       if (isMarkdownField) {
         if (tryHandleEditorKey(ta, e)) {
@@ -5149,6 +5189,22 @@ export function bindActions(
       if (lid) {
         e.preventDefault();
         performTextlogAppend(lid);
+        return;
+      }
+    }
+
+    // Ctrl+Enter / Cmd+Enter in TEXT append textarea: append to body end.
+    // Plain Enter is left alone so multiline append input still works.
+    if (
+      mod
+      && e.key === 'Enter'
+      && e.target instanceof HTMLTextAreaElement
+      && e.target.getAttribute('data-pkc-field') === 'text-append-text'
+    ) {
+      const lid = e.target.getAttribute('data-pkc-lid');
+      if (lid) {
+        e.preventDefault();
+        performTextAppend(lid);
         return;
       }
     }
@@ -7705,6 +7761,7 @@ export function bindActions(
     'body',
     'textlog-append-text',
     'textlog-entry-text',
+    'text-append-text',
   ]);
 
   /**
