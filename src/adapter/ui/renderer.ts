@@ -7117,7 +7117,7 @@ export { classifyUrl };
  *
  * Returns a `data:` URL or null.
  */
-function pickImageAssetForEntry(
+export function pickImageAssetForEntry(
   entry: Entry,
   assets: Record<string, string>,
   container: Container | null = null,
@@ -7170,19 +7170,13 @@ function pickImageAssetForEntry(
       /* fall through */
     }
   }
-  // 2. Markdown body asset:KEY (TEXT body referencing an image).
-  const m = (entry.body ?? '').match(/asset:([A-Za-z0-9_-]+)/);
-  if (m) {
-    const b64 = assets[m[1]!];
-    if (b64) {
-      if (b64.startsWith('data:image/')) return b64;
-      // We don't know the MIME here; assume image/png if the asset
-      // looks like base64 PNG (starts with iVBORw0K). Otherwise skip.
-      if (b64.startsWith('iVBORw')) return `data:image/png;base64,${b64}`;
-      if (b64.startsWith('/9j/')) return `data:image/jpeg;base64,${b64}`;
-      if (b64.startsWith('R0lGOD')) return `data:image/gif;base64,${b64}`;
-    }
-  }
+  // 2.(撤去 2026-06-24、user 指示「埋め込んだ画像をサムネ表示するのをやめて
+  //   欲しい。サムネは yaml frontmatter で設定した時のみにして欲しい」)
+  //   以前は TEXT body 内の `asset:KEY`(貼付画像 ── #861 で asset 化された
+  //   埋め込み画像)を card/hero サムネに自動採用していたが、本文の図版が意図せず
+  //   表紙になる体験不良のため廃止。text のサムネは step 0(frontmatter
+  //   `thumbnail:`)のみ。attachment 画像(step 1)/ folder cover(step 3)/
+  //   novel 合成(step 4)は「埋め込み画像」ではないので従来どおり残す。
   // 3. Folder thumbnail.
   if (container && entry.archetype === 'folder') {
     const children = getStructuralChildren(container.relations, container.entries, entry.lid);
