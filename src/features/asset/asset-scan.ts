@@ -81,9 +81,44 @@
  */
 
 import type { Container } from '../../core/model/container';
+import type { Entry } from '../../core/model/record';
 import { extractAssetReferences } from '../markdown/asset-resolver';
 import { extractEntryReferences } from '../entry-ref/extract-entry-refs';
 import { parseTextlogBody } from '../textlog/textlog-body';
+
+/**
+ * 単一 entry が **直接** 参照する asset key を `out` に足す(archetype 別、
+ * transclusion 先は含まない)。`collectReferencedAssetKeys`(全件)と
+ * `getEntryAssetDependencies`(単一+transclusion 閉包)の共通部品。
+ */
+function addEntryOwnAssetRefs(entry: Entry, out: Set<string>): void {
+  if (entry.archetype === 'attachment') {
+    try {
+      const parsed = JSON.parse(entry.body) as { asset_key?: unknown };
+      if (typeof parsed.asset_key === 'string' && parsed.asset_key.length > 0) {
+        out.add(parsed.asset_key);
+      }
+    } catch {
+      /* malformed body — no reference contributed */
+    }
+    return;
+  }
+  if (entry.archetype === 'text') {
+    for (const k of extractAssetReferences(entry.body)) out.add(k);
+    return;
+  }
+  if (entry.archetype === 'textlog') {
+    const parsed = parseTextlogBody(entry.body);
+    for (const log of parsed.entries) {
+      if (typeof log.text === 'string' && log.text.length > 0) {
+        for (const k of extractAssetReferences(log.text)) out.add(k);
+      }
+    }
+    return;
+  }
+  // todo / form / folder / generic / opaque — no asset pointers today.
+  // 新 archetype が asset を指すようになったら本関数 + scan test を更新。
+}
 
 /**
  * Walk every entry in `container.entries` and return the
@@ -105,51 +140,41 @@ import { parseTextlogBody } from '../textlog/textlog-body';
  */
 export function collectReferencedAssetKeys(container: Container): Set<string> {
   const refs = new Set<string>();
-  for (const entry of container.entries) {
-    if (entry.archetype === 'attachment') {
-      // Inline parse: we only need the `asset_key` field. Doing the
-      // shallow read here avoids importing the adapter-layer
-      // `parseAttachmentBody` into a features-layer file, and
-      // keeps the per-entry work at a single JSON.parse.
-      //
-      // Legacy attachments without an `asset_key` (data stored
-      // inline in body) contribute nothing — they do not point
-      // into `container.assets`. Malformed JSON is tolerated and
-      // contributes nothing.
-      try {
-        const parsed = JSON.parse(entry.body) as { asset_key?: unknown };
-        if (typeof parsed.asset_key === 'string' && parsed.asset_key.length > 0) {
-          refs.add(parsed.asset_key);
-        }
-      } catch {
-        /* malformed body — no reference contributed */
-      }
-      continue;
-    }
-    if (entry.archetype === 'text') {
-      for (const k of extractAssetReferences(entry.body)) refs.add(k);
-      continue;
-    }
-    if (entry.archetype === 'textlog') {
-      // Reuse the shared features-layer parser so the scanner
-      // stays in sync with any future textlog schema evolution
-      // (default flags, timestamp normalisation, etc.). Malformed
-      // bodies parse to `{ entries: [] }` and contribute nothing.
-      const parsed = parseTextlogBody(entry.body);
-      for (const log of parsed.entries) {
-        if (typeof log.text === 'string' && log.text.length > 0) {
-          for (const k of extractAssetReferences(log.text)) refs.add(k);
-        }
-      }
-      continue;
-    }
-    // `todo`, `form`, `folder`, `generic`, `opaque` — none of
-    // these archetypes carry asset references today. Explicit
-    // no-op to make the archetype filter visible at the call site.
-    // If a new archetype starts pointing at assets, update this
-    // function AND add a scan test.
-  }
+  for (const entry of container.entries) addEntryOwnAssetRefs(entry, refs);
   return refs;
+}
+
+/**
+ * 単一 entry(と transclusion 閉包)が render 時に必要とする asset key 集合。
+ * working-set 遅延ロード(#7 メモリ削減:全 asset 常駐 ≈ 400MB を表示中の数MBへ)
+ * の preload 対象を求めるのに使う。
+ *
+ * `entry:LID` transclusion は対象 entry の本文も inline render されるため、その
+ * entry の asset も再帰的に含める(`visited` で循環防止)。直接参照源は
+ * `collectReferencedAssetKeys` と同じ(attachment `asset_key` / markdown `asset:` 形式)。
+ *
+ * 既知の gap:frontmatter `thumbnail: asset:K` は markdown 形式でないため
+ * `extractAssetReferences` が拾わない(orphan GC 側と同じ既存挙動)。working-set を
+ * 実配線する段(save additive 化と同 PR)で別途対応する。
+ */
+export function getEntryAssetDependencies(container: Container, rootLid: string): Set<string> {
+  const byLid = new Map(container.entries.map((e) => [e.lid, e] as const));
+  const out = new Set<string>();
+  const visited = new Set<string>();
+  const stack: string[] = [rootLid];
+  while (stack.length > 0) {
+    const lid = stack.pop();
+    if (lid === undefined || visited.has(lid)) continue;
+    visited.add(lid);
+    const entry = byLid.get(lid);
+    if (!entry) continue;
+    addEntryOwnAssetRefs(entry, out);
+    // transclusion 先(その本文も inline render される)を辿る。
+    for (const targetLid of extractEntryReferences(entry.body)) {
+      if (!visited.has(targetLid)) stack.push(targetLid);
+    }
+  }
+  return out;
 }
 
 /**
