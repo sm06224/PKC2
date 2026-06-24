@@ -9697,6 +9697,53 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   display: none;
 }
 
+/* テキスト末尾追記エリア(text entry 用、textlog の append を text に持ち込み)。
+   本文の下に置くので上 border + 余白で区切る。readonly では非表示。 */
+.pkc-text-append {
+  display: flex;
+  gap: var(--space-2-5);
+  align-items: flex-end;
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--c-border);
+}
+
+.pkc-text-append-input {
+  flex: 1;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: var(--space-2-5);
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  resize: vertical;
+  min-height: 3.5rem;
+  tab-size: 4;
+  -moz-tab-size: 4;
+}
+
+/* ② 挿入先 selector(本文末尾 / 章)。 */
+.pkc-text-append-target {
+  align-self: flex-end;
+  max-width: 16rem;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+}
+
+.pkc-text-append-btn {
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+[data-pkc-readonly="true"] .pkc-text-append {
+  display: none;
+}
+
 /* Slice 4: TEXTLOG → TEXT selection toolbar + checkboxes.
    Rendered inside the TEXTLOG viewer above the append area so the
    control scope (one TEXTLOG at a time) is visually obvious. */

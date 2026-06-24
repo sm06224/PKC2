@@ -133,6 +133,7 @@ import {
 // user direction 2026-05-28:blob URL を含む markdown text の paste で asset 化 + rewrite。
 import { rewriteBlobUrlsToAssets, hasBlobUrlImageMarkdown } from './paste-blob-url-rewrite';
 import { rewriteDataUriImagesToAssets, hasDataUriImageMarkdown } from './paste-data-uri-rewrite';
+import { extractBodySections, getSectionText, replaceSectionText } from '../../features/markdown/body-sections';
 import {
   getTextToTextlogCommitData,
   isTextToTextlogModalOpen,
@@ -2588,6 +2589,11 @@ export function bindActions(
         performTextlogAppend(lid);
         break;
       }
+      case 'append-text': {
+        if (!lid) break;
+        performTextAppend(lid);
+        break;
+      }
       case 'toggle-log-flag': {
         if (!lid) break;
         const logId = target.getAttribute('data-pkc-log-id');
@@ -4519,6 +4525,60 @@ export function bindActions(
   }
 
   /**
+   * text entry の追記 / 差し挟みを実行する。append button(`append-text`)と
+   * append textarea 上の Ctrl/Cmd+Enter の双方から呼ばれる(textlog の
+   * `performTextlogAppend` と同型)。挿入先 selector(`text-append-target`)が
+   * 空 or 無し なら**本文末尾**へ(①)、章 index が選ばれていれば**その章の末尾**
+   * (次の見出しの直前)へ差し挟む(②)。本文は plain markdown なので区切り線は
+   * 入れず段落区切り(空行)で連結。全文を editor に載せず `QUICK_UPDATE_ENTRY`
+   * (phase 遷移なし)で本文だけ更新する。
+   */
+  function performTextAppend(lid: string): void {
+    const st = dispatcher.getState();
+    if (st.readonly) return;
+    const ent = st.container?.entries.find((e) => e.lid === lid);
+    if (!ent || ent.archetype !== 'text') return;
+    const inputEl = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="text-append-text"][data-pkc-lid="${lid}"]`,
+    );
+    const text = inputEl?.value?.trim();
+    if (!text) return;
+
+    // ② 挿入先:selector が空 / 無し = 本文末尾(①)、章 index = その章末尾へ差し挟み。
+    // section が解決できない(body 変化等)時も末尾へ fallback。
+    const body = ent.body ?? '';
+    const targetVal =
+      root
+        .querySelector<HTMLSelectElement>(
+          `[data-pkc-field="text-append-target"][data-pkc-lid="${lid}"]`,
+        )
+        ?.value ?? '';
+    const sec =
+      targetVal === ''
+        ? undefined
+        : extractBodySections(body)[Number.parseInt(targetVal, 10)];
+    let newBody: string;
+    if (sec) {
+      const sectionText = getSectionText(body, sec).replace(/\s+$/, '');
+      newBody = replaceSectionText(body, sec, `${sectionText}\n\n${text}`);
+    } else {
+      const trimmed = body.replace(/\s+$/, '');
+      newBody = trimmed ? `${trimmed}\n\n${text}` : text;
+    }
+    dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: newBody });
+
+    // append-centric UX:同期 re-render 後の新しい append textarea を取り直し、
+    // 値を空にして focus を戻す(続けて追記できる)。
+    const newInput = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="text-append-text"][data-pkc-lid="${lid}"]`,
+    );
+    if (newInput) {
+      newInput.value = '';
+      newInput.focus();
+    }
+  }
+
+  /**
    * Handle a click on a rendered task list checkbox.
    * Toggles the corresponding `- [ ]`/`- [x]` in the entry body
    * via QUICK_UPDATE_ENTRY.
@@ -4598,6 +4658,7 @@ export function bindActions(
       field === 'body'
       || field === 'textlog-entry-text'
       || field === 'textlog-append-text'
+      || field === 'text-append-text'
       || field === 'todo-description'
     );
   }
@@ -4826,6 +4887,7 @@ export function bindActions(
         field === 'body'
         || field === 'textlog-entry-text'
         || field === 'textlog-append-text'
+        || field === 'text-append-text'
         || field === 'todo-description';
       if (isMarkdownField) {
         if (tryHandleEditorKey(ta, e)) {
@@ -5149,6 +5211,22 @@ export function bindActions(
       if (lid) {
         e.preventDefault();
         performTextlogAppend(lid);
+        return;
+      }
+    }
+
+    // Ctrl+Enter / Cmd+Enter in TEXT append textarea: append to body end.
+    // Plain Enter is left alone so multiline append input still works.
+    if (
+      mod
+      && e.key === 'Enter'
+      && e.target instanceof HTMLTextAreaElement
+      && e.target.getAttribute('data-pkc-field') === 'text-append-text'
+    ) {
+      const lid = e.target.getAttribute('data-pkc-lid');
+      if (lid) {
+        e.preventDefault();
+        performTextAppend(lid);
         return;
       }
     }
@@ -7705,6 +7783,7 @@ export function bindActions(
     'body',
     'textlog-append-text',
     'textlog-entry-text',
+    'text-append-text',
   ]);
 
   /**
