@@ -145,61 +145,121 @@ describe('MemoryStore: assets separation (Phase 1)', () => {
     expect(loaded2!.assets['ast-1']).toBe('from-c2');
   });
 
-  // B5 (2026-04-22): orphan-purge + reload resurrection fix.
-  // Previous save() was put-only, so asset keys removed from
-  // `container.assets` in memory (e.g. after PURGE_ORPHAN_ASSETS)
-  // were never deleted from the backing store. A subsequent load /
-  // reassemble would resurrect them. The tests below pin the diff
-  // semantics that make purge + reload stay purged.
+  // 段階2 (#868): save() is ADDITIVE-ONLY. The earlier B5 fix made
+  // save() diff-delete asset keys missing from `container.assets`,
+  // which assumed `container.assets` was always the complete set.
+  // Lazy working-set loading breaks that assumption (a save may carry
+  // only the resident subset), so diff-delete was a silent data-loss
+  // landmine. The tests below pin the new contract: save never deletes;
+  // deletion is the explicit job of `purgeAssetsExcept`. The B5
+  // invariant (orphan-purge + reload stays purged) is preserved by the
+  // persistence layer calling `purgeAssetsExcept` on the purge event —
+  // see tests/adapter/persistence.test.ts.
 
-  it('B5: second save drops asset keys that are no longer in container.assets', async () => {
+  it('save is additive-only: a partial save keeps previously stored asset keys (no data loss)', async () => {
     const store = createMemoryStore();
     await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B', 'ast-c': 'C' }));
-    // Simulate PURGE_ORPHAN_ASSETS collapsing the in-memory container
-    // down to {a, b} — `c` was an orphan and is gone.
-    await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B' }));
+    // A later save carrying only a SUBSET (e.g. a lazy working-set, or
+    // an orphan-purged in-memory container) must NOT drop the absent
+    // keys. This is the core memory-reduction #7 safety property.
+    await store.save(mockContainer('c1', { 'ast-a': 'A' }));
 
     const loaded = await store.load('c1');
     expect(loaded!.assets['ast-a']).toBe('A');
     expect(loaded!.assets['ast-b']).toBe('B');
-    expect(loaded!.assets['ast-c']).toBeUndefined();
-    // Low-level invariant: deleteAsset / loadAsset agree with the
-    // higher-level diff.
-    expect(await store.loadAsset('c1', 'ast-c')).toBeNull();
-    expect(await store.listAssetKeys('c1')).toEqual(
-      expect.arrayContaining(['ast-a', 'ast-b']),
-    );
-    expect(await store.listAssetKeys('c1')).not.toContain('ast-c');
+    expect(loaded!.assets['ast-c']).toBe('C');
+    expect((await store.listAssetKeys('c1')).sort()).toEqual(['ast-a', 'ast-b', 'ast-c']);
   });
 
-  it('B5: save with assets = {} clears every previously saved asset for that container', async () => {
+  it('save with assets = {} preserves previously saved assets (additive-only)', async () => {
     const store = createMemoryStore();
     await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B' }));
-    // Edge case: purge removes the last asset. The put-only flow
-    // would have skipped the assets branch entirely, leaving A / B
-    // in the backing store.
+    // An asset-stripped save (the lazy boot extreme) must not wipe IDB.
     await store.save(mockContainer('c1', {}));
 
-    expect(await store.listAssetKeys('c1')).toEqual([]);
+    expect((await store.listAssetKeys('c1')).sort()).toEqual(['ast-a', 'ast-b']);
     const loaded = await store.load('c1');
-    expect(loaded!.assets).toEqual({});
+    expect(loaded!.assets['ast-a']).toBe('A');
+    expect(loaded!.assets['ast-b']).toBe('B');
   });
 
-  it('B5: save scoped to its own container_id — other containers\' assets untouched', async () => {
+  it('save updates the bytes of an existing key (idempotent overwrite)', async () => {
     const store = createMemoryStore();
-    await store.save(mockContainer('c1', { 'ast-1': 'from-c1-old', 'ast-keep': 'keep-c1' }));
+    await store.save(mockContainer('c1', { 'ast-1': 'old' }));
+    await store.save(mockContainer('c1', { 'ast-1': 'new' }));
+    expect(await store.loadAsset('c1', 'ast-1')).toBe('new');
+  });
+
+  it('save scoped to its own container_id — other containers\' assets untouched', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-1': 'from-c1', 'ast-keep': 'keep-c1' }));
     await store.save(mockContainer('c2', { 'ast-1': 'from-c2', 'ast-only-c2': 'only-c2' }));
 
-    // Saving a purged c1 (lost `ast-keep`) must not disturb c2 at all.
+    // Re-saving c1 with a different/partial asset set never disturbs c2.
     await store.save(mockContainer('c1', { 'ast-1': 'from-c1-new' }));
 
     const c1 = await store.load('c1');
     expect(c1!.assets['ast-1']).toBe('from-c1-new');
-    expect(c1!.assets['ast-keep']).toBeUndefined();
+    expect(c1!.assets['ast-keep']).toBe('keep-c1'); // additive: kept
 
     const c2 = await store.load('c2');
     expect(c2!.assets['ast-1']).toBe('from-c2');
     expect(c2!.assets['ast-only-c2']).toBe('only-c2');
+  });
+});
+
+describe('MemoryStore: purgeAssetsExcept (explicit deletion, 段階2 #868)', () => {
+  it('deletes only the keys absent from `keep`, returns the deleted keys', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B', 'ast-c': 'C' }));
+
+    const deleted = await store.purgeAssetsExcept('c1', ['ast-a', 'ast-b']);
+
+    expect(deleted).toEqual(['ast-c']);
+    expect((await store.listAssetKeys('c1')).sort()).toEqual(['ast-a', 'ast-b']);
+    expect(await store.loadAsset('c1', 'ast-c')).toBeNull();
+  });
+
+  it('preserves the B5 invariant: purge + reload stays purged', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B', 'orphan': 'X' }));
+    // Orphan-purge keeps the referenced set {a, b}; `orphan` is dropped.
+    await store.purgeAssetsExcept('c1', ['ast-a', 'ast-b']);
+
+    const loaded = await store.load('c1');
+    expect(loaded!.assets['orphan']).toBeUndefined();
+    expect(loaded!.assets['ast-a']).toBe('A');
+    expect(loaded!.assets['ast-b']).toBe('B');
+  });
+
+  it('keep = empty clears every asset for the container', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-a': 'A', 'ast-b': 'B' }));
+    const deleted = await store.purgeAssetsExcept('c1', []);
+    expect(deleted.sort()).toEqual(['ast-a', 'ast-b']);
+    expect(await store.listAssetKeys('c1')).toEqual([]);
+  });
+
+  it('accepts a Set and is scoped to its own container_id', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-1': 'c1-1', 'ast-2': 'c1-2' }));
+    await store.save(mockContainer('c2', { 'ast-1': 'c2-1', 'ast-2': 'c2-2' }));
+
+    await store.purgeAssetsExcept('c1', new Set(['ast-1']));
+
+    expect((await store.listAssetKeys('c1')).sort()).toEqual(['ast-1']);
+    // c2 is completely untouched.
+    expect((await store.listAssetKeys('c2')).sort()).toEqual(['ast-1', 'ast-2']);
+  });
+
+  it('keeping a superset of stored keys deletes nothing', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-a': 'A' }));
+    // `keep` may contain referenced-but-absent keys (broken refs) —
+    // they simply aren't in the store, so nothing is deleted.
+    const deleted = await store.purgeAssetsExcept('c1', ['ast-a', 'ast-missing']);
+    expect(deleted).toEqual([]);
+    expect(await store.loadAsset('c1', 'ast-a')).toBe('A');
   });
 });
 

@@ -2,6 +2,7 @@ import type { Dispatcher } from '../state/dispatcher';
 import type { ContainerStore } from './idb-store';
 import type { DomainEvent, DomainEventType } from '../../core/action/domain-event';
 import { defineFlag } from '../flags';
+import { collectReferencedAssetKeys } from '../../features/asset/asset-scan';
 
 /**
  * Persistence: wires DomainEvent → ContainerStore.save().
@@ -49,13 +50,19 @@ const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
   'RELATION_KIND_UPDATED',
   'CONTAINER_LOADED',
   'CONTAINER_IMPORTED',
-  // Manual `PURGE_ORPHAN_ASSETS` mutates `container.assets` and emits
-  // `ORPHAN_ASSETS_PURGED` as the only corresponding event (no
-  // `ENTRY_*` fires because no entry is touched). Without this
-  // trigger the cleanup stays memory-only and a reload restores the
-  // orphans. Auto-GC paths (SYS_IMPORT_COMPLETE / CONFIRM_IMPORT /
-  // CONFIRM_MERGE_IMPORT) already emit `ENTRY_*` or `CONTAINER_*`
-  // events from their parent actions, so they persist independently.
+  // Manual `PURGE_ORPHAN_ASSETS` (and trash purge) mutates
+  // `container.assets` and emits `ORPHAN_ASSETS_PURGED` as the only
+  // corresponding event (no `ENTRY_*` fires because no entry is
+  // touched). Without this trigger the cleanup stays memory-only and
+  // a reload restores the orphans. Auto-GC paths (SYS_IMPORT_COMPLETE
+  // / CONFIRM_IMPORT / CONFIRM_MERGE_IMPORT) already emit `ENTRY_*` or
+  // `CONTAINER_*` events from their parent actions, so they persist
+  // independently.
+  //
+  // 段階2 (#868): since `save()` is now additive-only it no longer
+  // deletes the purged keys from IDB. This event additionally arms an
+  // explicit `purgeAssetsExcept` run (see `doSave`) so the B5
+  // invariant — orphan-purge + reload stays purged — still holds.
   'ORPHAN_ASSETS_PURGED',
   // FI-Settings v1 (2026-04-18): `SETTINGS_CHANGED` fires whenever any
   // theme/display/locale setting is mutated. The reducer has already
@@ -133,6 +140,10 @@ export function mountPersistence(
     : options.unloadTarget;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let saving = false;
+  // Armed by an `ORPHAN_ASSETS_PURGED` event; consumed by the next
+  // `doSave`. Since `save()` is additive-only (段階2 #868), deleting
+  // the purged asset bytes from IDB is an explicit follow-up step.
+  let pendingPurge = false;
 
   // Resolve debounce on every scheduleSave call so SET_FLAG /
   // inspector-edited persistence.debounce_ms takes effect immediately.
@@ -158,11 +169,19 @@ export function mountPersistence(
 
     const currentState = dispatcher.getState();
     const container = currentState.container;
-    if (!container) return;
+    if (!container) {
+      // No container to persist or purge against — drop any armed
+      // purge so it can't fire later against a different container.
+      pendingPurge = false;
+      return;
+    }
 
     // Skip saving when container came from a Light export (no assets).
     // Saving it would overwrite IDB with asset-stripped data.
-    if (currentState.lightSource) return;
+    if (currentState.lightSource) {
+      pendingPurge = false;
+      return;
+    }
 
     // Skip saving when container was booted from embedded pkc-data.
     // Boot-source policy (2026-04-16): opening an exported HTML must
@@ -171,12 +190,31 @@ export function mountPersistence(
     // an explicit Import (CONFIRM_IMPORT / SYS_IMPORT_COMPLETE /
     // CONFIRM_MERGE_IMPORT / REHYDRATE), which clears the flag. See
     // `docs/development/boot-container-source-policy-revision.md`.
-    if (currentState.viewOnlySource) return;
+    if (currentState.viewOnlySource) {
+      pendingPurge = false;
+      return;
+    }
 
     saving = true;
+    // Consume the purge arm-flag for this cycle. Re-arm on failure so
+    // the next save still attempts the cleanup.
+    const purgeThisCycle = pendingPurge;
+    pendingPurge = false;
     try {
       await store.save(container);
+      if (purgeThisCycle) {
+        // Additive-only save left the orphan bytes in IDB. Delete
+        // exactly the unreferenced keys. `keep` is derived from a FULL
+        // view of the container (entry references), never from
+        // `container.assets`, so this stays correct even when assets
+        // is a partial working-set (lazy loading, 段階3+): an asset
+        // referenced by an entry is never purged, whether or not its
+        // bytes are currently resident.
+        const keep = collectReferencedAssetKeys(container);
+        await store.purgeAssetsExcept(container.meta.container_id, keep);
+      }
     } catch (err) {
+      if (purgeThisCycle) pendingPurge = true;
       console.warn('[PKC2] Save failed:', err);
       onError?.(err);
     } finally {
@@ -206,6 +244,10 @@ export function mountPersistence(
   activeFlush = flushPending;
 
   function handleEvent(event: DomainEvent): void {
+    if (event.type === 'ORPHAN_ASSETS_PURGED') {
+      // Arm the explicit IDB purge for the next save cycle (段階2 #868).
+      pendingPurge = true;
+    }
     if (SAVE_TRIGGERS.has(event.type)) {
       scheduleSave();
     }

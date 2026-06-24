@@ -1,8 +1,9 @@
 # Lazy asset working-set 計画(メモリ削減 #7)
 
-> Status: **段階1(土台)着地済 / 中核は段階2以降**。前任が「メモリロード」を
-> 指摘されつつ対応しきれなかった箇所(user, 2026-06-24)。本書は**地雷**(特に
-> `save()` の diff-delete = データ損失)を明示し、安全な段階実装を定義する。
+> Status: **段階1(土台)+ 段階2(save additive-only 化)着地済 / 中核は段階3以降**。
+> 前任が「メモリロード」を指摘されつつ対応しきれなかった箇所(user, 2026-06-24)。
+> 本書は**地雷**(特に `save()` の diff-delete = データ損失)を明示し、安全な段階実装を
+> 定義する。
 
 ## 1. 問題(Playwright で実測、`tests/bench/memory-footprint.bench.ts`)
 
@@ -67,9 +68,13 @@ metadata は常駐。** 表示中の entry(+ transclusion 閉包)が参照する
 
 - **段階1(着地済・behavior 不変・additive)**:`getEntryAssetDependencies` 追加
   + 共通 `addEntryOwnAssetRefs` 抽出 + 計測 bench。配線はまだしない=リスク 0。
-- **段階2(中核・最重要・要厚テスト)**:`save()` を **additive-only** 化(diff-delete
-  撤去、削除は purge 経路へ)。round-trip / idb-store / persistence テストで**データ
-  損失が無いこと**を厳重に検証。これ単体では RAM 不変だが、lazy の**前提**。
+- **段階2(着地済・最重要・厚テスト済)**:`save()` を **additive-only** 化(diff-delete
+  撤去、削除は明示 `ContainerStore.purgeAssetsExcept(cid, keep)` へ)。B5 不変条件
+  (orphan-purge + reload で purged 維持)は `persistence` が `ORPHAN_ASSETS_PURGED`
+  受信時に additive save 後 `purgeAssetsExcept(cid, collectReferencedAssetKeys(container))`
+  を呼んで保全。keep は **entry 参照由来**なので container.assets が部分集合(lazy)でも
+  安全。idb-store / persistence テストで**データ損失ゼロ**を検証。これ単体では RAM 不変
+  (bench 再現:全常駐 ≈398MB のまま)だが、lazy の**前提**。
 - **段階3**:boot で全 asset を reassemble せず、`selectedLid` の working-set だけ
   preload。`SELECT_ENTRY`(と navigation)で `getEntryAssetDependencies` → `loadAsset`
   → working-set を `container.assets` に充填、不要分を LRU 解放。frontmatter thumbnail
