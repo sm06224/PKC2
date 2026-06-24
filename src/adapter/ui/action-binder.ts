@@ -106,6 +106,7 @@ import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/
 import { openTextReplaceDialog } from './text-replace-dialog';
 import { openTextlogLogReplaceDialog } from './textlog-log-replace-dialog';
 import { isDescendant, getStructuralParent, getFirstStructuralChild } from '../../features/relation/tree';
+import { orderedMoveTargets } from '../../features/relation/move-targets';
 import { KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { renderContextMenu, buildAssetMimeMap, buildAssetNameMap, clampMenuToViewport, type ContextMenuOptions } from './renderer';
 import {
@@ -986,7 +987,7 @@ export function bindActions(
     const state = dispatcher.getState();
     if (!state.container) return;
     const userEntries = state.container.entries.filter((entry) => !entry.lid.startsWith('__'));
-    let available: { lid: string; title: string }[];
+    let available: { lid: string; title: string; indent?: number }[];
     let currentParentLid: string | null = null;
     if (lazyKind === 'tag-target') {
       const ents = getAvailableTagTargets(state.container.relations, userEntries, fromLid);
@@ -997,21 +998,15 @@ export function bindActions(
         .filter((entry) => entry.lid !== fromLid)
         .map((e) => ({ lid: e.lid, title: e.title }));
     } else {
-      // move-target(pgc-227):folder archetype の entry で、自分自身と
-      // 自分の descendants を除外。descendant 判定は structural relation walk。
-      const descendants = new Set<string>();
-      const collectDescendants = (lid: string): void => {
-        for (const r of state.container!.relations) {
-          if (r.kind === 'structural' && r.from === lid && !descendants.has(r.to)) {
-            descendants.add(r.to);
-            collectDescendants(r.to);
-          }
-        }
-      };
-      collectDescendants(fromLid);
-      available = userEntries
-        .filter((e) => e.archetype === 'folder' && e.lid !== fromLid && !descendants.has(e.lid))
-        .map((e) => ({ lid: e.lid, title: e.title }));
+      // move-target(pgc-227 → 2026-06-24 整理):折りたたみ helper で安定順序化。
+      // 自分自身/descendants/ASSETS バケット folder を除外し、フルパス昇順
+      // ソート + depth で字下げ(user 指示:候補増で使いにくい・並び不均一・
+      // ASSETS 占有を解消)。
+      available = orderedMoveTargets(userEntries, state.container.relations, fromLid).map((mt) => ({
+        lid: mt.lid,
+        title: mt.title,
+        indent: mt.depth,
+      }));
       currentParentLid = t.getAttribute('data-pkc-current-parent-lid');
     }
     // 同 DocumentFragment pattern(pgc-217/218):N appendChild → 1 appendChild。
@@ -1020,7 +1015,10 @@ export function bindActions(
       const opt = document.createElement('option');
       opt.value = ent.lid;
       const title = ent.title || `(${ent.lid})`;
-      opt.textContent = title.length > 32 ? title.slice(0, 31) + '…' : title;
+      // move-target は depth 字下げ(全角スペース、最大 6 段)で階層を可視化。
+      const indent = ent.indent ? '　'.repeat(Math.min(ent.indent, 6)) : '';
+      const display = indent + title;
+      opt.textContent = display.length > 38 ? display.slice(0, 37) + '…' : display;
       opt.title = title;
       if (lazyKind === 'move-target' && currentParentLid === ent.lid) {
         opt.selected = true;
