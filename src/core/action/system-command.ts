@@ -199,6 +199,17 @@ export type SystemCommand =
    * dialog. Runtime-only.
    */
   | { type: 'SYS_SET_WORKSPACES'; workspaces: readonly { id: string; name: string }[]; activeWorkspaceId: string | null }
+  /**
+   * 段階3 (#868, working-set lazy loading): replace `container.assets`
+   * wholesale with the current working-set (the assets the visible
+   * view references, loaded on demand from the store, minus LRU-evicted
+   * bytes). Issued only by the working-set manager — never by the user.
+   * Runtime-only: it mutates only the in-memory `container.assets`
+   * map and is NOT a persistence save trigger (the bytes already live
+   * in the store; `save()` is additive-only so even an accidental save
+   * cannot lose them).
+   */
+  | { type: 'SET_WORKING_SET_ASSETS'; assets: Record<string, string> }
   | { type: 'SYS_ERROR'; error: string };
 
 /** Extract the type literal from a SystemCommand. */

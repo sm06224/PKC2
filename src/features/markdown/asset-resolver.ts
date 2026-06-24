@@ -42,6 +42,8 @@
  *     downloadable even if its category is unrecognised.
  */
 
+import { noteAssetMiss } from '../asset/asset-miss-recorder';
+
 /**
  * Context passed to the resolver. Built by the adapter layer at render
  * time from the current container's attachment entries.
@@ -167,6 +169,12 @@ export function resolveAssetReferences(
     const mime = ctx.mimeByKey[key];
 
     if (!data || !mime) {
+      // 段階3 (#868): under lazy loading a missing `data` may simply be
+      // an asset not yet loaded into the working-set. Record it so the
+      // working-set manager loads it and re-renders (pop-in). Harmless
+      // for genuinely-broken refs — the manager marks them absent and
+      // does not retry.
+      if (!data) noteAssetMiss(key);
       return `*[missing asset: ${safeKey}]*`;
     }
     if (!SUPPORTED_IMAGE_MIMES.test(mime)) {
@@ -195,6 +203,7 @@ export function resolveAssetReferences(
     const mime = ctx.mimeByKey[key];
 
     if (!data || !mime) {
+      if (!data) noteAssetMiss(key);
       return `${prefix}*[missing asset: ${safeKey}]*`;
     }
 

@@ -737,6 +737,19 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
       events: [],
     };
   }
+  // 段階3 (#868) lazy asset loading: swap container.assets for the
+  // freshly-loaded working-set. Phase-independent (loads happen during
+  // ready / editing / exporting alike) and purely a runtime view swap —
+  // no entries/relations/revisions/meta change, so it never touches
+  // updated_at and emits WORKING_SET_UPDATED (NOT a save trigger). A
+  // no-op when there is no container (boot race) or the map is
+  // reference-identical.
+  if (action.type === 'SET_WORKING_SET_ASSETS') {
+    if (!state.container) return { state, events: [] };
+    if (state.container.assets === action.assets) return { state, events: [] };
+    const container = { ...state.container, assets: action.assets };
+    return { state: { ...state, container }, events: [{ type: 'WORKING_SET_UPDATED' }] };
+  }
   switch (state.phase) {
     case 'initializing':
       return reduceInitializing(state, action);

@@ -28,6 +28,7 @@ import type { ExportMode, ExportMutability } from '../../core/action/user-action
 import type { ReleaseMeta } from '../../runtime/release-meta';
 import { compressAssets } from './compression';
 import { slugify, formatDateCompact } from './zip-package';
+import { hydrateForExport } from './idb-store';
 
 /**
  * ExportResult: outcome of an export attempt.
@@ -79,9 +80,15 @@ export async function serializePkcData(
   if (mode === 'light') {
     exported = { ...container, assets: {} };
   } else {
+    // 段階3 (#868): `container.assets` may be a partial working-set at
+    // runtime. Hydrate the referenced bytes from the store before
+    // compressing, or a full export would silently drop every
+    // non-resident asset (data loss). No-op when no store is registered
+    // (tests with fully-resident containers) or assets are all resident.
+    const hydrated = await hydrateForExport(container);
     // Full mode: compress assets for size efficiency
-    const { assets: compressedAssets, encoding } = await compressAssets(container.assets);
-    exported = { ...container, assets: compressedAssets };
+    const { assets: compressedAssets, encoding } = await compressAssets(hydrated.assets);
+    exported = { ...hydrated, assets: compressedAssets };
     exportMeta.asset_encoding = encoding;
   }
 

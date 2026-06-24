@@ -29,6 +29,7 @@
 
 import type { Container } from '../../core/model/container';
 import { pad2 } from '../../features/datetime/datetime-format';
+import { hydrateForExport } from './idb-store';
 
 // ── Types ────────────────────────
 
@@ -129,6 +130,11 @@ export async function exportContainerAsZip(
   options?: { filename?: string; downloadFn?: (blob: Blob, filename: string) => void },
 ): Promise<ZipExportResult> {
   try {
+    // 段階3 (#868): hydrate referenced asset bytes from the store before
+    // packaging — `container.assets` may be a partial working-set and a
+    // ZIP export must carry every referenced asset (no data loss). No-op
+    // when no store is registered or assets are fully resident.
+    container = await hydrateForExport(container);
     const exportedAt = new Date();
     const manifest: PackageManifest = {
       format: 'pkc2-package',

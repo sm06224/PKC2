@@ -296,12 +296,20 @@ export function mountPersistence(
  * lives in `chooseBootSource()` in `pkc-data-source.ts` and the top-
  * level orchestration in `main.ts`. Callers pass the result of this
  * function to `chooseBootSource` as the `idbContainer` argument.
+ *
+ * 段階3 (#868, lazy asset loading): uses `loadDefaultShallow`, so the
+ * returned container has `assets: {}` — the ≈400MB of base64 never
+ * lands in the heap at boot. The working-set manager (mounted in
+ * main.ts) then loads only the assets the visible view references and
+ * evicts the rest. The bytes remain in the store untouched. This is
+ * only safe because `save()` is additive-only (段階2): a boot-time save
+ * carrying empty assets can no longer wipe the stored bytes.
  */
 export async function loadFromStore(
   store: ContainerStore,
 ): Promise<{ source: 'idb' | 'none'; container: import('../../core/model/container').Container | null }> {
   try {
-    const container = await store.loadDefault();
+    const container = await store.loadDefaultShallow();
     if (container) {
       return { source: 'idb', container };
     }

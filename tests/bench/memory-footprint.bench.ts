@@ -1,15 +1,21 @@
 /**
  * メモリ実測(user direction 2026-06-24「自分でプレイライトでやって」)。
  *
- * 憶測でなく実機の JS heap を CDP で測り、「全 asset を base64 で常駐」の
- * RAM 実コストを段階差分で確定する。
+ * 憶測でなく実機の JS heap を CDP で測り、working-set 遅延ロード(#868
+ * 段階3)の効果を確定する。
  *   1. baseline(空)
  *   2. +200 entries(asset 無し)
- *   3. +大量 base64 assets(参照しない=純粋な常駐コスト)
- * 差分から「base64 1 文字あたり何バイト RAM か」を実測(V8 文字列表現の真値)。
+ *   3. +大量 base64 assets(どの entry からも参照されない)を IDB に投入し
+ *      shallow boot → **常駐しない**ことを確認(段階3 の核心: 全常駐 ≈400MB →
+ *      表示中の working-set 数MB)。段階2 時点では全件 reassemble で常駐していた
+ *      (≈ 1.0 byte/char、50MB seed で +47MB)が、段階3 では Δ がごく小さい。
  *
  * 計測は CDP Performance.getMetrics(JSHeapUsedSize、forced GC 後)。
  * 注:デコード後画像ビットマップは V8 heap 外なので本値には出ない(別計測)。
+ *
+ * 第2テストは実機 visual pop-in parity:参照画像を持つ attachment を shallow
+ * boot 後に選択 → working-set が IDB から bytes をロードし <img> が data: URI で
+ * 描画される(遅延ロードでも画像が静かに壊れない)ことを確認。
  */
 import { test, expect, type Page, type CDPSession } from '@playwright/test';
 import { bootReady } from '../smoke/_helpers/boot-ready';
@@ -148,21 +154,79 @@ test('memory footprint: asset base64 residence (real JS heap via CDP)', async ({
   const ua = await uaMemory(page);
 
   const assetDelta = withAssets - e200;
-  const bytesPerChar = assetDelta / seededChars;
 
   /* eslint-disable no-console */
-  console.log('\n================= PKC2 MEMORY FOOTPRINT (実測) =================');
+  console.log('\n================= PKC2 MEMORY FOOTPRINT (段階3 working-set) =================');
   console.log(`JS heap baseline (空):            ${MB(base)}`);
   console.log(`[診断] 200-entry load: DOM lids=${info200.domLids}, IDB entries=${info200.idbEntries}`);
   console.log(`[診断] asset load:      DOM lids=${infoA.domLids}, IDB entries=${infoA.idbEntries}`);
   console.log(`JS heap +200 entries (asset 無):  ${MB(e200)}   (Δ ${MB(e200 - base)})`);
-  console.log(`JS heap +${MB(seededChars)} base64 assets:  ${MB(withAssets)}   (Δ ${MB(assetDelta)})`);
-  console.log(`→ asset RAM 実コスト: ${bytesPerChar.toFixed(2)} bytes / base64 char`);
-  console.log(`→ 400MB の base64 を全常駐すると JS heap ≈ ${MB(bytesPerChar * 400 * 1024 * 1024)}`);
+  console.log(`JS heap +${MB(seededChars)} 未参照 assets (shallow boot):  ${MB(withAssets)}   (Δ ${MB(assetDelta)})`);
+  console.log(`→ 未参照 asset は working-set に載らず常駐しない(段階2 は ≈ +${MB(seededChars)} 常駐していた)`);
   if (ua != null) console.log(`measureUserAgentSpecificMemory (画像 bitmap 等込み 総量): ${MB(ua)}`);
   else console.log('measureUserAgentSpecificMemory: 利用不可(crossOriginIsolated 無し)→ JS heap のみ');
-  console.log('================================================================\n');
+  console.log('============================================================================\n');
   /* eslint-enable no-console */
 
-  expect(withAssets).toBeGreaterThan(e200); // assets が実際に常駐していること
+  // 段階3 の核心: どの entry からも参照されない 50MB の asset を IDB に置いても、
+  // shallow boot + working-set では JS heap に常駐しない。段階2 では全件
+  // reassemble で ≈ +47MB(≈ 1.0 byte/char)常駐していた。ここでは seed の
+  // 半分すら常駐しないこと(= 全常駐していない)を硬く assert する。
+  expect(assetDelta).toBeLessThan(seededChars * 0.5);
+});
+
+test('visual pop-in parity: lazy-loaded image renders after selection (段階3 #868)', async ({ page }) => {
+  await page.goto('/pkc2.html');
+  await clearIdb(page);
+
+  // Seed an attachment entry referencing a sizeable image asset, plus the
+  // asset bytes — all in the store. Shallow boot will NOT load the bytes.
+  await page.evaluate(
+    async (NOW) => {
+      // Minimal valid 1x1 PNG, repeated to be non-trivial (~0.5MB base64).
+      const px =
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+      const big = px.repeat(7000);
+      const entry = {
+        lid: 'img-1',
+        title: 'Lazy image',
+        body: JSON.stringify({ name: 'pic.png', mime: 'image/png', size: 1, asset_key: 'a-img' }),
+        archetype: 'attachment',
+        created_at: NOW,
+        updated_at: NOW,
+      };
+      const container = {
+        meta: { container_id: 'bench', title: 'bench', created_at: NOW, updated_at: NOW, schema_version: 1 },
+        entries: [entry],
+        relations: [],
+        revisions: [],
+        assets: {},
+      };
+      await new Promise<void>((res, rej) => {
+        const req = indexedDB.open('pkc2', 2);
+        req.onerror = (): void => rej(req.error);
+        req.onsuccess = (): void => {
+          const db = req.result;
+          const tx = db.transaction(['containers', 'assets'], 'readwrite');
+          tx.objectStore('containers').clear();
+          tx.objectStore('assets').clear();
+          tx.objectStore('containers').put(container, 'bench');
+          tx.objectStore('containers').put('bench', '__default__');
+          tx.objectStore('assets').put(big, 'bench:a-img');
+          tx.oncomplete = (): void => { db.close(); res(); };
+          tx.onerror = (): void => rej(tx.error);
+        };
+      });
+    },
+    NOW,
+  );
+  await page.reload();
+  await bootReady(page);
+
+  // Select the entry; the working-set manager loads the image bytes and
+  // the detail re-renders with an inline data: image (pop-in). Target a
+  // VISIBLE row (the same lid also appears in the hidden "recent" pane).
+  await page.locator('[data-pkc-lid="img-1"]:visible').first().click();
+  const img = page.locator('img[src^="data:image"]').first();
+  await expect(img).toBeVisible({ timeout: 5000 });
 });
