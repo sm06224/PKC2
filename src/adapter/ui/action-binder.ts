@@ -70,6 +70,7 @@ import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bun
 import { buildFolderExportBundle } from '../platform/folder-export';
 import { setPaneCollapsed } from '../platform/pane-prefs';
 import { getStorageBackendPref, setStorageBackendPref } from '../platform/storage-backend';
+import { flushActivePersistence } from '../platform/persistence';
 import { pickDirectory, verifyFsaPermission } from '../platform/storage/fsa-adapter';
 import { saveFsaHandle } from '../platform/storage/fsa-handle-store';
 import { applyOnePaneCollapsedToDOM } from './pane-apply';
@@ -4035,7 +4036,17 @@ export function bindActions(
         if (backend !== 'idb' && backend !== 'opfs') break;
         if (backend === getStorageBackendPref()) break;
         setStorageBackendPref(backend);
-        globalThis.location?.reload?.();
+        // reload で boot が backend chooser + 非破壊移行を再実行する前に、保留中の
+        // debounce 保存を現行 backend へ確実に flush する。これを待たないと直前の
+        // 編集が失われ、IDB→OPFS 移行も stale な内容をコピーしてしまう(切替バグ)。
+        void (async (): Promise<void> => {
+          try {
+            await flushActivePersistence();
+          } catch {
+            /* best-effort:flush 失敗でも reload は進める */
+          }
+          globalThis.location?.reload?.();
+        })();
         break;
       }
       case 'pick-storage-folder': {
@@ -4049,6 +4060,12 @@ export function bindActions(
           if (!(await verifyFsaPermission(handle, true))) return;
           await saveFsaHandle(handle);
           setStorageBackendPref('fsa');
+          // FSA 切替前にも保留中の保存を flush(reload 前のデータ取りこぼし防止)。
+          try {
+            await flushActivePersistence();
+          } catch {
+            /* best-effort */
+          }
           globalThis.location?.reload?.();
         })();
         break;
