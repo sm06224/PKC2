@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   getStorageBackendPref,
   setStorageBackendPref,
@@ -30,6 +30,16 @@ describe('storage backend preference', () => {
   it('round-trips a valid backend', () => {
     setStorageBackendPref('opfs');
     expect(getStorageBackendPref()).toBe('opfs');
+  });
+
+  it('setStorageBackendPref は localStorage 例外を握りつぶす(quota / private mode)', () => {
+    const spy = vi.spyOn(globalThis.localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    expect(() => setStorageBackendPref('opfs')).not.toThrow();
+    spy.mockRestore();
+    // 書けていないので pref は既定 idb のまま(silent fallback、UI は別途処理)。
+    expect(getStorageBackendPref()).toBe('idb');
   });
 });
 

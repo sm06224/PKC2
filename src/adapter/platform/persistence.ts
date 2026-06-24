@@ -107,6 +107,22 @@ export interface PersistenceHandle {
   flushPending(): Promise<void>;
 }
 
+/**
+ * 現在マウント中の persistence の `flushPending`。storage backend 切替の
+ * `location.reload()` 前など、PersistenceHandle を直接持たない呼び出し側
+ * (action-binder)が「reload 前に保留中の保存を確実に書き出す」ために使う
+ * module-level hook。mounted persistence が無ければ no-op。
+ */
+let activeFlush: (() => Promise<void>) | null = null;
+
+/**
+ * 現在アクティブな persistence の pending save を flush する。マウント済みが
+ * 無ければ何もしない。backend 切替前のデータ取りこぼし防止に使う。
+ */
+export async function flushActivePersistence(): Promise<void> {
+  if (activeFlush) await activeFlush();
+}
+
 export function mountPersistence(
   dispatcher: Dispatcher,
   options: PersistenceOptions,
@@ -186,6 +202,9 @@ export function mountPersistence(
     await doSave();
   }
 
+  // この persistence を「現在アクティブ」として登録(reload 前 flush 用)。
+  activeFlush = flushPending;
+
   function handleEvent(event: DomainEvent): void {
     if (SAVE_TRIGGERS.has(event.type)) {
       scheduleSave();
@@ -213,6 +232,8 @@ export function mountPersistence(
   // Cleanup
   function dispose(): void {
     unsubEvent();
+    // この persistence が active hook の場合だけ解除(別 mount を消さない)。
+    if (activeFlush === flushPending) activeFlush = null;
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
