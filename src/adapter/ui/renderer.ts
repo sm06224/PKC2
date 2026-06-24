@@ -130,7 +130,7 @@ import { renderMarkdown, renderMarkdownInline, hasMarkdownSyntax } from '../../f
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { countTaskProgress } from '../../features/markdown/markdown-task-list';
 import { extractTocFromEntry } from '../../features/markdown/markdown-toc';
-import { extractBodySections } from '../../features/markdown/body-sections';
+import { extractBodySections, getSectionText } from '../../features/markdown/body-sections';
 import { parseFrontmatter } from '../../features/markdown/frontmatter';
 import { buildNovelCoverDataUrl } from '../../features/auto-fill/novel-cover-svg';
 import { extractThumbnailRef } from '../../features/auto-fill/thumbnail-frontmatter';
@@ -5768,6 +5768,7 @@ function renderCenterImpl(state: AppState): HTMLElement {
     content.appendChild(notice);
   }
 
+  let sectionEditorShown = false;
   if (state.phase === 'editing' && state.editingLid === selected.lid) {
     // Light mode warning in attachment editor
     if (state.lightSource && selected.archetype === 'attachment') {
@@ -5778,11 +5779,23 @@ function renderCenterImpl(state: AppState): HTMLElement {
     }
     content.appendChild(renderEditor(selected, state.container));
   } else {
-    content.appendChild(renderView(selected, canEdit, state.container, state.searchQuery, state.childWindowLids ?? []));
+    // 章フォーカス編集:対象 entry の 1 節だけを focused editor で開く
+    // (full editor とは別経路、phase は 'ready' のまま)。節が解決できなければ
+    // null を返すので通常 view に fall back。
+    const sectionEditor =
+      canEdit && state.sectionEdit && state.sectionEdit.lid === selected.lid
+        ? renderSectionEditor(selected, state.sectionEdit.index)
+        : null;
+    if (sectionEditor) {
+      content.appendChild(sectionEditor);
+      sectionEditorShown = true;
+    } else {
+      content.appendChild(renderView(selected, canEdit, state.container, state.searchQuery, state.childWindowLids ?? []));
+    }
   }
 
-  // Compact drop zone strip when viewing an entry (not editing)
-  if (canEdit && state.phase !== 'editing') {
+  // Compact drop zone strip when viewing an entry (not editing / not section-editing)
+  if (canEdit && state.phase !== 'editing' && !sectionEditorShown) {
     content.appendChild(renderDropZone(state, false));
   }
 
@@ -7807,7 +7820,71 @@ function renderTextAppendArea(entry: Entry): HTMLElement {
   btn.textContent = '＋ 挿入';
   area.appendChild(btn);
 
+  // ②-edit:selector で章を選んで「章を編集」= その章の本文を focused editor で
+  // 開いて丸ごと書き換える(差し挟みの編集版)。章があるときだけ出す。
+  if (sections.length > 0) {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'pkc-btn pkc-text-section-edit-btn';
+    editBtn.setAttribute('data-pkc-action', 'begin-section-edit');
+    editBtn.setAttribute('data-pkc-lid', entry.lid);
+    editBtn.setAttribute('title', '選んだ章の本文を開いて書き換える');
+    editBtn.textContent = '✎ 章を編集';
+    area.appendChild(editBtn);
+  }
+
   return area;
+}
+
+/**
+ * 章フォーカス editor:text entry の h1–h3 を 1 節だけ開いて書き換える focused
+ * editor。全文を載せず、その章のテキスト(見出し行〜次見出し直前)だけを textarea
+ * に出す。保存で当該節へ splice(`replaceSectionText`)→ `COMMIT_SECTION_EDIT`。
+ * text 以外 / index が解決できない場合は null(呼び出し側は通常 view に fall back)。
+ */
+function renderSectionEditor(entry: Entry, index: number): HTMLElement | null {
+  if (entry.archetype !== 'text') return null;
+  const body = entry.body ?? '';
+  const section = extractBodySections(body)[index];
+  if (!section) return null;
+  const sectionText = getSectionText(body, section);
+
+  const wrap = createElement('div', 'pkc-section-editor');
+  wrap.setAttribute('data-pkc-region', 'section-editor');
+
+  const header = createElement('div', 'pkc-section-editor-header');
+  const label = createElement('span', 'pkc-section-editor-label');
+  label.textContent = `✎ 章を編集:${section.text}`;
+  header.appendChild(label);
+  const hint = createElement('span', 'pkc-section-editor-hint');
+  hint.textContent = 'この章だけを書き換えます(他の章・前文は変更されません)';
+  header.appendChild(hint);
+  wrap.appendChild(header);
+
+  const ta = document.createElement('textarea');
+  ta.className = 'pkc-section-editor-text pkc-editor-body';
+  ta.setAttribute('data-pkc-field', 'section-edit-text');
+  ta.setAttribute('data-pkc-lid', entry.lid);
+  ta.setAttribute('data-pkc-section-index', String(index));
+  ta.value = sectionText;
+  const lineCount = sectionText.split('\n').length;
+  ta.rows = Math.max(8, lineCount + 2);
+  wrap.appendChild(ta);
+
+  const actions = createElement('div', 'pkc-section-editor-actions');
+  const save = createElement('button', 'pkc-btn pkc-btn-create pkc-section-editor-save');
+  save.setAttribute('data-pkc-action', 'commit-section-edit');
+  save.setAttribute('data-pkc-lid', entry.lid);
+  save.setAttribute('title', '保存(Ctrl+Enter / Ctrl+S)');
+  save.textContent = '保存';
+  actions.appendChild(save);
+  const cancel = createElement('button', 'pkc-btn pkc-section-editor-cancel');
+  cancel.setAttribute('data-pkc-action', 'cancel-section-edit');
+  cancel.setAttribute('title', '取消(Esc)');
+  cancel.textContent = '取消';
+  actions.appendChild(cancel);
+  wrap.appendChild(actions);
+
+  return wrap;
 }
 
 /** Fixed action bar at bottom of center pane. Shows contextual actions. */

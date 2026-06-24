@@ -2594,6 +2594,20 @@ export function bindActions(
         performTextAppend(lid);
         break;
       }
+      case 'begin-section-edit': {
+        if (!lid) break;
+        performBeginSectionEdit(lid);
+        break;
+      }
+      case 'commit-section-edit': {
+        if (!lid) break;
+        performCommitSectionEdit(lid);
+        break;
+      }
+      case 'cancel-section-edit': {
+        dispatcher.dispatch({ type: 'CANCEL_SECTION_EDIT' });
+        break;
+      }
       case 'toggle-log-flag': {
         if (!lid) break;
         const logId = target.getAttribute('data-pkc-log-id');
@@ -4579,6 +4593,56 @@ export function bindActions(
   }
 
   /**
+   * 章フォーカス編集を開始する。append area の挿入先 selector
+   * (`text-append-target`)で選ばれている章 index を読み、`BEGIN_SECTION_EDIT`
+   * を dispatch して focused editor を開く。章未選択(本文末尾)なら selector に
+   * focus して選択を促す(全文編集は既存の ✏️ Edit が担当)。
+   */
+  function performBeginSectionEdit(lid: string): void {
+    const st = dispatcher.getState();
+    if (st.readonly) return;
+    const ent = st.container?.entries.find((e) => e.lid === lid);
+    if (!ent || ent.archetype !== 'text') return;
+    const select = root.querySelector<HTMLSelectElement>(
+      `[data-pkc-field="text-append-target"][data-pkc-lid="${lid}"]`,
+    );
+    const val = select?.value ?? '';
+    if (val === '') {
+      select?.focus();
+      return;
+    }
+    const index = Number.parseInt(val, 10);
+    if (Number.isNaN(index)) return;
+    dispatcher.dispatch({ type: 'BEGIN_SECTION_EDIT', lid, index });
+  }
+
+  /**
+   * 章フォーカス編集を確定する。focused editor の textarea(`section-edit-text`)の
+   * 値を、現在の body から `extractBodySections` し直した当該節へ `replaceSectionText`
+   * で splice し、本文全体を `COMMIT_SECTION_EDIT` に渡す(title 保持・revision・
+   * sectionEdit 解除は reducer 側)。節が解決できなければ編集破棄で閉じる。
+   */
+  function performCommitSectionEdit(lid: string): void {
+    const st = dispatcher.getState();
+    if (st.readonly) return;
+    const ent = st.container?.entries.find((e) => e.lid === lid);
+    if (!ent || ent.archetype !== 'text') return;
+    const ta = root.querySelector<HTMLTextAreaElement>(
+      `[data-pkc-field="section-edit-text"][data-pkc-lid="${lid}"]`,
+    );
+    if (!ta) return;
+    const idx = Number.parseInt(ta.getAttribute('data-pkc-section-index') ?? '', 10);
+    const body = ent.body ?? '';
+    const sec = Number.isNaN(idx) ? undefined : extractBodySections(body)[idx];
+    if (!sec) {
+      dispatcher.dispatch({ type: 'CANCEL_SECTION_EDIT' });
+      return;
+    }
+    const newBody = replaceSectionText(body, sec, ta.value);
+    dispatcher.dispatch({ type: 'COMMIT_SECTION_EDIT', lid, body: newBody });
+  }
+
+  /**
    * Handle a click on a rendered task list checkbox.
    * Toggles the corresponding `- [ ]`/`- [x]` in the entry body
    * via QUICK_UPDATE_ENTRY.
@@ -4659,6 +4723,7 @@ export function bindActions(
       || field === 'textlog-entry-text'
       || field === 'textlog-append-text'
       || field === 'text-append-text'
+      || field === 'section-edit-text'
       || field === 'todo-description'
     );
   }
@@ -4888,6 +4953,7 @@ export function bindActions(
         || field === 'textlog-entry-text'
         || field === 'textlog-append-text'
         || field === 'text-append-text'
+        || field === 'section-edit-text'
         || field === 'todo-description';
       if (isMarkdownField) {
         if (tryHandleEditorKey(ta, e)) {
@@ -5227,6 +5293,26 @@ export function bindActions(
       if (lid) {
         e.preventDefault();
         performTextAppend(lid);
+        return;
+      }
+    }
+
+    // 章フォーカス editor:Ctrl/Cmd+Enter・Ctrl/Cmd+S = 保存、Esc = 取消。
+    // 全文編集の Ctrl+S(下)より先に拾う(section edit 中は phase='ready' なので
+    // 下の handler では save されない)。
+    if (
+      e.target instanceof HTMLTextAreaElement
+      && e.target.getAttribute('data-pkc-field') === 'section-edit-text'
+    ) {
+      const lid = e.target.getAttribute('data-pkc-lid');
+      if (mod && (e.key === 'Enter' || e.key === 's') && lid) {
+        e.preventDefault();
+        performCommitSectionEdit(lid);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dispatcher.dispatch({ type: 'CANCEL_SECTION_EDIT' });
         return;
       }
     }
@@ -7784,6 +7870,7 @@ export function bindActions(
     'textlog-append-text',
     'textlog-entry-text',
     'text-append-text',
+    'section-edit-text',
   ]);
 
   /**

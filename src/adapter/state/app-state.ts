@@ -17,6 +17,7 @@ import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary
 import type { PendingOffer } from '../transport/record-offer-handler';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import { classifyFolderRestore } from '../../features/batch-import/import-planner';
+import { extractBodySections } from '../../features/markdown/body-sections';
 import {
   addEntry,
   updateEntry,
@@ -109,6 +110,13 @@ export interface AppState {
   navHistory: string[];
   navIndex: number;
   editingLid: string | null;
+  /**
+   * 章フォーカス編集の対象(text entry の h1–h3 を 1 節だけ開いて書き換える)。
+   * `{lid, index}`(index = `extractBodySections` の文書順)。非編集時 null。
+   * phase は変えない(QUICK_UPDATE 系の軽量編集)ので full editor
+   * (`phase==='editing'`)とは独立・排他に扱う(BEGIN_EDIT / SELECT_ENTRY で解除)。
+   */
+  sectionEdit?: { lid: string; index: number } | null;
   /**
    * Phase γ-A:編集モード。inline = 中央ペイン内編集(従来)、window =
    * 専用 entry-window で編集。flag `shell.edit_mode_enabled` で gate。
@@ -614,6 +622,7 @@ export function createInitialState(): AppState {
     navHistory: [],
     navIndex: -1,
     editingLid: null,
+    sectionEdit: null,
     childWindowLids: [],
     error: null,
     embedded: false,
@@ -1378,6 +1387,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         collapsedFolders,
         textlogSelection,
         textToTextlogModal,
+        sectionEdit: null,
       };
       return { state: next, events: [{ type: 'ENTRY_SELECTED', lid: action.lid }] };
     }
@@ -1524,6 +1534,7 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         viewMode: 'detail',
         textlogSelection: null,
         textToTextlogModal: null,
+        sectionEdit: null,
         editingBase: base,
         dualEditConflict: null,
       };
@@ -3051,6 +3062,40 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         state: next,
         events: [{ type: 'ENTRY_UPDATED', lid: action.lid }],
       };
+    }
+    // 章フォーカス編集:h1–h3 の 1 節だけを focused editor で開いて書き換える。
+    // 本文は全文を載せず QUICK_UPDATE 同様 body-only(title 保持・revision 残す)。
+    case 'BEGIN_SECTION_EDIT': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      if (state.phase !== 'ready') return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry || entry.archetype !== 'text') return blocked(state, action);
+      // 節が解決できない(index が範囲外 / 見出しが無い)なら no-op。
+      const sections = extractBodySections(entry.body ?? '');
+      if (action.index < 0 || action.index >= sections.length) return blocked(state, action);
+      const next: AppState = { ...state, sectionEdit: { lid: action.lid, index: action.index } };
+      return { state: next, events: [] };
+    }
+    case 'COMMIT_SECTION_EDIT': {
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      if (isReservedLid(action.lid)) return blocked(state, action);
+      const entry = state.container.entries.find((e) => e.lid === action.lid);
+      if (!entry) return blocked(state, action);
+      const ts = now();
+      const revId = generateLid();
+      const snapshotted = snapshotEntry(state.container, action.lid, revId, ts);
+      // body-only update(title 保持)+ section edit 解除。action.body は
+      // action-binder が当該節へ splice 済の本文全体。
+      const container = updateEntry(snapshotted, action.lid, entry.title, action.body, ts);
+      const next: AppState = { ...state, container, sectionEdit: null };
+      return { state: next, events: [{ type: 'ENTRY_UPDATED', lid: action.lid }] };
+    }
+    case 'CANCEL_SECTION_EDIT': {
+      if (!state.sectionEdit) return { state, events: [] };
+      const next: AppState = { ...state, sectionEdit: null };
+      return { state: next, events: [] };
     }
     case 'TOGGLE_SHOW_ARCHIVED': {
       const next: AppState = { ...state, showArchived: !state.showArchived };

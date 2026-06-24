@@ -9744,6 +9744,46 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   display: none;
 }
 
+/* 章フォーカス editor:text entry の 1 節だけを開いて書き換える focused editor。
+   center pane を占有する panel(全文 editor の軽量版)。 */
+.pkc-section-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+}
+
+.pkc-section-editor-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2-5);
+}
+
+.pkc-section-editor-label {
+  font-weight: 600;
+  color: var(--c-fg);
+}
+
+.pkc-section-editor-hint {
+  font-size: var(--fs-sm);
+  color: var(--c-muted);
+}
+
+.pkc-section-editor-text {
+  width: 100%;
+  resize: vertical;
+  min-height: 10rem;
+}
+
+.pkc-section-editor-actions {
+  display: flex;
+  gap: var(--space-2-5);
+}
+
 /* Slice 4: TEXTLOG → TEXT selection toolbar + checkboxes.
    Rendered inside the TEXTLOG viewer above the append area so the
    control scope (one TEXTLOG at a time) is visually obvious. */

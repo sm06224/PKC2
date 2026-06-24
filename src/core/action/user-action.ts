@@ -453,6 +453,21 @@ export type UserAction =
    */
   | { type: 'QUICK_UPDATE_ENTRY'; lid: string; body: string }
   /**
+   * 章フォーカス編集(section edit)— text entry の h1–h3 を 1 節だけ
+   * focused editor で開いて書き換える(差し挟み編集の「編集」版)。全文を
+   * editor に載せず、その章だけを開いて rewrite する。
+   *
+   * - BEGIN_SECTION_EDIT: `sectionEdit = {lid, index}` を立てるだけ(phase
+   *   遷移なし、本文不変)。`index` は h1–h3 見出しの文書順(`extractBodySections`)。
+   * - COMMIT_SECTION_EDIT: action-binder が編集後テキストを当該節へ splice した
+   *   **本文全体** を渡す。reducer は QUICK_UPDATE_ENTRY 同様に title 保持・revision
+   *   snapshot のうえ body を更新し、`sectionEdit` を解除する。
+   * - CANCEL_SECTION_EDIT: `sectionEdit` を解除(本文不変)。
+   */
+  | { type: 'BEGIN_SECTION_EDIT'; lid: string; index: number }
+  | { type: 'COMMIT_SECTION_EDIT'; lid: string; body: string }
+  | { type: 'CANCEL_SECTION_EDIT' }
+  /**
    * SET_ENTRY_COLOR — set / replace an entry's Color tag (Slice 3).
    *
    * Contract:
