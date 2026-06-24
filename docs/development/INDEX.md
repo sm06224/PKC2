@@ -144,6 +144,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 |---|---|
 | [`i18n-requirements.md`](./i18n-requirements.md) | i18n 要件(FI-Settings v2)— Locale setting 実装済 + 残課題 |
 | [`feature-requests-2026-04-28-roadmap.md`](./feature-requests-2026-04-28-roadmap.md) | 🔒 **凍結(#776)** — 2026-04-28 user direction roadmap(複数 user request の優先度付け) |
+| [`lazy-asset-working-set-plan.md`](./lazy-asset-working-set-plan.md) | メモリ削減 #7:全 asset 常駐(≈400MB = 1GB の主因、Playwright 実測)→ working-set 遅延ロードの段階計画。`save()` diff-delete 等の**地雷**を明示。段階1(`getEntryAssetDependencies` + 計測 bench)着地済 |
 
 ### Platform / runtime
 
