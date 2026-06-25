@@ -491,6 +491,31 @@ describe('TEXTLOG row edit affordance (Slice 4 dblclick revision)', () => {
     expect(dispatcher.getState().editingLid).toBe('tl1');
   });
 
+  // 2026-06-25 user request: Ctrl+Click is an alias for Alt+Click to start
+  // editing a log row (same gesture, second modifier).
+  it('Ctrl+Click on a log row body enters edit mode (alias of Alt+Click)', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+    expect(dispatcher.getState().phase).toBe('editing');
+    expect(dispatcher.getState().editingLid).toBe('tl1');
+  });
+
+  it('plain click (no modifier) on a log row does NOT enter edit mode', () => {
+    const { dispatcher } = mountTextlogContainer([
+      { id: 'log-1', text: 'first', createdAt: '2026-04-09T10:00:00Z' },
+    ]);
+    const textEl = root.querySelector<HTMLElement>(
+      '.pkc-textlog-log[data-pkc-log-id="log-1"] .pkc-textlog-text',
+    );
+    textEl!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(dispatcher.getState().phase).toBe('ready');
+  });
+
   // B4: same focus expectation for the Alt+Click entry path.
   it('B4: Alt+Click on a log row focuses the matching per-log textarea', () => {
     mountTextlogContainer([
