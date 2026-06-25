@@ -230,3 +230,87 @@ test('visual pop-in parity: lazy-loaded image renders after selection (段階3 #
   const img = page.locator('img[src^="data:image"]').first();
   await expect(img).toBeVisible({ timeout: 5000 });
 });
+
+/**
+ * 段階5 最終確認(#868):大きな**参照済み** asset ワークスペース(≈150MB)を
+ * shallow boot しても JS heap が全 150MB を常駐させないことを実機で確認する。
+ * 段階3 が「全常駐 ≈400MB → 表示中数MB」を達成したことのスケール・エビデンス
+ * (段階4 の metadata 索引が入った後の総合計測)。
+ *
+ * 注:LRU budget による working-set 上限・選択時の pop-in ロードは別テストで
+ * 決定的に検証済み(`tests/adapter/asset-working-set.test.ts` の eviction、
+ * 本ファイルの visual pop-in parity)。ここは「全件 reassemble しない」の実機証跡。
+ */
+test('段階5: large referenced workspace does not resident-load the whole store (#868)', async ({ page }) => {
+  const client = await page.context().newCDPSession(page);
+  await client.send('HeapProfiler.enable');
+  await client.send('Performance.enable');
+
+  await page.goto('/pkc2.html');
+  await clearIdb(page);
+
+  const N = 120;
+  const ASSET_CHARS = 1_250_000; // ~1.25MB each → ~150MB total in the store
+  const totalChars = N * ASSET_CHARS;
+  await page.evaluate(
+    async (p) => {
+      const entries: unknown[] = [];
+      const assets: Record<string, string> = {};
+      for (let i = 0; i < p.N; i++) {
+        const key = `a${i}`;
+        entries.push({
+          lid: `e${i}`,
+          title: `Image ${i}`,
+          body: JSON.stringify({ name: `f${i}.png`, mime: 'image/png', size: 1, asset_key: key }),
+          archetype: 'attachment',
+          created_at: p.NOW,
+          updated_at: p.NOW,
+        });
+        assets[key] = `${i}-`.padEnd(p.ASSET_CHARS, 'A');
+      }
+      const container = {
+        meta: { container_id: 'bench', title: 'bench', created_at: p.NOW, updated_at: p.NOW, schema_version: 1 },
+        entries, relations: [], revisions: [], assets,
+      };
+      await new Promise<void>((res, rej) => {
+        const req = indexedDB.open('pkc2', 2);
+        req.onerror = (): void => rej(req.error);
+        req.onsuccess = (): void => {
+          const db = req.result;
+          const tx = db.transaction(['containers', 'assets'], 'readwrite');
+          tx.objectStore('containers').clear();
+          tx.objectStore('assets').clear();
+          const c = { ...container, assets: {} };
+          tx.objectStore('containers').put(c, 'bench');
+          tx.objectStore('containers').put('bench', '__default__');
+          for (const [k, v] of Object.entries(container.assets)) {
+            tx.objectStore('assets').put(v, `bench:${k}`);
+          }
+          tx.oncomplete = (): void => { db.close(); res(); };
+          tx.onerror = (): void => rej(tx.error);
+        };
+      });
+    },
+    { N, ASSET_CHARS, NOW },
+  );
+
+  await page.reload();
+  await bootReady(page);
+  // Let any post-boot working-set / metadata reconcile settle.
+  await page.waitForTimeout(2000);
+  const heapBoot = await jsHeap(client);
+
+  /* eslint-disable no-console */
+  console.log('\n========== PKC2 段階5: large workspace heap bound (#868) ==========');
+  console.log(`seeded referenced assets: ${MB(totalChars)} (${N} × ${MB(ASSET_CHARS)})`);
+  console.log(`JS heap after shallow boot:  ${MB(heapBoot)}`);
+  console.log(`→ ${MB(totalChars)} のワークスペースでも全件は常駐しない(heap ${MB(heapBoot)})`);
+  console.log('===================================================================\n');
+  /* eslint-enable no-console */
+
+  // Headline guarantee: a ~150MB asset workspace does NOT pull all bytes into
+  // the JS heap at boot. Pre-段階3 this would have been ≈150MB+. The working-
+  // set is LRU-bounded (default 48MB) and unviewed assets stay in the store,
+  // so the heap is a fraction of the total.
+  expect(heapBoot).toBeLessThan(totalChars * 0.5);
+});

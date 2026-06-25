@@ -1,10 +1,10 @@
 # Lazy asset working-set 計画(メモリ削減 #7)
 
-> Status: **段階1(土台)+ 段階2(save additive-only 化)+ 段階3(working-set 遅延
-> ロード本体 + export 全件ロード)着地済 / 残りは段階4(metadata 常駐化)・段階5
-> (大規模実機確認)**。前任が「メモリロード」を指摘されつつ対応しきれなかった箇所
-> (user, 2026-06-24)。本書は**地雷**(特に `save()` の diff-delete = データ損失)を
-> 明示し、安全な段階実装を定義する。
+> Status: **完了(段階1–5 着地済、#868 クローズ)**。boot 全 asset 常駐(≈400MB =
+> 1GB の主因)→ working-set 遅延ロードで「表示中の数MB」に。残りは guardrails の
+> export 見積り警告の index 配線(minor・出力は正しい)のみ。前任が「メモリロード」を
+> 指摘されつつ対応しきれなかった箇所(user, 2026-06-24)。本書は**地雷**(特に
+> `save()` の diff-delete = データ損失)を明示し、安全な段階実装を定義する。
 
 ## 1. 問題(Playwright で実測、`tests/bench/memory-footprint.bench.ts`)
 
@@ -106,10 +106,15 @@ metadata は常駐。** 表示中の entry(+ transclusion 閉包)が参照する
   > も working-set のみ走査で重複検出が漏れうる(= ストレージ無駄、データ損失なし)。
   > orphan の**実削除**は段階2 の `purgeAssetsExcept(referenced)` が full に行うため
   > 正しい(in-memory 表示のみ degrade)。
-- **段階5(部分達成)**:bench(`memory-footprint.bench.ts`)で 50MB の未参照 asset を
-  IDB に置いても shallow boot で**常駐しない**(Δ ≪ seed)ことを assert 済。実機
-  visual pop-in parity(遅延ロード画像が選択後に data: URI で描画)も同 bench で確認。
-  400MB 実ワークスペースでの最終確認は段階4 後。
+- **段階5(着地済)**:bench(`memory-footprint.bench.ts`、Playwright/CDP)で実機検証:
+  ① 50MB の未参照 asset を IDB に置いても shallow boot で**常駐しない**(Δ ≪ seed)。
+  ② 遅延ロード画像が選択後に data: URI で描画される **visual pop-in parity**。
+  ③ **143MB の参照済みワークスペースを shallow boot しても JS heap ≈ 9MB**(全件 reassemble
+  しない実機証跡。段階2 以前は ≈ total が常駐)。LRU budget 上限・eviction は
+  `tests/adapter/asset-working-set.test.ts` で決定的に検証。
+  → **#868 クローズ。** 残 minor:guardrails の export サイズ見積り**警告**のみ
+  working-set 基準(実 export は段階3 で全件 hydrate 済のため出力は正しい)。必要時に
+  同 metadata index を配線。
 
 ## 6. 不変条件 / 後方互換
 
