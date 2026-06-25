@@ -122,6 +122,7 @@ import { pad2 } from '../../features/datetime/datetime-format';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
 import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
+import { getResidentAssetMeta, getResidentAssetSizes } from '../platform/asset-meta-index';
 import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
 import type { StorageProfile } from '../../features/asset/storage-profile';
 import { getStorageBackendPref, type StorageBackend } from '../platform/storage-backend';
@@ -2699,9 +2700,13 @@ function renderShellMenuMaintenance(container: Container): HTMLElement {
   label.textContent = 'Data Maintenance';
   section.appendChild(label);
 
-  const orphanKeys = collectOrphanAssetKeys(container);
+  // 段階4 (#868): count orphans / total across the FULL store via the
+  // resident asset-meta index, not just the resident working-set.
+  const metaIndex = getResidentAssetMeta(container.meta.container_id);
+  const allAssetKeys = metaIndex ? Object.keys(metaIndex) : undefined;
+  const orphanKeys = collectOrphanAssetKeys(container, allAssetKeys);
   const orphanCount = orphanKeys.size;
-  const totalCount = Object.keys(container.assets).length;
+  const totalCount = allAssetKeys ? allAssetKeys.length : Object.keys(container.assets).length;
 
   const summary = createElement('div', 'pkc-shell-menu-maintenance-summary');
   summary.setAttribute('data-pkc-region', 'orphan-asset-summary');
@@ -2919,7 +2924,9 @@ export function buildStorageProfileOverlay(
   // Compute profile once and reuse for summary + rows + Export CSV
   // button gating. `profile === null` corresponds to the no-container
   // shell below.
-  const profile = container ? buildStorageProfile(container) : null;
+  const profile = container
+    ? buildStorageProfile(container, getResidentAssetSizes(container.meta.container_id) ?? undefined)
+    : null;
   if (!profile) {
     const empty = createElement('div', 'pkc-storage-profile-empty');
     empty.textContent = 'No container loaded.';

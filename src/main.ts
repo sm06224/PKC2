@@ -71,6 +71,7 @@ import {
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
 import { registerExportStore } from './adapter/platform/idb-store';
 import { mountWorkingSet } from './adapter/platform/asset-working-set';
+import { mountAssetMetaIndex } from './adapter/platform/asset-meta-index';
 import { mountNavHistory } from './adapter/ui/nav-history';
 import {
   loadCollapsedFolders,
@@ -599,6 +600,10 @@ async function boot(): Promise<void> {
   dispatcher.onState(() => {
     void workingSet.refresh();
   });
+  // 段階4 (#868): resident asset-metadata index so storage profile /
+  // guardrails / orphan count / paste dedupe report on the FULL store, not
+  // just the resident working-set. Memory-safe backfill + persisted index.
+  mountAssetMetaIndex(dispatcher, store);
   mountPersistence(dispatcher, {
     store,
     onError: (err) => {

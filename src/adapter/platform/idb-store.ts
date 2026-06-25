@@ -3,6 +3,7 @@ import type { BatchOp, StorageAdapter } from './storage/storage-adapter';
 import { createIDBAdapter } from './storage/idb-adapter';
 import { createMemoryAdapter } from './storage/memory-adapter';
 import { collectReferencedAssetKeys } from '../../features/asset/asset-scan';
+import type { AssetMetaIndex } from '../../features/asset/asset-meta';
 
 /**
  * ContainerStore: high-level facade for Container persistence.
@@ -94,6 +95,16 @@ export interface ContainerStore {
   listAssetKeys(cid: string): Promise<string[]>;
 
   /**
+   * Load the persisted asset-metadata index (段階4 #868) for `cid`, or
+   * null when none has been written yet (legacy data → caller backfills).
+   * Stored as a single reserved record in the containers bucket — no
+   * schema bump.
+   */
+  loadAssetMeta(cid: string): Promise<AssetMetaIndex | null>;
+  /** Persist the asset-metadata index for `cid` (whole-record write). */
+  saveAssetMeta(cid: string, index: AssetMetaIndex): Promise<void>;
+
+  /**
    * Explicit asset purge (段階2 #868). Delete every stored asset for
    * `cid` whose key is NOT in `keep`, and return the keys that were
    * deleted. This is the deliberate counterpart to the now
@@ -129,6 +140,8 @@ export interface Workspace {
 const DEFAULT_KEY = '__default__';
 const WORKSPACE_PREFIX = 'workspace:';
 const ACTIVE_WORKSPACE_KEY = '__active_workspace__';
+/** Reserved containers-bucket key prefix for the per-cid asset-meta index (段階4). */
+const ASSET_META_PREFIX = '__assetmeta__:';
 
 function assetFullKey(cid: string, assetKey: string): string {
   return `${cid}:${assetKey}`;
@@ -246,6 +259,15 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     return keys.map((k) => k.slice(prefix.length));
   }
 
+  async function loadAssetMeta(cid: string): Promise<AssetMetaIndex | null> {
+    const rec = await containers.get(ASSET_META_PREFIX + cid);
+    return rec && typeof rec === 'object' ? (rec as AssetMetaIndex) : null;
+  }
+
+  async function saveAssetMeta(cid: string, index: AssetMetaIndex): Promise<void> {
+    await containers.put(ASSET_META_PREFIX + cid, index);
+  }
+
   async function purgeAssetsExcept(cid: string, keep: Iterable<string>): Promise<string[]> {
     const prefix = assetPrefix(cid);
     const keepSet = keep instanceof Set ? keep : new Set(keep);
@@ -347,6 +369,8 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     loadAsset,
     deleteAsset,
     listAssetKeys,
+    loadAssetMeta,
+    saveAssetMeta,
     purgeAssetsExcept,
   };
 }

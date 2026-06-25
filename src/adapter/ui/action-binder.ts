@@ -232,6 +232,7 @@ import {
   updateAssetAutocompleteQuery,
 } from './asset-autocomplete';
 import { checkAssetDuplicate, findDuplicateAssetKey } from './asset-dedupe';
+import { getResidentAssetMeta, getResidentAssetSizes } from '../platform/asset-meta-index';
 import {
   closeEntryRefAutocomplete,
   handleEntryRefAutocompleteKeydown,
@@ -4144,7 +4145,10 @@ export function bindActions(
         // no reducer dispatch — this is a pure information carry-out.
         const st = dispatcher.getState();
         if (!st.container) break;
-        const profile = buildStorageProfile(st.container);
+        const profile = buildStorageProfile(
+          st.container,
+          getResidentAssetSizes(st.container.meta.container_id) ?? undefined,
+        );
         if (profile.rows.length === 0) break;
         const csv = formatStorageProfileCsv(profile);
         const filename = storageProfileCsvFilename();
@@ -7731,10 +7735,12 @@ export function bindActions(
       // 参照する anchor だけを挿入する(無駄な重複格納の回避)。anchor が
       // markdown ref として既存 asset への参照(リレーション)になる。
       // 重複でなければ従来どおり新規 key + PASTE_ATTACHMENT。
+      const dupContainer = dispatcher.getState().container;
       const dupKey = findDuplicateAssetKey(
         payload.assetData,
         payload.size,
-        dispatcher.getState().container,
+        dupContainer,
+        dupContainer ? getResidentAssetMeta(dupContainer.meta.container_id) ?? undefined : undefined,
       );
       let assetKey: string;
       if (dupKey !== null) {
@@ -10586,7 +10592,13 @@ async function prepareAttachmentPayload(
 
   // G-2: informational dedupe toast — never blocks attachment.
   try {
-    if (checkAssetDuplicate(payload.assetData, payload.size, dispatcher.getState().container)) {
+    const dupCheckContainer = dispatcher.getState().container;
+    if (checkAssetDuplicate(
+      payload.assetData,
+      payload.size,
+      dupCheckContainer,
+      dupCheckContainer ? getResidentAssetMeta(dupCheckContainer.meta.container_id) ?? undefined : undefined,
+    )) {
       showToast({
         kind: 'info',
         message: `「${file.name}」は既存の添付と同一内容です`,
