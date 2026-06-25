@@ -147,3 +147,40 @@ describe('checkAssetDuplicate — PR #184 cached behaviour', () => {
     expect(() => checkAssetDuplicate(dataA, 6, c)).not.toThrow();
   });
 });
+
+// 段階4 (#868): with the resident asset-meta index, dedupe detects a
+// duplicate of an asset that is NOT in the working-set (container.assets
+// partial under lazy loading).
+describe('findDuplicateAssetKey — metaIndex path (段階4 #868)', () => {
+  beforeEach(() => {
+    __resetAssetDedupeCacheForTest();
+  });
+
+  it('detects a duplicate of a non-resident asset via the meta index', async () => {
+    const { findDuplicateAssetKey } = await import('@adapter/ui/asset-dedupe');
+    const { computeAssetMeta } = await import('@features/asset/asset-meta');
+    const data = btoa('hello world');
+    // Asset 'k1' is referenced by an attachment entry (size known) but its
+    // bytes are NOT resident (working-set is empty under lazy loading).
+    const c = makeContainer('c1', {}, [{ assetKey: 'k1', size: 11 }]);
+    const metaIndex = { k1: computeAssetMeta(data) };
+
+    // Without the index: not found (bytes absent from container.assets).
+    expect(findDuplicateAssetKey(data, 11, c)).toBeNull();
+    // With the index: detected.
+    expect(findDuplicateAssetKey(data, 11, c, metaIndex)).toBe('k1');
+  });
+
+  it('falls back to index size when no owner entry is resident', async () => {
+    const { findDuplicateAssetKey } = await import('@adapter/ui/asset-dedupe');
+    const { computeAssetMeta } = await import('@features/asset/asset-meta');
+    const data = btoa('payload');
+    const meta = computeAssetMeta(data);
+    // No attachment entries at all (e.g. inline text-pasted image).
+    const c = makeContainer('c1', {}, []);
+    const metaIndex = { k2: meta };
+    expect(findDuplicateAssetKey(data, meta.size, c, metaIndex)).toBe('k2');
+    // Size mismatch → no false positive.
+    expect(findDuplicateAssetKey(data, meta.size + 1, c, metaIndex)).toBeNull();
+  });
+});

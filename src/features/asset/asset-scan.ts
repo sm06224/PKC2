@@ -198,11 +198,18 @@ export function getEntryAssetDependencies(container: Container, rootLid: string)
  * fresh `Set<string>` — empty when every asset key is referenced
  * (or when `container.assets` itself is empty / absent).
  */
-export function collectOrphanAssetKeys(container: Container): Set<string> {
+export function collectOrphanAssetKeys(
+  container: Container,
+  allAssetKeys?: Iterable<string>,
+): Set<string> {
   const referenced = collectReferencedAssetKeys(container);
   const orphans = new Set<string>();
-  const assets = container.assets ?? {};
-  for (const key of Object.keys(assets)) {
+  // 段階4 (#868): under lazy loading `container.assets` holds only the
+  // working-set, so pass `allAssetKeys` (the full stored key set from the
+  // resident asset-meta index) to count orphans across the whole store.
+  // Falls back to the resident keys when not supplied.
+  const universe = allAssetKeys ?? Object.keys(container.assets ?? {});
+  for (const key of universe) {
     if (!referenced.has(key)) orphans.add(key);
   }
   return orphans;

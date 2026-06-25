@@ -177,12 +177,23 @@ export interface StorageProfile {
  * scans); no memoisation is attempted, since the profile is
  * computed at dialog-open time only.
  */
-export function buildStorageProfile(container: Container): StorageProfile {
+export function buildStorageProfile(
+  container: Container,
+  assetSizes?: Record<string, number>,
+): StorageProfile {
   const assets = container.assets ?? {};
-  // Pre-compute byte-sizes so we never decode twice.
+  // Pre-compute byte-sizes so we never decode twice. 段階4 (#868): under
+  // lazy loading `container.assets` is only the working-set, so prefer the
+  // full-store size index (`assetSizes`, from the resident asset-meta
+  // index) when supplied — otherwise the profile under-reports. Falls back
+  // to estimating from the resident bytes when no index is available.
   const assetBytes = new Map<string, number>();
-  for (const [key, value] of Object.entries(assets)) {
-    assetBytes.set(key, estimateBase64Size(value));
+  if (assetSizes) {
+    for (const key in assetSizes) assetBytes.set(key, assetSizes[key]!);
+  } else {
+    for (const [key, value] of Object.entries(assets)) {
+      assetBytes.set(key, estimateBase64Size(value));
+    }
   }
 
   // 2026-04-26 user audit: the storage profile dialog is a

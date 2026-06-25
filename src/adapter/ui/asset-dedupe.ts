@@ -48,6 +48,7 @@
 import { fnv1a64Hex } from '../../core/operations/hash';
 import type { Container } from '../../core/model/container';
 import type { Entry } from '../../core/model/record';
+import type { AssetMetaIndex } from '../../features/asset/asset-meta';
 
 const assetHashByValue = new Map<string, string>();
 let cacheContainerId: string | null = null;
@@ -121,6 +122,7 @@ export function findDuplicateAssetKey(
   base64Data: string,
   fileSize: number,
   container: Container | null,
+  metaIndex?: AssetMetaIndex,
 ): string | null {
   if (!container) return null;
   maybeResetForContainerSwap(container);
@@ -133,6 +135,22 @@ export function findDuplicateAssetKey(
   }
 
   const sizeByKey = getSizeByAssetKey(container);
+
+  // 段階4 (#868): when the resident asset-meta index is supplied, compare
+  // against the FULL stored key set (every key → precomputed hash) so a
+  // paste duplicating a non-resident asset is still detected. The hashes
+  // are precomputed (no byte load / no rehash on the hot path). Falls back
+  // to scanning the resident `container.assets` when no index is given.
+  if (metaIndex) {
+    for (const key in metaIndex) {
+      if (metaIndex[key]!.hash !== newHash) continue;
+      // Size guard: prefer the attachment entry's declared size; fall back
+      // to the index's decoded-byte size when no owner entry is resident.
+      const ownerSize = sizeByKey.get(key) ?? metaIndex[key]!.size;
+      if (ownerSize === fileSize) return key;
+    }
+    return null;
+  }
 
   for (const [key, assetValue] of Object.entries(container.assets)) {
     let existingHash: string;
@@ -158,8 +176,9 @@ export function checkAssetDuplicate(
   base64Data: string,
   fileSize: number,
   container: Container | null,
+  metaIndex?: AssetMetaIndex,
 ): boolean {
-  return findDuplicateAssetKey(base64Data, fileSize, container) !== null;
+  return findDuplicateAssetKey(base64Data, fileSize, container, metaIndex) !== null;
 }
 
 /**
