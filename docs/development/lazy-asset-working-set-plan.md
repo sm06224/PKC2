@@ -1,9 +1,10 @@
 # Lazy asset working-set 計画(メモリ削減 #7)
 
-> Status: **段階1(土台)+ 段階2(save additive-only 化)着地済 / 中核は段階3以降**。
-> 前任が「メモリロード」を指摘されつつ対応しきれなかった箇所(user, 2026-06-24)。
-> 本書は**地雷**(特に `save()` の diff-delete = データ損失)を明示し、安全な段階実装を
-> 定義する。
+> Status: **段階1(土台)+ 段階2(save additive-only 化)+ 段階3(working-set 遅延
+> ロード本体 + export 全件ロード)着地済 / 残りは段階4(metadata 常駐化)・段階5
+> (大規模実機確認)**。前任が「メモリロード」を指摘されつつ対応しきれなかった箇所
+> (user, 2026-06-24)。本書は**地雷**(特に `save()` の diff-delete = データ損失)を
+> 明示し、安全な段階実装を定義する。
 
 ## 1. 問題(Playwright で実測、`tests/bench/memory-footprint.bench.ts`)
 
@@ -75,14 +76,40 @@ metadata は常駐。** 表示中の entry(+ transclusion 閉包)が参照する
   を呼んで保全。keep は **entry 参照由来**なので container.assets が部分集合(lazy)でも
   安全。idb-store / persistence テストで**データ損失ゼロ**を検証。これ単体では RAM 不変
   (bench 再現:全常駐 ≈398MB のまま)だが、lazy の**前提**。
-- **段階3**:boot で全 asset を reassemble せず、`selectedLid` の working-set だけ
-  preload。`SELECT_ENTRY`(と navigation)で `getEntryAssetDependencies` → `loadAsset`
-  → working-set を `container.assets` に充填、不要分を LRU 解放。frontmatter thumbnail
-  の参照(現 `extractAssetReferences` の gap)も対応。
-- **段階4**:dedup の hash 索引 / guardrails の size metadata 常駐化。export/orphan の
-  全件ロードを on-demand に。
-- **段階5**:bench で 400MB workspace の JS heap が「全常駐 ≈400MB → 表示中数MB」に
-  落ちることを確認。視覚 parity(画像が壊れない)を smoke で確認。
+- **段階3(着地済・厚テスト済)**:boot は `loadDefaultShallow`(asset bytes を
+  reassemble しない、`assets: {}`)。working-set 管理は `adapter/platform/asset-working-set.ts`:
+  - **proactive preload**:`ENTRY_SELECTED` / navigation / `CONTAINER_*` で
+    `getEntryAssetDependencies(selectedLid)` を `loadAsset` → `SET_WORKING_SET_ASSETS`
+    で `container.assets` に充填。
+  - **demand-fill(miss 回収)**:同期 render が引けなかった key を
+    `asset-miss-recorder.noteAssetMiss` で記録(`resolveAssetReferences` /
+    `pickImageAssetForEntry` / attachment `resolveImageDataUrl`)。render 後に
+    `workingSet.refresh()`(main.ts の後段 onState)が drain してロード → 再 render
+    で画像が pop-in。card grid 等「複数 entry の thumbnail」も含め取りこぼさない安全網。
+  - **LRU eviction**:byte budget(既定 48MB)超で LRU 解放。ただし**store 未永続の
+    resident bytes は決して evict しない**(`listAssetKeys` で在庫確認、貼付直後の
+    未保存 asset を守る = データ安全不変条件)。pkc-data/light/viewOnly source は
+    store backing 無し→ 何も evict せず全 resident のまま(安全)。
+  - frontmatter `thumbnail: asset:K` の参照 gap を `findThumbnailAssetKey` で解消
+    (preload + orphan keep-set の両方)。
+  - **export 全件ロード(本 PR に同梱、データ損失防止)**:runtime の
+    `container.assets` は部分集合なので、export 直列化前に `hydrateForExport`
+    (registered store から **referenced** assets をロード)で実体化。HTML
+    (`serializePkcData`)/ ZIP package(`exportContainerAsZip`)/ entry・folder・
+    container bundle(action-binder)を網羅。subset export は referenced scope なので
+    他 entry の asset を漏らさない。
+- **段階4(未着手)**:dedup の hash 索引 / guardrails・storage-profile の size/count
+  metadata 常駐化。orphan scan の on-demand 全件化。
+  > **段階3 の既知 degrade(データ損失ではない・段階4 で解消)**:`storage-profile` /
+  > Data Maintenance の orphan count / サイズ合計は `container.assets`(= working-set
+  > 部分集合)を見るため**過小表示**になりうる。`asset-dedupe.findDuplicateAssetKey`
+  > も working-set のみ走査で重複検出が漏れうる(= ストレージ無駄、データ損失なし)。
+  > orphan の**実削除**は段階2 の `purgeAssetsExcept(referenced)` が full に行うため
+  > 正しい(in-memory 表示のみ degrade)。
+- **段階5(部分達成)**:bench(`memory-footprint.bench.ts`)で 50MB の未参照 asset を
+  IDB に置いても shallow boot で**常駐しない**(Δ ≪ seed)ことを assert 済。実機
+  visual pop-in parity(遅延ロード画像が選択後に data: URI で描画)も同 bench で確認。
+  400MB 実ワークスペースでの最終確認は段階4 後。
 
 ## 6. 不変条件 / 後方互換
 

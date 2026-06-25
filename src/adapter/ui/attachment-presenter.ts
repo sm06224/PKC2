@@ -2,6 +2,7 @@ import type { Entry } from '../../core/model/record';
 import type { DetailPresenter } from './detail-presenter';
 import { classifyFileSize, fileSizeWarningMessage, isFileTooLarge } from './guardrails';
 import { isExtensionBound } from '../platform/extension-bindings';
+import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
 
 /**
  * Attachment body schema (file-like archetype).
@@ -221,6 +222,11 @@ export function resolveImageDataUrl(
     base64 = assets[att.asset_key]!;
   } else if (att.data) {
     base64 = att.data;
+  } else if (att.asset_key) {
+    // 段階3 (#868): the image's bytes are not in the working-set and
+    // there is no inline fallback — record the miss so the working-set
+    // manager loads it and the viewer re-renders (pop-in).
+    noteAssetMiss(att.asset_key);
   }
   if (!base64) return null;
   if (base64.startsWith('data:')) return base64;

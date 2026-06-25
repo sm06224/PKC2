@@ -196,12 +196,16 @@ describe('Selected-only export — archetype routing', () => {
     vi.restoreAllMocks();
   });
 
-  it('text entry export → produces a .text.zip download', () => {
+  it('text entry export → produces a .text.zip download', async () => {
     setup('txt-1');
     openDataMenu();
     const { createSpy, anchorClickSpy } = spyDownload();
 
     exportSelectedBtn()!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // 段階3 (#868): export hydrates referenced assets first, so the
+    // download is dispatched after a microtask (fake timers active →
+    // flush microtasks, not real timers).
+    for (let i = 0; i < 6; i++) await Promise.resolve();
 
     expect(createSpy).toHaveBeenCalledTimes(1);
     const blob = createSpy.mock.calls[0]![0] as Blob;
@@ -212,12 +216,13 @@ describe('Selected-only export — archetype routing', () => {
     expect(anchor.download.endsWith('.text.zip')).toBe(true);
   });
 
-  it('textlog entry export → produces a .textlog.zip download', () => {
+  it('textlog entry export → produces a .textlog.zip download', async () => {
     setup('tl-1');
     openDataMenu();
     const { createSpy, anchorClickSpy } = spyDownload();
 
-    exportSelectedBtn()!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    exportSelectedBtn()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    for (let i = 0; i < 6; i++) await Promise.resolve();
 
     expect(createSpy).toHaveBeenCalledTimes(1);
     const blob = createSpy.mock.calls[0]![0] as Blob;

@@ -85,6 +85,7 @@ import type { Entry } from '../../core/model/record';
 import { extractAssetReferences } from '../markdown/asset-resolver';
 import { extractEntryReferences } from '../entry-ref/extract-entry-refs';
 import { parseTextlogBody } from '../textlog/textlog-body';
+import { findThumbnailAssetKey } from '../auto-fill/thumbnail-frontmatter';
 
 /**
  * 単一 entry が **直接** 参照する asset key を `out` に足す(archetype 別、
@@ -105,6 +106,13 @@ function addEntryOwnAssetRefs(entry: Entry, out: Set<string>): void {
   }
   if (entry.archetype === 'text') {
     for (const k of extractAssetReferences(entry.body)) out.add(k);
+    // Frontmatter `thumbnail: asset:K` is resolved synchronously by
+    // pickImageAssetForEntry at render time but is NOT markdown, so
+    // extractAssetReferences misses it. Count it here so both the
+    // working-set preload (#7) and the orphan-purge keep-set treat a
+    // thumbnail-only asset as referenced.
+    const thumbKey = findThumbnailAssetKey(entry.body);
+    if (thumbKey) out.add(thumbKey);
     return;
   }
   if (entry.archetype === 'textlog') {
@@ -151,11 +159,14 @@ export function collectReferencedAssetKeys(container: Container): Set<string> {
  *
  * `entry:LID` transclusion は対象 entry の本文も inline render されるため、その
  * entry の asset も再帰的に含める(`visited` で循環防止)。直接参照源は
- * `collectReferencedAssetKeys` と同じ(attachment `asset_key` / markdown `asset:` 形式)。
+ * `collectReferencedAssetKeys` と同じ(attachment `asset_key` / markdown `asset:` 形式
+ * / text frontmatter `thumbnail: asset:K`)。
  *
- * 既知の gap:frontmatter `thumbnail: asset:K` は markdown 形式でないため
- * `extractAssetReferences` が拾わない(orphan GC 側と同じ既存挙動)。working-set を
- * 実配線する段(save additive 化と同 PR)で別途対応する。
+ * 注意:card grid / sidebar は「表示中の複数 entry の thumbnail」も同期参照するため、
+ * 本関数(単一 root の閉包)だけでは working-set を完全網羅できない。実配線側
+ * (`asset-working-set`)は描画後の **miss 回収**(`resolveAssetReferences` /
+ * `pickImageAssetForEntry` が container.assets を引けなかった key を後追いロード)を
+ * 安全網として併用する。本関数は first-paint の flicker を減らす proactive preload 用。
  */
 export function getEntryAssetDependencies(container: Container, rootLid: string): Set<string> {
   const byLid = new Map(container.entries.map((e) => [e.lid, e] as const));

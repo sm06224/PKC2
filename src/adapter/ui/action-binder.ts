@@ -78,6 +78,7 @@ import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
+import { hydrateForExport } from '../platform/idb-store';
 import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
@@ -284,6 +285,32 @@ const touchTapThresholdPx = defineFlag<number>(
     tier: 0,
   },
 );
+
+/**
+ * 段階3 (#868) lazy asset loading: run a synchronous bundle builder
+ * after hydrating the container's referenced asset bytes from the store,
+ * then trigger the ZIP download. Under lazy loading `state.container`
+ * holds only the resident working-set, so building straight off it would
+ * drop non-resident assets; `hydrateForExport` pulls in the referenced
+ * bytes first (no-op when assets are fully resident). `proceed` returns
+ * false to cancel (the existing missing-asset confirm() guard).
+ */
+function exportBundleHydrated<T extends { blob: Blob; filename: string }>(
+  container: Container,
+  build: (c: Container) => T,
+  proceed: (built: T) => boolean,
+): void {
+  void (async () => {
+    try {
+      const hydrated = await hydrateForExport(container);
+      const built = build(hydrated);
+      if (!proceed(built)) return;
+      triggerZipDownload(built.blob, built.filename);
+    } catch (err) {
+      console.warn('[PKC2] bundle export failed:', err);
+    }
+  })();
+}
 
 export function bindActions(
   root: HTMLElement,
@@ -3423,21 +3450,26 @@ export function bindActions(
           `input[data-pkc-control="textlog-export-compact"][data-pkc-lid="${lid}"]`,
         );
         const compact = compactToggle?.checked === true;
-        const built = buildTextlogBundle(ent, st.container, { compact });
-        if (built.manifest.missing_asset_count > 0) {
-          const msg = [
-            `このテキストログには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
-            'このまま ZIP を出力しますか？',
-            '',
-            compact
-              ? '- compact モードが ON です: 欠損参照は text_markdown / asset_keys から除去されます'
-              : '- CSV の asset_keys カラムには欠損キーが残ります',
-            '- assets/ フォルダには欠損キーは含まれません',
-            '- manifest.json の missing_asset_keys に記録されます',
-          ].join('\n');
-          if (!confirm(msg)) break;
-        }
-        triggerZipDownload(built.blob, built.filename);
+        exportBundleHydrated(
+          st.container,
+          (c) => buildTextlogBundle(ent, c, { compact }),
+          (built) => {
+            if (built.manifest.missing_asset_count > 0) {
+              const msg = [
+                `このテキストログには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
+                'このまま ZIP を出力しますか？',
+                '',
+                compact
+                  ? '- compact モードが ON です: 欠損参照は text_markdown / asset_keys から除去されます'
+                  : '- CSV の asset_keys カラムには欠損キーが残ります',
+                '- assets/ フォルダには欠損キーは含まれません',
+                '- manifest.json の missing_asset_keys に記録されます',
+              ].join('\n');
+              return confirm(msg);
+            }
+            return true;
+          },
+        );
         break;
       }
       case 'export-text-zip': {
@@ -3461,21 +3493,26 @@ export function bindActions(
           `input[data-pkc-control="text-export-compact"][data-pkc-lid="${lid}"]`,
         );
         const compact = compactToggle?.checked === true;
-        const built = buildTextBundle(ent, st.container, { compact });
-        if (built.manifest.missing_asset_count > 0) {
-          const msg = [
-            `このテキストには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
-            'このまま ZIP を出力しますか？',
-            '',
-            compact
-              ? '- compact モードが ON です: 欠損参照は body.md から除去されます'
-              : '- body.md には欠損参照が verbatim で残ります',
-            '- assets/ フォルダには欠損キーは含まれません',
-            '- manifest.json の missing_asset_keys に記録されます',
-          ].join('\n');
-          if (!confirm(msg)) break;
-        }
-        triggerZipDownload(built.blob, built.filename);
+        exportBundleHydrated(
+          st.container,
+          (c) => buildTextBundle(ent, c, { compact }),
+          (built) => {
+            if (built.manifest.missing_asset_count > 0) {
+              const msg = [
+                `このテキストには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
+                'このまま ZIP を出力しますか？',
+                '',
+                compact
+                  ? '- compact モードが ON です: 欠損参照は body.md から除去されます'
+                  : '- body.md には欠損参照が verbatim で残ります',
+                '- assets/ フォルダには欠損キーは含まれません',
+                '- manifest.json の missing_asset_keys に記録されます',
+              ].join('\n');
+              return confirm(msg);
+            }
+            return true;
+          },
+        );
         break;
       }
       case 'export-selected-entry': {
@@ -3513,20 +3550,24 @@ export function bindActions(
           });
           break;
         }
-        const built = ent.archetype === 'text'
-          ? buildTextBundle(ent, st.container)
-          : buildTextlogBundle(ent, st.container);
-        if (built.manifest.missing_asset_count > 0) {
-          const msg = [
-            `このエントリには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
-            'このまま ZIP を出力しますか？',
-            '',
-            '- assets/ フォルダには欠損キーは含まれません',
-            '- manifest.json の missing_asset_keys に記録されます',
-          ].join('\n');
-          if (!confirm(msg)) break;
-        }
-        triggerZipDownload(built.blob, built.filename);
+        const archetype = ent.archetype;
+        exportBundleHydrated(
+          st.container,
+          (c) => (archetype === 'text' ? buildTextBundle(ent, c) : buildTextlogBundle(ent, c)),
+          (built) => {
+            if (built.manifest.missing_asset_count > 0) {
+              const msg = [
+                `このエントリには、参照先が見つからないアセットが ${built.manifest.missing_asset_count} 件あります。`,
+                'このまま ZIP を出力しますか？',
+                '',
+                '- assets/ フォルダには欠損キーは含まれません',
+                '- manifest.json の missing_asset_keys に記録されます',
+              ].join('\n');
+              return confirm(msg);
+            }
+            return true;
+          },
+        );
         break;
       }
       case 'export-selected-entry-html': {
@@ -3611,18 +3652,19 @@ export function bindActions(
         // single-entry export for missing assets.
         const st = dispatcher.getState();
         if (!st.container) break;
-        const built = buildTextlogsContainerBundle(st.container);
-        if (built.totalMissingAssetCount > 0) {
-          const msg = [
-            `全 TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
-            'このまま ZIP を出力しますか？',
-            '',
-            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
-            '- assets/ フォルダには欠損キーは含まれません',
-          ].join('\n');
-          if (!confirm(msg)) break;
-        }
-        triggerZipDownload(built.blob, built.filename);
+        exportBundleHydrated(st.container, buildTextlogsContainerBundle, (built) => {
+          if (built.totalMissingAssetCount > 0) {
+            const msg = [
+              `全 TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+              'このまま ZIP を出力しますか？',
+              '',
+              '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+              '- assets/ フォルダには欠損キーは含まれません',
+            ].join('\n');
+            return confirm(msg);
+          }
+          return true;
+        });
         break;
       }
       case 'export-texts-container': {
@@ -3633,18 +3675,19 @@ export function bindActions(
         // the TEXTLOG container export for missing assets.
         const st = dispatcher.getState();
         if (!st.container) break;
-        const built = buildTextsContainerBundle(st.container);
-        if (built.totalMissingAssetCount > 0) {
-          const msg = [
-            `全 TEXT のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
-            'このまま ZIP を出力しますか？',
-            '',
-            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
-            '- assets/ フォルダには欠損キーは含まれません',
-          ].join('\n');
-          if (!confirm(msg)) break;
-        }
-        triggerZipDownload(built.blob, built.filename);
+        exportBundleHydrated(st.container, buildTextsContainerBundle, (built) => {
+          if (built.totalMissingAssetCount > 0) {
+            const msg = [
+              `全 TEXT のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+              'このまま ZIP を出力しますか？',
+              '',
+              '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+              '- assets/ フォルダには欠損キーは含まれません',
+            ].join('\n');
+            return confirm(msg);
+          }
+          return true;
+        });
         break;
       }
       case 'export-mixed-container': {
@@ -3655,18 +3698,19 @@ export function bindActions(
         // confirm() pattern for missing assets.
         const st = dispatcher.getState();
         if (!st.container) break;
-        const built = buildMixedContainerBundle(st.container);
-        if (built.totalMissingAssetCount > 0) {
-          const msg = [
-            `全 TEXT / TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
-            'このまま ZIP を出力しますか？',
-            '',
-            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
-            '- assets/ フォルダには欠損キーは含まれません',
-          ].join('\n');
-          if (!confirm(msg)) break;
-        }
-        triggerZipDownload(built.blob, built.filename);
+        exportBundleHydrated(st.container, buildMixedContainerBundle, (built) => {
+          if (built.totalMissingAssetCount > 0) {
+            const msg = [
+              `全 TEXT / TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+              'このまま ZIP を出力しますか？',
+              '',
+              '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+              '- assets/ フォルダには欠損キーは含まれません',
+            ].join('\n');
+            return confirm(msg);
+          }
+          return true;
+        });
         break;
       }
       case 'export-folder': {
@@ -3678,18 +3722,23 @@ export function bindActions(
         if (!st.container) break;
         const folder = st.container.entries.find((e) => e.lid === lid);
         if (!folder || folder.archetype !== 'folder') break;
-        const built = buildFolderExportBundle(folder, st.container);
-        if (built.totalMissingAssetCount > 0) {
-          const msg = [
-            `フォルダ配下の TEXT / TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
-            'このまま ZIP を出力しますか？',
-            '',
-            '- 各 bundle 内の manifest.json に欠損キーが記録されます',
-            '- assets/ フォルダには欠損キーは含まれません',
-          ].join('\n');
-          if (!confirm(msg)) break;
-        }
-        triggerZipDownload(built.blob, built.filename);
+        exportBundleHydrated(
+          st.container,
+          (c) => buildFolderExportBundle(folder, c),
+          (built) => {
+            if (built.totalMissingAssetCount > 0) {
+              const msg = [
+                `フォルダ配下の TEXT / TEXTLOG のうち、参照先が見つからないアセットが合計 ${built.totalMissingAssetCount} 件あります。`,
+                'このまま ZIP を出力しますか？',
+                '',
+                '- 各 bundle 内の manifest.json に欠損キーが記録されます',
+                '- assets/ フォルダには欠損キーは含まれません',
+              ].join('\n');
+              return confirm(msg);
+            }
+            return true;
+          },
+        );
         break;
       }
       case 'rename-attachment': {

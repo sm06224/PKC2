@@ -102,6 +102,39 @@ export function findThumbnailHttpUrl(body: string): string | null {
 }
 
 /**
+ * Extract the local asset KEY (without the `asset:` prefix) that a
+ * `text` entry's frontmatter `thumbnail:` points at, or null when
+ * there is no frontmatter, no `thumbnail:` line, or the value is not
+ * an `asset:KEY` reference (a bare http(s) URL or `data:` URI carries
+ * no container-asset dependency).
+ *
+ * This is the dependency-scan counterpart to `findThumbnailHttpUrl`:
+ * `pickImageAssetForEntry` resolves `thumbnail: asset:K` by reading
+ * `container.assets[K]` synchronously at render time, so both the
+ * working-set preload (#7 lazy asset loading) and the referenced-key
+ * scan that drives orphan purge must count this key. Without it, a
+ * thumbnail-only asset would be treated as an orphan and a lazy boot
+ * would render a broken cover image.
+ */
+export function findThumbnailAssetKey(body: string): string | null {
+  if (!body) return null;
+  const trimmed = body.trimStart();
+  if (!trimmed.startsWith(FRONTMATTER_PREFIX)) return null;
+  const startIdx = body.indexOf(FRONTMATTER_PREFIX);
+  if (startIdx < 0) return null;
+  const afterStart = startIdx + FRONTMATTER_PREFIX.length;
+  const closeIdx = body.indexOf(FRONTMATTER_PREFIX, afterStart);
+  if (closeIdx < 0) return null;
+  const fmBlock = body.slice(afterStart, closeIdx);
+  const m = fmBlock.match(/^thumbnail:\s*(.+)$/m);
+  if (!m) return null;
+  const ref = extractThumbnailRef(m[1]!);
+  if (!ref || !ref.startsWith('asset:')) return null;
+  const key = ref.slice('asset:'.length);
+  return key.length > 0 ? key : null;
+}
+
+/**
  * Replace the `thumbnail: <URL>` line in the leading YAML
  * frontmatter with `thumbnail: asset:<key>`. Returns the new body
  * string. When no frontmatter or no http URL is present, returns

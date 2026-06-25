@@ -121,6 +121,7 @@ import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../featur
 import { pad2 } from '../../features/datetime/datetime-format';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
+import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
 import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
 import type { StorageProfile } from '../../features/asset/storage-profile';
 import { getStorageBackendPref, type StorageBackend } from '../platform/storage-backend';
@@ -7146,6 +7147,9 @@ export function pickImageAssetForEntry(
               if (b64.startsWith('data:')) return b64;
               return `data:image/png;base64,${b64}`;
             }
+            // 段階3 (#868): thumbnail asset not in the working-set —
+            // record so the manager loads it and the cover pops in.
+            noteAssetMiss(k);
           }
         }
       }
@@ -7165,6 +7169,8 @@ export function pickImageAssetForEntry(
           if (b64.startsWith('data:')) return b64;
           return `data:${mime};base64,${b64}`;
         }
+        // 段階3 (#868): attachment image not in the working-set yet.
+        noteAssetMiss(key);
       }
     } catch {
       /* fall through */

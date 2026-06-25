@@ -102,6 +102,15 @@ export type DomainEvent =
       skipped: number;
       entriesAffected: number;
     }
+  /**
+   * WORKING_SET_UPDATED — 段階3 (#868) lazy asset loading. Emitted
+   * after `SET_WORKING_SET_ASSETS` swaps `container.assets` for the
+   * freshly-loaded working-set. Drives a re-render (so a just-loaded
+   * image pops in) but is deliberately ABSENT from persistence
+   * `SAVE_TRIGGERS` — the working-set is a runtime view of bytes that
+   * already live in the store, not a content mutation.
+   */
+  | { type: 'WORKING_SET_UPDATED' }
   | { type: 'ERROR_OCCURRED'; error: string };
 
 /** Extract the type literal from a DomainEvent. */

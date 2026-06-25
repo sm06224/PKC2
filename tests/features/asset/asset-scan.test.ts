@@ -4,6 +4,7 @@ import {
   collectOrphanAssetKeys,
   removeOrphanAssets,
   collectUnreferencedAttachmentLids,
+  getEntryAssetDependencies,
 } from '@features/asset/asset-scan';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
@@ -540,5 +541,55 @@ describe('collectUnreferencedAttachmentLids', () => {
     expect(result.has('att-b')).toBe(false);
     expect(result.has('att-c')).toBe(false);
     expect(result.size).toBe(1);
+  });
+});
+
+// 段階3 (#868): frontmatter `thumbnail: asset:K` is resolved
+// synchronously at render time (pickImageAssetForEntry) but is not
+// markdown, so it used to escape the reference scan. Both the orphan
+// keep-set (collectReferencedAssetKeys) and the working-set preload
+// (getEntryAssetDependencies) must now count it.
+describe('frontmatter thumbnail asset reference (段階3 #868)', () => {
+  const T2 = '2026-06-24T00:00:00Z';
+  function textEntry(lid: string, body: string): Entry {
+    return { lid, title: lid, body, archetype: 'text', created_at: T2, updated_at: T2 };
+  }
+
+  it('collectReferencedAssetKeys counts a frontmatter thumbnail asset key', () => {
+    const container = makeContainer({
+      entries: [textEntry('e1', '---\nthumbnail: asset:cover-1\n---\n\nbody')],
+    });
+    expect(collectReferencedAssetKeys(container).has('cover-1')).toBe(true);
+  });
+
+  it('a thumbnail-only asset is NOT treated as an orphan', () => {
+    const container = makeContainer({
+      entries: [textEntry('e1', '---\nthumbnail: asset:cover-1\n---\n\nbody')],
+      assets: { 'cover-1': 'BYTES' },
+    });
+    expect(collectOrphanAssetKeys(container).has('cover-1')).toBe(false);
+  });
+
+  it('getEntryAssetDependencies includes the frontmatter thumbnail key', () => {
+    const container = makeContainer({
+      entries: [textEntry('e1', '---\nthumbnail: asset:cover-1\n---\n\n![x](asset:body-1)')],
+    });
+    const deps = getEntryAssetDependencies(container, 'e1');
+    expect(deps.has('cover-1')).toBe(true); // frontmatter thumbnail
+    expect(deps.has('body-1')).toBe(true);  // body image
+  });
+
+  it('markdown-image thumbnail form (`![](asset:K)`) is also captured', () => {
+    const container = makeContainer({
+      entries: [textEntry('e1', '---\nthumbnail: ![](asset:cover-2)\n---\n\nbody')],
+    });
+    expect(collectReferencedAssetKeys(container).has('cover-2')).toBe(true);
+  });
+
+  it('http(s) / data thumbnails contribute no asset dependency', () => {
+    const container = makeContainer({
+      entries: [textEntry('e1', '---\nthumbnail: https://example.com/x.png\n---\n\nbody')],
+    });
+    expect(collectReferencedAssetKeys(container).size).toBe(0);
   });
 });

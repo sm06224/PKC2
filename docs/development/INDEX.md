@@ -144,7 +144,7 @@ CLAUDE.md / src からは参照されているが、これまで本 INDEX に列
 |---|---|
 | [`i18n-requirements.md`](./i18n-requirements.md) | i18n 要件(FI-Settings v2)— Locale setting 実装済 + 残課題 |
 | [`feature-requests-2026-04-28-roadmap.md`](./feature-requests-2026-04-28-roadmap.md) | 🔒 **凍結(#776)** — 2026-04-28 user direction roadmap(複数 user request の優先度付け) |
-| [`lazy-asset-working-set-plan.md`](./lazy-asset-working-set-plan.md) | メモリ削減 #7:全 asset 常駐(≈400MB = 1GB の主因、Playwright 実測)→ working-set 遅延ロードの段階計画。`save()` diff-delete 等の**地雷**を明示。段階1(`getEntryAssetDependencies` + 計測 bench)+ 段階2(`save()` additive-only 化 + 明示 `purgeAssetsExcept` 経路)着地済 |
+| [`lazy-asset-working-set-plan.md`](./lazy-asset-working-set-plan.md) | メモリ削減 #7:全 asset 常駐(≈400MB = 1GB の主因、Playwright 実測)→ working-set 遅延ロードの段階計画。`save()` diff-delete 等の**地雷**を明示。段階1(`getEntryAssetDependencies` + 計測 bench)+ 段階2(`save()` additive-only 化 + 明示 `purgeAssetsExcept` 経路)+ 段階3(working-set 遅延ロード本体: shallow boot + `asset-working-set` manager + miss 回収 pop-in + LRU + export 全件ロード)着地済。残り段階4(metadata 常駐化)・5 |
 
 ### Platform / runtime
 

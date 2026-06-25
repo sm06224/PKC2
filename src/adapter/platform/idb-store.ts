@@ -2,6 +2,7 @@ import type { Container } from '../../core/model/container';
 import type { BatchOp, StorageAdapter } from './storage/storage-adapter';
 import { createIDBAdapter } from './storage/idb-adapter';
 import { createMemoryAdapter } from './storage/memory-adapter';
+import { collectReferencedAssetKeys } from '../../features/asset/asset-scan';
 
 /**
  * ContainerStore: high-level facade for Container persistence.
@@ -42,6 +43,19 @@ export interface ContainerStore {
   save(container: Container): Promise<void>;
   load(containerId: string): Promise<Container | null>;
   loadDefault(): Promise<Container | null>;
+  /**
+   * 段階3 (#868, working-set lazy loading): load the container record
+   * WITHOUT reassembling asset bytes — `assets` comes back as `{}`.
+   * Boot uses this so the ≈400MB of base64 never lands in the JS heap
+   * at startup; the working-set layer then loads only the assets the
+   * current view references (via `loadAsset`) and evicts the rest.
+   * The asset bytes still live in the store untouched — use
+   * `loadAsset` / `listAssetKeys` to reach them on demand, or
+   * `hydrateAllAssets` to materialise the full set (export).
+   */
+  loadShallow(containerId: string): Promise<Container | null>;
+  /** `loadShallow` for the `__default__` container. */
+  loadDefaultShallow(): Promise<Container | null>;
   delete(containerId: string): Promise<void>;
   /** Delete all data from all stores (workspace reset). */
   clearAll(): Promise<void>;
@@ -188,6 +202,21 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     return reassembleAssets(defaultId, record as Container);
   }
 
+  async function loadShallow(containerId: string): Promise<Container | null> {
+    // No asset reassembly: the container record is already stored sans
+    // assets (see `save`), so `record.assets` is `{}`. We normalise it
+    // defensively in case a legacy record carried inline assets.
+    const record = await containers.get(containerId);
+    if (!record) return null;
+    return { ...(record as Container), assets: {} };
+  }
+
+  async function loadDefaultShallow(): Promise<Container | null> {
+    const defaultId = await containers.get(DEFAULT_KEY);
+    if (typeof defaultId !== 'string') return null;
+    return loadShallow(defaultId);
+  }
+
   async function del(containerId: string): Promise<void> {
     const prefix = assetPrefix(containerId);
     const assetKeys = await assets.getKeysByPrefix(prefix);
@@ -302,6 +331,8 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     save,
     load,
     loadDefault,
+    loadShallow,
+    loadDefaultShallow,
     delete: del,
     clearAll,
     listContainers,
@@ -335,6 +366,98 @@ export function createIDBStore(): ContainerStore {
  */
 export function createMemoryStore(): ContainerStore {
   return createContainerStore(createMemoryAdapter());
+}
+
+/**
+ * Materialise the FULL asset set for `container` from the store
+ * (段階3 #868). At runtime `container.assets` holds only the lazy
+ * working-set, so any path that must serialise every byte — export
+ * to HTML / ZIP, entry-package export — has to hydrate first or it
+ * would silently drop the non-resident assets (data loss).
+ *
+ * Reads every stored asset key for the container, loads its bytes,
+ * and returns a new container whose `assets` is the union of the
+ * stored set and whatever was already resident in memory (resident
+ * bytes win on conflict — they reflect un-saved in-flight edits).
+ * The input container is not mutated. Keys that fail to load are
+ * skipped (their reference simply stays broken, as before).
+ */
+export async function hydrateAllAssets(
+  store: ContainerStore,
+  container: Container,
+): Promise<Container> {
+  const cid = container.meta.container_id;
+  const storedKeys = await store.listAssetKeys(cid);
+  const full: Record<string, string> = {};
+  await Promise.all(
+    storedKeys.map(async (key) => {
+      const data = await store.loadAsset(cid, key);
+      if (typeof data === 'string') full[key] = data;
+    }),
+  );
+  // Resident (possibly un-persisted) bytes take precedence.
+  for (const [key, data] of Object.entries(container.assets)) {
+    full[key] = data;
+  }
+  return { ...container, assets: full };
+}
+
+/**
+ * Materialise just the assets `container`'s own entries REFERENCE
+ * (段階3 #868) — the right hydration for export. Loads each referenced
+ * key's bytes from the store and merges them over whatever is already
+ * resident (resident wins, preserving un-persisted edits). Orphan
+ * (unreferenced) bytes are intentionally NOT pulled in, so a subset
+ * export carries only its own entries' assets (no leakage of the rest
+ * of the workspace) and a full export drops dead orphan bytes.
+ *
+ * Data-safety: a referenced asset is always recoverable — either it is
+ * still resident (the working-set manager never evicts un-persisted
+ * bytes) or it is in the store. So nothing an entry needs is lost.
+ */
+export async function hydrateReferencedAssets(
+  store: ContainerStore,
+  container: Container,
+): Promise<Container> {
+  const cid = container.meta.container_id;
+  const referenced = collectReferencedAssetKeys(container);
+  const merged: Record<string, string> = {};
+  await Promise.all(
+    [...referenced].map(async (key) => {
+      if (container.assets[key] != null) return; // resident wins
+      const data = await store.loadAsset(cid, key);
+      if (typeof data === 'string') merged[key] = data;
+    }),
+  );
+  for (const [key, data] of Object.entries(container.assets)) merged[key] = data;
+  return { ...container, assets: merged };
+}
+
+// ── Export hydration seam (段階3 #868) ───────────────────────────────
+//
+// Under lazy loading `container.assets` holds only the resident
+// working-set, so export serializers must hydrate the referenced bytes
+// before writing or they would silently drop them. The serializers live
+// in the platform layer and are called from many sites (main, action-
+// binder subset exports, transport export-handler) that don't all hold
+// a store reference, so the active store is registered once at boot and
+// the serializers hydrate through `hydrateForExport`. Unset (tests that
+// pass a fully-resident container) → no-op.
+let activeExportStore: ContainerStore | null = null;
+
+/** Register the store used by `hydrateForExport`. Called once at boot. */
+export function registerExportStore(store: ContainerStore | null): void {
+  activeExportStore = store;
+}
+
+/**
+ * Hydrate a container's referenced assets via the registered export
+ * store, for serialization paths (HTML / ZIP / entry-package). No-op
+ * (returns the container unchanged) when no store is registered.
+ */
+export async function hydrateForExport(container: Container): Promise<Container> {
+  if (!activeExportStore) return container;
+  return hydrateReferencedAssets(activeExportStore, container);
 }
 
 // ── Availability probe ──────────────────────

@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { createMemoryStore } from '@adapter/platform/idb-store';
+import { describe, it, expect, afterEach } from 'vitest';
+import {
+  createMemoryStore,
+  hydrateAllAssets,
+  hydrateReferencedAssets,
+  registerExportStore,
+  hydrateForExport,
+} from '@adapter/platform/idb-store';
 import type { Container } from '@core/model/container';
 
 const T = '2026-04-06T00:00:00Z';
@@ -311,5 +317,108 @@ describe('MemoryStore: asset CRUD operations', () => {
 
     const loaded = await store.load('c1');
     expect(loaded!.assets['ast-extra']).toBe('bonus');
+  });
+});
+
+// 段階3 (#868) lazy asset loading: shallow load (no asset bytes) + the
+// hydration helpers that make export lossless when the runtime container
+// holds only a partial working-set.
+describe('MemoryStore: loadShallow (段階3 #868)', () => {
+  it('loadShallow returns the container record WITHOUT asset bytes', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-1': 'A', 'ast-2': 'B' }));
+
+    const shallow = await store.loadShallow('c1');
+    expect(shallow!.meta.container_id).toBe('c1');
+    expect(shallow!.entries).toHaveLength(1);
+    expect(shallow!.assets).toEqual({}); // bytes NOT reassembled
+    // The bytes are still in the store, reachable on demand.
+    expect(await store.loadAsset('c1', 'ast-1')).toBe('A');
+  });
+
+  it('loadDefaultShallow mirrors loadShallow for the default container', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1', { 'ast-1': 'A' }));
+    const shallow = await store.loadDefaultShallow();
+    expect(shallow!.meta.container_id).toBe('c1');
+    expect(shallow!.assets).toEqual({});
+  });
+
+  it('loadShallow returns null for unknown id', async () => {
+    const store = createMemoryStore();
+    expect(await store.loadShallow('nope')).toBeNull();
+  });
+});
+
+describe('hydrate helpers (段階3 #868)', () => {
+  function withImage(): Container {
+    return {
+      meta: { container_id: 'c1', title: 'T', created_at: T, updated_at: T, schema_version: 1 },
+      entries: [
+        { lid: 'e1', title: 'A', body: '![p](asset:ref-1)', archetype: 'text', created_at: T, updated_at: T },
+      ],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+  }
+
+  it('hydrateAllAssets loads every stored asset (incl. orphans)', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'ref-1', 'REFERENCED');
+    await store.saveAsset('c1', 'orphan', 'ORPHANED');
+
+    const full = await hydrateAllAssets(store, withImage());
+    expect(full.assets['ref-1']).toBe('REFERENCED');
+    expect(full.assets['orphan']).toBe('ORPHANED');
+  });
+
+  it('hydrateReferencedAssets loads only entry-referenced assets (drops orphans)', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'ref-1', 'REFERENCED');
+    await store.saveAsset('c1', 'orphan', 'ORPHANED');
+
+    const scoped = await hydrateReferencedAssets(store, withImage());
+    expect(scoped.assets['ref-1']).toBe('REFERENCED');
+    expect(scoped.assets['orphan']).toBeUndefined();
+  });
+
+  it('hydrate keeps resident (un-persisted) bytes that are not yet in the store', async () => {
+    const store = createMemoryStore();
+    // 'ref-1' referenced but resident-only (freshly pasted, not saved).
+    const c = withImage();
+    c.assets['ref-1'] = 'RESIDENT';
+    const scoped = await hydrateReferencedAssets(store, c);
+    expect(scoped.assets['ref-1']).toBe('RESIDENT');
+  });
+});
+
+describe('hydrateForExport seam (段階3 #868)', () => {
+  afterEach(() => registerExportStore(null));
+
+  it('no-op when no store registered (returns container unchanged)', async () => {
+    registerExportStore(null);
+    const c = mockContainer('c1', { 'ast-1': 'resident' });
+    expect(await hydrateForExport(c)).toBe(c);
+  });
+
+  it('hydrates referenced bytes from the registered export store (lossless export)', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'ref-1', 'FROM_STORE');
+    registerExportStore(store);
+
+    // Runtime container holds a PARTIAL working-set (asset not resident).
+    const partial: Container = {
+      meta: { container_id: 'c1', title: 'T', created_at: T, updated_at: T, schema_version: 1 },
+      entries: [
+        { lid: 'e1', title: 'A', body: '![p](asset:ref-1)', archetype: 'text', created_at: T, updated_at: T },
+      ],
+      relations: [],
+      revisions: [],
+      assets: {},
+    };
+    const hydrated = await hydrateForExport(partial);
+    // The export now carries the referenced bytes — no silent loss.
+    expect(hydrated.assets['ref-1']).toBe('FROM_STORE');
   });
 });

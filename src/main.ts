@@ -69,6 +69,8 @@ import {
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import { registerExportStore } from './adapter/platform/idb-store';
+import { mountWorkingSet } from './adapter/platform/asset-working-set';
 import { mountNavHistory } from './adapter/ui/nav-history';
 import {
   loadCollapsedFolders,
@@ -584,6 +586,19 @@ async function boot(): Promise<void> {
   // store is OPFS-backed, migrating the existing IDB default container
   // across once. Falls back to IDB safely otherwise.
   const { store } = await createConfiguredStoreFromEnv();
+  // 段階3 (#868) lazy asset loading. Boot loads the container shallow
+  // (no asset bytes — see loadFromStore); the working-set manager keeps
+  // `container.assets` populated with just what the visible view
+  // references and evicts the rest under a byte budget. `refresh()` runs
+  // after each render (a later onState subscriber, so the renderer has
+  // already recorded any asset misses) to load misses + preload the
+  // current selection. registerExportStore lets the export serializers
+  // hydrate the full referenced set before writing (no data loss).
+  registerExportStore(store);
+  const workingSet = mountWorkingSet(dispatcher, { store });
+  dispatcher.onState(() => {
+    void workingSet.refresh();
+  });
   mountPersistence(dispatcher, {
     store,
     onError: (err) => {
