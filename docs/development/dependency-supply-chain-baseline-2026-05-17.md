@@ -205,7 +205,7 @@ dashboard で user が approve したら個別 PR で対応:
 | `vitest` 3 → 4 | major | test typing changes(`'fetch' as never` 等)、`restoreMocks: true`、coverage threshold 再 baseline |
 | `@vitest/coverage-v8` 3 → 4 | major | vitest 4 とペア |
 | `typescript` 5 → 6 | major | tsc 挙動変化、src 全体 + types |
-| `vite` 6 → 8 | 2 major | build pipeline、plugin API |
+| ~~`vite` 6 → 8~~ | ~~2 major~~ | ✅ 2026-06-30 #827 で完了(rolldown ベース vite 8.1.2 + tsx 4.22.4、`overrides.esbuild ^0.28.1`)。esbuild HIGH advisory を build pipeline 全体から解消。CI audit gate は `--omit=dev` 維持(残る ws dev-only HIGH のため、ci.yml 参照) |
 | `eslint` 8 → 10 | 2 major | flat config 移行必須(`.eslintrc.cjs` → `eslint.config.js`) |
 
 ---
