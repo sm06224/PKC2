@@ -1276,14 +1276,17 @@ export function bindActions(
     }
     shellMenuOverlayMouseDown = false;
 
-    // Slice 4: `Alt+Click` (or `Ctrl+Click`, 2026-06-25 user request) on a
-    // TEXTLOG log row body is the modifier gesture that replaces the old
-    // dblclick-to-edit. Native dblclick is left to the browser so word /
-    // block selection works again. We intentionally ignore clicks inside
+    // Slice 4: a modifier-click on a TEXTLOG log row body is the gesture
+    // that replaces the old dblclick-to-edit (native dblclick is left to
+    // the browser so word / block selection works again). Accept the
+    // platform-natural modifiers (2026-06-25 user request + cross-platform
+    // intent): Alt (Option on macOS), Ctrl (Windows/Linux primary), and
+    // Meta (⌘ on macOS — the Mac-natural choice since Ctrl+Click is the OS
+    // context-menu gesture there). We intentionally ignore clicks inside
     // the log header buttons (flag, anchor, edit) and asset chip anchors —
     // their own handlers already cover those targets.
     const mouseEvt = e instanceof MouseEvent ? e : null;
-    if (mouseEvt && (mouseEvt.altKey || mouseEvt.ctrlKey) && rawTarget) {
+    if (mouseEvt && (mouseEvt.altKey || mouseEvt.ctrlKey || mouseEvt.metaKey) && rawTarget) {
       const logRow = rawTarget.closest<HTMLElement>('.pkc-textlog-log[data-pkc-lid]');
       if (
         logRow
