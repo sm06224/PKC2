@@ -24,6 +24,7 @@ import {
   collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType,
   isTextConvertibleAttachment, decodeAttachmentText,
 } from './attachment-presenter';
+import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
 import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
@@ -2977,18 +2978,14 @@ export function bindActions(
             break;
           }
         }
-        const resolved = resolveAttachmentData(lid, dispatcher);
-        if (!resolved) break;
-        if (classifyPreviewType(resolved.mime) !== 'html') break;
-        const htmlString = decodeBase64ToText(resolved.data);
+        // Open the popup window SYNCHRONOUSLY inside the click gesture —
+        // popup blockers reject `window.open` once we leave the gesture, so
+        // we cannot await asset hydration first. The HTML is written into
+        // this window once the bytes resolve (or are hydrated on demand for
+        // a lazily-loaded asset — see openHtmlAttachmentWindow / #868 bug:
+        // launcher tile of a non-selected entry had no resident bytes).
         const features = 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes';
-        const win = window.open('', '_blank', features);
-        if (win) {
-          win.document.open();
-          win.document.write(htmlString);
-          win.document.close();
-          win.focus?.(); // 新規 window を前面へ
-        }
+        void openHtmlAttachmentWindow(window.open('', '_blank', features), lid, dispatcher);
         break;
       }
       case 'copy-markdown-source': {
@@ -9916,6 +9913,24 @@ function formatAssetReference(entry: Entry): string {
 }
 
 /**
+ * 段階3 (#868): on-demand asset hydrator. Boot loads the container shallow
+ * (no asset bytes); the working-set manager fills `container.assets` lazily.
+ * Most read paths heal asynchronously via `noteAssetMiss` + post-render
+ * refresh, but a *user gesture* that must produce a result on the first
+ * click (opening an HTML app from the launcher tile of a NOT-currently-
+ * selected entry) cannot wait for a render cycle. `registerAssetHydrator`
+ * lets `main.ts` hand the action-binder an awaitable single-shot loader
+ * (`workingSet.ensure`) so such a gesture can load the bytes inline.
+ */
+let assetHydrator: ((keys: readonly string[]) => Promise<void>) | null = null;
+
+export function registerAssetHydrator(
+  fn: ((keys: readonly string[]) => Promise<void>) | null,
+): void {
+  assetHydrator = fn;
+}
+
+/**
  * Resolve attachment base64 data from container.assets or legacy body.data.
  *
  * pgc-236:optional `entryByLidOverride` Map を受け取れる ── 呼び出し側
@@ -9944,9 +9959,72 @@ function resolveAttachmentData(
   } else if (att.data) {
     base64 = att.data;
   }
-  if (!base64) return null;
+  if (!base64) {
+    // 段階3 (#868): under lazy/shallow loading the bytes may simply not be
+    // resident yet (the entry isn't the current selection, so the
+    // working-set never proactively preloaded it). Record the miss so the
+    // working-set manager hydrates it and the consumer heals on the next
+    // refresh (preview iframe / download). Genuinely-broken refs get marked
+    // absent by the manager and are not retried.
+    if (att.asset_key) noteAssetMiss(att.asset_key);
+    return null;
+  }
 
   return { data: base64, mime: att.mime, name: deriveDisplayFilename(att.name, att.mime) };
+}
+
+/**
+ * Write an HTML attachment into an already-opened popup `win`. The window
+ * MUST be opened synchronously by the caller (inside the click gesture) so
+ * popup blockers don't reject it; this helper then fills it.
+ *
+ * 段階3 (#868) bug fix: when the attachment's bytes are not resident (lazy
+ * shallow boot, and the entry is not the current selection so it was never
+ * proactively preloaded — the exact "ランチャーの HTML が起動時に開けない"
+ * report), hydrate the asset on demand via the registered hydrator, showing
+ * a brief placeholder, then write the real document. Closes the window if
+ * the entry is not an openable HTML attachment after all.
+ */
+async function openHtmlAttachmentWindow(
+  win: Window | null,
+  lid: string,
+  dispatcher: Dispatcher,
+): Promise<void> {
+  let resolved = resolveAttachmentData(lid, dispatcher);
+
+  if (!resolved && assetHydrator) {
+    // resolveAttachmentData already recorded the miss. Drive the
+    // working-set to load just this entry's asset inline, then retry.
+    const entry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+    const att = entry && entry.archetype === 'attachment' ? parseAttachmentBody(entry.body) : null;
+    if (att?.asset_key) {
+      if (win) {
+        win.document.open();
+        win.document.write(
+          '<!doctype html><meta charset="utf-8"><title>Loading…</title>'
+          + '<body style="font-family:system-ui;margin:0;padding:2rem;color:#555">Loading…</body>',
+        );
+        win.document.close();
+      }
+      try {
+        await assetHydrator([att.asset_key]);
+      } catch {
+        /* hydration failed — fall through; resolved stays null below */
+      }
+      resolved = resolveAttachmentData(lid, dispatcher);
+    }
+  }
+
+  if (!resolved || classifyPreviewType(resolved.mime) !== 'html') {
+    win?.close();
+    return;
+  }
+  if (win) {
+    win.document.open();
+    win.document.write(decodeBase64ToText(resolved.data));
+    win.document.close();
+    win.focus?.(); // 新規 window を前面へ
+  }
 }
 
 function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
