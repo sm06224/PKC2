@@ -227,3 +227,44 @@ describe('renderObjectContextMenu', () => {
     expect(menu.style.top).toBe('456px');
   });
 });
+
+// #869(A): 見出し / TOC 右クリック →「この章を編集(別ウィンドウ)」。
+describe('#869(A) heading section edit item + TOC detection', () => {
+  it('detects a TOC entry (data-pkc-toc-slug) as a heading object', () => {
+    const btn = document.createElement('button');
+    btn.setAttribute('data-pkc-toc-slug', 'plan');
+    btn.textContent = 'Plan';
+    document.body.appendChild(btn);
+    const ctx = detectObjectContext(btn, null);
+    expect(ctx?.kind).toBe('heading');
+    expect(ctx?.payload.anchorId).toBe('plan');
+    expect(ctx?.payload.text).toBe('Plan');
+  });
+
+  it('adds "この章を編集" only when the hook is supplied AND a slug exists', () => {
+    const h = document.createElement('h2');
+    h.id = 'plan';
+    h.textContent = 'Plan';
+    const ctx = { kind: 'heading' as const, target: h, payload: { text: 'Plan', anchorId: 'plan' } };
+
+    // No hook → no edit item.
+    const noHook = renderObjectContextMenu(ctx, 0, 0);
+    expect(noHook.querySelector('[data-pkc-cmd-id="object.edit-heading-section"]')).toBeNull();
+
+    // Hook → edit item present, fires with (slug, text).
+    const fn = vi.fn();
+    const withHook = renderObjectContextMenu(ctx, 0, 0, { onEditHeadingSection: fn });
+    const item = withHook.querySelector<HTMLButtonElement>('[data-pkc-cmd-id="object.edit-heading-section"]');
+    expect(item).not.toBeNull();
+    item!.click();
+    expect(fn).toHaveBeenCalledWith('plan', 'Plan');
+  });
+
+  it('omits the edit item for a heading with no anchor/slug', () => {
+    const h = document.createElement('h2');
+    h.textContent = 'No anchor';
+    const ctx = { kind: 'heading' as const, target: h, payload: { text: 'No anchor', anchorId: '' } };
+    const menu = renderObjectContextMenu(ctx, 0, 0, { onEditHeadingSection: vi.fn() });
+    expect(menu.querySelector('[data-pkc-cmd-id="object.edit-heading-section"]')).toBeNull();
+  });
+});

@@ -4669,6 +4669,61 @@ export function bindActions(
    * を dispatch して focused editor を開く。章未選択(本文末尾)なら selector に
    * focus して選択を促す(全文編集は既存の ✏️ Edit が担当)。
    */
+  /**
+   * #869(A): open the chapter/section identified by a heading slug in a
+   * separate edit window. slug = rendered heading `id` / TOC
+   * `data-pkc-toc-slug` (= body-sections slug, shared makeSlugCounter).
+   * No-op when no text entry is selected or the slug doesn't resolve.
+   */
+  function openSectionEditWindowBySlug(slug: string): void {
+    const st = dispatcher.getState();
+    const entry = st.container?.entries.find((e) => e.lid === st.selectedLid);
+    if (!entry || entry.archetype !== 'text') return;
+    const idx = extractBodySections(entry.body ?? '').findIndex((s) => s.slug === slug);
+    if (idx < 0) return;
+    openSectionEditWindow(entry, idx);
+  }
+
+  /**
+   * Open section `idx` of a text entry in a separate window. Reuses the
+   * full entry-window editor on a DERIVED entry whose body is just the
+   * section text (synthetic per-section lid so multiple section windows —
+   * and a full-entry window — can coexist without colliding in the
+   * `openWindows` map). On save the parent re-extracts the section from
+   * the CURRENT body and splices the edit back via COMMIT_SECTION_EDIT
+   * (revision + title preserved). The in-pane section editor (#863) is
+   * left intact — this is an additive entry point.
+   */
+  function openSectionEditWindow(entry: Entry, idx: number): void {
+    const st = dispatcher.getState();
+    const sec = extractBodySections(entry.body ?? '')[idx];
+    if (!sec) return;
+    const derived: Entry = {
+      ...entry,
+      lid: `${entry.lid}::section-${idx}`,
+      title: `${entry.title || '(untitled)'} ▸ ${sec.text}`,
+      body: getSectionText(entry.body ?? '', sec),
+    };
+    const assetContext = buildEntryWindowAssetContext(derived, st);
+    openEntryWindow(
+      derived,
+      !!st.readonly,
+      (_saveLid, _title, body) => {
+        const cur = dispatcher.getState().container?.entries.find((e) => e.lid === entry.lid);
+        if (!cur || cur.archetype !== 'text') return;
+        const freshSec = extractBodySections(cur.body ?? '')[idx];
+        if (!freshSec) return;
+        const newBody = replaceSectionText(cur.body ?? '', freshSec, body);
+        dispatcher.dispatch({ type: 'COMMIT_SECTION_EDIT', lid: entry.lid, body: newBody });
+      },
+      !!st.lightSource,
+      assetContext,
+      (assetKey) => downloadAttachmentByAssetKey(assetKey, dispatcher),
+      undefined, // onTaskToggle: section window edits text; task-toggle mapping out of scope (v1)
+      true, // startEditing
+    );
+  }
+
   function performBeginSectionEdit(lid: string): void {
     const st = dispatcher.getState();
     if (st.readonly) return;
@@ -7217,7 +7272,16 @@ export function bindActions(
       if (obj) {
         e.preventDefault();
         dismissContextMenu();
-        const menu = renderObjectContextMenu(obj, e.clientX, e.clientY);
+        // #869(A): 「この章を編集」(別ウィンドウ)は、編集可能な text entry が
+        // 選択中のときだけ出す(About 等 非 text の見出しでは出さない)。
+        const selEntry = state.container?.entries.find((en) => en.lid === state.selectedLid);
+        const canSectionEdit = !state.readonly && selEntry?.archetype === 'text';
+        const menu = renderObjectContextMenu(
+          obj,
+          e.clientX,
+          e.clientY,
+          canSectionEdit ? { onEditHeadingSection: (slug) => openSectionEditWindowBySlug(slug) } : undefined,
+        );
         root.appendChild(menu);
         clampMenuToViewport(menu);
         return;
