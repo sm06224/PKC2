@@ -3787,6 +3787,24 @@ export function bindActions(
         handleDblClickAction(lid);
         break;
       }
+      case 'ctx-append-text': {
+        // #869(B): TEXT entry の「末尾に追記」menu ショートカット。entry を
+        // detail で選択(追記 box を描画)→ append textarea に focus + scroll。
+        // 常時表示 box は主要な inline 入力面なので据置き、menu はその focus
+        // 導線だけを足す(box 撤去は autocomplete/slash/paste/章編集を壊す)。
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+        // 同期 render 後、textarea は DOM に存在する。
+        const appendTa = root.querySelector<HTMLTextAreaElement>(
+          `[data-pkc-field="text-append-text"][data-pkc-lid="${lid}"]`,
+        );
+        if (appendTa) {
+          appendTa.scrollIntoView({ block: 'center' });
+          appendTa.focus();
+        }
+        break;
+      }
       case 'ctx-preview': {
         if (!lid) break;
         const st = dispatcher.getState();

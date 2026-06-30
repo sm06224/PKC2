@@ -11407,6 +11407,10 @@ export function renderContextMenu(
     { action: 'ctx-open-detail', label: '🔍 Open', tip: 'このエントリを Detail で開く', lid, show: !!opts.showOpen },
     // Mutating actions — gated on canEdit.
     { action: 'begin-edit', label: '✏️ Edit', tip: 'このエントリを編集', lid, show: canEdit },
+    // #869(B): TEXT entry の「末尾に追記」menu ショートカット。常時表示の追記
+    // box(= 主要な inline 入力面)は据置き、menu から開いて textarea に focus
+    // する導線だけ追加(box 撤去は inline 入力面を壊すため見送り)。
+    { action: 'ctx-append-text', label: '✍ 末尾に追記', tip: '本文末尾への追記欄を開いて入力', lid, show: canEdit && opts.archetype === 'text' },
     // γ-A5-6(user 報告「別窓を開く動線が不足」):main window から
     // entry を独立ウィンドウで開く動線。全 archetype で常時表示。
     { action: 'ctx-open-window', label: '🪟 別ウィンドウで開く', tip: 'このエントリを独立した編集ウィンドウで開く', lid, show: true },
