@@ -85,6 +85,16 @@ jobs:
         # vite 6 の build target と非互換(destructuring transform 未対応)
         # で override 不可、vite major bump は別 wave。dev 側 advisory の
         # 可視性は直後の non-blocking full audit + Dependabot で維持する。
+        #
+        # 2026-06-30 #827 で恒久対応:vite 6→8(rolldown ベース)+ tsx
+        # 4.22.4 へ bump し、`overrides.esbuild ^0.28.1` を pin。これで
+        # esbuild の HIGH advisory(上記 2 件)は build pipeline 全体から
+        # 解消(vite 8 は 0.28.1 の destructuring transform を正常に扱う)。
+        # それでも blocking gate を `--omit=dev` に留めるのは、happy-dom が
+        # 引く ws ≤8.20.1 の HIGH(GHSA-96hv-2xvq-fx4p、memory-exhaustion
+        # DoS)が残るため。ws 8.21.0 へ上げると happy-dom の WebSocket が
+        # `ws/index.js` 解決に失敗して test worker 起動が壊れる(別途対応)。
+        # いずれも dev tooling 限定で出荷物(単一 HTML)に非搭載。
         run: npm audit --audit-level=high --omit=dev
 
       - name: Full audit (informational, non-blocking)
