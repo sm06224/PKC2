@@ -7527,7 +7527,14 @@ function renderLauncherView(state: AppState): HTMLElement {
   // image/* と仮定して `image/*` ではなく `image/png` を default 仮定する。
   const resolveAppIconDataUrl = (assetKey: string): string | null => {
     const base64 = assets[assetKey];
-    if (!base64) return null;
+    if (!base64) {
+      // 段階3 (#868): icon bytes may not be resident under lazy/shallow
+      // load. Record the miss so the working-set hydrates it and the tile
+      // icon pops in on the next render. Cosmetic, but keeps the launcher
+      // consistent with the demand-fill pattern.
+      if (assetKey) noteAssetMiss(assetKey);
+      return null;
+    }
     if (base64.startsWith('data:')) return base64;
     // asset_key を持つ image attachment の MIME を逆引き
     for (const e of state.container?.entries ?? []) {

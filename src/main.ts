@@ -39,6 +39,7 @@ import {
   populateInlineAssetPreviews,
   cleanupBlobUrls,
   flashEntry,
+  registerAssetHydrator,
 } from './adapter/ui/action-binder';
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
@@ -600,6 +601,11 @@ async function boot(): Promise<void> {
   dispatcher.onState(() => {
     void workingSet.refresh();
   });
+  // #868 bug fix: let user gestures that must produce a result on the first
+  // click (open HTML app from a launcher tile of a not-currently-selected
+  // entry) hydrate the needed asset bytes inline rather than waiting for a
+  // render-driven miss-recovery cycle.
+  registerAssetHydrator((keys) => workingSet.ensure(keys));
   // 段階4 (#868): resident asset-metadata index so storage profile /
   // guardrails / orphan count / paste dedupe report on the FULL store, not
   // just the resident working-set. Memory-safe backfill + persisted index.
