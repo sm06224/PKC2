@@ -31,9 +31,23 @@ export interface ObjectContext {
   readonly payload: {
     readonly text?: string;     // selection / heading
     readonly url?: string;      // link / image
-    readonly anchorId?: string; // heading の id 属性
+    readonly anchorId?: string; // heading の id 属性 / TOC slug
     readonly altText?: string;  // image
   };
+}
+
+/**
+ * #869(A): adapter-supplied hooks for object-menu items that need app
+ * state / windowing (which this pure menu builder cannot reach). Passed
+ * by `action-binder` into `renderObjectContextMenu`.
+ */
+export interface ObjectMenuHooks {
+  /**
+   * Open the chapter/section identified by a heading slug (= rendered
+   * heading `id` / TOC `data-pkc-toc-slug`) in a separate edit window.
+   * When provided, a「この章を編集」item is added to the heading menu.
+   */
+  readonly onEditHeadingSection?: (anchorId: string, headingText: string) => void;
 }
 
 /**
@@ -84,7 +98,21 @@ export function detectObjectContext(target: Element | null, selection: Selection
       };
     }
   }
-  // 4. heading(rendered markdown body の見出しのみ ── `<h1>`〜`<h6>`)
+  // 4. TOC entry(#869A): 目次の見出しリンクを右クリック → heading object
+  //    として扱う(別ウィンドウ章編集の入口)。slug は rendered 見出しの
+  //    `id` と一致(makeSlugCounter 共有)。
+  const tocLink = target.closest<HTMLElement>('[data-pkc-toc-slug]');
+  if (tocLink) {
+    const slug = tocLink.getAttribute('data-pkc-toc-slug') ?? '';
+    if (slug) {
+      return {
+        kind: 'heading',
+        target: tocLink,
+        payload: { text: tocLink.textContent?.trim() ?? '', anchorId: slug },
+      };
+    }
+  }
+  // 5. heading(rendered markdown body の見出しのみ ── `<h1>`〜`<h6>`)
   const heading = target.closest<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6');
   if (heading) {
     return {
@@ -104,7 +132,12 @@ export function detectObjectContext(target: Element | null, selection: Selection
  * 既存 `.pkc-context-menu` CSS を再利用、`data-pkc-context-object` attribute
  * で kind を露出(test / debug 用)。
  */
-export function renderObjectContextMenu(ctx: ObjectContext, x: number, y: number): HTMLElement {
+export function renderObjectContextMenu(
+  ctx: ObjectContext,
+  x: number,
+  y: number,
+  hooks?: ObjectMenuHooks,
+): HTMLElement {
   const menu = document.createElement('div');
   menu.className = 'pkc-context-menu';
   menu.setAttribute('data-pkc-region', 'context-menu');
@@ -114,7 +147,7 @@ export function renderObjectContextMenu(ctx: ObjectContext, x: number, y: number
   menu.style.top = `${y}px`;
   menu.style.zIndex = '999';
 
-  const items = itemsForObject(ctx);
+  const items = itemsForObject(ctx, hooks);
   for (const item of items) {
     if (item.separator) {
       const sep = document.createElement('div');
@@ -143,7 +176,7 @@ interface ObjectMenuItem {
   readonly separator?: boolean;
 }
 
-function itemsForObject(ctx: ObjectContext): ObjectMenuItem[] {
+function itemsForObject(ctx: ObjectContext, hooks?: ObjectMenuHooks): ObjectMenuItem[] {
   switch (ctx.kind) {
     case 'selection': {
       const text = ctx.payload.text ?? '';
@@ -213,6 +246,15 @@ function itemsForObject(ctx: ObjectContext): ObjectMenuItem[] {
       const text = ctx.payload.text ?? '';
       const anchor = ctx.payload.anchorId ?? '';
       return [
+        // #869(A): 別ウィンドウで当該章だけ編集(adapter が hook を供給した
+        // 場合のみ + slug が解決できる場合のみ)。menu 先頭に置く。
+        ...(anchor && hooks?.onEditHeadingSection
+          ? [{
+              id: 'object.edit-heading-section',
+              label: '✎ この章を編集(別ウィンドウ)',
+              handler: () => hooks.onEditHeadingSection!(anchor, text),
+            }]
+          : []),
         {
           id: 'object.copy-heading-text',
           label: '📋 見出しテキストをコピー',
