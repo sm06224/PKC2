@@ -106,7 +106,9 @@ describe('「拡張へ送る」 sub-menu', () => {
     const host = fakeHost();
     mount(host);
     const menu = rightClickSidebarEntry('e1');
-    expect(menu.querySelector('[data-pkc-region="context-menu-send-extension"]')).not.toBeNull();
+    // #869 (C): the send targets now live under a collapsible "送る ▸"
+    // toggle; the targets are in the DOM (queryable) inside a hidden group.
+    expect(menu.querySelector('[data-pkc-send-toggle]')).not.toBeNull();
     const btn = menu.querySelector<HTMLElement>(
       '[data-pkc-action="ctx-send-to-extension"][data-pkc-ext-lid="ext1"]',
     );
@@ -116,10 +118,29 @@ describe('「拡張へ送る」 sub-menu', () => {
     expect(host.sendToExtension).toHaveBeenCalledWith('ext1', 'e1');
   });
 
+  it('#869(C): 「送る ▸」 toggle で送り先グループを展開/折りたたみ(メニューは閉じない)', () => {
+    bindExtension('ext1');
+    mount(fakeHost());
+    const menu = rightClickSidebarEntry('e1');
+    const toggle = menu.querySelector<HTMLElement>('[data-pkc-send-toggle]');
+    const group = menu.querySelector<HTMLElement>('[data-pkc-region="context-menu-send-group"]');
+    expect(toggle).not.toBeNull();
+    expect(group).not.toBeNull();
+    expect(group!.hidden).toBe(true); // collapsed by default → top-level に出ない
+    click(toggle!);
+    expect(group!.hidden).toBe(false); // 展開
+    expect(toggle!.getAttribute('aria-expanded')).toBe('true');
+    // toggle はメニューを閉じない
+    expect(root.querySelector('[data-pkc-region="context-menu"]')).not.toBeNull();
+    click(toggle!);
+    expect(group!.hidden).toBe(true); // 再折りたたみ
+  });
+
   it('紐付けゼロなら send section は出ない', () => {
     mount(fakeHost());
     const menu = rightClickSidebarEntry('e1');
-    expect(menu.querySelector('[data-pkc-region="context-menu-send-extension"]')).toBeNull();
+    expect(menu.querySelector('[data-pkc-send-toggle]')).toBeNull();
+    expect(menu.querySelector('[data-pkc-region="context-menu-send-group"]')).toBeNull();
   });
 
   it('自分自身は宛先に出ない(拡張 entry を別の拡張へは送れる)', () => {

@@ -89,9 +89,16 @@ test('parity: 右クリック「拡張へ送る」→ popup が deliver を受�
 
   const menu = page.locator('[data-pkc-region="context-menu"]');
   await expect(menu).toBeVisible();
-  await expect(menu.locator('[data-pkc-region="context-menu-send-extension"]')).toBeVisible();
+  // #869 (C): send targets are collapsed under a "送る ▸" toggle. Click it
+  // (real mouse) to reveal the group, then the send button is visible.
+  const sendToggle = menu.locator('[data-pkc-send-toggle]');
+  await expect(sendToggle).toBeVisible();
   const sendBtn = menu.locator('[data-pkc-action="ctx-send-to-extension"][data-pkc-ext-lid="ext1"]');
-  await expect(sendBtn).toBeVisible();
+  await expect(sendBtn).toBeHidden(); // collapsed by default
+  const togBox = await sendToggle.boundingBox();
+  if (!togBox) throw new Error('send toggle bbox missing');
+  await page.mouse.click(togBox.x + togBox.width / 2, togBox.y + togBox.height / 2);
+  await expect(sendBtn).toBeVisible(); // expanded; menu stays open
   await expect(sendBtn).toContainText('Mini Ext');
   await page.screenshot({ path: 'test-results/send-to-extension-menu.png' });
 
