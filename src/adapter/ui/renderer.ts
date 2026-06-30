@@ -11574,10 +11574,23 @@ export function renderContextMenu(
   if (opts.sendTargets && opts.sendTargets.length > 0) {
     const sep = createElement('div', 'pkc-context-menu-separator');
     menu.appendChild(sep);
-    const label = createElement('div', 'pkc-context-menu-label');
-    label.setAttribute('data-pkc-region', 'context-menu-send-extension');
-    label.textContent = '🧩 拡張へ送る';
-    menu.appendChild(label);
+
+    // #869 (C): collapse the per-extension send rows (previously 6–9
+    // top-level slots) into a single "送る ▸" toggle that expands the
+    // targets inline. Keeps the top-level menu short; the targets live in
+    // a `hidden` group revealed on click (toggle handled in action-binder
+    // so it expands instead of dismissing the menu). The send actions
+    // themselves are unchanged.
+    const toggle = createElement('button', 'pkc-context-menu-item pkc-context-menu-send-toggle');
+    toggle.setAttribute('data-pkc-send-toggle', '1');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('title', '紐付け済み拡張のウィンドウへ送ります');
+    toggle.textContent = '🧩 送る ▸';
+    menu.appendChild(toggle);
+
+    const group = createElement('div', 'pkc-context-menu-send-group');
+    group.setAttribute('data-pkc-region', 'context-menu-send-group');
+    group.hidden = true;
 
     const ordered = [...opts.sendTargets].sort(
       (a, b) => Number(!!b.isDefault) - Number(!!a.isDefault),
@@ -11596,7 +11609,7 @@ export function renderContextMenu(
       btn.textContent = t.isDefault
         ? `  ★ ${t.title || '(untitled)'}（既定）`
         : `  → ${t.title || '(untitled)'}`;
-      menu.appendChild(btn);
+      group.appendChild(btn);
     }
     for (const t of ordered) {
       if (t.isDefault) continue;
@@ -11609,8 +11622,9 @@ export function renderContextMenu(
         'この種類（mime / archetype）の既定送り先として記憶してから送ります。設定はメニュー（⚙）の Extensions で取消できます',
       );
       btn.textContent = `  📌 ${t.title || '(untitled)'} を既定にして送る`;
-      menu.appendChild(btn);
+      group.appendChild(btn);
     }
+    menu.appendChild(group);
   }
 
   return menu;

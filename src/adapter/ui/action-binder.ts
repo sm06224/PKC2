@@ -7517,6 +7517,21 @@ export function bindActions(
     if (!menu) return;
     // If clicking inside the menu, let the action handler fire first
     if (menu.contains(e.target as Node)) {
+      // #869 (C): the "送る ▸" toggle expands the send-target group inline
+      // instead of acting + dismissing. It carries no data-pkc-action, so
+      // the generic dispatcher ignores it; we toggle the group here and
+      // keep the menu open.
+      const sendToggle = (e.target as HTMLElement).closest?.('[data-pkc-send-toggle]');
+      if (sendToggle && menu.contains(sendToggle)) {
+        const group = menu.querySelector<HTMLElement>('[data-pkc-region="context-menu-send-group"]');
+        if (group) {
+          const nowHidden = !group.hidden;
+          group.hidden = nowHidden;
+          sendToggle.setAttribute('aria-expanded', String(!nowHidden));
+          sendToggle.textContent = nowHidden ? '🧩 送る ▸' : '🧩 送る ▾';
+        }
+        return; // keep the menu open
+      }
       // Dismiss after action fires
       requestAnimationFrame(() => dismissContextMenu());
       return;
