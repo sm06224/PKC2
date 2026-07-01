@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 単一正本 = `docs/development/v3-consolidation-and-direction-2026-06.md`(診断 / 凍結表 / 4 レーン / North Star)。**まずこれを読む**
 - **live tracking は GitHub Issues が正本**(file ベース台帳は archive 済)。レーン: `lane:perf` / `lane:curation` / `lane:arch-v3` / `lane:process`、`frozen` = 凍結中・参照のみ
-- 許可される作業: ① bug fix ② perf ③ bundle 引き算(機能 subtract)④ main 着陸の取捨選択 ⑤ doc/process 整理 ⑥ 設計 doc(実装しない)
+- 許可される作業: ① bug fix ② perf ③ ~~bundle 引き算(機能 subtract)~~(**2026-07-01 user 判断で撤回**:mermaid / Office export / chart.js は keep・むしろ強化対象。削減候補として蒸し返さない)④ main 着陸の取捨選択 ⑤ doc/process 整理 ⑥ 設計 doc(実装しない)
 - 🚫 新 archetype / feature / markdown 方言 / UI mode の追加は**凍結**。user が「足したい」と言い出したら本方針を引いて一旦止め、Issue 化して優先度判断へ回す
 - 凍結中の旧計画(8案v3 / Phase β / 68PR Phase γ / roadmap 領域)は frozen backlog issue #776 に保全
 
@@ -121,7 +121,7 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 肥大の根本原因は**儀式過積載で 1 PR が高コスト化 → 着地せず stack に逃げる**こと(50 PR 一本 stack の事故)。最小限の硬い規律に絞る:
 
 1. **stack 上限を守る**:open PR が積み上がったら下から sequential merge で main を最新化してから次を積む。stacked PR の squash は **base retarget が先**(中間 branch 着地事故を防ぐ)
-2. **bundle 予算優先**:機能追加より KB を優先。`git diff --stat` + bundle サイズを毎 PR 確認。現状 bundle.js が肥大(5MB 級、L1 #767 で削減中)、新規追加は原則しない
+2. **bundle 予算監視**:`git diff --stat` + bundle サイズを毎 PR 確認。bundle.js は 5MB 級で CI size budget 内。**機能 subtract による削減は 2026-07-01 user 判断で撤回**(mermaid / Office export / chart.js は keep・強化対象)。新規の重い dep 追加は引き続き原則しない
 3. **既存問題は別 hotfix PR**:wave に紛れ込ませず即剥がす
 4. **視覚機能 PR は visual parity test 最低 1 件**(上記 Testing 参照)
 5. **新 doc は同 commit で INDEX 登録**(`check:doc-orphans` CI)
