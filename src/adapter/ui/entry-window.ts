@@ -3304,13 +3304,164 @@ if (useSplitEditor) {
     var n = parseInt(best.getAttribute('data-pkc-source-line'), 10);
     return isFinite(n) ? n : null;
   }
-  function pkcEnsureRectInBand(scroll, rect) {
-    var r = scroll.getBoundingClientRect();
-    var bandTop = r.top + r.height * 0.20;
-    var bandBot = r.top + r.height * 0.55;
-    if (rect.top >= bandTop && rect.bottom <= bandBot) return;
-    var delta = rect.top - bandTop;
-    scroll.scrollBy({ top: delta, behavior: 'auto' });
+  /* ── 2026-07 rebuild port(split-sync-rebuild-2026-07.md)──────
+   * center pane と同じ anchor-pair piecewise-linear scroll 写像を
+   * inline ES5 で移植。comfort band(旧 pkcEnsureRectInBand)は撤去。
+   *   - preview 各アンカーの実測 Y × 同ソース行の textarea 実測 Y
+   *     (mirror-div、soft-wrap 正確)の単調ペア列 + 両端固定
+   *   - editor⇄preview 双方向の連続 scroll 追従(rAF)
+   *   - 値エコー filter(タイマー無し)+ owner
+   *   - caret 移動は caret と同じ viewport 高さに決定的整列 */
+  var pkcMapCache = null;
+  var pkcMapBuiltAt = 0;
+  var pkcExpTa = null, pkcExpPv = null;
+  var pkcOwner = null;
+  var pkcTaRaf = 0, pkcPvRaf = 0;
+
+  function pkcMeasureEditorLineTops(ta, lines) {
+    var out = {};
+    if (!lines.length) return out;
+    var cs = window.getComputedStyle(ta);
+    var mirror = document.createElement('div');
+    mirror.setAttribute('aria-hidden', 'true');
+    var props = ['boxSizing','width','borderTopWidth','borderRightWidth',
+      'borderBottomWidth','borderLeftWidth','borderStyle','paddingTop',
+      'paddingRight','paddingBottom','paddingLeft','fontStyle','fontWeight',
+      'fontSize','lineHeight','fontFamily','letterSpacing','tabSize',
+      'whiteSpace','wordWrap','overflowWrap'];
+    mirror.style.cssText = 'position:absolute;visibility:hidden;top:0;left:-9999px;height:auto;overflow:hidden';
+    for (var i = 0; i < props.length; i++) {
+      try { mirror.style[props[i]] = cs[props[i]]; } catch (_e) { /* readonly */ }
+    }
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.wordWrap = 'break-word';
+    var gutter = Math.max(0, ta.offsetWidth - ta.clientWidth
+      - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0));
+    if (gutter > 0) {
+      var w = parseFloat(mirror.style.width) || 0;
+      if (w > 0) mirror.style.width = (w - gutter) + 'px';
+    }
+    var wanted = {};
+    for (var j = 0; j < lines.length; j++) wanted[lines[j]] = true;
+    var src = ta.value.split('\\n');
+    var markers = [];
+    for (var k = 0; k < src.length; k++) {
+      if (wanted[k]) {
+        var mk = document.createElement('span');
+        mk.textContent = '\\u200b';
+        mk.setAttribute('data-l', String(k));
+        mirror.appendChild(mk);
+        markers.push(mk);
+      }
+      mirror.appendChild(document.createTextNode(
+        k < src.length - 1 ? src[k] + '\\n' : src[k]));
+    }
+    document.body.appendChild(mirror);
+    var mTop = mirror.getBoundingClientRect().top + (parseFloat(cs.borderTopWidth) || 0);
+    var lastY = 0;
+    for (var m = 0; m < markers.length; m++) {
+      var y = markers[m].getBoundingClientRect().top - mTop;
+      out[parseInt(markers[m].getAttribute('data-l'), 10)] = y;
+      if (y > lastY) lastY = y;
+    }
+    for (var lkey in wanted) {
+      if (!out.hasOwnProperty(lkey)) out[lkey] = lastY;
+    }
+    document.body.removeChild(mirror);
+    return out;
+  }
+
+  function pkcMonotonic(raw) {
+    raw.sort(function (a, b) { return a.e - b.e; });
+    var outArr = [];
+    for (var i = 0; i < raw.length; i++) {
+      var p = raw[i];
+      if (!isFinite(p.e) || !isFinite(p.p)) continue;
+      var last = outArr[outArr.length - 1];
+      if (last && (p.e <= last.e || p.p <= last.p)) continue;
+      outArr.push(p);
+    }
+    return outArr;
+  }
+  function pkcBuildMapping(anchors, eMax, pMax) {
+    eMax = Math.max(0, eMax); pMax = Math.max(0, pMax);
+    var interior = pkcMonotonic(anchors.slice()).filter(function (p) {
+      return p.e > 0 && p.e < eMax && p.p > 0 && p.p < pMax;
+    });
+    return pkcMonotonic([{ e: 0, p: 0 }].concat(interior, [{ e: eMax, p: pMax }]));
+  }
+  function pkcInterp(pairs, x, fromKey, toKey) {
+    if (!pairs.length) return 0;
+    var first = pairs[0], last = pairs[pairs.length - 1];
+    if (x <= first[fromKey]) return first[toKey];
+    if (x >= last[fromKey]) return last[toKey];
+    var lo = 0, hi = pairs.length - 1;
+    while (lo + 1 < hi) {
+      var mid = (lo + hi) >> 1;
+      if (pairs[mid][fromKey] <= x) lo = mid; else hi = mid;
+    }
+    var a = pairs[lo], b = pairs[hi];
+    var span = b[fromKey] - a[fromKey];
+    if (span <= 0) return a[toKey];
+    return a[toKey] + (x - a[fromKey]) / span * (b[toKey] - a[toKey]);
+  }
+
+  function pkcEnsureSyncMap(ta, pv) {
+    var fresh = pkcMapCache
+      && pkcMapCache.value === ta.value
+      && pkcMapCache.tw === ta.clientWidth && pkcMapCache.th === ta.clientHeight
+      && pkcMapCache.tsh === ta.scrollHeight
+      && pkcMapCache.pw === pv.clientWidth && pkcMapCache.ph === pv.clientHeight
+      && pkcMapCache.psh === pv.scrollHeight;
+    if (fresh) return pkcMapCache;
+    var now = Date.now();
+    /* 連続入力バーストは直近表で凌ぎ、150ms 静止後に再構築 */
+    if (pkcMapCache && now - pkcMapBuiltAt < 150) return pkcMapCache;
+    var prect = pv.getBoundingClientRect();
+    var basePv = prect.top + pv.clientTop - pv.scrollTop;
+    var nodes = pv.querySelectorAll('[data-pkc-source-line]');
+    var seen = {};
+    var lines = [];
+    var pvY = {};
+    for (var i = 0; i < nodes.length; i++) {
+      var n = parseInt(nodes[i].getAttribute('data-pkc-source-line'), 10);
+      if (!isFinite(n) || seen[n]) continue;
+      seen[n] = true;
+      pvY[n] = nodes[i].getBoundingClientRect().top - basePv;
+      lines.push(n);
+    }
+    var tops = pkcMeasureEditorLineTops(ta, lines);
+    var anchors = [];
+    for (var j = 0; j < lines.length; j++) {
+      var ln = lines[j];
+      if (tops.hasOwnProperty(ln)) anchors.push({ e: tops[ln], p: pvY[ln] });
+    }
+    var eMax = Math.max(0, ta.scrollHeight - ta.clientHeight);
+    var pMax = Math.max(0, pv.scrollHeight - pv.clientHeight);
+    pkcMapCache = {
+      value: ta.value,
+      tw: ta.clientWidth, th: ta.clientHeight, tsh: ta.scrollHeight,
+      pw: pv.clientWidth, ph: pv.clientHeight, psh: pv.scrollHeight,
+      scroll: pkcBuildMapping(anchors, eMax, pMax),
+      content: pkcBuildMapping(anchors, ta.scrollHeight, pv.scrollHeight),
+    };
+    pkcMapBuiltAt = now;
+    return pkcMapCache;
+  }
+
+  /* caret 整列:caret 行の写像位置を editor と同じ viewport 高さへ。 */
+  function pkcAlignPreviewToCaret(ta, preview, line) {
+    var m = pkcEnsureSyncMap(ta, preview);
+    var tops = pkcMeasureEditorLineTops(ta, [line]);
+    var caretY = tops.hasOwnProperty(line) ? tops[line] : 0;
+    var offset = caretY - ta.scrollTop;
+    var mapped = pkcInterp(m.content, caretY, 'e', 'p');
+    var pMax = Math.max(0, preview.scrollHeight - preview.clientHeight);
+    var target = Math.min(pMax, Math.max(0, Math.round(mapped - offset)));
+    if (Math.abs(preview.scrollTop - target) > 1) {
+      preview.scrollTop = target;
+      pkcExpPv = preview.scrollTop;
+    }
   }
   function pkcClearActiveMarker() {
     var marked = document.querySelectorAll('[' + ACTIVE_ATTR + ']');
@@ -3328,7 +3479,10 @@ if (useSplitEditor) {
     pkcClearActiveMarker();
     if (!target) return;
     target.setAttribute(ACTIVE_ATTR, 'true');
-    pkcEnsureRectInBand(preview, target.getBoundingClientRect());
+    /* 2026-07 rebuild: caret 操作は editor が駆動側。band の代わりに
+     * caret と同じ viewport 高さへ決定的整列。 */
+    pkcOwner = 'editor';
+    pkcAlignPreviewToCaret(ta, preview, line);
   }
   document.addEventListener('selectionchange', function() {
     if (!useSplitEditor || !pkcSyncEnabled()) return;
@@ -3360,6 +3514,64 @@ if (useSplitEditor) {
       pkcRefreshSyncMarker();
     });
   }
+
+  /* ── 2026-07 rebuild: 双方向の連続 scroll 追従(center pane parity)──
+   * editor wheel → preview 追従 / preview wheel → editor 追従。
+   * 自分が設定した scrollTop の跳ね返り event は値一致(±1px)で無視
+   * (echo filter、タイマー無し)。要素はイベント時に解決する
+   * (mode 切替で DOM が組み替わっても安全)。 */
+  document.addEventListener('scroll', function (ev) {
+    if (!useSplitEditor || !pkcSyncEnabled()) return;
+    var t = ev.target;
+    if (!t || !t.id) return;
+    if (t.id === 'body-edit') {
+      var ta = t;
+      var pv = document.getElementById('body-preview');
+      if (!pv) return;
+      var top = ta.scrollTop;
+      if (pkcExpTa !== null && Math.abs(top - pkcExpTa) <= 1) { pkcExpTa = null; return; }
+      pkcExpTa = null;
+      pkcOwner = 'editor';
+      if (pkcPvRaf) return;
+      pkcPvRaf = requestAnimationFrame(function () {
+        pkcPvRaf = 0;
+        if (pkcOwner !== 'editor') return;
+        var ta2 = document.getElementById('body-edit');
+        var pv2 = document.getElementById('body-preview');
+        if (!ta2 || !pv2) return;
+        var m = pkcEnsureSyncMap(ta2, pv2);
+        var next = Math.round(pkcInterp(m.scroll, ta2.scrollTop, 'e', 'p'));
+        if (Math.abs(pv2.scrollTop - next) > 1) {
+          pv2.scrollTop = next;
+          pkcExpPv = pv2.scrollTop;
+        }
+      });
+      return;
+    }
+    if (t.id === 'body-preview') {
+      var pvEl = t;
+      var taEl = document.getElementById('body-edit');
+      if (!taEl) return;
+      var ptop = pvEl.scrollTop;
+      if (pkcExpPv !== null && Math.abs(ptop - pkcExpPv) <= 1) { pkcExpPv = null; return; }
+      pkcExpPv = null;
+      pkcOwner = 'preview';
+      if (pkcTaRaf) return;
+      pkcTaRaf = requestAnimationFrame(function () {
+        pkcTaRaf = 0;
+        if (pkcOwner !== 'preview') return;
+        var ta2 = document.getElementById('body-edit');
+        var pv2 = document.getElementById('body-preview');
+        if (!ta2 || !pv2) return;
+        var m = pkcEnsureSyncMap(ta2, pv2);
+        var next = Math.round(pkcInterp(m.scroll, pv2.scrollTop, 'p', 'e'));
+        if (Math.abs(ta2.scrollTop - next) > 1) {
+          ta2.scrollTop = next;
+          pkcExpTa = ta2.scrollTop;
+        }
+      });
+    }
+  }, true);
 
   /* PR-XX2 (2026-05-07、user 訂正指示):⇄ toggle button の click
    * handler + 初期 visual state。center pane と同じ localStorage key

@@ -78,9 +78,18 @@ scroll と違い値エコー判定が使えないため。
   リモート開発環境(browser rev 1194)で main でも fail する環境固有
   ケース(CI Tier-A 対象外)。
 
-## 5. 残課題(スコープ外・別 PR)
+## 5. entry-window popup への移植(2026-07-03 完了)
 
-- **entry-window popup の手書きクローン**(`entry-window.ts` 内 inline JS)
-  は旧方式(簡易 band なし追従)のまま。写像方式の移植は別 PR
-  (document.write 環境のため script 文字列注入の設計が要る)。
+popup は document.write + inline `<script>` で ES import 不能のため、
+写像機構(mirror 実測 / 単調ペア / 補間 / echo filter / owner / rAF 追従)
+を **inline ES5 で同 file 内に移植**(`entry-window.ts` の split sync 節)。
+`pkcEnsureRectInBand`(band)は撤去し、caret は整列方式へ。検証は
+`tests/smoke/entry-window-split-sync-parity.spec.ts`(P1 editor wheel
+連続追従+逆方向即効 / P2 preview wheel → editor 追従(popup 初機能)/
+P3 caret 移動で対応 block 可視)。
+
+## 6. 残課題
+
 - 行内(inline)粒度の対応は引き続き IR(領域 10-3、frozen #776)前提。
+- center pane と popup の写像実装は意図的に二重(popup の自己完結
+  doctrine)。写像ロジックに手を入れる時は両方を更新すること。
