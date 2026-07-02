@@ -273,11 +273,27 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Page scroll lock(2026-07 user 報告)──────────────────────────
+   「スクロールバーはスクロールするのにコンテンツがスクロールしない /
+   全体スクロールと内部スクロールが二重になる」の根本対応。従来は
+   html/body に高さ・overflow 指定が無く #pkc-root も min-height(伸長
+   可)だったため、シェルが 100vh を超えた瞬間(mermaid・画像 pop-in 等
+   の後伸びでも)body に外側スクロールバーが出た。実コンテンツは内側
+   スクローラー(.pkc-center-content 等)にあるので、外側バーを掴んでも
+   中身は動かない。ページ側を完全に固定し、スクロールは常に内部ペイン
+   だけに限定する。child window(entry-window / viewer)は about:blank
+   + inline <style> で bundle.css を読まないため影響しない。 */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 #pkc-root {
   font-family: var(--font-sans);
   color: var(--c-fg);
   background: var(--c-bg);
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   font-size: 13px;
   line-height: 1.4;
 }
@@ -499,10 +515,16 @@
 }
 
 /* ── Shell layout ── */
+/* height は 100vh でなく 100%(= body 100% = viewport)。100vh は mobile
+   の URL バー伸縮でずれ、かつ page scroll lock(上記)と競合する。
+   overflow: hidden は .pkc-main の外に append される臨時パネル(import
+   確認 / batch preview 等)が 100% を超えた場合の保険 — その場合
+   flex:1 min-height:0 の .pkc-main が縮んで吸収し、ページは伸びない。 */
 .pkc-shell {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  overflow: hidden;
 }
 
 /* ── Header ── */
@@ -8637,6 +8659,11 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   flex-direction: column;
   gap: 0;
   flex: 1;
+  /* min-height: 0 が無いと flex item は content min-height 以下に縮めず
+     overflow: auto が効かない(§base.css の既知 gotcha)。calendar が
+     .pkc-center を押し広げてページを伸ばす → 外側スクロールバー発生の
+     一因だった(2026-07 user 報告)。 */
+  min-height: 0;
   overflow: auto;
   padding: var(--space-3);
 }
@@ -11667,6 +11694,8 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-5);
+  /* .pkc-calendar と同じ min-height: 0 gotcha 対応(2026-07)。 */
+  min-height: 0;
   overflow: auto;
 }
 .pkc-launcher-view-header {

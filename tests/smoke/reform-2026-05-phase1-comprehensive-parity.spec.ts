@@ -357,17 +357,23 @@ test.describe('reform-2026-05 Phase 1 comprehensive parity', () => {
     console.log('after reset scrollTop:', afterReset);
     expect(afterReset).toBe(0);
 
-    // body / html に scroll lock 残っていないことを check
-    const bodyOverflow = await page.evaluate(() => ({
-      bodyOverflow: getComputedStyle(document.body).overflow,
-      bodyOverflowY: getComputedStyle(document.body).overflowY,
-      htmlOverflow: getComputedStyle(document.documentElement).overflow,
-      htmlOverflowY: getComputedStyle(document.documentElement).overflowY,
-    }));
-    console.log('body/html overflow:', JSON.stringify(bodyOverflow, null, 2));
-    // overflow:hidden が残っている場合 scroll lock の典型
-    expect(bodyOverflow.bodyOverflow).not.toBe('hidden');
-    expect(bodyOverflow.htmlOverflow).not.toBe('hidden');
+    // 2026-07 page-scroll-lock 対応で仕様変更:html/body の
+    // overflow: hidden は「scroll lock バグの残骸」ではなく **意図した
+    // 恒久状態** になった(親ページは常に固定、スクロールは内部ペイン
+    // のみ。page-scroll-lock-parity.spec.ts 参照)。本 test の目的で
+    // ある「center pane のスクロールが機能する」は上の random scroll +
+    // reset assert が既に検証している。ここでは逆に、ページ側が
+    // 固定されている(window が一切スクロールしない)ことを確認する。
+    const pageLock = await page.evaluate(() => {
+      window.scrollTo(0, 500);
+      return {
+        bodyOverflow: getComputedStyle(document.body).overflow,
+        scrollY: window.scrollY,
+      };
+    });
+    console.log('page lock:', JSON.stringify(pageLock, null, 2));
+    expect(pageLock.bodyOverflow).toBe('hidden');
+    expect(pageLock.scrollY).toBe(0);
   });
 
   test('random scroll:Viewer popup でも scroll lock 起きない', async ({ page, context }) => {

@@ -494,11 +494,20 @@ test.describe('reform-2026-05 hotfix 5 件 + AI-formal/human-simple 複合 visua
     const reset = await scrollableHandle.evaluate((el) => (el as HTMLElement).scrollTop);
     expect(reset).toBe(0);
 
-    const overflow = await page.evaluate(() => ({
-      bodyOverflow: getComputedStyle(document.body).overflow,
-      htmlOverflow: getComputedStyle(document.documentElement).overflow,
-    }));
-    expect(overflow.bodyOverflow).not.toBe('hidden');
-    expect(overflow.htmlOverflow).not.toBe('hidden');
+    // 2026-07 page-scroll-lock 対応で仕様変更:html/body の overflow:
+    // hidden は「scroll lock バグの残骸」ではなく**意図した恒久状態**
+    // (親ページ固定・スクロールは内部ペインのみ。page-scroll-lock-
+    // parity.spec.ts 参照)。本 test の目的「center pane スクロールが
+    // 機能する」は上の random scroll + reset assert が検証済み。逆に
+    // ページ側が固定されていることを確認する。
+    const pageLock = await page.evaluate(() => {
+      window.scrollTo(0, 500);
+      return {
+        bodyOverflow: getComputedStyle(document.body).overflow,
+        scrollY: window.scrollY,
+      };
+    });
+    expect(pageLock.bodyOverflow).toBe('hidden');
+    expect(pageLock.scrollY).toBe(0);
   });
 });
