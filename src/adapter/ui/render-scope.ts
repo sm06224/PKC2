@@ -38,6 +38,12 @@
  *                        (status toggle): swap just that ONE sidebar row +
  *                        center + meta, leaving the other N-1 rows untouched
  *                        (L1 #693 PR-2). See `replaceEntryBodyRegions`.
+ *   - `'assets-only'`    only `container.assets` changed identity (the
+ *                        working-set republishing resident asset bytes via
+ *                        SET_WORKING_SET_ASSETS, #868 段階3). Only the center
+ *                        + meta panes consume asset bytes; the O(N) sidebar
+ *                        tree / header / overlays never read them. See
+ *                        `replaceAssetRegions`.
  *   - `'full'`           current full-shell rebuild
  */
 
@@ -50,7 +56,36 @@ export type RenderScope =
   | 'sidebar-only'
   | 'selection'
   | 'entry-body'
+  | 'assets-only'
   | 'full';
+
+/**
+ * Detect an `'assets-only'`-eligible container delta (#868 段階3 遅延 asset).
+ *
+ * `SET_WORKING_SET_ASSETS` clones the container with ONLY `assets` swapped
+ * (`{ ...container, assets }` — entries / relations / revisions / meta keep
+ * identity). Under lazy loading this dispatch lands asynchronously tens–
+ * hundreds of ms AFTER the first paint of an open/save, and classifying it
+ * `'full'` produced a visible whole-shell wipe+rebuild flash (user report
+ * 2026-07「編集保存後や開いた直後にレンダリングが遅れる」).
+ *
+ * The check is generic over the container's keys so a future Container
+ * field cannot be silently absorbed: every key except `assets` must keep
+ * reference identity.
+ */
+export function isAssetsOnlyContainerDelta(prev: AppState, state: AppState): boolean {
+  const pc = prev.container;
+  const nc = state.container;
+  if (!pc || !nc || pc === nc) return false;
+  if (pc.assets === nc.assets) return false;
+  const keys = new Set([...Object.keys(pc), ...Object.keys(nc)]);
+  for (const k of keys) {
+    if (k === 'assets') continue;
+    if ((pc as unknown as Record<string, unknown>)[k]
+      !== (nc as unknown as Record<string, unknown>)[k]) return false;
+  }
+  return true;
+}
 
 /**
  * Detect a `'entry-body'`-eligible container delta (L1 #693 PR-2).
@@ -139,13 +174,16 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // review (the default is 'full' until it's added to one of the
   // narrower buckets below).
   if (state.phase !== prev.phase) return 'full';
-  // `container` is an immediate-full trigger EXCEPT for the narrow
-  // `'entry-body'` case (a single todo body-only mutation), which is
-  // resolved in the combination section below. Any other container change
-  // still falls to 'full' here.
-  const entryBodyChangeLid =
-    state.container !== prev.container ? findEntryBodyChangeLid(prev, state) : null;
-  if (state.container !== prev.container && entryBodyChangeLid === null) return 'full';
+  // `container` is an immediate-full trigger EXCEPT for two narrow cases
+  // resolved in the combination section below: `'entry-body'` (a single
+  // todo body-only mutation) and `'assets-only'` (working-set republish of
+  // resident asset bytes, #868). Any other container change still falls to
+  // 'full' here.
+  const containerChanged = state.container !== prev.container;
+  const entryBodyChangeLid = containerChanged ? findEntryBodyChangeLid(prev, state) : null;
+  const assetsOnlyChange =
+    containerChanged && entryBodyChangeLid === null && isAssetsOnlyContainerDelta(prev, state);
+  if (containerChanged && entryBodyChangeLid === null && !assetsOnlyChange) return 'full';
   // `selectedLid` is intentionally NOT an immediate-full trigger anymore
   // (L1 #693). It is resolved in the combination section below: when ONLY
   // selection changed (every other full/sidebar trigger identical) we return
@@ -297,6 +335,28 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // is unchanged (both empty; SELECT_ENTRY always clears to []).
   const noMultiBarTransition =
     state.multiSelectedLids.length === 0 && prev.multiSelectedLids.length === 0;
+
+  // ── Assets-only resolution (#868 段階3) ──────────────────────────
+  // The working-set republished resident asset bytes. Only the center +
+  // meta panes read `container.assets` synchronously (filer cards /
+  // launcher icons / detail markdown embeds / attachment preview);
+  // sidebar rows get their thumbnails from the async
+  // `populateAttachmentPreviews` pass which main.ts re-runs for this
+  // scope. Restricted to `phase === 'ready'`: during `editing` the
+  // center hosts the live editor (renderEditor also reads assets for
+  // its preview) and swapping it mid-keystroke is not worth the risk —
+  // 'full' keeps the pre-#868 behaviour there. Any co-varying narrow
+  // bucket ⇒ 'full', same doctrine as the other scopes.
+  if (assetsOnlyChange) {
+    if (state.phase !== 'ready') return 'full';
+    if (selectionChanged || sidebarOnlyChanged || settingsChanged || !noMultiBarTransition) {
+      return 'full';
+    }
+    if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
+    if (state.textlogSelection !== prev.textlogSelection) return 'full';
+    if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
+    return 'assets-only';
+  }
 
   if (selectionChanged) {
     // Co-varying narrow buckets ⇒ fall back to 'full' (the selection path

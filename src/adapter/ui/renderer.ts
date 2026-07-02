@@ -416,6 +416,12 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
     endProfile();
     return;
   }
+  if (scope === 'assets-only') {
+    const endProfile = profileStart('render:scope=assets-only');
+    replaceAssetRegions(state, root);
+    endProfile();
+    return;
+  }
   // PR #176 profile wave: outermost wrapper for the full-shell
   // rebuild. `render:phase=<phase>` is the canonical "renderer
   // wall-clock" measure used by the bench runner. No-op when
@@ -830,6 +836,25 @@ function applySelectionHighlight(state: AppState, root: HTMLElement): void {
       }
     }
   }
+}
+
+/**
+ * #868 段階3: `'assets-only'` scope region replacement.
+ *
+ * `SET_WORKING_SET_ASSETS` republished the resident asset bytes —
+ * `container.assets` changed identity while entries / relations /
+ * revisions / meta kept theirs. Under lazy loading this dispatch lands
+ * asynchronously AFTER the first paint of an open/save; classifying it
+ * `'full'` wiped and rebuilt the whole shell (O(N) sidebar included),
+ * which the user saw as「開いた直後/保存後にレンダリングが遅れる」.
+ * Only the center pane (detail markdown embeds / filer cards / launcher
+ * icons) and the meta pane (attachment preview) consume asset bytes
+ * synchronously, so swap exactly those two — `replaceCenterRegion`
+ * preserves the center scroll position across the swap.
+ */
+function replaceAssetRegions(state: AppState, root: HTMLElement): void {
+  replaceCenterRegion(state, root);
+  reconcileMetaPane(state, root);
 }
 
 /** Swap the center pane in place, preserving its scroll position. */

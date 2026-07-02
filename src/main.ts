@@ -284,6 +284,24 @@ async function boot(): Promise<void> {
       prevRenderState = state;
       return;
     }
+    if (renderScope === 'assets-only') {
+      // #868 段階3: the working-set republished resident asset bytes
+      // (SET_WORKING_SET_ASSETS). The renderer swaps only the center +
+      // meta panes; the O(N) sidebar tree stays put. Same hook set as
+      // the selection path: the center IS replaced, so revoke its old
+      // preview Blobs and re-hydrate both preview passes (attachment
+      // previews also cover sidebar rows whose asset bytes just became
+      // resident). Continuity preserves center scroll / focus.
+      cleanupBlobUrls(root);
+      const continuity = captureRenderContinuity(root);
+      render(state, root, prevRenderState);
+      restoreRenderContinuity(root, continuity);
+      populateAttachmentPreviews(root, dispatcher);
+      populateInlineAssetPreviews(root, dispatcher);
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevRenderState = state;
+      return;
+    }
 
     // A-1 / A-2 (2026-04-23): continuity capture runs BEFORE the
     // full re-render wipes `root.innerHTML`. The helper records
