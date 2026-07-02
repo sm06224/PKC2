@@ -93,9 +93,11 @@ import {
   syncCaretToPreview,
   isSyncEnabled,
   setSyncEnabled,
-  consumeScrollSuppression,
   consumeSelectionSuppression,
   refreshEditorActiveLine,
+  onEditorPaneScroll,
+  onPreviewPaneScroll,
+  invalidateSplitSyncMap,
 } from './source-preview-sync';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import {
@@ -8942,6 +8944,10 @@ export function bindActions(
       pre.textContent = src;
       preview.appendChild(pre);
     }
+    // After re-render, the preview DOM (and thus every anchor rect) is
+    // new — drop the cached scroll mapping so the next sync rebuilds it
+    // against the fresh layout (2026-07 rebuild).
+    invalidateSplitSyncMap();
     // After re-render, refresh the sync layer so the active marker
     // tracks the new DOM. No-op when sync is disabled.
     if (document.activeElement === textarea) {
@@ -9133,44 +9139,41 @@ export function bindActions(
     syncCaretToPreview(textarea, preview, target, e.clientY);
   }
 
-  // Suppress the preview-pane scroll → editor follow loop. Currently
-  // the preview is the receiver only (editor → preview drives it),
-  // so we just consume any flagged programmatic scroll.
-  //
-  // 2026-05-05 hotfix: filter MUST come BEFORE consumeScrollSuppression.
-  // Capture-phase root listener fires for editor textarea scroll AND
-  // preview pane scroll; if we consume the flag eagerly we steal it
-  // from the preview's actual programmatic scroll event, breaking the
-  // feedback-loop guard. Worse, on touchpad reverse-direction scrolls
-  // user reported "first reverse swipe is swallowed" — that's the
-  // editor scroll event eating the flag set by a recent
-  // syncPreviewToCaret-driven preview scroll, then leaking into
-  // unintended dispatcher logic on the *next* scroll tick.
+  // 2026-07 rebuild: BOTH panes now drive the other through the
+  // piecewise-linear scroll mapping (source-preview-sync.ts). Echo
+  // filtering (our own programmatic set bouncing back as a scroll
+  // event) happens inside on*PaneScroll by value comparison —
+  // deterministic, no 80 ms suppression-flag races. Preview manual
+  // scroll → editor follows (NEW; was a no-op before); editor manual
+  // scroll → preview follows (NEW; was overlay-reposition only).
   function handlePreviewScroll(e: Event): void {
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
     if (t.getAttribute('data-pkc-region') !== 'text-edit-preview') return;
-    if (consumeScrollSuppression()) return;
-    // No-op: future enhancement could sync editor scroll to preview
-    // scroll when the user manually scrolls the preview pane.
+    if (!isSyncEnabled()) return;
+    const wrapper = t.closest<HTMLElement>('.pkc-text-split-editor');
+    const textarea = wrapper?.querySelector<HTMLTextAreaElement>(
+      'textarea[data-pkc-field="body"]',
+    );
+    if (!textarea) return;
+    onPreviewPaneScroll(textarea, t);
   }
 
-  // 2026-05-05 hotfix-3: textarea natural scroll only repositions
-  // the editor active-line overlay. It does NOT call
-  // syncPreviewToCaret because that would re-scroll the preview
-  // pane programmatically during the user's continued wheel gesture
-  // (Mac touchpad inertia fires many wheel events in succession;
-  // calling safeScrollPane in the middle of that loop has been
-  // observed to interact badly with reverse-direction scrolling on
-  // some platforms — the conservative fix is to leave the preview
-  // alone unless the caret actually moved).
   function handleEditorScroll(e: Event): void {
     const t = e.target;
     if (!(t instanceof HTMLTextAreaElement)) return;
     if (t.getAttribute('data-pkc-field') !== 'body') return;
-    if (!t.closest('.pkc-text-split-editor')) return;
+    const wrapper = t.closest<HTMLElement>('.pkc-text-split-editor');
+    if (!wrapper) return;
     if (!isSyncEnabled()) return;
+    // Overlay repositioning is unconditional (cheap, no scroll side
+    // effects); the mapping-driven preview follow is echo-filtered
+    // inside onEditorPaneScroll.
     refreshEditorActiveLine(t);
+    const preview = wrapper.querySelector<HTMLElement>(
+      '[data-pkc-region="text-edit-preview"]',
+    );
+    if (preview) onEditorPaneScroll(t, preview);
   }
 
   document.addEventListener('selectionchange', handleSourceSyncSelectionChange);

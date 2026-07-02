@@ -80,6 +80,13 @@
  */
 
 import { getCaretViewportCoords } from './caret-position';
+import {
+  buildScrollMapping,
+  mapEditorToPreview,
+  mapPreviewToEditor,
+  type AnchorPair,
+} from './split-sync-map';
+import { measureEditorLineTops } from './editor-line-metrics';
 
 // ─────────────────────────────────────────────────────────────────
 // PR 2 — Sync orchestration layer (2026-05-05).
@@ -100,7 +107,9 @@ import { getCaretViewportCoords } from './caret-position';
 //   - isSyncEnabled() / setSyncEnabled(flag)
 //   - syncPreviewToCaret(textarea, preview)
 //   - syncCaretToPreview(textarea, preview, viewportY)
-//   - markProgrammaticScroll() / consumeScrollSuppression()
+//   - onEditorPaneScroll(textarea, preview) — 2026-07 rebuild
+//   - onPreviewPaneScroll(textarea, preview) — 2026-07 rebuild
+//   - invalidateSplitSyncMap() — 2026-07 rebuild
 //   - markProgrammaticCaretMove() / consumeSelectionSuppression()
 //   - isSplitSyncDebugMode()
 // ─────────────────────────────────────────────────────────────────
@@ -144,6 +153,13 @@ export function setSyncEnabled(enabled: boolean): void {
   } catch {
     /* localStorage unavailable */
   }
+  // 2026-07 rebuild: reset the scroll-mapping controller on every
+  // toggle so a re-enable starts from a clean slate (no stale owner /
+  // echo expectation / mapping built against an old layout).
+  scrollOwner = null;
+  expectedEditorTop = null;
+  expectedPreviewTop = null;
+  syncMapCache = null;
   if (!enabled) {
     // Tear down all visual indicators when sync is turned off so the
     // disabled state looks fully clean.
@@ -176,28 +192,22 @@ export function setSyncEnabled(enabled: boolean): void {
 }
 
 /**
- * Single-shot suppression flags. When the sync layer scrolls the
- * preview programmatically or moves the caret, the resulting event
- * would otherwise feed back into the reverse-sync handler and form
- * a loop. Each flag is set just before the programmatic action and
- * consumed by the next matching event handler.
+ * Single-shot suppression flag for programmatic CARET moves (preview
+ * click → `selectionStart` set → `selectionchange` fires → would
+ * re-trigger editor→preview sync). Set just before the programmatic
+ * caret move, consumed by the next `selectionchange` handler; the
+ * 80 ms auto-clear guards against a stale flag when the browser
+ * doesn't emit the event.
+ *
+ * 2026-07 rebuild note: the equivalent SCROLL suppression flags
+ * (`markProgrammaticScroll` / `consumeScrollSuppression`) are GONE —
+ * scroll feedback is now filtered by value-echo detection inside
+ * `onEditorPaneScroll` / `onPreviewPaneScroll` (deterministic,
+ * timer-free), which removes the documented 80 ms race family
+ * (「逆方向 scroll が一度だけ効かない」等).
  */
-let suppressNextScrollEvent = false;
 let suppressNextSelectionChange = false;
 
-export function markProgrammaticScroll(): void {
-  suppressNextScrollEvent = true;
-  setTimeout(() => {
-    suppressNextScrollEvent = false;
-  }, 80);
-}
-export function consumeScrollSuppression(): boolean {
-  if (suppressNextScrollEvent) {
-    suppressNextScrollEvent = false;
-    return true;
-  }
-  return false;
-}
 export function markProgrammaticCaretMove(): void {
   suppressNextSelectionChange = true;
   setTimeout(() => {
@@ -245,112 +255,217 @@ function setActive(preview: Element, el: HTMLElement | null): void {
   if (target) target.setAttribute(ACTIVE_ATTR, '');
 }
 
+// ─────────────────────────────────────────────────────────────────
+// 2026-07 rebuild — anchor-pair piecewise-linear scroll mapping.
+//
+// 旧世代(2026-05-05 hotfix 群)の「ブロック高 ÷ 行数の比例割り +
+// comfort band + 80ms suppression timer」は、折り返し・可変高要素で
+// 即ズレし、band とタイマーが race を量産した(記録は本 file 冒頭 +
+// pr-256 findings)。置き換え:
+//
+//   1. preview の各アンカー実測 Y × editor の同ソース行実測 Y
+//      (mirror-div、editor-line-metrics)→ 単調ペア列(split-sync-map)
+//   2. 双方向の連続 scroll 追従: 片方の scrollTop を写像して他方へ。
+//      最後に触った pane が駆動側(owner)、追従側への programmatic
+//      scroll は「期待値との一致」で無視(echo filter — タイマー不要)
+//   3. caret 移動時は caret 行の写像位置を editor と同じ viewport
+//      高さに整列(band 廃止 — 決定的で「一度しか飛ばない」が消える)
+//
+// 写像テーブルは lazy 構築 + key(本文 / 両 pane の clientWidth /
+// clientHeight / scrollHeight)不一致で自動再構築。mermaid・画像の
+// 後伸びは preview.scrollHeight の変化として捕捉される。連続入力中は
+// 直近テーブルを使い続け、静止後に trailing rebuild(120ms)で追い付く。
+// ─────────────────────────────────────────────────────────────────
+
+interface SyncMapCache {
+  value: string;
+  taClientWidth: number;
+  taClientHeight: number;
+  taScrollHeight: number;
+  pvClientWidth: number;
+  pvClientHeight: number;
+  pvScrollHeight: number;
+  /** scrollTop-space table (endpoints = maxScroll of each pane). */
+  scrollPairs: AnchorPair[];
+  /** content-space table (endpoints = scrollHeight of each pane). */
+  contentPairs: AnchorPair[];
+}
+
+let syncMapCache: SyncMapCache | null = null;
+let rebuildTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Which pane the user last drove. Follower events never claim. */
+let scrollOwner: 'editor' | 'preview' | null = null;
+
 /**
- * Scroll `scrollContainer` so `rect` lands inside a **comfort band**
- * within the visible area — not glued to a fixed anchor like
- * "always 30% from top" (which yanks scroll on every caret tick),
- * and not "anywhere visible counts" (which makes block-internal
- * caret movement produce a discrete one-shot jump and then sit
- * still — user report 2026-05-05「一度しかジャンプ動作をしない
- * ように見受けられる」).
- *
- * The band is `[top + paneH * 0.20, top + paneH * 0.55]`. When
- * `rect.top` is inside the band → no-op (no scroll). When it's
- * outside, scroll just enough to bring it back into the band edge
- * (top moves up to 20%, bottom moves up to 55%). This gives a
- * "soft follow" — the preview tracks the caret continuously while
- * the caret is anywhere outside the band, and stays still once
- * the caret lands inside, so micro-movements don't shake the
- * preview.
- *
- * The 80 ms CSS transition on programmatic scroll(via
- * `markProgrammaticScroll` + browser smooth scroll) keeps the
- * follow visually smooth.
+ * Value-echo filter: after we set a follower pane's scrollTop we
+ * remember the value we set (read back post-clamp). The follower's
+ * next scroll event carrying that exact value (±1px) is our own echo
+ * and is ignored; anything else is real user input and claims
+ * ownership. Deterministic — no 80ms timers, no race.
  */
-function ensureRectInBand(
-  scrollContainer: HTMLElement,
-  rect: { top: number; bottom: number },
-): void {
-  const containerRect = scrollContainer.getBoundingClientRect();
-  const visTop = containerRect.top + scrollContainer.clientTop;
-  const paneH = scrollContainer.clientHeight;
-  const bandTop = visTop + paneH * 0.20;
-  const bandBottom = visTop + paneH * 0.55;
-  const maxScroll = Math.max(
-    0,
-    scrollContainer.scrollHeight - paneH,
+let expectedEditorTop: number | null = null;
+let expectedPreviewTop: number | null = null;
+
+let editorFollowRaf = 0;
+let previewFollowRaf = 0;
+
+/** Drop the cached mapping (call after a preview re-render). */
+export function invalidateSplitSyncMap(): void {
+  syncMapCache = null;
+}
+
+function collectPreviewAnchors(preview: HTMLElement): Map<number, number> {
+  // First element in document order wins per source line (outermost
+  // block — same tie-break as findPreviewElementForLine).
+  const byLine = new Map<number, number>();
+  const previewRect = preview.getBoundingClientRect();
+  const base = previewRect.top + preview.clientTop - preview.scrollTop;
+  for (const el of preview.querySelectorAll<HTMLElement>('[data-pkc-source-line]')) {
+    const lineStr = el.getAttribute('data-pkc-source-line');
+    if (lineStr === null) continue;
+    const line = parseInt(lineStr, 10);
+    if (!Number.isFinite(line) || byLine.has(line)) continue;
+    byLine.set(line, el.getBoundingClientRect().top - base);
+  }
+  return byLine;
+}
+
+function buildSyncMap(
+  textarea: HTMLTextAreaElement,
+  preview: HTMLElement,
+): SyncMapCache {
+  const byLine = collectPreviewAnchors(preview);
+  const lineTops = measureEditorLineTops(textarea, [...byLine.keys()]);
+  const anchors: AnchorPair[] = [];
+  for (const [line, previewY] of byLine) {
+    const editorY = lineTops.get(line);
+    if (editorY === undefined) continue;
+    anchors.push({ editorY, previewY });
+  }
+  const taMax = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+  const pvMax = Math.max(0, preview.scrollHeight - preview.clientHeight);
+  return {
+    value: textarea.value,
+    taClientWidth: textarea.clientWidth,
+    taClientHeight: textarea.clientHeight,
+    taScrollHeight: textarea.scrollHeight,
+    pvClientWidth: preview.clientWidth,
+    pvClientHeight: preview.clientHeight,
+    pvScrollHeight: preview.scrollHeight,
+    scrollPairs: buildScrollMapping(anchors, taMax, pvMax),
+    contentPairs: buildScrollMapping(anchors, textarea.scrollHeight, preview.scrollHeight),
+  };
+}
+
+function syncMapIsFresh(
+  cache: SyncMapCache,
+  textarea: HTMLTextAreaElement,
+  preview: HTMLElement,
+): boolean {
+  return (
+    cache.value === textarea.value
+    && cache.taClientWidth === textarea.clientWidth
+    && cache.taClientHeight === textarea.clientHeight
+    && cache.taScrollHeight === textarea.scrollHeight
+    && cache.pvClientWidth === preview.clientWidth
+    && cache.pvClientHeight === preview.clientHeight
+    && cache.pvScrollHeight === preview.scrollHeight
   );
-  if (rect.top < bandTop) {
-    // caret-row is above the band → scroll up to put rect.top at bandTop
-    const delta = bandTop - rect.top;
-    const next = Math.max(0, scrollContainer.scrollTop - delta);
-    if (next !== scrollContainer.scrollTop) {
-      markProgrammaticScroll();
-      scrollContainer.scrollTop = next;
-    }
-    return;
-  }
-  if (rect.top > bandBottom) {
-    // caret-row is below the band → scroll down to put rect.top at bandTop
-    const delta = rect.top - bandTop;
-    const next = Math.min(maxScroll, scrollContainer.scrollTop + delta);
-    if (next !== scrollContainer.scrollTop) {
-      markProgrammaticScroll();
-      scrollContainer.scrollTop = next;
-    }
-    return;
-  }
-  // In comfort band → no-op.
 }
 
 /**
- * Return the viewport-coordinate rect of the active block's
- * **content-bearing inner element** (for `pkc-md-block` wrappers
- * the inner `<pre>` / `<table>` rect, otherwise the block itself).
+ * Return the current mapping, rebuilding when stale. During rapid
+ * bursts (typing / inertia wheel storms) a stale table keeps serving
+ * and a trailing rebuild lands 120 ms after the last miss — mapping
+ * error mid-burst is bounded and self-corrects at rest.
  */
-function blockMeasureRect(block: HTMLElement): DOMRect {
-  if (block.classList.contains('pkc-md-block')) {
-    const inner = block.querySelector<HTMLElement>('pre, table');
-    if (inner) return inner.getBoundingClientRect();
+function ensureSyncMap(
+  textarea: HTMLTextAreaElement,
+  preview: HTMLElement,
+): SyncMapCache {
+  if (syncMapCache && syncMapIsFresh(syncMapCache, textarea, preview)) {
+    return syncMapCache;
   }
-  return block.getBoundingClientRect();
+  if (syncMapCache) {
+    // Stale — serve it, schedule one trailing rebuild.
+    if (rebuildTimer === null) {
+      rebuildTimer = setTimeout(() => {
+        rebuildTimer = null;
+        syncMapCache = null; // next consumer rebuilds synchronously
+      }, 120);
+    }
+    return syncMapCache;
+  }
+  syncMapCache = buildSyncMap(textarea, preview);
+  return syncMapCache;
+}
+
+function setPreviewScrollTop(preview: HTMLElement, top: number): void {
+  const next = Math.round(top);
+  if (Math.abs(preview.scrollTop - next) <= 1) return;
+  preview.scrollTop = next;
+  expectedPreviewTop = preview.scrollTop; // read back post-clamp
+}
+
+function setEditorScrollTop(textarea: HTMLTextAreaElement, top: number): void {
+  const next = Math.round(top);
+  if (Math.abs(textarea.scrollTop - next) <= 1) return;
+  textarea.scrollTop = next;
+  expectedEditorTop = textarea.scrollTop;
 }
 
 /**
- * Compute a **caret-row sub-rect** inside the active block — used as
- * the scroll target so caret movement WITHIN a tall block produces
- * proportional preview scroll, instead of staying still until the
- * caret crosses a block boundary.
- *
- * 2026-05-05 hotfix-7 follow-up-2 (user report:「中途半端に飛んだり
- *  飛ばなかったり」):
- * Earlier hotfix-5 simplified to "block centre only" because line-
- * level 1:1 sync is impossible for markdown (N:M relationship).
- * That made scroll DISCRETE — preview only moved when the caret
- * crossed a block boundary, and the user perceived that as "飛んだり
- * 飛ばなかったり". The fix is a **middle path**: still acknowledge
- * the N:M imprecision, but use the proportional position INSIDE the
- * block as the scroll target so movement within a long block scrolls
- * the preview smoothly.
- *
- * `ensureRectVisible` then keeps the in-view-no-op contract intact,
- * so this only affects scroll when the caret-row IS off-screen.
+ * Editor pane scrolled. Echo events (from our own programmatic set)
+ * are consumed silently; real user scrolls claim editor ownership and
+ * drive the preview through the mapping on the next animation frame.
  */
-function caretRowRectInBlock(
-  block: HTMLElement,
-  caretLine: number,
-): { top: number; bottom: number } {
-  const startStr = block.getAttribute('data-pkc-source-line');
-  const endStr = block.getAttribute('data-pkc-source-end') ?? startStr;
-  const start = startStr !== null ? parseInt(startStr, 10) : 0;
-  const end = endStr !== null ? parseInt(endStr, 10) : start;
-  const lineCount = Math.max(1, end - start + 1);
-  const lineIndex = Math.max(0, Math.min(lineCount - 1, caretLine - start));
-  const measureRect = blockMeasureRect(block);
-  const linePxHeight = measureRect.height / lineCount;
-  const rowTop = measureRect.top + lineIndex * linePxHeight;
-  const rowBottom = rowTop + linePxHeight;
-  return { top: rowTop, bottom: rowBottom };
+export function onEditorPaneScroll(
+  textarea: HTMLTextAreaElement,
+  preview: HTMLElement,
+): void {
+  if (!syncEnabled) return;
+  const top = textarea.scrollTop;
+  if (expectedEditorTop !== null && Math.abs(top - expectedEditorTop) <= 1) {
+    expectedEditorTop = null;
+    return;
+  }
+  expectedEditorTop = null;
+  scrollOwner = 'editor';
+  if (previewFollowRaf) return;
+  previewFollowRaf = requestAnimationFrame(() => {
+    previewFollowRaf = 0;
+    if (scrollOwner !== 'editor') return;
+    const map = ensureSyncMap(textarea, preview);
+    setPreviewScrollTop(preview, mapEditorToPreview(map.scrollPairs, textarea.scrollTop));
+    updateDebugPanel(textarea, preview);
+  });
+}
+
+/**
+ * Preview pane scrolled — the symmetric direction (旧実装では no-op
+ * だった「preview を動かすと editor が追従」を初めて提供する)。
+ */
+export function onPreviewPaneScroll(
+  textarea: HTMLTextAreaElement,
+  preview: HTMLElement,
+): void {
+  if (!syncEnabled) return;
+  const top = preview.scrollTop;
+  if (expectedPreviewTop !== null && Math.abs(top - expectedPreviewTop) <= 1) {
+    expectedPreviewTop = null;
+    return;
+  }
+  expectedPreviewTop = null;
+  scrollOwner = 'preview';
+  if (editorFollowRaf) return;
+  editorFollowRaf = requestAnimationFrame(() => {
+    editorFollowRaf = 0;
+    if (scrollOwner !== 'preview') return;
+    const map = ensureSyncMap(textarea, preview);
+    setEditorScrollTop(textarea, mapPreviewToEditor(map.scrollPairs, preview.scrollTop));
+    refreshEditorActiveLine(textarea);
+  });
 }
 
 /**
@@ -491,8 +606,10 @@ function updateDebugPanel(textarea: HTMLTextAreaElement, preview?: Element): voi
     `preview line: ${activePreviewLine}`,
     `preview scroll: ${previewScrollTop}`,
     `sync enabled: ${syncEnabled}`,
-    `suppress scroll: ${suppressNextScrollEvent}`,
-    `suppress sel:    ${suppressNextSelectionChange}`,
+    `owner: ${scrollOwner ?? '(none)'}`,
+    `map pairs: ${syncMapCache ? syncMapCache.scrollPairs.length : '(not built)'}`,
+    `expect ta/pv: ${expectedEditorTop ?? '-'} / ${expectedPreviewTop ?? '-'}`,
+    `suppress sel: ${suppressNextSelectionChange}`,
   ].join('\n');
 }
 
@@ -553,14 +670,6 @@ export function syncPreviewToCaret(
     updateDebugPanel(textarea, preview);
     return;
   }
-  // 2026-05-05 hotfix-7 follow-up-4: pre-flush any leftover scroll
-  // suppress flag from a prior programmatic scroll. Otherwise, after
-  // the user wheel-scrolls the preview and then re-selects, the
-  // preview scroll triggered by ensureRectInBand could be swallowed
-  // by a stale flag and the band-return would not happen on the
-  // user's actual machine. Playwright doesn't reproduce this exact
-  // race but the cost of clearing the flag here is zero.
-  consumeScrollSuppression();
   // 2026-05-05 hotfix-5 user direction: when we highlight a block,
   // the editor's caret-row overlay must also be on screen — otherwise
   // the highlight refers to a position the user can't see, and the
@@ -587,14 +696,22 @@ export function syncPreviewToCaret(
   updateEditorActiveLine(textarea, Number.isFinite(labelLine) ? labelLine : line);
   setActive(preview, rawTarget);
   if (preview instanceof HTMLElement) {
-    // 2026-05-05 hotfix-7 follow-up-3: comfort-band tracking. Caret
-    // movement that keeps the rect inside [20%, 55%] of the pane is
-    // a no-op; movement outside the band scrolls to put the rect at
-    // the band's top edge. This produces "soft follow" — the preview
-    // tracks the caret continuously when needed, but doesn't shake
-    // on every line-by-line micro-movement inside the band.
-    const rowRect = caretRowRectInBlock(rawTarget, line);
-    ensureRectInBand(preview, rowRect);
+    // 2026-07 rebuild: caret alignment via the content-space mapping.
+    // caret の content-Y を写像し、editor 側で caret が居るのと同じ
+    // viewport 高さに preview 側の対応位置を置く。決定的(band 無し)
+    // なので「一度しかジャンプしない」「飛んだり飛ばなかったり」が
+    // 構造的に起きない。caret 移動は user の editor 操作 = editor が
+    // 駆動側。
+    scrollOwner = 'editor';
+    const map = ensureSyncMap(textarea, preview);
+    const caret = getCaretViewportCoords(textarea);
+    const taRect = textarea.getBoundingClientRect();
+    const viewportOffset = caret.top - (taRect.top + textarea.clientTop);
+    const caretContentY = viewportOffset + textarea.scrollTop;
+    const mappedContentY = mapEditorToPreview(map.contentPairs, caretContentY);
+    const pvMax = Math.max(0, preview.scrollHeight - preview.clientHeight);
+    const target = Math.min(pvMax, Math.max(0, mappedContentY - viewportOffset));
+    setPreviewScrollTop(preview, target);
   }
   updateDebugPanel(textarea, preview);
 }
@@ -619,44 +736,26 @@ export function syncPreviewToCaret(
  * only for the editor side: the user is actively typing or clicking,
  * so we should NOT yank the editor scroll while the caret is in view.
  */
-function ensureRectVisible(
-  scrollContainer: HTMLElement,
-  rect: { top: number; bottom: number },
-  padding: number,
-): void {
-  const containerRect = scrollContainer.getBoundingClientRect();
-  const visTop = containerRect.top + scrollContainer.clientTop;
-  const visBottom = visTop + scrollContainer.clientHeight;
-  const maxScroll = Math.max(
-    0,
-    scrollContainer.scrollHeight - scrollContainer.clientHeight,
-  );
+function ensureCaretVisibleInEditor(textarea: HTMLTextAreaElement): void {
+  const caret = getCaretViewportCoords(textarea);
+  const rect = { top: caret.top, bottom: caret.top + caret.height };
+  const padding = caret.height; // one extra line of breathing room
+  const taRect = textarea.getBoundingClientRect();
+  const visTop = taRect.top + textarea.clientTop;
+  const visBottom = visTop + textarea.clientHeight;
+  const maxScroll = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+  // "in view → no-op, out of view → minimum-amount scroll" (hotfix-6
+  // contract 維持)。programmatic set は setEditorScrollTop 経由なので
+  // echo filter が editor scroll listener への跳ね返りを吸収する。
   if (rect.top < visTop + padding) {
     const delta = (visTop + padding) - rect.top;
-    const next = Math.max(0, scrollContainer.scrollTop - delta);
-    if (next !== scrollContainer.scrollTop) {
-      markProgrammaticScroll();
-      scrollContainer.scrollTop = next;
-    }
+    setEditorScrollTop(textarea, Math.max(0, textarea.scrollTop - delta));
     return;
   }
   if (rect.bottom > visBottom - padding) {
     const delta = rect.bottom - (visBottom - padding);
-    const next = Math.min(maxScroll, scrollContainer.scrollTop + delta);
-    if (next !== scrollContainer.scrollTop) {
-      markProgrammaticScroll();
-      scrollContainer.scrollTop = next;
-    }
+    setEditorScrollTop(textarea, Math.min(maxScroll, textarea.scrollTop + delta));
   }
-}
-
-function ensureCaretVisibleInEditor(textarea: HTMLTextAreaElement): void {
-  const caret = getCaretViewportCoords(textarea);
-  ensureRectVisible(
-    textarea,
-    { top: caret.top, bottom: caret.top + caret.height },
-    caret.height, // one extra line of breathing room
-  );
 }
 
 /**

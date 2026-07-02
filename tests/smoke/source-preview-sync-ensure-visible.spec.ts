@@ -174,40 +174,47 @@ async function caretInEditorView(page: Page): Promise<boolean> {
 
 test.describe('ensureRectVisible parity — minimum-amount scroll, both directions', () => {
 
-  test('E1. editor → preview: target already in view → preview scrollTop unchanged', async ({
+  // 2026-07 rebuild で contract 変更:旧「in view → scrollTop 不変
+  // (min-scroll)」は band 世代の仕様。新実装は caret 位置を写像して
+  // **決定的に整列**するため、caret 行が変われば scrollTop も僅かに
+  // 動く(それが正しい追従)。E1 は代わりに rebuild が保証する
+  // **決定性**を pin する:同じ caret 選択は常に同じ scrollTop に
+  // 収束する(旧 user 報告「飛んだり飛ばなかったり」の regression 弁)。
+  test('E1. editor → preview: 同一 caret 選択は決定的(同じ scrollTop に収束)+ block 可視', async ({
     page,
   }, testInfo) => {
     await bootSeed(page);
-    // Caret near top so target preview block is also near top.
     await moveCaretToLine(page, 0);
-    const beforeBlock = await activeBlockInPreviewView(page);
-    expect(beforeBlock).toBe(true);
-    const before = await getPreviewScroll(page);
-    // Move caret to line 1 — same area; target block is still in view
-    await moveCaretToLine(page, 1);
-    const after = await getPreviewScroll(page);
-    expect(
-      after,
-      `preview already showed the block; scroll should not change (before=${before}, after=${after})`,
-    ).toBe(before);
     expect(await activeBlockInPreviewView(page)).toBe(true);
-    await attachShot(testInfo, 'E1-target-in-view-no-scroll.png', await page.screenshot());
+    const first = await getPreviewScroll(page);
+    // 別の行へ動かしてから同じ行を再選択 → 完全に同じ位置へ戻る。
+    await moveCaretToLine(page, 4);
+    await moveCaretToLine(page, 0);
+    const second = await getPreviewScroll(page);
+    expect(
+      Math.abs(second - first),
+      `same-caret selection must be deterministic (first=${first}, second=${second})`,
+    ).toBeLessThanOrEqual(1);
+    expect(await activeBlockInPreviewView(page)).toBe(true);
+    // 近傍行への移動でも block は可視のまま(整列追従)。
+    await moveCaretToLine(page, 1);
+    expect(await activeBlockInPreviewView(page)).toBe(true);
+    await attachShot(testInfo, 'E1-deterministic-alignment.png', await page.screenshot());
   });
 
-  test('E2. editor → preview: target out of view → preview scrolls minimum amount, block becomes visible', async ({
+  test('E2. editor → preview: target out of view → preview が追従 scroll し block が可視化', async ({
     page,
   }, testInfo) => {
     await bootSeed(page);
     await moveCaretToLine(page, 0);
     const before = await getPreviewScroll(page);
-    expect(before).toBe(0);
     // Jump to a line whose preview block is far below.
     await moveCaretToLine(page, 50);
     const after = await getPreviewScroll(page);
     expect(
-      after,
-      `preview should have scrolled down (before=${before}, after=${after})`,
-    ).toBeGreaterThan(before);
+      after - before,
+      `preview should have scrolled down substantially (before=${before}, after=${after})`,
+    ).toBeGreaterThan(100);
     // Block must now be in view
     expect(await activeBlockInPreviewView(page)).toBe(true);
     await attachShot(testInfo, 'E2-out-of-view-scrolled-in.png', await page.screenshot());

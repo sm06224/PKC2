@@ -94,43 +94,52 @@ async function caretToLine(page: Page, line: number): Promise<void> {
   await page.waitForTimeout(220);
 }
 
-async function activeBlockRectInBand(page: Page): Promise<{
-  bandTop: number; bandBottom: number; activeTop: number; activeBottom: number;
-  inBand: boolean;
+/**
+ * 2026-07 rebuild で contract 変更:旧 comfort-band [20%,55%] は廃止され、
+ * caret 行の写像位置を **editor の caret と同じ viewport 高さに整列**する
+ * (決定的。band 世代の「一度しか飛ばない」を構造的に排除)。
+ * 本 helper は active block の可視性と caret 整列誤差を測る。caret の
+ * viewport Y は editor 側 active-line overlay(caret 実測位置に描画)から
+ * 読む。整列誤差の許容は pane 高の 40%(caret 行が anchor 間の補間位置に
+ * なるケースの上限、実測は anchor 行でほぼ 0)。
+ */
+async function activeBlockAlignment(page: Page): Promise<{
+  visible: boolean; activeTop: number; caretTop: number;
+  alignError: number; paneH: number; aligned: boolean;
 }> {
   return page.evaluate(() => {
     const pv = document.querySelector<HTMLElement>('[data-pkc-region="text-edit-preview"]');
-    if (!pv) return { bandTop: 0, bandBottom: 0, activeTop: NaN, activeBottom: NaN, inBand: false };
-    const a = pv.querySelector<HTMLElement>('[data-pkc-active-source]');
-    if (!a) return { bandTop: 0, bandBottom: 0, activeTop: NaN, activeBottom: NaN, inBand: false };
+    const a = pv?.querySelector<HTMLElement>('[data-pkc-active-source]');
+    const overlay = document.querySelector<HTMLElement>('.pkc-editor-active-line');
+    if (!pv || !a) {
+      return { visible: false, activeTop: NaN, caretTop: NaN, alignError: NaN, paneH: 0, aligned: false };
+    }
     const pr = pv.getBoundingClientRect();
     const ar = a.getBoundingClientRect();
-    const visTop = pr.top + pv.clientTop;
+    const paneTop = pr.top + pv.clientTop;
     const paneH = pv.clientHeight;
-    const bandTop = visTop + paneH * 0.20;
-    const bandBottom = visTop + paneH * 0.55;
-    return {
-      bandTop,
-      bandBottom,
-      activeTop: ar.top,
-      activeBottom: ar.bottom,
-      inBand: ar.top >= bandTop - 4 && ar.top <= bandBottom + 4,
-    };
+    const visible = ar.bottom > paneTop && ar.top < paneTop + paneH;
+    const caretTop = overlay && overlay.style.display !== 'none'
+      ? overlay.getBoundingClientRect().top
+      : NaN;
+    const alignError = Number.isFinite(caretTop) ? Math.abs(ar.top - caretTop) : NaN;
+    const aligned = visible && (!Number.isFinite(alignError) || alignError <= paneH * 0.4);
+    return { visible, activeTop: ar.top, caretTop, alignError, paneH, aligned };
   });
 }
 
 test.describe('user wheel 後 caret 再選択で band 復帰(reform-2026-05 §6)', () => {
 
-  test('R1. caret line 5 → preview wheel で view 外 → caret line 10 → band 内に戻る', async ({
+  test('R1. caret line 5 → preview wheel で view 外 → caret line 10 → 可視 + caret 整列に戻る', async ({
     page,
   }, testInfo) => {
     await bootSyncOn(page);
-    // Step 1: caret line 5 で preview の active block を band 内に。
+    // Step 1: caret line 5 で preview の active block が可視 + 整列。
     await caretToLine(page, 5);
-    const before = await activeBlockRectInBand(page);
+    const before = await activeBlockAlignment(page);
     // eslint-disable-next-line no-console
-    console.log(`R1 step1 (caret 5): bandTop=${before.bandTop.toFixed(0)} activeTop=${before.activeTop.toFixed(0)} inBand=${before.inBand}`);
-    expect(before.inBand, 'step1: active should land in band').toBe(true);
+    console.log(`R1 step1 (caret 5): activeTop=${before.activeTop.toFixed(0)} caretTop=${Number.isFinite(before.caretTop) ? before.caretTop.toFixed(0) : '-'} err=${Number.isFinite(before.alignError) ? before.alignError.toFixed(0) : '-'} visible=${before.visible}`);
+    expect(before.aligned, 'step1: active should be visible & caret-aligned').toBe(true);
     await attachShot(testInfo, 'R1-step1-caret-5.png', await page.screenshot());
 
     // Step 2: real OS wheel で preview を down scroll (user gesture)
@@ -146,27 +155,28 @@ test.describe('user wheel 後 caret 再選択で band 復帰(reform-2026-05 §6)
       await page.mouse.wheel(0, 80);
       await page.waitForTimeout(40);
     }
-    const afterWheel = await activeBlockRectInBand(page);
+    const afterWheel = await activeBlockAlignment(page);
     // eslint-disable-next-line no-console
-    console.log(`R1 step2 (wheel down ~640px): activeTop=${afterWheel.activeTop.toFixed(0)} bandTop=${afterWheel.bandTop.toFixed(0)} inBand=${afterWheel.inBand}`);
+    console.log(`R1 step2 (wheel down ~640px): activeTop=${afterWheel.activeTop.toFixed(0)} visible=${afterWheel.visible}`);
     await attachShot(testInfo, 'R1-step2-after-wheel.png', await page.screenshot());
-    // The wheel pushed preview far enough that the active block is no
-    // longer in band. (If it still happens to be in band — content
-    // shorter than expected — skip the inBand=false assertion.)
+    // 2026-07 rebuild 注:wheel は preview→editor の連続追従も起こす
+    // (旧実装は preview scroll が no-op だった)。ここでの検証対象は
+    // 「caret 再選択で必ず対応位置へ戻る」なので、wheel 後の状態は
+    // ログのみ。
 
-    // Step 3: caret 移動 (line 10 を選択) → preview が band に戻る
+    // Step 3: caret 移動 (line 10 を選択) → preview が caret 整列に戻る
     await caretToLine(page, 10);
-    const afterReselect = await activeBlockRectInBand(page);
+    const afterReselect = await activeBlockAlignment(page);
     // eslint-disable-next-line no-console
-    console.log(`R1 step3 (caret 10 reselect): activeTop=${afterReselect.activeTop.toFixed(0)} bandTop=${afterReselect.bandTop.toFixed(0)} inBand=${afterReselect.inBand}`);
+    console.log(`R1 step3 (caret 10 reselect): activeTop=${afterReselect.activeTop.toFixed(0)} caretTop=${Number.isFinite(afterReselect.caretTop) ? afterReselect.caretTop.toFixed(0) : '-'} err=${Number.isFinite(afterReselect.alignError) ? afterReselect.alignError.toFixed(0) : '-'} visible=${afterReselect.visible}`);
     await attachShot(testInfo, 'R1-step3-after-reselect.png', await page.screenshot());
     expect(
-      afterReselect.inBand,
-      `step3: caret reselect should bring active block back into band (activeTop=${afterReselect.activeTop.toFixed(0)}, band=[${afterReselect.bandTop.toFixed(0)}, ${afterReselect.bandBottom.toFixed(0)}])`,
+      afterReselect.aligned,
+      `step3: caret reselect should bring active block back beside the caret (activeTop=${afterReselect.activeTop.toFixed(0)}, caretTop=${Number.isFinite(afterReselect.caretTop) ? afterReselect.caretTop.toFixed(0) : '-'}, err=${Number.isFinite(afterReselect.alignError) ? afterReselect.alignError.toFixed(0) : '-'})`,
     ).toBe(true);
   });
 
-  test('R2. caret line 5 → preview wheel up → caret line 5 で **同じ line を再選択** → band に戻る', async ({
+  test('R2. caret line 5 → preview wheel up → caret line 5 で **同じ line を再選択** → 整列に戻る', async ({
     page,
   }, testInfo) => {
     // Same line re-select: caret movement is the trigger.
@@ -190,10 +200,10 @@ test.describe('user wheel 後 caret 再選択で band 復帰(reform-2026-05 §6)
 
     // Re-trigger selectionchange at same caret position.
     await caretToLine(page, 5);
-    const after = await activeBlockRectInBand(page);
+    const after = await activeBlockAlignment(page);
     // eslint-disable-next-line no-console
-    console.log(`R2 same-line reselect: activeTop=${after.activeTop.toFixed(0)} band=[${after.bandTop.toFixed(0)}, ${after.bandBottom.toFixed(0)}] inBand=${after.inBand}`);
+    console.log(`R2 same-line reselect: activeTop=${after.activeTop.toFixed(0)} caretTop=${Number.isFinite(after.caretTop) ? after.caretTop.toFixed(0) : '-'} err=${Number.isFinite(after.alignError) ? after.alignError.toFixed(0) : '-'} visible=${after.visible}`);
     await attachShot(testInfo, 'R2-after-reselect-same-line.png', await page.screenshot());
-    expect(after.inBand, 'same-line reselect after wheel: should still bring band back').toBe(true);
+    expect(after.aligned, 'same-line reselect after wheel: must bring the block back beside the caret').toBe(true);
   });
 });
