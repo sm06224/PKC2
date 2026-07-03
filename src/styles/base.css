@@ -3085,11 +3085,17 @@ mark.pkc-search-mark {
      wrapper. */
   font: inherit;
 }
+/* 2026-07-03(TOC と同じ theme-mismatch 欠陥の修正):media block は
+   OS 追従(auto)のときのみ。明示テーマは属性スコープ版が担う。 */
 @media (prefers-color-scheme: light) {
-  mark.pkc-search-mark {
+  #pkc-root:not([data-pkc-theme]) mark.pkc-search-mark {
     background: #fff09a;
     color: #1a1a1a;
   }
+}
+#pkc-root[data-pkc-theme="light"] mark.pkc-search-mark {
+  background: #fff09a;
+  color: #1a1a1a;
 }
 
 /* ── Sidebar sub-location rows (S-18 / A-4 FULL, 2026-04-14) ──
@@ -3789,15 +3795,22 @@ mark.pkc-search-mark {
  * concrete hex values at theme scope so the TOC is legible even if the
  * custom-property chain breaks.  Day/log rows retain visual hierarchy
  * through font-weight + smaller mono size rather than color faintness.
+ *
+ * 2026-07-03 user 報告「システムと反対のテーマを選択すると右ペインの TOC
+ * が視認不能」:この media block は従来 data-pkc-theme ガード無しで
+ * OS=light のとき常時発火し、アプリが明示 dark(data-pkc-theme="dark")
+ * でも黒インクを dark 背景に塗っていた。`:not([data-pkc-theme])` を付け、
+ * OS 追従(auto = 属性なし)のときだけ効かせる。明示 light は直下の
+ * 属性スコープ版が担う(明示 dark は token 色のまま = 正しく light ink)。
  */
 @media (prefers-color-scheme: light) {
-  .pkc-toc-label,
-  .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link,
-  .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
+  #pkc-root:not([data-pkc-theme]) .pkc-toc-label,
+  #pkc-root:not([data-pkc-theme]) .pkc-toc-item[data-pkc-toc-kind="day"] > .pkc-toc-link,
+  #pkc-root:not([data-pkc-theme]) .pkc-toc-item[data-pkc-toc-kind="log"] > .pkc-toc-link {
     color: #26221b;
   }
-  .pkc-toc-item[data-pkc-toc-kind="heading"] > .pkc-toc-link,
-  .pkc-toc-link {
+  #pkc-root:not([data-pkc-theme]) .pkc-toc-item[data-pkc-toc-kind="heading"] > .pkc-toc-link,
+  #pkc-root:not([data-pkc-theme]) .pkc-toc-link {
     color: #1a1a14;
   }
 }

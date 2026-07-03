@@ -230,6 +230,13 @@ async function boot(): Promise<void> {
     }
     if (renderScope === 'settings-only') {
       render(state, root, prevRenderState);
+      // 2026-07-03 theme-mismatch fix:テーマ切替(SET_THEME_MODE)は
+      // settings-only scope に落ちるため、従来ここで WCAG resolver が
+      // 再実行されず、inline color の shift が旧テーマ基準のまま残った
+      // (resolver の runtime listener も OS scheme しか見ていない)。
+      // applySystemSettings 後に再適用して data-pkc-theme の切替にも
+      // コントラスト最適化を追従させる。
+      applyWcagResolverNow(root);
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
       return;
