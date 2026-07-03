@@ -108,6 +108,13 @@ const textPresenter: DetailPresenter = {
         currentContainerId,
         vars,
         headingNumber: extractHeadingNumberConfig(entry.body),
+        // 2026-07-03 user request(modifier+click で「突いた要素から編集
+        // 開始」): view render にも source-line anchor を stamp する。
+        // anchor の行番号は frontmatter strip 済み `source` 基準なので、
+        // 消費側(action-binder の modifier+click)が frontmatter 行数を
+        // 加算して textarea 行へ換算する。data-pkc-* 属性が増えるだけで
+        // 見た目・挙動への影響はない。
+        sourceLineAnchors: true,
       });
       // PR-2A:document globals を data-pkc-* + dir attr で root に反映
       for (const [k, v] of Object.entries(globalsToDataAttrs(globals))) {

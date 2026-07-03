@@ -98,7 +98,12 @@ import {
   onEditorPaneScroll,
   onPreviewPaneScroll,
   invalidateSplitSyncMap,
+  findSourceLineForElement,
+  findSourceLineByPoint,
+  caretOffsetForSourceLine,
 } from './source-preview-sync';
+import { measureEditorLineTops } from './editor-line-metrics';
+import { getFilterIndexes } from './filter-cache';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import {
   computeQuoteAssistOnEnter,
@@ -1304,6 +1309,109 @@ export function bindActions(
           // B4: thread the row's log-id through so the editor lands
           // on the clicked row, not the entry title.
           beginLogEdit(tlLid, logRow.getAttribute('data-pkc-log-id'));
+          return;
+        }
+      }
+
+      // 2026-07-03 user request:TEXT エントリも textlog と同じ
+      // modifier+click(Alt / Ctrl / ⌘)で編集開始。さらに「突いた要素の
+      // 直下から」— view render の data-pkc-source-line anchor(detail-
+      // presenter が stamp)をクリック要素から逆引きし、編集開始後の
+      // caret をその source line に置き、クリック行が editor の上 1/3 に
+      // 来るよう scroll する。split-sync ON なら caret 整列が preview 側
+      // も追従させる。interactive 子要素(link / button / checkbox /
+      // fold summary 等)は各自のハンドラに譲る。
+      // NOTE: `summary` は skip しない — heading fold で見出しは <summary>
+      // 内にラップされるため、skip すると最頻ターゲット(見出し)が
+      // 効かなくなる。modifier click は下の preventDefault が native の
+      // details 開閉も抑止するので、fold 挙動(plain click)と衝突しない。
+      const viewBody = rawTarget.closest<HTMLElement>('.pkc-view-body');
+      if (
+        viewBody
+        && rawTarget.closest('[data-pkc-region="center"]')
+        && !rawTarget.closest(
+          'a, button, input, textarea, select, [data-pkc-action], .pkc-md-block-toolbar, .pkc-task-checkbox',
+        )
+      ) {
+        const st = dispatcher.getState();
+        const selLid = st.selectedLid;
+        const selEntry = selLid && st.container
+          ? getFilterIndexes(st.container).entryByLid.get(selLid) ?? null
+          : null;
+        if (
+          st.phase === 'ready'
+          && !st.readonly
+          && st.viewMode === 'detail'
+          && selEntry
+          && selEntry.archetype === 'text'
+        ) {
+          e.preventDefault();
+          // Clicked source line: anchor ancestor walk → point fallback →
+          // plain-text <pre>(anchor 無し)は行高で概算。
+          let line = findSourceLineForElement(rawTarget);
+          if (line === null) line = findSourceLineByPoint(viewBody, mouseEvt.clientY);
+          if (line === null && viewBody.tagName === 'PRE') {
+            const r = viewBody.getBoundingClientRect();
+            const lh = parseFloat(window.getComputedStyle(viewBody).lineHeight) || 18;
+            line = Math.max(0, Math.floor((mouseEvt.clientY - r.top) / lh));
+          }
+          // anchor 行は frontmatter strip 済みソース基準 → textarea
+          // (全文)行へ frontmatter 行数を加算して換算する。
+          let fullLine = line ?? 0;
+          if (line !== null) {
+            const stripped = parseLivePreviewFrontmatter(selEntry.body).body;
+            const prefixLen = selEntry.body.length - stripped.length;
+            let fmLines = 0;
+            for (let i = 0; i < prefixLen; i++) {
+              if (selEntry.body.charCodeAt(i) === 10) fmLines++;
+            }
+            fullLine = line + fmLines;
+          }
+          triggerEdit(selEntry.lid);
+          // BEGIN_EDIT の render は同期完了済 — caret を突いた行に置き、
+          // クリック行を editor の上 1/3 に scroll(実測 line-metrics で
+          // 折り返しも正確)。
+          const ta = root.querySelector<HTMLTextAreaElement>(
+            '.pkc-text-split-editor textarea[data-pkc-field="body"]',
+          ) ?? root.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+          if (ta) {
+            const offset = caretOffsetForSourceLine(ta.value, fullLine);
+            ta.focus();
+            ta.setSelectionRange(offset, offset);
+            const tops = measureEditorLineTops(ta, [fullLine]);
+            const y = tops.get(fullLine);
+            if (y !== undefined) {
+              const taMax = ta.scrollHeight - ta.clientHeight;
+              if (taMax > 1) {
+                // textarea 自身が内部 scroll する構成(固定高)。
+                ta.scrollTop = Math.max(0, Math.min(taMax, Math.round(y - ta.clientHeight / 3)));
+              } else {
+                // 編集モードの textarea は内容高に auto-grow し、scroll は
+                // 親ペイン(.pkc-center-content 等)が担う。最寄りの
+                // scrollable ancestor を探し、クリック行がペインの上 1/3 に
+                // 来る位置へ scroll する。
+                let sc: HTMLElement | null = ta.parentElement;
+                while (
+                  sc
+                  && !(
+                    sc.scrollHeight > sc.clientHeight + 1
+                    && /(auto|scroll)/.test(window.getComputedStyle(sc).overflowY)
+                  )
+                ) {
+                  sc = sc.parentElement;
+                }
+                if (sc) {
+                  const taTopInSc =
+                    ta.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+                  const scMax = sc.scrollHeight - sc.clientHeight;
+                  sc.scrollTop = Math.max(
+                    0,
+                    Math.min(scMax, Math.round(taTopInSc + y - sc.clientHeight / 3)),
+                  );
+                }
+              }
+            }
+          }
           return;
         }
       }
