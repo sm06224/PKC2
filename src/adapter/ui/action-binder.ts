@@ -24,6 +24,7 @@ import {
   collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType,
   isTextConvertibleAttachment, decodeAttachmentText,
 } from './attachment-presenter';
+import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
 import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
@@ -92,10 +93,17 @@ import {
   syncCaretToPreview,
   isSyncEnabled,
   setSyncEnabled,
-  consumeScrollSuppression,
   consumeSelectionSuppression,
   refreshEditorActiveLine,
+  onEditorPaneScroll,
+  onPreviewPaneScroll,
+  invalidateSplitSyncMap,
+  findSourceLineForElement,
+  findSourceLineByPoint,
+  caretOffsetForSourceLine,
 } from './source-preview-sync';
+import { measureEditorLineTops } from './editor-line-metrics';
+import { getFilterIndexes } from './filter-cache';
 import { toggleTaskItem } from '../../features/markdown/markdown-task-list';
 import {
   computeQuoteAssistOnEnter,
@@ -1301,6 +1309,109 @@ export function bindActions(
           // B4: thread the row's log-id through so the editor lands
           // on the clicked row, not the entry title.
           beginLogEdit(tlLid, logRow.getAttribute('data-pkc-log-id'));
+          return;
+        }
+      }
+
+      // 2026-07-03 user request:TEXT エントリも textlog と同じ
+      // modifier+click(Alt / Ctrl / ⌘)で編集開始。さらに「突いた要素の
+      // 直下から」— view render の data-pkc-source-line anchor(detail-
+      // presenter が stamp)をクリック要素から逆引きし、編集開始後の
+      // caret をその source line に置き、クリック行が editor の上 1/3 に
+      // 来るよう scroll する。split-sync ON なら caret 整列が preview 側
+      // も追従させる。interactive 子要素(link / button / checkbox /
+      // fold summary 等)は各自のハンドラに譲る。
+      // NOTE: `summary` は skip しない — heading fold で見出しは <summary>
+      // 内にラップされるため、skip すると最頻ターゲット(見出し)が
+      // 効かなくなる。modifier click は下の preventDefault が native の
+      // details 開閉も抑止するので、fold 挙動(plain click)と衝突しない。
+      const viewBody = rawTarget.closest<HTMLElement>('.pkc-view-body');
+      if (
+        viewBody
+        && rawTarget.closest('[data-pkc-region="center"]')
+        && !rawTarget.closest(
+          'a, button, input, textarea, select, [data-pkc-action], .pkc-md-block-toolbar, .pkc-task-checkbox',
+        )
+      ) {
+        const st = dispatcher.getState();
+        const selLid = st.selectedLid;
+        const selEntry = selLid && st.container
+          ? getFilterIndexes(st.container).entryByLid.get(selLid) ?? null
+          : null;
+        if (
+          st.phase === 'ready'
+          && !st.readonly
+          && st.viewMode === 'detail'
+          && selEntry
+          && selEntry.archetype === 'text'
+        ) {
+          e.preventDefault();
+          // Clicked source line: anchor ancestor walk → point fallback →
+          // plain-text <pre>(anchor 無し)は行高で概算。
+          let line = findSourceLineForElement(rawTarget);
+          if (line === null) line = findSourceLineByPoint(viewBody, mouseEvt.clientY);
+          if (line === null && viewBody.tagName === 'PRE') {
+            const r = viewBody.getBoundingClientRect();
+            const lh = parseFloat(window.getComputedStyle(viewBody).lineHeight) || 18;
+            line = Math.max(0, Math.floor((mouseEvt.clientY - r.top) / lh));
+          }
+          // anchor 行は frontmatter strip 済みソース基準 → textarea
+          // (全文)行へ frontmatter 行数を加算して換算する。
+          let fullLine = line ?? 0;
+          if (line !== null) {
+            const stripped = parseLivePreviewFrontmatter(selEntry.body).body;
+            const prefixLen = selEntry.body.length - stripped.length;
+            let fmLines = 0;
+            for (let i = 0; i < prefixLen; i++) {
+              if (selEntry.body.charCodeAt(i) === 10) fmLines++;
+            }
+            fullLine = line + fmLines;
+          }
+          triggerEdit(selEntry.lid);
+          // BEGIN_EDIT の render は同期完了済 — caret を突いた行に置き、
+          // クリック行を editor の上 1/3 に scroll(実測 line-metrics で
+          // 折り返しも正確)。
+          const ta = root.querySelector<HTMLTextAreaElement>(
+            '.pkc-text-split-editor textarea[data-pkc-field="body"]',
+          ) ?? root.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
+          if (ta) {
+            const offset = caretOffsetForSourceLine(ta.value, fullLine);
+            ta.focus();
+            ta.setSelectionRange(offset, offset);
+            const tops = measureEditorLineTops(ta, [fullLine]);
+            const y = tops.get(fullLine);
+            if (y !== undefined) {
+              const taMax = ta.scrollHeight - ta.clientHeight;
+              if (taMax > 1) {
+                // textarea 自身が内部 scroll する構成(固定高)。
+                ta.scrollTop = Math.max(0, Math.min(taMax, Math.round(y - ta.clientHeight / 3)));
+              } else {
+                // 編集モードの textarea は内容高に auto-grow し、scroll は
+                // 親ペイン(.pkc-center-content 等)が担う。最寄りの
+                // scrollable ancestor を探し、クリック行がペインの上 1/3 に
+                // 来る位置へ scroll する。
+                let sc: HTMLElement | null = ta.parentElement;
+                while (
+                  sc
+                  && !(
+                    sc.scrollHeight > sc.clientHeight + 1
+                    && /(auto|scroll)/.test(window.getComputedStyle(sc).overflowY)
+                  )
+                ) {
+                  sc = sc.parentElement;
+                }
+                if (sc) {
+                  const taTopInSc =
+                    ta.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+                  const scMax = sc.scrollHeight - sc.clientHeight;
+                  sc.scrollTop = Math.max(
+                    0,
+                    Math.min(scMax, Math.round(taTopInSc + y - sc.clientHeight / 3)),
+                  );
+                }
+              }
+            }
+          }
           return;
         }
       }
@@ -2977,18 +3088,14 @@ export function bindActions(
             break;
           }
         }
-        const resolved = resolveAttachmentData(lid, dispatcher);
-        if (!resolved) break;
-        if (classifyPreviewType(resolved.mime) !== 'html') break;
-        const htmlString = decodeBase64ToText(resolved.data);
+        // Open the popup window SYNCHRONOUSLY inside the click gesture —
+        // popup blockers reject `window.open` once we leave the gesture, so
+        // we cannot await asset hydration first. The HTML is written into
+        // this window once the bytes resolve (or are hydrated on demand for
+        // a lazily-loaded asset — see openHtmlAttachmentWindow / #868 bug:
+        // launcher tile of a non-selected entry had no resident bytes).
         const features = 'popup=yes,width=1280,height=800,resizable=yes,scrollbars=yes';
-        const win = window.open('', '_blank', features);
-        if (win) {
-          win.document.open();
-          win.document.write(htmlString);
-          win.document.close();
-          win.focus?.(); // 新規 window を前面へ
-        }
+        void openHtmlAttachmentWindow(window.open('', '_blank', features), lid, dispatcher);
         break;
       }
       case 'copy-markdown-source': {
@@ -8945,6 +9052,10 @@ export function bindActions(
       pre.textContent = src;
       preview.appendChild(pre);
     }
+    // After re-render, the preview DOM (and thus every anchor rect) is
+    // new — drop the cached scroll mapping so the next sync rebuilds it
+    // against the fresh layout (2026-07 rebuild).
+    invalidateSplitSyncMap();
     // After re-render, refresh the sync layer so the active marker
     // tracks the new DOM. No-op when sync is disabled.
     if (document.activeElement === textarea) {
@@ -9136,44 +9247,41 @@ export function bindActions(
     syncCaretToPreview(textarea, preview, target, e.clientY);
   }
 
-  // Suppress the preview-pane scroll → editor follow loop. Currently
-  // the preview is the receiver only (editor → preview drives it),
-  // so we just consume any flagged programmatic scroll.
-  //
-  // 2026-05-05 hotfix: filter MUST come BEFORE consumeScrollSuppression.
-  // Capture-phase root listener fires for editor textarea scroll AND
-  // preview pane scroll; if we consume the flag eagerly we steal it
-  // from the preview's actual programmatic scroll event, breaking the
-  // feedback-loop guard. Worse, on touchpad reverse-direction scrolls
-  // user reported "first reverse swipe is swallowed" — that's the
-  // editor scroll event eating the flag set by a recent
-  // syncPreviewToCaret-driven preview scroll, then leaking into
-  // unintended dispatcher logic on the *next* scroll tick.
+  // 2026-07 rebuild: BOTH panes now drive the other through the
+  // piecewise-linear scroll mapping (source-preview-sync.ts). Echo
+  // filtering (our own programmatic set bouncing back as a scroll
+  // event) happens inside on*PaneScroll by value comparison —
+  // deterministic, no 80 ms suppression-flag races. Preview manual
+  // scroll → editor follows (NEW; was a no-op before); editor manual
+  // scroll → preview follows (NEW; was overlay-reposition only).
   function handlePreviewScroll(e: Event): void {
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
     if (t.getAttribute('data-pkc-region') !== 'text-edit-preview') return;
-    if (consumeScrollSuppression()) return;
-    // No-op: future enhancement could sync editor scroll to preview
-    // scroll when the user manually scrolls the preview pane.
+    if (!isSyncEnabled()) return;
+    const wrapper = t.closest<HTMLElement>('.pkc-text-split-editor');
+    const textarea = wrapper?.querySelector<HTMLTextAreaElement>(
+      'textarea[data-pkc-field="body"]',
+    );
+    if (!textarea) return;
+    onPreviewPaneScroll(textarea, t);
   }
 
-  // 2026-05-05 hotfix-3: textarea natural scroll only repositions
-  // the editor active-line overlay. It does NOT call
-  // syncPreviewToCaret because that would re-scroll the preview
-  // pane programmatically during the user's continued wheel gesture
-  // (Mac touchpad inertia fires many wheel events in succession;
-  // calling safeScrollPane in the middle of that loop has been
-  // observed to interact badly with reverse-direction scrolling on
-  // some platforms — the conservative fix is to leave the preview
-  // alone unless the caret actually moved).
   function handleEditorScroll(e: Event): void {
     const t = e.target;
     if (!(t instanceof HTMLTextAreaElement)) return;
     if (t.getAttribute('data-pkc-field') !== 'body') return;
-    if (!t.closest('.pkc-text-split-editor')) return;
+    const wrapper = t.closest<HTMLElement>('.pkc-text-split-editor');
+    if (!wrapper) return;
     if (!isSyncEnabled()) return;
+    // Overlay repositioning is unconditional (cheap, no scroll side
+    // effects); the mapping-driven preview follow is echo-filtered
+    // inside onEditorPaneScroll.
     refreshEditorActiveLine(t);
+    const preview = wrapper.querySelector<HTMLElement>(
+      '[data-pkc-region="text-edit-preview"]',
+    );
+    if (preview) onEditorPaneScroll(t, preview);
   }
 
   document.addEventListener('selectionchange', handleSourceSyncSelectionChange);
@@ -9916,6 +10024,24 @@ function formatAssetReference(entry: Entry): string {
 }
 
 /**
+ * 段階3 (#868): on-demand asset hydrator. Boot loads the container shallow
+ * (no asset bytes); the working-set manager fills `container.assets` lazily.
+ * Most read paths heal asynchronously via `noteAssetMiss` + post-render
+ * refresh, but a *user gesture* that must produce a result on the first
+ * click (opening an HTML app from the launcher tile of a NOT-currently-
+ * selected entry) cannot wait for a render cycle. `registerAssetHydrator`
+ * lets `main.ts` hand the action-binder an awaitable single-shot loader
+ * (`workingSet.ensure`) so such a gesture can load the bytes inline.
+ */
+let assetHydrator: ((keys: readonly string[]) => Promise<void>) | null = null;
+
+export function registerAssetHydrator(
+  fn: ((keys: readonly string[]) => Promise<void>) | null,
+): void {
+  assetHydrator = fn;
+}
+
+/**
  * Resolve attachment base64 data from container.assets or legacy body.data.
  *
  * pgc-236:optional `entryByLidOverride` Map を受け取れる ── 呼び出し側
@@ -9944,9 +10070,72 @@ function resolveAttachmentData(
   } else if (att.data) {
     base64 = att.data;
   }
-  if (!base64) return null;
+  if (!base64) {
+    // 段階3 (#868): under lazy/shallow loading the bytes may simply not be
+    // resident yet (the entry isn't the current selection, so the
+    // working-set never proactively preloaded it). Record the miss so the
+    // working-set manager hydrates it and the consumer heals on the next
+    // refresh (preview iframe / download). Genuinely-broken refs get marked
+    // absent by the manager and are not retried.
+    if (att.asset_key) noteAssetMiss(att.asset_key);
+    return null;
+  }
 
   return { data: base64, mime: att.mime, name: deriveDisplayFilename(att.name, att.mime) };
+}
+
+/**
+ * Write an HTML attachment into an already-opened popup `win`. The window
+ * MUST be opened synchronously by the caller (inside the click gesture) so
+ * popup blockers don't reject it; this helper then fills it.
+ *
+ * 段階3 (#868) bug fix: when the attachment's bytes are not resident (lazy
+ * shallow boot, and the entry is not the current selection so it was never
+ * proactively preloaded — the exact "ランチャーの HTML が起動時に開けない"
+ * report), hydrate the asset on demand via the registered hydrator, showing
+ * a brief placeholder, then write the real document. Closes the window if
+ * the entry is not an openable HTML attachment after all.
+ */
+async function openHtmlAttachmentWindow(
+  win: Window | null,
+  lid: string,
+  dispatcher: Dispatcher,
+): Promise<void> {
+  let resolved = resolveAttachmentData(lid, dispatcher);
+
+  if (!resolved && assetHydrator) {
+    // resolveAttachmentData already recorded the miss. Drive the
+    // working-set to load just this entry's asset inline, then retry.
+    const entry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+    const att = entry && entry.archetype === 'attachment' ? parseAttachmentBody(entry.body) : null;
+    if (att?.asset_key) {
+      if (win) {
+        win.document.open();
+        win.document.write(
+          '<!doctype html><meta charset="utf-8"><title>Loading…</title>'
+          + '<body style="font-family:system-ui;margin:0;padding:2rem;color:#555">Loading…</body>',
+        );
+        win.document.close();
+      }
+      try {
+        await assetHydrator([att.asset_key]);
+      } catch {
+        /* hydration failed — fall through; resolved stays null below */
+      }
+      resolved = resolveAttachmentData(lid, dispatcher);
+    }
+  }
+
+  if (!resolved || classifyPreviewType(resolved.mime) !== 'html') {
+    win?.close();
+    return;
+  }
+  if (win) {
+    win.document.open();
+    win.document.write(decodeBase64ToText(resolved.data));
+    win.document.close();
+    win.focus?.(); // 新規 window を前面へ
+  }
 }
 
 function downloadAttachment(lid: string, dispatcher: Dispatcher): void {

@@ -110,6 +110,13 @@ user 要望: **ファイルベース issue 管理 → GitHub Issues**、doc を�
 | **L3 arch v3 設計** | §4 North Star を 1 枚の設計 doc 化(OPFS/extensions/workspace/container)。実装はしない | 設計 doc | 並行可 |
 | **L4 process** | GitHub Issues 移行(§5)+ CLAUDE.md スリム化(儀式削減・stack 上限強制・bundle 予算優先)| Issues + CLAUDE.md rewrite | 並行可 |
 
+> **2026-07-01 supersede(L1/L2 の subtract 部分)**: bundle の「機能 subtract」は
+> user 判断で**撤回**。bundle 大物(mermaid / docx / pptxgenjs / chart.js)は
+> **keep・むしろ強化対象**であり、以後削減候補として蒸し返さない。perf wave は
+> main 着地済、50 PR stack は close 済、memory 系(#868 段階2–5)も着地済。
+> Epic #762 / #763(子 #769 含む)はこれをもって close。bundle は CI size budget
+> による**増加監視**のみ継続する。
+
 ---
 
 ## §6.1 GitHub Issues 移行済み(2026-06-06)
@@ -145,3 +152,4 @@ archive 実施済(#775、2026-06-06):roadmap / v3-proposals / Phase β plan + 3 
 | 2026-06-02 | user direction(PR #760 起源):AI tab / filer 入替 / header sizing 却下、「デバッグと取捨選択だけ」表明、rollup #760 を main 着地 vehicle に |
 | 2026-06-06 | user review session:「機能どれもイマイチ / もっさり / 肥大化」+ North Star(OPFS/extensions/workspace/container 分離)提示。Claude が 50 PR stack + bundle 2.7× + docs 乖離を診断、本書で集約・凍結 |
 | 2026-06-12/13 | **North Star §4-2(Extension host)実装着地**: transport 監査(#795)→ host-push 体系(#806、PR #807–#820)→ 封じ込め Tier S/T(#796、PR #821–#822)→ graph pkc-ext 切替 + manual 改訂(PR #823–#824)。棚卸し = `extension-host-status-2026-06.md`、関連 issue #791/#796/#804/#805/#806 close |
+| 2026-07-01 | **bundle 機能 subtract を user 判断で撤回**:mermaid / Office export(docx・pptxgenjs)/ chart.js は keep・強化対象。「削る」提案は以後蒸し返さない。perf wave・50 PR stack・memory(#868)は着地済のため **Epic #762 / #763(子 #769)close**。bundle は CI size budget の増加監視のみ継続。新機能追加の凍結(§3)自体の扱いは引き続き user 判断 |

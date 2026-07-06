@@ -39,6 +39,7 @@ import {
   populateInlineAssetPreviews,
   cleanupBlobUrls,
   flashEntry,
+  registerAssetHydrator,
 } from './adapter/ui/action-binder';
 import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refresh';
 import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
@@ -229,6 +230,13 @@ async function boot(): Promise<void> {
     }
     if (renderScope === 'settings-only') {
       render(state, root, prevRenderState);
+      // 2026-07-03 theme-mismatch fix:テーマ切替(SET_THEME_MODE)は
+      // settings-only scope に落ちるため、従来ここで WCAG resolver が
+      // 再実行されず、inline color の shift が旧テーマ基準のまま残った
+      // (resolver の runtime listener も OS scheme しか見ていない)。
+      // applySystemSettings 後に再適用して data-pkc-theme の切替にも
+      // コントラスト最適化を追従させる。
+      applyWcagResolverNow(root);
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
       return;
@@ -273,6 +281,24 @@ async function boot(): Promise<void> {
       // L1 #693 PR-2: a single todo body-only change. Like the selection
       // path, the center pane is replaced, so revoke its old preview Blobs
       // and re-hydrate previews; continuity preserves center scroll / focus.
+      cleanupBlobUrls(root);
+      const continuity = captureRenderContinuity(root);
+      render(state, root, prevRenderState);
+      restoreRenderContinuity(root, continuity);
+      populateAttachmentPreviews(root, dispatcher);
+      populateInlineAssetPreviews(root, dispatcher);
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevRenderState = state;
+      return;
+    }
+    if (renderScope === 'assets-only') {
+      // #868 段階3: the working-set republished resident asset bytes
+      // (SET_WORKING_SET_ASSETS). The renderer swaps only the center +
+      // meta panes; the O(N) sidebar tree stays put. Same hook set as
+      // the selection path: the center IS replaced, so revoke its old
+      // preview Blobs and re-hydrate both preview passes (attachment
+      // previews also cover sidebar rows whose asset bytes just became
+      // resident). Continuity preserves center scroll / focus.
       cleanupBlobUrls(root);
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
@@ -600,6 +626,11 @@ async function boot(): Promise<void> {
   dispatcher.onState(() => {
     void workingSet.refresh();
   });
+  // #868 bug fix: let user gestures that must produce a result on the first
+  // click (open HTML app from a launcher tile of a not-currently-selected
+  // entry) hydrate the needed asset bytes inline rather than waiting for a
+  // render-driven miss-recovery cycle.
+  registerAssetHydrator((keys) => workingSet.ensure(keys));
   // 段階4 (#868): resident asset-metadata index so storage profile /
   // guardrails / orphan count / paste dedupe report on the FULL store, not
   // just the resident working-set. Memory-safe backfill + persisted index.

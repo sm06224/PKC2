@@ -52,6 +52,7 @@ import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
 import { hydrateMermaidPlaceholders } from './mermaid-renderer';
+import { applyWcagResolverNow } from './wcag-runtime';
 import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { buildAssetMimeMap, buildAssetNameMap } from './renderer';
 
@@ -1064,6 +1065,12 @@ export function openRenderedViewer(
     const popupBody = win.document.body;
     if (popupBody) {
       void hydrateMermaidPlaceholders(popupBody);
+      // 2026-07-06 user 要望「どこで何を見ても見やすく」:WCAG 同系色 shift を
+      // Viewer popup(独立 document)にも適用。inline color 指定の text を
+      // 実効背景に対して目標コントラストへ寄せる(flag `theme.wcag_auto_shift`
+      // 既定 ON 配下)。mermaid SVG は hydrateMermaidPlaceholders 側で別途 shift
+      // 済(#890)。text 経路は本呼出が担当。popup は静的 render なので 1 回で足りる。
+      applyWcagResolverNow(popupBody);
     }
   } catch {
     // popup access denied(cross-origin etc.)で fail silently

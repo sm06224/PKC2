@@ -23,6 +23,15 @@ const wcagTargetRatio = defineFlag<number>('theme.wcag_target_ratio', 4.5, {
   range: [3, 21],
 });
 
+/** 2026-07-04(mermaid WCAG):他 module(mermaid-renderer)から同じ
+ *  flag を参照するための accessor。flag 定義は本 module に一元化。 */
+export function isWcagAutoShiftEnabled(): boolean {
+  return wcagAutoShift();
+}
+export function getWcagTargetRatio(): number {
+  return wcagTargetRatio();
+}
+
 /** 現在の root element scope で WCAG resolver を実行(or revert)。 */
 export function applyWcagResolverNow(root?: HTMLElement): { scanned: number; shifted: number; reverted: number } {
   const target = root ?? document.querySelector<HTMLElement>('#pkc-root') ?? document.body;
