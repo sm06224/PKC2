@@ -26,6 +26,7 @@ import { renderMarkdown } from '../../features/markdown/markdown-render';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
 import { hydrateMermaidPlaceholders } from './mermaid-renderer';
+import { applyWcagResolverNow } from './wcag-runtime';
 // pgc-97(audit pgc-77 Gap-14):S4 全 path で heading-fold が機能していな
 // かった(features 層 op 未連動)。pgc-96 で導入した injectFeaturesDomOps
 // pipeline に applyHeadingFold を追加し、center pane(S1)と同 contract に。
@@ -321,6 +322,35 @@ function pkcHydratePreviewMermaid(el: unknown): void {
   void hydrateMermaidPlaceholders(el as HTMLElement);
 }
 (window as unknown as Record<string, unknown>).pkcHydratePreviewMermaid = pkcHydratePreviewMermaid;
+
+/**
+ * 2026-07-06 user 要望「どこで何を見ても見やすく」:WCAG 同系色 shift を
+ * child window(独立 document)の preview にも適用する parent-side entry point。
+ * child inline script が `window.opener.pkcApplyWcagShift(element)` で呼ぶ。
+ *
+ * `applyWcagResolverNow` は `el.ownerDocument.defaultView` 経由で computed style
+ * を読むため cross-document 安全。flag `theme.wcag_auto_shift`(既定 ON)配下で、
+ * OFF なら revert のみ。inline color 指定の text を実効背景に対し目標コントラスト
+ * へ寄せる(mermaid SVG は pkcHydratePreviewMermaid 側で別途 shift 済)。
+ */
+function pkcApplyWcagShift(el: unknown): void {
+  if (!el || typeof (el as HTMLElement).querySelectorAll !== 'function') return;
+  try { applyWcagResolverNow(el as HTMLElement); } catch (_e) { /* non-fatal */ }
+}
+(window as unknown as Record<string, unknown>).pkcApplyWcagShift = pkcApplyWcagShift;
+
+/**
+ * 開いたばかりの child window の初期焼き込み本文(buildWindowHtml /
+ * buildMonitorHtml が document.write した静的 HTML)に WCAG shift を 1 回適用。
+ * 初期本文は renderMdInto を通らない(L3112 参照)ため parent が close 直後に走らせる。
+ */
+function applyWcagToChildWindow(child: Window | null): void {
+  if (!child) return;
+  try {
+    const body = child.document.body;
+    if (body) applyWcagResolverNow(body);
+  } catch (_e) { /* cross-origin / closed — non-fatal */ }
+}
 
 /** Track open child windows to prevent duplicates. */
 const openWindows = new Map<string, Window>();
@@ -997,6 +1027,7 @@ export function openEntryWindow(
   child.document.open();
   child.document.write(buildWindowHtml(entry, readonly, lightSource, assetContext, startEditing));
   child.document.close();
+  applyWcagToChildWindow(child); // 初期焼き込み本文に WCAG shift を適用
   child.focus?.(); // 新規 window を前面へ(再オープン経路の existing.focus() と挙動を揃える)
 
   // Listen for messages from child
@@ -1107,6 +1138,7 @@ export function openViewerWindow(
   child.document.open();
   child.document.write(buildWindowHtml(entry, true, lightSource, assetContext, false));
   child.document.close();
+  applyWcagToChildWindow(child); // 初期焼き込み本文に WCAG shift を適用
   child.focus?.(); // 新規 window を前面へ(再オープン経路の existing.focus() と挙動を揃える)
 
   function handleMessage(e: MessageEvent): void {
@@ -1165,6 +1197,7 @@ export function openMonitorWindow(kind: MonitorKind, entry: Entry): void {
   child.document.open();
   child.document.write(buildMonitorHtml(kind, entry, deriveMonitorItems(kind, entry)));
   child.document.close();
+  applyWcagToChildWindow(child); // 初期焼き込み本文に WCAG shift を適用
   child.focus?.(); // 新規 window を前面へ(再オープン経路の existing.win.focus() と挙動を揃える)
 
   function handleMessage(e: MessageEvent): void {
@@ -4401,6 +4434,11 @@ function renderMdInto(el, text) {
   el.innerHTML = renderMd(text);
   if (window.opener && typeof window.opener.pkcHydratePreviewMermaid === 'function') {
     try { window.opener.pkcHydratePreviewMermaid(el); } catch (_e) { /* parent closed / xorigin */ }
+  }
+  /* 2026-07-06: 再描画した preview にも WCAG 同系色 shift を適用(初期本文は
+     parent の applyWcagToChildWindow が担当、再描画は本経路)。 */
+  if (window.opener && typeof window.opener.pkcApplyWcagShift === 'function') {
+    try { window.opener.pkcApplyWcagShift(el); } catch (_e) { /* parent closed / xorigin */ }
   }
 }
 
