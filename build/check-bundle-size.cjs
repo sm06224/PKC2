@@ -174,7 +174,13 @@ const BUDGETS = [
   //     (領域 10-5、未着手)に分離 or `editor.mermaid_render_enabled`
   //     default OFF のまま運用(本セッションでは OFF、bundle 物理サイズ
   //     のみ膨らむ)
-  { file: 'dist/bundle.js', maxBytes: 5632 * 1024 },  // 5.5 MB (was 4.5 MB、pgc-203 で mermaid 取込)
+  // 2026-07-07(user 判断「size budget は実質凍結、適用超過に問題ない」):
+  //   2026-07-01 の方針(bundle 機能 subtract 撤回・mermaid / Office export /
+  //   chart.js は keep・強化対象)を承け、runtime dep(docx / markdown-it /
+  //   mermaid)の minor 追随で 5.5 MB を僅かに超過した分を吸収するため
+  //   5.5 → 5.75 MB に bump。cap は「本体を PKC-extension へ外だしする分水嶺」
+  //   の regression signal として残す(撤廃はしない)。
+  { file: 'dist/bundle.js', maxBytes: 5888 * 1024 },  // 5.75 MB (was 5.5 MB、2026-07-07 mermaid/md-it/docx minor 追随)
   { file: 'dist/bundle.css', maxBytes: 512 * 1024 },  // 0.5 MB (was 130 KB)
 ];
 
