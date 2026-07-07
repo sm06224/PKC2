@@ -74,6 +74,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
+      # 壊れた Microsoft apt repo(packages.microsoft.com)がランナーイメージに
+      # プリインされており、不定期に不正な署名メタデータ(NOSPLIT / "no longer
+      # signed")を配信して `apt-get update` を破壊する既知の再発性インシデントが
+      # ある(microsoft/vscode#134123, Azure/azure-cli#28822, playwright#30502 等)。
+      # playwright の `--with-deps` / `install-deps` は内部で apt を叩くため巻き
+      # 込まれる。smoke に不要な MS 第三者 repo を install 前に除去して apt を
+      # 安定化させる(Ubuntu 本体 repo は残すので低リスク)。
+      - name: Drop broken Microsoft apt repo (recurring GH runner incident)
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/*microsoft* /etc/apt/sources.list.d/*azure-cli* 2>/dev/null || true
+          sudo apt-get update || true
+
       - name: Install Playwright chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
@@ -139,6 +151,18 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # 壊れた Microsoft apt repo(packages.microsoft.com)がランナーイメージに
+      # プリインされており、不定期に不正な署名メタデータ(NOSPLIT / "no longer
+      # signed")を配信して `apt-get update` を破壊する既知の再発性インシデントが
+      # ある(microsoft/vscode#134123, Azure/azure-cli#28822, playwright#30502 等)。
+      # playwright の `--with-deps` / `install-deps` は内部で apt を叩くため巻き
+      # 込まれる。smoke に不要な MS 第三者 repo を install 前に除去して apt を
+      # 安定化させる(Ubuntu 本体 repo は残すので低リスク)。
+      - name: Drop broken Microsoft apt repo (recurring GH runner incident)
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/*microsoft* /etc/apt/sources.list.d/*azure-cli* 2>/dev/null || true
+          sudo apt-get update || true
 
       - name: Install Playwright chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
