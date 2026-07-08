@@ -29,7 +29,7 @@ import {
   installBootReadySignal,
   signalBootReady,
 } from './adapter/boot-ready-signal';
-import { installWcagResolverRuntime, applyWcagResolverNow } from './adapter/ui/wcag-runtime';
+import { installWcagResolverRuntime, applyWcagResolverNow, installThemeBalanceRuntime, applyThemeBalanceNow } from './adapter/ui/wcag-runtime';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
 import { isSnapshot } from './features/snapshot/types';
@@ -237,6 +237,7 @@ async function boot(): Promise<void> {
       // applySystemSettings 後に再適用して data-pkc-theme の切替にも
       // コントラスト最適化を追従させる。
       applyWcagResolverNow(root);
+      applyThemeBalanceNow(root); // opt-in テーマ balance(cache backed、flag OFF で no-op)
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
       return;
@@ -336,6 +337,8 @@ async function boot(): Promise<void> {
     // PR-2T(2026-05-12):render 後の inline color に WCAG resolver を適用。
     // `theme.wcag_auto_shift` flag が OFF なら no-op、ON なら同系色 shift。
     applyWcagResolverNow(root);
+    // opt-in:アプリテーマトークン自体の WCAG balance(既定 OFF、cache backed)。
+    applyThemeBalanceNow(root);
 
     restoreRenderContinuity(root, continuity);
 
@@ -561,6 +564,12 @@ async function boot(): Promise<void> {
   // 同系色 shift で AA を自動達成。OFF にすれば設定通りの色のまま。
   // theme change(prefers-color-scheme)で re-apply listener も install。
   installWcagResolverRuntime();
+
+  // 2026-07-08(user 要望):アプリテーマトークン自体の WCAG balance runtime。
+  // opt-in flag `theme.wcag_balance_app`(既定 OFF)。テーマ変化で re-apply、
+  // テーマ単位の事前計算キャッシュで表示の都度は再計算しない。
+  installThemeBalanceRuntime();
+  applyThemeBalanceNow();
 
   // PR-2O(2026-05-10):?pkc-debug=hallucination で tolerant alias の hint
   // marker(dotted underline / align chip)を visible に。default 非表示。
