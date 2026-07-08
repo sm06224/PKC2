@@ -39,7 +39,6 @@ async function opfsContainerFileCount(page: Page): Promise<number> {
     const dir = await root.getDirectoryHandle('containers').catch(() => null);
     if (!dir) return 0;
     let n = 0;
-    // @ts-expect-error keys() exists at runtime
     for await (const _ of dir.keys()) n++;
     return n;
   });
