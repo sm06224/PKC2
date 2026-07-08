@@ -20,6 +20,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@core/*": ["src/core/*"],
       "@adapter/*": ["src/adapter/*"],

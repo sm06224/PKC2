@@ -45,7 +45,6 @@ async function folderContainerFileCount(page: Page): Promise<number> {
     const dir = await folder.getDirectoryHandle('containers').catch(() => null);
     if (!dir) return 0;
     let n = 0;
-    // @ts-expect-error keys() exists at runtime
     for await (const _ of dir.keys()) n++;
     return n;
   });
