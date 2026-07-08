@@ -28,6 +28,8 @@
 import { getRegisteredFlags, type FlagDescriptor } from '../flags';
 import { BUILD_FEATURES } from '../../runtime/release-meta';
 import { MESSAGE_CAPABILITIES } from '../transport/capability';
+import { computeA11yRecommendations, type A11yRecommendation } from '../../features/theme/a11y-recommendations';
+import { isWcagBalanceAppEnabled, getWcagTargetRatio } from './wcag-runtime';
 
 function createElement(tag: string, className: string): HTMLElement {
   const el = document.createElement(tag);
@@ -308,6 +310,66 @@ function applyInspectorFilter(panel: HTMLElement): void {
  * to be appended to `#pkc-root`. The renderer wraps this in a
  * backdrop / display:none toggle based on `flagsInspectorOpen`.
  */
+const A11Y_SEVERITY_ICON: Record<A11yRecommendation['severity'], string> = {
+  warn: '⚠️',
+  suggest: '💡',
+  info: 'ℹ️',
+};
+
+/**
+ * アクセシビリティ推奨掲示(2026-07-08、user 要望)。現テーマのトークンと
+ * theme.wcag_balance_app の状態から推奨を算出して掲示する。warn / suggest が
+ * あれば open、無ければ collapsed。推奨が 0 件なら null(掲示しない)。
+ */
+function renderA11yRecommendationsSection(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  const root = document.querySelector<HTMLElement>('#pkc-root') ?? document.body;
+  if (!root) return null;
+  const win = root.ownerDocument?.defaultView;
+  if (!win) return null;
+  const cs = win.getComputedStyle(root);
+  const read = (token: string): string | undefined =>
+    cs.getPropertyValue(`--${token}`).trim() || undefined;
+
+  const recs = computeA11yRecommendations({
+    read,
+    targetRatio: getWcagTargetRatio(),
+    balanceEnabled: isWcagBalanceAppEnabled(),
+  });
+  if (recs.length === 0) return null;
+
+  const details = document.createElement('details');
+  details.className = 'pkc-a11y-recs';
+  details.setAttribute('data-pkc-region', 'a11y-recommendations');
+  // warn / suggest があれば展開して目に留める。
+  if (recs.some((r) => r.severity === 'warn' || r.severity === 'suggest')) {
+    details.setAttribute('open', '');
+  }
+  const sum = createElement('summary', 'pkc-flags-section-heading');
+  sum.textContent = `♿ アクセシビリティ推奨(${recs.length})`;
+  details.appendChild(sum);
+
+  const list = createElement('ul', 'pkc-a11y-recs-list');
+  for (const rec of recs) {
+    const li = createElement('li', 'pkc-a11y-rec');
+    li.setAttribute('data-pkc-a11y-severity', rec.severity);
+    const title = createElement('div', 'pkc-a11y-rec-title');
+    title.textContent = `${A11Y_SEVERITY_ICON[rec.severity]} ${rec.title}`;
+    li.appendChild(title);
+    const detail = createElement('p', 'pkc-a11y-rec-detail');
+    detail.textContent = rec.detail;
+    li.appendChild(detail);
+    if (rec.flag) {
+      const flagHint = createElement('code', 'pkc-a11y-rec-flag');
+      flagHint.textContent = rec.flag;
+      li.appendChild(flagHint);
+    }
+    list.appendChild(li);
+  }
+  details.appendChild(list);
+  return details;
+}
+
 export function renderFlagsInspector(): HTMLElement {
   const flags = getRegisteredFlags();
   const grouped = groupByCategory(flags);
@@ -425,6 +487,9 @@ export function renderFlagsInspector(): HTMLElement {
   // does not snap the user back to the top mid-edit. User report:
   // 「Flags 画面で設定変更時の勝手 scroll 修正」.
   body.setAttribute('data-pkc-region', 'flags-inspector-body');
+  // アクセシビリティ推奨掲示(推奨があれば body 先頭に目立つ位置で)。
+  const a11yRecs = renderA11yRecommendationsSection();
+  if (a11yRecs) body.appendChild(a11yRecs);
   if (flags.length === 0) {
     const empty = createElement('div', 'pkc-flags-inspector-empty');
     empty.textContent = 'No flags registered yet.';

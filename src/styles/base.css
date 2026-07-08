@@ -5782,6 +5782,51 @@ mark.pkc-search-mark {
   color: var(--c-muted);
   letter-spacing: 0.05em;
 }
+
+/* アクセシビリティ推奨掲示(2026-07-08)。flags-inspector body 先頭。 */
+.pkc-a11y-recs {
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  background: var(--c-surface);
+}
+.pkc-a11y-recs > summary { cursor: pointer; }
+.pkc-a11y-recs-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pkc-a11y-rec {
+  border-left: 3px solid var(--c-border);
+  padding-left: var(--space-3);
+}
+.pkc-a11y-rec[data-pkc-a11y-severity="warn"] { border-left-color: var(--c-warn); }
+.pkc-a11y-rec[data-pkc-a11y-severity="suggest"] { border-left-color: var(--c-accent); }
+.pkc-a11y-rec[data-pkc-a11y-severity="info"] { border-left-color: var(--c-info); }
+.pkc-a11y-rec-title {
+  font-size: var(--fs-md);
+  color: var(--c-fg);
+  font-weight: 600;
+}
+.pkc-a11y-rec-detail {
+  margin: var(--space-1-5) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--c-muted);
+  line-height: 1.5;
+}
+.pkc-a11y-rec-flag {
+  display: inline-block;
+  margin-top: var(--space-1-5);
+  font-size: var(--fs-xs);
+  color: var(--c-accent);
+  background: var(--c-hover);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+}
 .pkc-flag-row {
   display: flex;
   flex-direction: column;
