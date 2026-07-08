@@ -179,6 +179,42 @@ export function shiftToContrast(
   };
 }
 
+/**
+ * bg を固定したまま fg のみを HSL の L 軸で shift して目標 ratio を達成する。
+ * 背景が共有キャンバス(app テーマの bg など、動かせない側)のときに使う。
+ * shiftToContrast が fg/bg 両方を動かすのに対し、こちらは片側探索。
+ * deterministic — 同じ入力 → 同じ出力。
+ */
+export function shiftFgToContrast(
+  fg: RGB,
+  bg: RGB,
+  targetRatio: number = 4.5,
+): ShiftResult {
+  const initial = getContrastRatio(fg, bg);
+  if (initial >= targetRatio) {
+    return { fg, bg, ratio: initial, applied: false, iterations: 0 };
+  }
+  const bgL = relativeLuminance(bg);
+  const [h, s, l0] = rgbToHsl(fg);
+  const STEP = 0.025;
+  const MAX_ITER = 40;
+  // 背景が明るければ fg を暗く、暗ければ明るく — 遠ざかれる方向へ。
+  const dir = bgL > 0.5 ? -1 : 1;
+  let l = l0;
+  let cur: RGB = fg;
+  let ratio = initial;
+  let iterations = 0;
+  for (let i = 0; i < MAX_ITER; i++) {
+    iterations = i + 1;
+    l = clamp01(l + dir * STEP);
+    cur = hslToRgb([h, s, l]);
+    ratio = getContrastRatio(cur, bg);
+    if (ratio >= targetRatio) break;
+    if (l === 0 || l === 1) break; // 到達不能でも「可能な最大」で返す
+  }
+  return { fg: cur, bg, ratio, applied: true, iterations };
+}
+
 /** memoize:同じ組合せ → 同じ shift(deterministic 保証 + perf)。 */
 const SHIFT_CACHE = new Map<string, ShiftResult>();
 
