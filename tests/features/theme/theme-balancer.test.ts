@@ -24,8 +24,11 @@ const LIGHT: Record<string, string> = {
 function reader(map: Record<string, string>) {
   return (t: string): string | undefined => map[t];
 }
-function ratio(colorStr: string, bgStr: string): number {
-  return getContrastRatio(parseColor(colorStr)!, parseColor(bgStr)!);
+function ratio(colorStr: string | undefined, bgStr: string | undefined): number {
+  const fg = parseColor(colorStr ?? '');
+  const bg = parseColor(bgStr ?? '');
+  if (!fg || !bg) return 0;
+  return getContrastRatio(fg, bg);
 }
 
 describe('computeBalancedTokens', () => {
@@ -60,8 +63,10 @@ describe('computeBalancedTokens', () => {
 
   it('色相は保たれる(同系色 shift、hue 差 ≤ 8°)', () => {
     const out = computeBalancedTokens(reader(DARK), 4.5);
-    const toHue = (s: string): number => {
-      const [r, g, b] = parseColor(s)!.map((v) => v / 255);
+    const toHue = (s: string | undefined): number => {
+      const rgb = parseColor(s ?? '');
+      if (!rgb) return 0;
+      const r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
       const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
       if (d === 0) return 0;
       let h = 0;
