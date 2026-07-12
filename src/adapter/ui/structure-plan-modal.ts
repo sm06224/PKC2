@@ -82,7 +82,7 @@ export function openStructurePlanModal(dispatcher: Dispatcher): void {
   const input = document.createElement('textarea');
   input.className = 'pkc-structure-plan-input';
   input.setAttribute('data-pkc-region', 'structure-plan-input');
-  input.setAttribute('placeholder', '# 例:\nmkdir "アーカイブ"\nmv lid-123 root\nrename lid-456 "新しいタイトル"');
+  input.setAttribute('placeholder', '# 例:\nmkdir "アーカイブ" as @arc\nmv lid-123 @arc\nrename lid-456 "新しいタイトル"');
   input.rows = 8;
   panel.appendChild(input);
 

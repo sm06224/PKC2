@@ -3699,25 +3699,35 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       // UI 側で plan(dry-run 検証)済みだが、reducer でも防御的に再検証して
       // 不正 op は skip(循環 / 不在 lid / 非 folder 親 / reserved lid)。
       // 1 dispatch = 1 適用単位(部分適用でも state は常に整合)。
+      // v2 alias:mkdir 実行時に alias→実 lid を記録し、後続 op の parent
+      // `@name` を実 lid に解決してから通常の検証を通す(alias で作られた
+      // folder はその時点で container に実在するので、循環検証も一様に効く)。
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);
       let container = state.container;
       const ts = now();
       let applied = 0;
       const events: DomainEvent[] = [];
+      const aliasLids = new Map<string, string>();
+      // 未宣言 alias は undefined を返す = 呼び出し側で op を skip
+      const resolveParent = (parent: string | null): string | null | undefined =>
+        parent !== null && parent.startsWith('@') ? aliasLids.get(parent) : parent;
       for (const op of action.ops) {
         if (op.op === 'mkdir') {
-          if (op.parent !== null) {
-            const p = container.entries.find((e) => e.lid === op.parent);
+          const parent = resolveParent(op.parent);
+          if (parent === undefined) continue;
+          if (parent !== null) {
+            const p = container.entries.find((e) => e.lid === parent);
             if (!p || p.archetype !== 'folder') continue;
           }
           const lid = generateLid();
           container = addEntry(container, lid, 'folder', op.title, ts);
           events.push({ type: 'ENTRY_CREATED', lid, archetype: 'folder' });
-          if (op.parent !== null) {
+          if (parent !== null) {
             const relId = generateLid();
-            container = addRelation(container, relId, op.parent, lid, 'structural', ts);
+            container = addRelation(container, relId, parent, lid, 'structural', ts);
           }
+          if (op.alias !== undefined && !aliasLids.has(op.alias)) aliasLids.set(op.alias, lid);
           applied++;
           continue;
         }
@@ -3735,19 +3745,21 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
           continue;
         }
         // mv:既存 structural 親を外し、指定 folder(または root)へ付け替え
-        if (op.parent !== null) {
-          const p = container.entries.find((e) => e.lid === op.parent);
-          if (!p || p.archetype !== 'folder' || op.parent === op.lid) continue;
-          if (entry.archetype === 'folder' && isDescendant(container.relations, op.lid, op.parent)) continue;
+        const mvParent = resolveParent(op.parent);
+        if (mvParent === undefined) continue;
+        if (mvParent !== null) {
+          const p = container.entries.find((e) => e.lid === mvParent);
+          if (!p || p.archetype !== 'folder' || mvParent === op.lid) continue;
+          if (entry.archetype === 'folder' && isDescendant(container.relations, op.lid, mvParent)) continue;
         }
         for (const r of container.relations) {
           if (r.kind === 'structural' && r.to === op.lid) {
             container = removeRelation(container, r.id);
           }
         }
-        if (op.parent !== null) {
+        if (mvParent !== null) {
           const relId = generateLid();
-          container = addRelation(container, relId, op.parent, op.lid, 'structural', ts);
+          container = addRelation(container, relId, mvParent, op.lid, 'structural', ts);
         }
         applied++;
       }

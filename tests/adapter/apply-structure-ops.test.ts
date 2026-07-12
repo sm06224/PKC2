@@ -84,6 +84,58 @@ describe('APPLY_STRUCTURE_OPS reducer(#905)', () => {
     expect(done).toEqual({ type: 'STRUCTURE_OPS_APPLIED', applied: 1 });
   });
 
+  it('v2 alias:mkdir as @x で作った新規フォルダへ後続 mv / 入れ子 mkdir できる', () => {
+    const { dispatcher, events } = boot();
+    dispatcher.dispatch({
+      type: 'APPLY_STRUCTURE_OPS',
+      ops: [
+        { op: 'mkdir', title: 'Archive', parent: null, alias: '@arc' },
+        { op: 'mkdir', title: '2025', parent: '@arc', alias: '@y25' }, // 入れ子 alias
+        { op: 'mv', lid: 'e2', parent: '@y25' },
+      ],
+    });
+    const c = dispatcher.getState().container!;
+    const arc = c.entries.find((e) => e.title === 'Archive')!;
+    const y25 = c.entries.find((e) => e.title === '2025')!;
+    expect(arc.archetype).toBe('folder');
+    expect(structuralParentOf(c, y25.lid)).toBe(arc.lid);
+    expect(structuralParentOf(c, 'e2')).toBe(y25.lid);
+    const done = events.find((e) => e.type === 'STRUCTURE_OPS_APPLIED');
+    expect(done).toEqual({ type: 'STRUCTURE_OPS_APPLIED', applied: 3 });
+  });
+
+  it('v2 alias:未宣言 alias を親にした op は防御的に skip', () => {
+    const { dispatcher, events } = boot();
+    dispatcher.dispatch({
+      type: 'APPLY_STRUCTURE_OPS',
+      ops: [
+        { op: 'mv', lid: 'e2', parent: '@nope' },              // 未宣言 → skip
+        { op: 'mkdir', title: 'X', parent: '@nope' },          // 未宣言 → skip
+        { op: 'mv', lid: 'e2', parent: 'f1' },                 // これだけ適用
+      ],
+    });
+    const c = dispatcher.getState().container!;
+    expect(c.entries.find((e) => e.title === 'X')).toBeUndefined();
+    expect(structuralParentOf(c, 'e2')).toBe('f1');
+    const done = events.find((e) => e.type === 'STRUCTURE_OPS_APPLIED');
+    expect(done).toEqual({ type: 'STRUCTURE_OPS_APPLIED', applied: 1 });
+  });
+
+  it('v2 alias:逐次適用で生じる動的循環も reducer が skip(自分の配下の新規フォルダへの mv)', () => {
+    const { dispatcher } = boot();
+    dispatcher.dispatch({
+      type: 'APPLY_STRUCTURE_OPS',
+      ops: [
+        { op: 'mkdir', title: 'Trap', parent: 'f2', alias: '@trap' }, // f1 > f2 > Trap
+        { op: 'mv', lid: 'f1', parent: '@trap' },                     // f1 → 自分の子孫 = 循環 skip
+      ],
+    });
+    const c = dispatcher.getState().container!;
+    expect(structuralParentOf(c, 'f1')).toBeNull();
+    const trap = c.entries.find((e) => e.title === 'Trap')!;
+    expect(structuralParentOf(c, trap.lid)).toBe('f2');
+  });
+
   it('readonly では blocked(container 不変)', () => {
     const dispatcher = createDispatcher();
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: makeContainer(), readonly: true });
