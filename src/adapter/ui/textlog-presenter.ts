@@ -14,6 +14,7 @@ import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatt
 import { resolveAssetReferences, hasAssetReferences } from '../../features/markdown/asset-resolver';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
+import { hydrateMermaidPlaceholders } from './mermaid-renderer';
 import { getFormatLocale, getFormatTimeZone } from './format-context';
 import {
   isSelectionModeActive,
@@ -603,6 +604,14 @@ function renderLogArticle(
         currentContainerId: currentContainerId ?? '',
       });
     }
+    // 2026-07-08 user 報告「textlog で mermaid レンダリングできない」:
+    // mermaid fence の placeholder は renderMarkdown が生成するが、TEXTLOG は
+    // detail-presenter(TEXT、S1 center)と違い hydrate を呼んでいなかった。
+    // renderLogArticle は eager 初期描画と lazy hydrator(attachHydrator)の
+    // 両経路から呼ばれるため、ここ 1 箇所で全ログをカバーする。placeholder
+    // 0 件は early return、fire-and-forget・cache 共有(負荷を増幅させない)。
+    // entries 有無に依らず適用(detail-presenter.ts:149 と同 contract)。
+    void hydrateMermaidPlaceholders(textEl);
   } else {
     // Plain-text fallback — use frontmatter-stripped `source` (not raw
     // `log.bodySource`) so the `---\n…\n---` block does not leak into
