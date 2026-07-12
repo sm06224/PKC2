@@ -9406,12 +9406,16 @@ export function bindActions(
   document.addEventListener('click', handleDocumentClick);
   document.addEventListener('dragend', handleDocumentDragEnd);
   document.addEventListener('paste', handlePaste);
-  // PR #203 media viewer: tap on .pkc-md-block / .pkc-md-rendered img
-  // → open viewer; backdrop / X / Escape → close. The open handler
+  // PR #203 media viewer: .pkc-md-block / .pkc-md-rendered img →
+  // open viewer; backdrop / X / Escape → close. The open handler
   // runs in the bubble phase so anchors / copy-buttons inside the
   // block can claim the click first via `target.closest(...)` early-
   // exit guards.
-  document.addEventListener('click', handleMediaViewerOpen);
+  // 2026-07-12 user 要望「シングルクリックで別ウィンドウで開く動作を
+  // ダブルクリックにして欲しい」:open を click → dblclick に変更。
+  // シングルクリックはテキスト選択・カーソル移動等の通常操作に返す。
+  // close(backdrop / X)は従来どおり click。
+  document.addEventListener('dblclick', handleMediaViewerOpen);
   document.addEventListener('click', handleMediaViewerClose);
   document.addEventListener('keydown', handleMediaViewerKeydown);
 
@@ -9517,7 +9521,7 @@ export function bindActions(
     document.removeEventListener('click', handleDocumentClick);
     document.removeEventListener('dragend', handleDocumentDragEnd);
     document.removeEventListener('paste', handlePaste);
-    document.removeEventListener('click', handleMediaViewerOpen);
+    document.removeEventListener('dblclick', handleMediaViewerOpen);
     document.removeEventListener('click', handleMediaViewerClose);
     document.removeEventListener('keydown', handleMediaViewerKeydown);
     tableEnhancementObserver.disconnect();
