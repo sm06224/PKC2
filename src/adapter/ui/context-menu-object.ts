@@ -18,11 +18,15 @@
  *   1. selection ── selected text が non-empty(textarea / input 上以外)
  *   2. link ── target が `<a href>` ancestor を持つ
  *   3. image ── target が `<img>` ancestor を持つ(asset / inline)
- *   4. heading ── target が `<h1>`〜`<h6>` ancestor を持つ
- *   5. no object detected ── pgc-83 region fallback に渡す
+ *   4. table ── target が `.pkc-md-rendered` 内の `<table>` ancestor を持つ
+ *      (#902、2026-07-12 user 要望:各種形式でのコピー / エクスポート)
+ *   5. heading ── target が `<h1>`〜`<h6>` ancestor を持つ
+ *   6. no object detected ── pgc-83 region fallback に渡す
  */
 
-export type ObjectKind = 'selection' | 'link' | 'image' | 'heading' | null;
+import { extractTableRows, rowsToTsv, rowsToCsv, rowsToMarkdown } from '../../features/markdown/table-export';
+
+export type ObjectKind = 'selection' | 'link' | 'image' | 'table' | 'heading' | null;
 
 export interface ObjectContext {
   readonly kind: Exclude<ObjectKind, null>;
@@ -98,7 +102,18 @@ export function detectObjectContext(target: Element | null, selection: Selection
       };
     }
   }
-  // 4. TOC entry(#869A): 目次の見出しリンクを右クリック → heading object
+  // 4. table(#902): rendered markdown 内の表 → 各種形式コピー/エクスポート。
+  //    `.pkc-md-rendered` scope に限定(spreadsheet presenter 等の UI table を
+  //    誤検出しない)。セル内 link / image / selection は上の分岐が先に勝つ。
+  const table = target.closest<HTMLTableElement>('.pkc-md-rendered table');
+  if (table) {
+    return {
+      kind: 'table',
+      target: table,
+      payload: {},
+    };
+  }
+  // 5. TOC entry(#869A): 目次の見出しリンクを右クリック → heading object
   //    として扱う(別ウィンドウ章編集の入口)。slug は rendered 見出しの
   //    `id` と一致(makeSlugCounter 共有)。
   const tocLink = target.closest<HTMLElement>('[data-pkc-toc-slug]');
@@ -112,7 +127,7 @@ export function detectObjectContext(target: Element | null, selection: Selection
       };
     }
   }
-  // 5. heading(rendered markdown body の見出しのみ ── `<h1>`〜`<h6>`)
+  // 6. heading(rendered markdown body の見出しのみ ── `<h1>`〜`<h6>`)
   const heading = target.closest<HTMLHeadingElement>('h1, h2, h3, h4, h5, h6');
   if (heading) {
     return {
@@ -242,6 +257,42 @@ function itemsForObject(ctx: ObjectContext, hooks?: ObjectMenuHooks): ObjectMenu
         },
       ];
     }
+    case 'table': {
+      // #902:表の各種形式コピー / エクスポート。抽出は click 時に行う
+      // (menu 表示時点で固定すると sort / filter 適用後の変化を取りこぼす)。
+      // xlsx ネイティブは exceljs 同梱で bundle が size budget を超えるため
+      // 見送り(TSV 貼り付け + BOM 付き CSV で Excel ユースケースを充足)。
+      const tableEl = ctx.target as HTMLTableElement;
+      const rows = (): ReturnType<typeof extractTableRows> => extractTableRows(tableEl);
+      return [
+        {
+          id: 'object.copy-table-tsv',
+          label: '📋 表をコピー(Excel / Sheets 貼り付け用)',
+          handler: () => copyToClipboard(rowsToTsv(rows())),
+        },
+        {
+          id: 'object.copy-table-csv',
+          label: '📋 CSV としてコピー',
+          handler: () => copyToClipboard(rowsToCsv(rows())),
+        },
+        {
+          id: 'object.copy-table-markdown',
+          label: '📋 Markdown 表としてコピー',
+          handler: () => copyToClipboard(rowsToMarkdown(rows())),
+        },
+        { id: 'sep', label: '', handler: () => {}, separator: true },
+        {
+          id: 'object.download-table-csv',
+          label: '💾 CSV をダウンロード(Excel 対応・BOM 付き)',
+          handler: () => downloadText('table.csv', '\uFEFF' + rowsToCsv(rows()), 'text/csv;charset=utf-8'),
+        },
+        {
+          id: 'object.download-table-tsv',
+          label: '💾 TSV をダウンロード',
+          handler: () => downloadText('table.tsv', rowsToTsv(rows()), 'text/tab-separated-values;charset=utf-8'),
+        },
+      ];
+    }
     case 'heading': {
       const text = ctx.payload.text ?? '';
       const anchor = ctx.payload.anchorId ?? '';
@@ -302,4 +353,18 @@ function fallbackCopy(text: string): void {
     // give up silently
   }
   ta.remove();
+}
+
+/** #902:テキストを file としてダウンロード(blob + a[download]、即 revoke)。 */
+function downloadText(filename: string, text: string, mime: string): void {
+  if (typeof document === 'undefined' || typeof URL === 'undefined') return;
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
