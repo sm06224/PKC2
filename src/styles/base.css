@@ -12914,3 +12914,46 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
 .pkc-structure-plan-cancel { background: var(--c-hover); color: var(--c-fg); }
 .pkc-structure-plan-apply { background: var(--c-accent); color: var(--c-accent-fg); }
 .pkc-structure-plan-apply:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── #903 ミニマップ(minimap.ts、flag shell.minimap_enabled)──────── */
+.pkc-center { position: relative; } /* minimap の absolute 基準(flex layout 不変) */
+.pkc-minimap {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 40;
+  background: color-mix(in srgb, var(--c-surface) 82%, transparent);
+  border-left: 1px solid var(--c-border);
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.pkc-minimap-bar {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  border-radius: 1px;
+  background: var(--c-muted);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.pkc-minimap-bar[data-pkc-minimap-kind="heading"] {
+  background: var(--c-accent);
+  opacity: 0.9;
+  left: 2px;
+  right: 2px;
+}
+.pkc-minimap-bar[data-pkc-minimap-kind="code"] { background: var(--c-info); opacity: 0.7; }
+.pkc-minimap-bar[data-pkc-minimap-kind="table"] { background: var(--c-warn); opacity: 0.7; }
+.pkc-minimap-bar[data-pkc-minimap-kind="image"] { background: var(--c-success); opacity: 0.7; }
+.pkc-minimap-viewport {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: color-mix(in srgb, var(--c-fg) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-fg) 30%, transparent);
+  border-radius: 2px;
+  pointer-events: none;
+}

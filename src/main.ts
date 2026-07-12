@@ -30,6 +30,7 @@ import {
   signalBootReady,
 } from './adapter/boot-ready-signal';
 import { installWcagResolverRuntime, applyWcagResolverNow, installThemeBalanceRuntime, applyThemeBalanceNow } from './adapter/ui/wcag-runtime';
+import { syncMinimap } from './adapter/ui/minimap';
 import { checkForUpdate } from './adapter/platform/version-check';
 import { decodeSnapshotParam, snapshotToEntryDraft } from './features/snapshot/intake';
 import { isSnapshot } from './features/snapshot/types';
@@ -238,6 +239,7 @@ async function boot(): Promise<void> {
       // コントラスト最適化を追従させる。
       applyWcagResolverNow(root);
       applyThemeBalanceNow(root); // opt-in テーマ balance(cache backed、flag OFF で no-op)
+      syncMinimap(root); // #903 ミニマップ(flag OFF で no-op)
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
       return;
@@ -339,6 +341,8 @@ async function boot(): Promise<void> {
     applyWcagResolverNow(root);
     // opt-in:アプリテーマトークン自体の WCAG balance(既定 OFF、cache backed)。
     applyThemeBalanceNow(root);
+    // #903:center pane ミニマップ(flag shell.minimap_enabled、既定 OFF で no-op)。
+    syncMinimap(root);
 
     restoreRenderContinuity(root, continuity);
 

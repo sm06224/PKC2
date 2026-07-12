@@ -560,3 +560,17 @@ export const editorMermaidRenderEnabled = defineFlag<boolean>(
       'markdown ```mermaid fence を built-in mermaid.js で SVG render(lazy import、theme aware、3 surface 統一)',
   },
 );
+
+// #903(2026-07-12 user 要望「ミニマップをサポートして欲しい」):center pane
+// rendered view の抽象化バーミニマップ(VSCode 風、DOM 縮小クローンではなく
+// 見出し/段落/コード等をバーで表す軽量方式)。viewport indicator +
+// クリック/ドラッグでスクロール。OFF で完全 no-op、実機評価後に既定を判断。
+export const shellMinimapEnabled = defineFlag<boolean>(
+  'shell.minimap_enabled',
+  false,
+  {
+    category: 'shell',
+    description:
+      'center pane に抽象化バーのミニマップを表示(クリック/ドラッグでスクロール)。OFF で従来表示',
+  },
+);
