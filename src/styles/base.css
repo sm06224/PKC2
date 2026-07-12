@@ -12827,3 +12827,90 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
   padding: 0;
   border: none;
 }
+
+/* ── #905 構成コマンド適用 modal(structure-plan-modal.ts)──────────── */
+.pkc-structure-plan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 21000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+.pkc-structure-plan-panel {
+  width: min(640px, 92vw);
+  max-height: 84vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.pkc-structure-plan-title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  color: var(--c-fg);
+}
+.pkc-structure-plan-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--c-muted);
+  line-height: 1.5;
+}
+.pkc-structure-plan-copy {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-base);
+  background: var(--c-hover);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.pkc-structure-plan-input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  resize: vertical;
+}
+.pkc-structure-plan-preview {
+  min-height: 3rem;
+  max-height: 30vh;
+  overflow-y: auto;
+  font-size: var(--fs-sm);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+.pkc-structure-plan-error { color: var(--c-danger); }
+.pkc-structure-plan-line { color: var(--c-fg); }
+.pkc-structure-plan-empty { color: var(--c-muted); }
+.pkc-structure-plan-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+.pkc-structure-plan-cancel,
+.pkc-structure-plan-apply {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--fs-base);
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  cursor: pointer;
+}
+.pkc-structure-plan-cancel { background: var(--c-hover); color: var(--c-fg); }
+.pkc-structure-plan-apply { background: var(--c-accent); color: var(--c-accent-fg); }
+.pkc-structure-plan-apply:disabled { opacity: 0.45; cursor: not-allowed; }

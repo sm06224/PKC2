@@ -16,6 +16,7 @@ import type { Dispatcher } from '../state/dispatcher';
 import type { ArchetypeId } from '../../core/model/record';
 import type { CommandMeta } from '../../features/command/types';
 import { registerCommand } from './command-palette';
+import { copyStructureExport, openStructurePlanModal } from './structure-plan-modal';
 import {
   openViewTab,
   persistTabState,
@@ -607,4 +608,27 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       },
     );
   }
+
+  // ─── #905 構成コマンド体験(2026-07-12 user 要望)─────
+  // 「吐き出した一覧とこの独自コマンド体験を露出して、AI に整理プランを
+  // 考えさせたい」── export はコマンド語彙の説明つきテキスト(そのまま AI へ
+  // 貼れる)、適用は dry-run プレビュー付き modal(APPLY_STRUCTURE_OPS)。
+  registerCommand(
+    {
+      id: 'structure.copy-export',
+      titleJa: '構成をテキストでコピー(AI 整理用)',
+      titleEn: 'Structure: Copy tree as text (for AI)',
+      category: 'Structure',
+    },
+    () => { copyStructureExport(dispatcher); },
+  );
+  registerCommand(
+    {
+      id: 'structure.apply-plan',
+      titleJa: '構成コマンドを適用…(mv / mkdir / rename)',
+      titleEn: 'Structure: Apply commands… (mv / mkdir / rename)',
+      category: 'Structure',
+    },
+    () => { openStructurePlanModal(dispatcher); },
+  );
 }
