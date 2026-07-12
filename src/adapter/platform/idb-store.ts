@@ -1,4 +1,5 @@
-import type { Container } from '../../core/model/container';
+import type { Container, Revision } from '../../core/model/container';
+import type { Entry } from '../../core/model/record';
 import type { BatchOp, StorageAdapter } from './storage/storage-adapter';
 import { createIDBAdapter } from './storage/idb-adapter';
 import { createMemoryAdapter } from './storage/memory-adapter';
@@ -42,6 +43,22 @@ import type { AssetMetaIndex } from '../../features/asset/asset-meta';
  */
 export interface ContainerStore {
   save(container: Container): Promise<void>;
+  /**
+   * 差分保存(2026-07、改善バッチ④)。container を **split 形式**
+   * (core record = meta + relations + 順序リスト、entry / revision は
+   * 個別 record)で保存する。`previous` に「前回この store へ保存した
+   * container」を渡すと、参照比較で変更された entry / revision だけを
+   * 書く — 編集ごとの書込みコストが container 全体 O(n) から変更分
+   * O(1) になる。`previous` が null、または storage 上がまだ split
+   * 形式でない場合は全件書込み(+ stale key 掃除)に自動フォールバック
+   * するので、呼び出し側はベースの正確性だけ保証すればよい
+   * (ベース = 前回の保存が resolve した時点の container 参照)。
+   *
+   * assets は `save()` と同じ additive-only。旧 `save()` と混在しても
+   * 安全:`save()` は inline 形式で上書き + split keys を掃除し、
+   * `saveDiff()` は marker が無ければ全件書込みから始める。
+   */
+  saveDiff(container: Container, previous: Container | null): Promise<void>;
   load(containerId: string): Promise<Container | null>;
   loadDefault(): Promise<Container | null>;
   /**
@@ -142,6 +159,24 @@ const WORKSPACE_PREFIX = 'workspace:';
 const ACTIVE_WORKSPACE_KEY = '__active_workspace__';
 /** Reserved containers-bucket key prefix for the per-cid asset-meta index (段階4). */
 const ASSET_META_PREFIX = '__assetmeta__:';
+/** 差分保存(split 形式)の per-entry record key prefix。 */
+const SPLIT_ENTRY_PREFIX = '__entry__:';
+/** 差分保存(split 形式)の per-revision record key prefix。 */
+const SPLIT_REV_PREFIX = '__rev__:';
+
+/**
+ * split 形式の core record に付く marker。順序リストは
+ * `container.entries` / `container.revisions` の配列順を忠実に復元する
+ * ため(per-key record は辞書順でしか列挙できない)。旧ビルドはこの
+ * field を知らないため split record を読むと entries が空に見える —
+ * `persistence.differential_save` flag の説明でユーザーに留意点として
+ * 明示している(opt-in・既定 OFF)。
+ */
+interface SplitMarker {
+  entryOrder: string[];
+  revOrder: string[];
+}
+type StoredContainerRecord = Container & { __pkc_split__?: SplitMarker };
 
 function assetFullKey(cid: string, assetKey: string): string {
   return `${cid}:${assetKey}`;
@@ -149,6 +184,19 @@ function assetFullKey(cid: string, assetKey: string): string {
 
 function assetPrefix(cid: string): string {
   return `${cid}:`;
+}
+
+function splitEntryKey(cid: string, lid: string): string {
+  return `${SPLIT_ENTRY_PREFIX}${cid}:${lid}`;
+}
+function splitEntryPrefix(cid: string): string {
+  return `${SPLIT_ENTRY_PREFIX}${cid}:`;
+}
+function splitRevKey(cid: string, revId: string): string {
+  return `${SPLIT_REV_PREFIX}${cid}:${revId}`;
+}
+function splitRevPrefix(cid: string): string {
+  return `${SPLIT_REV_PREFIX}${cid}:`;
 }
 
 /**
@@ -162,20 +210,30 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
   const containers = adapter.bucket('containers');
   const assets = adapter.bucket('assets');
 
-  async function save(container: Container): Promise<void> {
-    const cid = container.meta.container_id;
+  // cid → storage 上の形式(true = split / false = inline)の
+  // セッション内 memo。undefined の cid は初回アクセス時に record の
+  // marker を読んで判定する。save()/saveDiff() の成功時に更新。
+  const splitState = new Map<string, boolean>();
 
+  /** container.assets を additive-only で書く(段階2 #868、save/saveDiff 共通)。 */
+  async function putAssets(container: Container): Promise<void> {
     // Additive-only (段階2 #868): put every asset in `container.assets`,
     // delete nothing. `container.assets` may be a partial working-set
     // (lazy loading) — diff-deleting "keys not present here" would
     // erase every un-loaded asset, i.e. silent data loss. Deletion is
     // the explicit job of `purgeAssetsExcept`. Putting a key that
     // already holds the same bytes is a harmless idempotent overwrite.
+    const cid = container.meta.container_id;
     const assetOps: BatchOp[] = [];
     for (const [key, data] of Object.entries(container.assets)) {
       assetOps.push({ kind: 'put', key: assetFullKey(cid, key), value: data });
     }
     await assets.applyBatch(assetOps);
+  }
+
+  async function save(container: Container): Promise<void> {
+    const cid = container.meta.container_id;
+    await putAssets(container);
 
     // Container record sans assets — the assets bucket owns those.
     const stripped: Container = { ...container, assets: {} };
@@ -183,6 +241,136 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       { kind: 'put', key: cid, value: stripped },
       { kind: 'put', key: DEFAULT_KEY, value: cid },
     ]);
+
+    // 差分保存(split 形式)からの復帰:inline record が正になった時点で
+    // 旧 split keys は stale(load は marker の無い record を inline として
+    // 読むので放置しても正しさは壊れないが、容量を食い続ける)。掃除は
+    // inline record 書込みの後 = どの時点でクラッシュしてもデータ完全。
+    // memo 済みで inline と分かっている cid ではスキャンしない。
+    if (splitState.get(cid) !== false) {
+      const stale = [
+        ...(await containers.getKeysByPrefix(splitEntryPrefix(cid))),
+        ...(await containers.getKeysByPrefix(splitRevPrefix(cid))),
+      ];
+      if (stale.length > 0) {
+        await containers.applyBatch(stale.map((key) => ({ kind: 'delete' as const, key })));
+      }
+      splitState.set(cid, false);
+    }
+  }
+
+  async function saveDiff(container: Container, previous: Container | null): Promise<void> {
+    const cid = container.meta.container_id;
+    await putAssets(container);
+
+    // storage 上がまだ split 形式でなければ previous は使えない
+    // (inline record しか無い = per-entry record が存在しない)ので
+    // 全件書込みへフォールバック。判定はセッション初回のみ record を読む。
+    let isSplit = splitState.get(cid);
+    if (isSplit === undefined) {
+      const rec = (await containers.get(cid)) as StoredContainerRecord | undefined;
+      isSplit = rec?.__pkc_split__ !== undefined;
+    }
+    const base = isSplit && previous && previous.meta.container_id === cid ? previous : null;
+
+    const ops: BatchOp[] = [];
+    const deletes: BatchOp[] = [];
+    if (base) {
+      // 参照比較の差分:reducer は immutable update(未変更 entry /
+      // revision はオブジェクト参照を保つ)なので、参照が変わったものが
+      // 変更点。参照が全部変わる最悪ケースでも全件書込みに退化するだけ
+      // (正しさは変わらない)。
+      const prevEntries = new Map(base.entries.map((e) => [e.lid, e]));
+      for (const e of container.entries) {
+        if (prevEntries.get(e.lid) !== e) ops.push({ kind: 'put', key: splitEntryKey(cid, e.lid), value: e });
+        prevEntries.delete(e.lid);
+      }
+      for (const lid of prevEntries.keys()) deletes.push({ kind: 'delete', key: splitEntryKey(cid, lid) });
+      const prevRevs = new Map(base.revisions.map((r) => [r.id, r]));
+      for (const r of container.revisions) {
+        if (prevRevs.get(r.id) !== r) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
+        prevRevs.delete(r.id);
+      }
+      for (const id of prevRevs.keys()) deletes.push({ kind: 'delete', key: splitRevKey(cid, id) });
+    } else {
+      // 全件書込み + stale key 掃除。assets と違い entries / revisions は
+      // メモリ上で常に完全な集合なので diff-delete は安全(段階2 の
+      // additive-only 制約は assets 固有)。
+      for (const e of container.entries) ops.push({ kind: 'put', key: splitEntryKey(cid, e.lid), value: e });
+      for (const r of container.revisions) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
+      const live = new Set(ops.map((o) => o.key));
+      for (const k of await containers.getKeysByPrefix(splitEntryPrefix(cid))) {
+        if (!live.has(k)) deletes.push({ kind: 'delete', key: k });
+      }
+      for (const k of await containers.getKeysByPrefix(splitRevPrefix(cid))) {
+        if (!live.has(k)) deletes.push({ kind: 'delete', key: k });
+      }
+    }
+
+    const marker: SplitMarker = {
+      entryOrder: container.entries.map((e) => e.lid),
+      revOrder: container.revisions.map((r) => r.id),
+    };
+    const core: StoredContainerRecord = {
+      ...container,
+      entries: [],
+      revisions: [],
+      assets: {},
+      __pkc_split__: marker,
+    };
+    // 1 バッチ(IDB では単一 tx = 原子的)。順序は puts → core → deletes:
+    // FS 系 backend の逐次 best-effort でどこで中断しても、次回の保存
+    // (差分 or 全件)で収束する(puts は冪等、deletes は再計算される)。
+    await containers.applyBatch([
+      ...ops,
+      { kind: 'put', key: cid, value: core },
+      { kind: 'put', key: DEFAULT_KEY, value: cid },
+      ...deletes,
+    ]);
+    splitState.set(cid, true);
+  }
+
+  /**
+   * split 形式の record なら per-entry / per-revision record を読んで
+   * 配列を復元する。inline(legacy)record はそのまま返す。順序は
+   * marker の順序リストが正本。リストに無い stray record(全件書込みの
+   * 中断で残った余り)は末尾に付ける — 消すより安全側。
+   */
+  async function reassembleSplit(cid: string, record: StoredContainerRecord): Promise<Container> {
+    const marker = record.__pkc_split__;
+    if (!marker) return record;
+    const [entryPairs, revPairs] = await Promise.all([
+      containers.getAllByPrefix(splitEntryPrefix(cid)),
+      containers.getAllByPrefix(splitRevPrefix(cid)),
+    ]);
+    const entryByLid = new Map<string, Entry>();
+    for (const { key, value } of entryPairs) {
+      entryByLid.set(key.slice(splitEntryPrefix(cid).length), value as Entry);
+    }
+    const entries: Entry[] = [];
+    for (const lid of marker.entryOrder) {
+      const e = entryByLid.get(lid);
+      if (e) {
+        entries.push(e);
+        entryByLid.delete(lid);
+      }
+    }
+    for (const e of entryByLid.values()) entries.push(e);
+    const revById = new Map<string, Revision>();
+    for (const { key, value } of revPairs) {
+      revById.set(key.slice(splitRevPrefix(cid).length), value as Revision);
+    }
+    const revisions: Revision[] = [];
+    for (const id of marker.revOrder) {
+      const r = revById.get(id);
+      if (r) {
+        revisions.push(r);
+        revById.delete(id);
+      }
+    }
+    for (const r of revById.values()) revisions.push(r);
+    const { __pkc_split__: _m, ...rest } = record;
+    return { ...rest, entries, revisions, assets: {} };
   }
 
   async function reassembleAssets(cid: string, container: Container): Promise<Container> {
@@ -204,7 +392,8 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
   async function load(containerId: string): Promise<Container | null> {
     const record = await containers.get(containerId);
     if (!record) return null;
-    return reassembleAssets(containerId, record as Container);
+    const assembled = await reassembleSplit(containerId, record as StoredContainerRecord);
+    return reassembleAssets(containerId, assembled);
   }
 
   async function loadDefault(): Promise<Container | null> {
@@ -212,7 +401,8 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     if (typeof defaultId !== 'string') return null;
     const record = await containers.get(defaultId);
     if (!record) return null;
-    return reassembleAssets(defaultId, record as Container);
+    const assembled = await reassembleSplit(defaultId, record as StoredContainerRecord);
+    return reassembleAssets(defaultId, assembled);
   }
 
   async function loadShallow(containerId: string): Promise<Container | null> {
@@ -221,7 +411,8 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     // defensively in case a legacy record carried inline assets.
     const record = await containers.get(containerId);
     if (!record) return null;
-    return { ...(record as Container), assets: {} };
+    const assembled = await reassembleSplit(containerId, record as StoredContainerRecord);
+    return { ...assembled, assets: {} };
   }
 
   async function loadDefaultShallow(): Promise<Container | null> {
@@ -234,10 +425,19 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     const prefix = assetPrefix(containerId);
     const assetKeys = await assets.getKeysByPrefix(prefix);
     const assetOps: BatchOp[] = assetKeys.map((key) => ({ kind: 'delete', key }));
+    // split 形式の per-entry / per-revision record も一緒に消す。
+    const splitKeys = [
+      ...(await containers.getKeysByPrefix(splitEntryPrefix(containerId))),
+      ...(await containers.getKeysByPrefix(splitRevPrefix(containerId))),
+    ];
     await Promise.all([
-      containers.applyBatch([{ kind: 'delete', key: containerId }]),
+      containers.applyBatch([
+        { kind: 'delete', key: containerId },
+        ...splitKeys.map((key) => ({ kind: 'delete' as const, key })),
+      ]),
       assets.applyBatch(assetOps),
     ]);
+    splitState.delete(containerId);
   }
 
   async function saveAsset(cid: string, key: string, data: string): Promise<void> {
@@ -291,13 +491,21 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
   }
 
   async function listContainers(): Promise<ContainerSummary[]> {
-    // One range scan over the containers bucket. Skip the `__default__`
-    // pointer (its value is a cid string, not a container record) and
-    // any non-container value defensively.
-    const pairs = await containers.getAllByPrefix('');
+    // Keys-only scan → reserved key を除外してから record を読む。
+    // 以前は getAllByPrefix('') で全値を読んでいたが、split 形式では
+    // per-entry record が数千件並ぶため、values ごと読むと switcher を
+    // 開くだけで boot 相当のコストになる。keys → 対象だけ get に変更。
+    const keys = await containers.getKeysByPrefix('');
     const out: ContainerSummary[] = [];
-    for (const { key, value } of pairs) {
-      if (key === DEFAULT_KEY) continue;
+    for (const key of keys) {
+      if (key === DEFAULT_KEY || key === ACTIVE_WORKSPACE_KEY) continue;
+      if (
+        key.startsWith(WORKSPACE_PREFIX) ||
+        key.startsWith(ASSET_META_PREFIX) ||
+        key.startsWith(SPLIT_ENTRY_PREFIX) ||
+        key.startsWith(SPLIT_REV_PREFIX)
+      ) continue;
+      const value = await containers.get(key);
       const meta = (value as { meta?: { container_id?: unknown; title?: unknown } } | null)?.meta;
       if (!meta || typeof meta.container_id !== 'string') continue;
       out.push({ id: meta.container_id, title: typeof meta.title === 'string' ? meta.title : '' });
@@ -351,6 +559,7 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
 
   return {
     save,
+    saveDiff,
     load,
     loadDefault,
     loadShallow,
