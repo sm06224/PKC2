@@ -1,4 +1,5 @@
 import type { Dispatcher } from '../state/dispatcher';
+import type { Container } from '../../core/model/container';
 import type { ContainerStore } from './idb-store';
 import type { DomainEvent, DomainEventType } from '../../core/action/domain-event';
 import { defineFlag } from '../flags';
@@ -86,6 +87,27 @@ const persistenceDebounceMs = defineFlag<number>('persistence.debounce_ms', 300,
   tier: 0,
 });
 
+/**
+ * 差分保存(改善バッチ④ 2026-07)。ON にすると自動保存が
+ * `store.saveDiff()`(split 形式:entry / revision を個別 record に
+ * 分割し、変更分だけ書く)を使う。編集ごとの書込みが container 全体
+ * O(n) → 変更分 O(1) になり、大規模 container(数千 entries)でも
+ * 保存コストが一定になる。
+ *
+ * opt-in(既定 OFF)の理由 = 旧ビルド互換:split 形式で保存された
+ * storage を「この機能を知らない旧ビルド」で開くと entries が空に
+ * 見える(データ自体は残っており、新ビルドで開き直せば戻る)。旧
+ * ビルドへ戻す場合は、先に本 flag を OFF にして一度保存(編集)する
+ * か、export してから戻すこと。OFF に戻すと次回の自動保存が inline
+ * 形式へ書き戻して split record を掃除する(双方向に安全)。
+ */
+const differentialSaveEnabled = defineFlag<boolean>('persistence.differential_save', false, {
+  category: 'perf',
+  description:
+    '差分保存(entry/revision 単位の split 形式)。編集ごとの書込みが container 全体 O(n) → 変更分 O(1)。留意: ON で保存した storage は旧ビルドから entries が見えない(新ビルドで OFF 保存 or export してから戻す)',
+  tier: 0,
+});
+
 export interface PersistenceOptions {
   store: ContainerStore;
   debounceMs?: number;
@@ -140,6 +162,12 @@ export function mountPersistence(
     : options.unloadTarget;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let saving = false;
+  // 差分保存のベース:「前回 saveDiff が resolve した時点の container
+  // 参照」。storage の内容と正確に一致していることが差分の前提なので、
+  // 保存成功時のみ更新し、legacy save(inline 形式)が走ったら破棄する
+  // (inline へ書いた時点で split ベースは無効。次の saveDiff は
+  // marker 不在を検出して全件書込みへフォールバックする)。
+  let diffBase: Container | null = null;
   // Armed by an `ORPHAN_ASSETS_PURGED` event; consumed by the next
   // `doSave`. Since `save()` is additive-only (段階2 #868), deleting
   // the purged asset bytes from IDB is an explicit follow-up step.
@@ -201,7 +229,17 @@ export function mountPersistence(
     const purgeThisCycle = pendingPurge;
     pendingPurge = false;
     try {
-      await store.save(container);
+      if (differentialSaveEnabled()) {
+        const prev =
+          diffBase && diffBase.meta.container_id === container.meta.container_id
+            ? diffBase
+            : null;
+        await store.saveDiff(container, prev);
+        diffBase = container;
+      } else {
+        await store.save(container);
+        diffBase = null;
+      }
       if (purgeThisCycle) {
         // Additive-only save left the orphan bytes in IDB. Delete
         // exactly the unreferenced keys. `keep` is derived from a FULL

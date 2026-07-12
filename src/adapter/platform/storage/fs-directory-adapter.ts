@@ -150,12 +150,24 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
           if (key.startsWith(prefix)) matched.push(key);
         }
         matched.sort(); // lexicographic by key (seam contract)
-        const out: Array<{ key: string; value: unknown }> = [];
-        for (const key of matched) {
-          const fh = await d.getFileHandle(encodeKey(key));
-          const text = await (await fh.getFile()).text();
-          out.push({ key, value: JSON.parse(text) as unknown });
-        }
+        // 読取りは writable lock を取らないので serialize チェーンの
+        // 内側で並列化できる(差分保存の split 形式では per-entry file
+        // が数千件並ぶため、逐次 open→read だと boot が线性に伸びる)。
+        // index 書込みで sort 済みの順序を保つ。
+        const out: Array<{ key: string; value: unknown }> = new Array(matched.length);
+        const CONCURRENCY = 16;
+        let next = 0;
+        await Promise.all(
+          Array.from({ length: Math.min(CONCURRENCY, matched.length) }, async () => {
+            while (next < matched.length) {
+              const idx = next++;
+              const key = matched[idx]!;
+              const fh = await d.getFileHandle(encodeKey(key));
+              const text = await (await fh.getFile()).text();
+              out[idx] = { key, value: JSON.parse(text) as unknown };
+            }
+          }),
+        );
         return out;
       }),
 
