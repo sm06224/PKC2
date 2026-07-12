@@ -11,10 +11,14 @@ export type ExportMode = 'light' | 'full';
  * #905(2026-07-12)— 構成コマンド(structure DSL)の 1 op。
  * `features/structure/structure-dsl.ts` の parse/plan がこれを生成し、
  * APPLY_STRUCTURE_OPS が一括適用する。parent=null は root を意味する。
+ *
+ * v2(alias):`parent` は既存 lid のほか `@name`(同一プラン内で先に
+ * `mkdir "…" as @name` した新規フォルダへの参照)を取れる。reducer が
+ * mkdir 実行時に alias → 実 lid の map を作り、後続 op で解決する。
  */
 export type StructureOp =
   | { op: 'mv'; lid: string; parent: string | null }
-  | { op: 'mkdir'; title: string; parent: string | null }
+  | { op: 'mkdir'; title: string; parent: string | null; alias?: string }
   | { op: 'rename'; lid: string; title: string };
 
 /** Export mutability: 'editable' allows editing; 'readonly' is view-only with rehydrate option. */
