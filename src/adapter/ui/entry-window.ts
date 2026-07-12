@@ -4274,6 +4274,7 @@ function flushPendingViewBody() {
   pendingViewBody = null;
   hidePendingViewNotice();
   updateTaskBadge();
+  pkcHydrateViewBody();
 }
 
 // Close affordance for PWA / standalone-mode where OS-level
@@ -4442,6 +4443,23 @@ function renderMdInto(el, text) {
   }
 }
 
+/* 2026-07-13 user 報告系(textlog #900 と同型の穴):view ペイン(#body-view)は
+ * 初期焼き込み / save 後再描画 / flush / parent push の 4 経路すべてで innerHTML
+ * を置換するのに mermaid hydrate を呼んでいなかった(hydrate があるのは
+ * edit-mode の #body-preview = renderMdInto 経路のみ)。updateTaskBadge と同じ
+ * 4 箇所で本 helper を呼び、mermaid SVG 化 + WCAG shift を view にも適用する。
+ * 各 opener 呼び出しは fire-and-forget + cache 共有(負荷を増幅させない)。 */
+function pkcHydrateViewBody() {
+  var el = document.getElementById('body-view');
+  if (!el || !window.opener) return;
+  if (typeof window.opener.pkcHydratePreviewMermaid === 'function') {
+    try { window.opener.pkcHydratePreviewMermaid(el); } catch (_e) { /* parent closed / xorigin */ }
+  }
+  if (typeof window.opener.pkcApplyWcagShift === 'function') {
+    try { window.opener.pkcApplyWcagShift(el); } catch (_e) { /* parent closed / xorigin */ }
+  }
+}
+
 function saveEntry() {
   var title = document.getElementById('title-input').value;
   var body = useStructuredEditor ? collectStructuredBody() : document.getElementById('body-edit').value;
@@ -4460,6 +4478,7 @@ window.addEventListener('message', function(e) {
     document.getElementById('title-display').textContent = originalTitle;
     document.getElementById('body-view').innerHTML = renderBodyView(originalBody);
     updateTaskBadge();
+    pkcHydrateViewBody();
     document.getElementById('status').textContent = 'Saved.';
     setTimeout(function() { document.getElementById('status').textContent = ''; }, 2000);
     /*
@@ -4553,6 +4572,7 @@ window.addEventListener('message', function(e) {
         pendingViewBody = null;
         hidePendingViewNotice();
         updateTaskBadge();
+        pkcHydrateViewBody();
       }
     }
   }
@@ -4596,6 +4616,8 @@ window.addEventListener('message', function(e) {
 });
 /* Derive initial task badge from the rendered body */
 updateTaskBadge();
+/* 初期焼き込み本文の mermaid hydrate + WCAG shift(2026-07-13)*/
+pkcHydrateViewBody();
 /* TEXTLOG delete button handler — mark row as deleted and hide it */
 if (useStructuredEditor && entryArchetype === 'textlog') {
   document.addEventListener('click', function(ev) {
