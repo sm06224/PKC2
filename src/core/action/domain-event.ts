@@ -60,6 +60,8 @@ export type DomainEvent =
   | { type: 'TRASH_PURGED'; count: number }
   | { type: 'ORPHAN_ASSETS_PURGED'; count: number }
   | { type: 'BULK_DELETED'; lids: string[] }
+  /** #905:構成コマンド一括適用の完了(applied = 実適用件数、skip 除く)。 */
+  | { type: 'STRUCTURE_OPS_APPLIED'; applied: number }
   | { type: 'MULTI_SELECT_CHANGED'; lids: string[] }
   /**
    * SETTINGS_CHANGED — user-visible system settings were modified

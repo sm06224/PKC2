@@ -23,6 +23,7 @@ export type CommandCategory =
   | 'Theme'        // theme 切替、accent / border / font 等
   | 'Multi-window' // viewer / monitor / editor window 開く
   | 'Debug'        // flags inspector / debug overlay
+  | 'Structure'    // #905 構成コマンド(tree export / mv・mkdir・rename の一括適用)
   | 'Help';        // shortcut help / about
 
 /**

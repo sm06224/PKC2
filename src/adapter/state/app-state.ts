@@ -3694,6 +3694,66 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       const next: AppState = { ...state, container, multiSelectedLids: [] };
       return { state: next, events: [] };
     }
+    case 'APPLY_STRUCTURE_OPS': {
+      // #905(2026-07-12):構成コマンド列(mv / mkdir / rename)の一括適用。
+      // UI 側で plan(dry-run 検証)済みだが、reducer でも防御的に再検証して
+      // 不正 op は skip(循環 / 不在 lid / 非 folder 親 / reserved lid)。
+      // 1 dispatch = 1 適用単位(部分適用でも state は常に整合)。
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      let container = state.container;
+      const ts = now();
+      let applied = 0;
+      const events: DomainEvent[] = [];
+      for (const op of action.ops) {
+        if (op.op === 'mkdir') {
+          if (op.parent !== null) {
+            const p = container.entries.find((e) => e.lid === op.parent);
+            if (!p || p.archetype !== 'folder') continue;
+          }
+          const lid = generateLid();
+          container = addEntry(container, lid, 'folder', op.title, ts);
+          events.push({ type: 'ENTRY_CREATED', lid, archetype: 'folder' });
+          if (op.parent !== null) {
+            const relId = generateLid();
+            container = addRelation(container, relId, op.parent, lid, 'structural', ts);
+          }
+          applied++;
+          continue;
+        }
+        if (isReservedLid(op.lid)) continue;
+        const entry = container.entries.find((e) => e.lid === op.lid);
+        if (!entry) continue;
+        if (op.op === 'rename') {
+          const trimmed = op.title.trim();
+          if (trimmed === '' || trimmed === entry.title) continue;
+          const revId = generateLid();
+          container = snapshotEntry(container, op.lid, revId, ts);
+          container = updateEntry(container, op.lid, trimmed, entry.body, ts);
+          events.push({ type: 'ENTRY_UPDATED', lid: op.lid });
+          applied++;
+          continue;
+        }
+        // mv:既存 structural 親を外し、指定 folder(または root)へ付け替え
+        if (op.parent !== null) {
+          const p = container.entries.find((e) => e.lid === op.parent);
+          if (!p || p.archetype !== 'folder' || op.parent === op.lid) continue;
+          if (entry.archetype === 'folder' && isDescendant(container.relations, op.lid, op.parent)) continue;
+        }
+        for (const r of container.relations) {
+          if (r.kind === 'structural' && r.to === op.lid) {
+            container = removeRelation(container, r.id);
+          }
+        }
+        if (op.parent !== null) {
+          const relId = generateLid();
+          container = addRelation(container, relId, op.parent, op.lid, 'structural', ts);
+        }
+        applied++;
+      }
+      const next: AppState = { ...state, container };
+      return { state: next, events: [...events, { type: 'STRUCTURE_OPS_APPLIED', applied }] };
+    }
     case 'BULK_SET_STATUS': {
       if (state.readonly) return blocked(state, action);
       if (!state.container) return blocked(state, action);

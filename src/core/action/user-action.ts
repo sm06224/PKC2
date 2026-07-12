@@ -7,6 +7,16 @@ import type { SystemSettingsPayload, ThemeMode } from '../model/system-settings-
 /** Export scope: 'light' omits assets; 'full' includes everything. */
 export type ExportMode = 'light' | 'full';
 
+/**
+ * #905(2026-07-12)— 構成コマンド(structure DSL)の 1 op。
+ * `features/structure/structure-dsl.ts` の parse/plan がこれを生成し、
+ * APPLY_STRUCTURE_OPS が一括適用する。parent=null は root を意味する。
+ */
+export type StructureOp =
+  | { op: 'mv'; lid: string; parent: string | null }
+  | { op: 'mkdir'; title: string; parent: string | null }
+  | { op: 'rename'; lid: string; title: string };
+
 /** Export mutability: 'editable' allows editing; 'readonly' is view-only with rehydrate option. */
 export type ExportMutability = 'editable' | 'readonly';
 
@@ -578,6 +588,13 @@ export type UserAction =
   | { type: 'BULK_DELETE' }
   | { type: 'BULK_MOVE_TO_FOLDER'; folderLid: string }
   | { type: 'BULK_MOVE_TO_ROOT' }
+  /**
+   * APPLY_STRUCTURE_OPS(#905)— 構成コマンド列(mv / mkdir / rename)を
+   * 1 dispatch で一括適用する。UI 側で parse + plan(dry-run 検証)済みの
+   * ops を受け取るが、reducer でも防御的に再検証し、不正 op は skip する
+   * (循環 / 不在 lid / 非 folder 親 / reserved lid)。
+   */
+  | { type: 'APPLY_STRUCTURE_OPS'; ops: readonly StructureOp[] }
   | { type: 'BULK_SET_STATUS'; status: 'open' | 'done' }
   | { type: 'BULK_SET_DATE'; date: string | null }
   /**
