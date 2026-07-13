@@ -55,6 +55,7 @@ function fakeHost(): ExtensionHost & { sendToExtension: ReturnType<typeof vi.fn>
   return {
     openExtension: vi.fn(() => null),
     sendToExtension: vi.fn(() => true),
+    sendStructureToExtension: vi.fn(() => true),
     hasPendingConsent: () => false,
     openLids: () => [],
     closeAll: vi.fn(),

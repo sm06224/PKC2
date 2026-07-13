@@ -17,6 +17,9 @@ import type { ArchetypeId } from '../../core/model/record';
 import type { CommandMeta } from '../../features/command/types';
 import { registerCommand } from './command-palette';
 import { copyStructureExport, openStructurePlanModal } from './structure-plan-modal';
+import { getSharedExtensionHost } from './extension-host-runtime';
+import { loadExtensionBindings } from '../platform/extension-bindings';
+import { showToast } from './toast';
 import {
   openViewTab,
   persistTabState,
@@ -630,5 +633,35 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       category: 'Structure',
     },
     () => { openStructurePlanModal(dispatcher); },
+  );
+  // 改善バッチ⑤(2026-07): 構成 export text を紐付け済み拡張へ push する
+  // 明示ジェスチャ。宛先解決は「開いている紐付け拡張 → 唯一の紐付け拡張」の
+  // 順(曖昧なら送らず案内)。拡張は structure-plan で整理プランを返せる
+  // (適用は必ず plan modal で user 確認)。
+  registerCommand(
+    {
+      id: 'structure.send-to-extension',
+      titleJa: '構成を拡張へ送る(AI 整理プラン連携)',
+      titleEn: 'Structure: Send tree to extension (AI organize)',
+      category: 'Structure',
+    },
+    () => {
+      const host = getSharedExtensionHost(dispatcher);
+      const bound = loadExtensionBindings().bound;
+      if (bound.length === 0) {
+        showToast({ message: '紐付け済み拡張がありません(拡張 entry の右クリック「🧩 拡張として紐付け」で追加できます)', kind: 'warn' });
+        return;
+      }
+      const openBound = host.openLids().filter((lid) => bound.includes(lid));
+      const target = openBound[0] ?? (bound.length === 1 ? bound[0] : undefined);
+      if (!target) {
+        showToast({ message: '宛先が特定できません。送りたい拡張を先に開いてから実行してください', kind: 'warn' });
+        return;
+      }
+      const ok = host.sendStructureToExtension(target);
+      showToast(ok
+        ? { message: '構成テキストを拡張へ送りました(整理プランの提案は確認モーダルに届きます)', kind: 'info' }
+        : { message: '拡張へ送れませんでした(popup ブロック等)。拡張を開き直して再実行してください', kind: 'warn' });
+    },
   );
 }

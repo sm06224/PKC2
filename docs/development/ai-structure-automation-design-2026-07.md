@@ -1,7 +1,12 @@
 # AI 整理プラン連携の自動化 — pkc-ext structure チャネル設計(2026-07)
 
 > 改善バッチ⑤(user 承認 2026-07-12「推奨順で全部」、ただし**実装前に設計を
-> user に提示する**約束のもの)。本書は設計のみ。user の go が出るまで実装しない。
+> user に提示する**約束のもの)。
+>
+> **status: user go(2026-07-13「あなたのAI設計でよし」)→ 実装済み**。
+> normative は `docs/spec/pkc-message-api-v2.md` §3.8(`structure` /
+> `structure-plan` / `structure-plan-result`)。送付ジェスチャはコマンド
+> パレット「構成を拡張へ送る(AI 整理プラン連携)」。
 
 ## 0. 背景 / 目的
 

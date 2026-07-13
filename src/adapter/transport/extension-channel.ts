@@ -14,6 +14,11 @@
  *   - ext  → host `propose`        新規 entry の作成提案(#830 R5)。host は
  *                                  既存 record:offer 同意 banner に流す
  *   - host → ext  `propose-result` 作成の成否(accept で assigned_lid を返す)
+ *   - host → ext  `structure`      構成 export text(改善バッチ⑤ 2026-07)。
+ *                                  **user の送付ジェスチャでのみ**送る
+ *   - ext  → host `structure-plan` 整理プラン(DSL コマンド列)の提案。host は
+ *                                  既存 plan modal に流す(silent apply は無い)
+ *   - host → ext  `structure-plan-result` applied / rejected / dismissed
  *
  * **拡張から実体を pull する経路は無い**(rev.1 の `asset:request` は廃止)。
  *
@@ -58,6 +63,22 @@ export interface ExtProposeRequest {
   correlation_id?: string;
 }
 
+/**
+ * ext → host: 整理プラン(構成コマンド DSL)の提案(改善バッチ⑤ 2026-07)。
+ * `text` は mv / mkdir / rename のコマンド列。host は既存 structure-plan
+ * modal(dry-run プレビュー)に流し、適用は常に user が確認する。
+ */
+export interface ExtStructurePlanRequest {
+  text: string;
+  correlation_id?: string;
+}
+
+/** structure-plan の結果(host → ext)。 */
+export type StructurePlanResultStatus = 'applied' | 'rejected' | 'dismissed';
+
+/** structure-plan text の受理上限(64KB)。超過は即 rejected。 */
+export const STRUCTURE_PLAN_TEXT_MAX = 64 * 1024;
+
 /** #796 §4.1 manifest(AttachmentBody additive)。tier 既定 'sandboxed'。 */
 export interface ExtensionManifest {
   tier?: 'sandboxed' | 'trusted';
@@ -79,6 +100,12 @@ export interface LaunchExtensionOptions {
   onHint?: (hint: { kind: string; lid?: string }) => void;
   /** ext→host `propose`(#830 R5)。host が同意 banner に流す(結果は `notifyProposeResult`)。 */
   onPropose?: (req: ExtProposeRequest) => void;
+  /**
+   * ext→host `structure-plan`(改善バッチ⑤)。host が plan modal に流す
+   * (結果は `notifyStructurePlanResult`)。text の型 / サイズ検証は channel
+   * が済ませてから呼ぶ(不正は即 rejected を返し、ここには来ない)。
+   */
+  onStructurePlan?: (req: ExtStructurePlanRequest) => void;
 }
 
 export interface ExtensionChannelHandle {
@@ -93,6 +120,19 @@ export interface ExtensionChannelHandle {
    * reject/dismiss なら accepted=false。established 前 / 閉鎖後は no-op。
    */
   notifyProposeResult: (accepted: boolean, assignedLid: string | null, correlationId: string | null) => void;
+  /**
+   * 構成 export text を push(改善バッチ⑤、user の送付ジェスチャの実体)。
+   * handshake 前は buffer(最新 1 件が勝つ — 構成はスナップショットなので
+   * 古いものを積む意味がない)。
+   */
+  sendStructure: (text: string) => void;
+  /** `structure-plan` の結果を ext へ返す。established 前 / 閉鎖後は no-op。 */
+  notifyStructurePlanResult: (
+    status: StructurePlanResultStatus,
+    applied: number | null,
+    errors: readonly string[] | null,
+    correlationId: string | null,
+  ) => void;
   /** チャネルを閉じる。 */
   close: () => void;
   /** established 済みか(テスト/呼び出し側の判定用)。 */
@@ -158,6 +198,8 @@ export function launchExtensionChannel(
   // 呼ばれるのが常態(hello は子 window の script 実行後に async で届く)。
   // 黙って捨てるとユーザーの send が消えるため、hello で flush する。
   const pendingDelivers: ExtDeliverPayload[] = [];
+  // 構成送付も同じ auto-open 事情を持つ。スナップショットなので最新 1 件のみ。
+  let pendingStructure: string | null = null;
 
   // Tier S は opaque origin への送信なので '*'(#796 §3 — identity が宛先を
   // 一意化)。Tier T は同一オリジンへピン留め(#797 規則)。
@@ -195,6 +237,10 @@ export function launchExtensionChannel(
       while (pendingDelivers.length > 0) {
         post({ t: 'deliver', payload: pendingDelivers.shift() });
       }
+      if (pendingStructure !== null) {
+        post({ t: 'structure', text: pendingStructure });
+        pendingStructure = null;
+      }
       return;
     }
     if (d.nonce !== nonce) return; // hello 以外は nonce 必須
@@ -218,6 +264,25 @@ export function launchExtensionChannel(
       opts.onPropose?.({
         offer: d.offer,
         correlation_id: typeof d.correlation_id === 'string' ? d.correlation_id : undefined,
+      });
+    } else if (d.t === 'structure-plan') {
+      // 改善バッチ⑤: 整理プランの提案。型 / サイズはここで検証し、不正は
+      // 即 rejected(orchestrator まで流さない)。正当なら modal 連携は
+      // orchestrator が行い、結果は notifyStructurePlanResult で返る。
+      const correlationId = typeof d.correlation_id === 'string' ? d.correlation_id : null;
+      if (typeof d.text !== 'string' || d.text.length > STRUCTURE_PLAN_TEXT_MAX) {
+        post({
+          t: 'structure-plan-result',
+          status: 'rejected',
+          applied: null,
+          errors: [typeof d.text !== 'string' ? 'text は文字列で指定してください' : `text が上限(${STRUCTURE_PLAN_TEXT_MAX} 文字)を超えています`],
+          correlation_id: correlationId,
+        });
+        return;
+      }
+      opts.onStructurePlan?.({
+        text: d.text,
+        ...(correlationId !== null ? { correlation_id: correlationId } : {}),
       });
     }
     // それ以外の ext→host は無視(pull 経路は存在しない)。
@@ -280,6 +345,24 @@ export function launchExtensionChannel(
     notifyProposeResult: (accepted, assignedLid, correlationId) => {
       if (established) {
         post({ t: 'propose-result', accepted, assigned_lid: assignedLid, correlation_id: correlationId });
+      }
+    },
+    sendStructure: (text: string) => {
+      if (!established) {
+        pendingStructure = text;
+        return;
+      }
+      post({ t: 'structure', text });
+    },
+    notifyStructurePlanResult: (status, applied, errors, correlationId) => {
+      if (established) {
+        post({
+          t: 'structure-plan-result',
+          status,
+          applied,
+          errors: errors ?? null,
+          correlation_id: correlationId,
+        });
       }
     },
     close: () => {
