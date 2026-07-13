@@ -27,7 +27,10 @@ import {
   type LaunchExtensionOptions,
   type ExtensionManifest,
   type ExtWriteRequest,
+  type ExtStructurePlanRequest,
 } from '../transport/extension-channel';
+import { exportStructureText } from '@features/structure/structure-dsl';
+import { openStructurePlanModal, isStructurePlanModalOpen } from './structure-plan-modal';
 import { parseAttachmentBody, decodeAttachmentText } from './attachment-presenter';
 import { getAncestorFolderLids } from '@features/relation/tree';
 import { parseTodoBody, serializeTodoBody } from '@features/todo/todo-body';
@@ -48,6 +51,12 @@ export interface ExtensionHost {
    * 同意待ち中は送付が積まれ、同意後に flush される(この場合も true)。
    */
   sendToExtension: (extLid: string, entryLid: string) => boolean;
+  /**
+   * 構成 export text(DSL 語彙説明つき)を拡張へ送る(改善バッチ⑤、
+   * 必要なら起動)。送れたら true。deliver と同格の**明示ジェスチャ**で、
+   * projection と違い自動 push はしない。
+   */
+  sendStructureToExtension: (extLid: string) => boolean;
   /** trusted 同意ダイアログ表示中か(autostart の retry prompt 抑制用)。 */
   hasPendingConsent: (extLid: string) => boolean;
   /** 開いている拡張 lid 一覧。 */
@@ -289,6 +298,9 @@ export function createExtensionHost(
   // は v2.2 予約のため、**毎起動確認**(最も安全)とする。
   const pendingConsent = new Set<string>();
   const pendingSends = new Map<string, string[]>();
+  // 構成送付(改善バッチ⑤)の同意待ちキュー。構成はスナップショットなので
+  // extLid ごとに「送る予約」1 個で足りる(Set)。
+  const pendingStructureSends = new Set<string>();
   // #830 R5: pkc-ext `propose` で投げられ、同意 banner 待ちの offer。
   // offer_id → 起源拡張 + 相関 id。accept/dismiss event でチャネルに結果を返す。
   const pendingProposals = new Map<string, { extLid: string; correlationId: string | null }>();
@@ -352,6 +364,34 @@ export function createExtensionHost(
         pendingProposals.set(offer.offer_id, { extLid, correlationId: req.correlation_id ?? null });
         dispatcher.dispatch({ type: 'SYS_RECORD_OFFERED', offer });
       },
+      // 改善バッチ⑤: 整理プランの提案 → 既存 plan modal(dry-run プレビュー)
+      // に流す。silent apply は無い — 適用は常に user が modal で確認する。
+      // pending は同時 1 件(modal が開いている間の後続は rejected)。
+      onStructurePlan: (req: ExtStructurePlanRequest) => {
+        const handle = handles.get(extLid);
+        const correlationId = req.correlation_id ?? null;
+        const notify = (
+          status: 'applied' | 'rejected' | 'dismissed',
+          applied: number | null,
+          errors: readonly string[] | null,
+        ): void => handle?.notifyStructurePlanResult(status, applied, errors, correlationId);
+        const state = dispatcher.getState();
+        if (state.readonly || state.lightSource || state.viewOnlySource || !state.container) {
+          notify('rejected', null, ['編集できないコンテナです(readonly / view-only)']);
+          return;
+        }
+        if (isStructurePlanModalOpen()) {
+          notify('rejected', null, ['前の提案が確認待ちです(plan modal が開いています)']);
+          return;
+        }
+        const entry = state.container.entries.find((e) => e.lid === extLid);
+        const opened = openStructurePlanModal(dispatcher, {
+          initialText: req.text,
+          sourceLabel: entry?.title || extLid,
+          onResult: (r) => notify(r.status, r.applied ?? null, null),
+        });
+        if (!opened) notify('rejected', null, ['plan modal を開けませんでした']);
+      },
     });
     if (!handle) return null;
     handles.set(extLid, handle);
@@ -396,6 +436,7 @@ export function createExtensionHost(
           pendingConsent.delete(extLid);
           const queued = pendingSends.get(extLid) ?? [];
           pendingSends.delete(extLid);
+          const queuedStructure = pendingStructureSends.delete(extLid);
           if (!mode) return; // キャンセル: 起動しない(積まれた送付も破棄)
           // 同意時点の container で再解決(ダイアログ表示中の変化に追従)。
           const fresh = resolveExtension(dispatcher, extLid);
@@ -406,6 +447,7 @@ export function createExtensionHost(
           const handle = launchResolved(extLid, { html: fresh.html, manifest });
           if (handle) {
             for (const lid of queued) sendToExtension(extLid, lid);
+            if (queuedStructure) sendStructureToExtension(extLid);
           }
         });
       }
@@ -436,6 +478,22 @@ export function createExtensionHost(
     return true;
   }
 
+  function sendStructureToExtension(extLid: string): boolean {
+    const handle = openExtension(extLid);
+    if (!handle) {
+      // trusted の同意待ちなら予約しておき、同意後に flush する。
+      if (pendingConsent.has(extLid)) {
+        pendingStructureSends.add(extLid);
+        return true;
+      }
+      return false;
+    }
+    const container = dispatcher.getState().container;
+    if (!container) return false;
+    handle.sendStructure(exportStructureText(container));
+    return true;
+  }
+
   function closeOne(extLid: string): void {
     unsubs.get(extLid)?.();
     unsubs.delete(extLid);
@@ -446,6 +504,7 @@ export function createExtensionHost(
   return {
     openExtension,
     sendToExtension,
+    sendStructureToExtension,
     hasPendingConsent: (extLid: string) => pendingConsent.has(extLid),
     openLids: () => [...handles.keys()],
     closeAll: () => {

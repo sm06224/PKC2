@@ -290,6 +290,53 @@ describe('pkc:propose(#830 R5)— 作成提案を onPropose へ、結果を prop
   });
 });
 
+describe('structure / structure-plan(改善バッチ⑤ AI 整理プラン連携)', () => {
+  it('sendStructure は established 後に push、handshake 前は最新 1 件を buffer', () => {
+    const { child, posted } = stubChild();
+    handle = launchExtensionChannel({ html: '<x>', getProjection: () => ({}), ...TRUSTED })!;
+    handle.sendStructure('OLD');
+    handle.sendStructure('NEW'); // 最新が勝つ(構成はスナップショット)
+    expect(posted.filter((p) => p.msg.t === 'structure')).toHaveLength(0);
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, t: 'hello' });
+    const structures = posted.filter((p) => p.msg.t === 'structure');
+    expect(structures).toHaveLength(1);
+    expect(structures[0]!.msg.text).toBe('NEW');
+    handle.sendStructure('LIVE');
+    expect(posted.filter((p) => p.msg.t === 'structure')).toHaveLength(2);
+  });
+
+  it('structure-plan は nonce 必須で onStructurePlan へ渡り、結果を返送できる', () => {
+    const { child, posted } = stubChild();
+    const onStructurePlan = vi.fn();
+    handle = launchExtensionChannel({ html: '<x>', getProjection: () => ({}), onStructurePlan, ...TRUSTED })!;
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, t: 'hello' });
+    const nonce = posted.find((p) => p.msg.t === 'projection')!.msg.nonce as string;
+    // nonce 無し → 弾く
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, t: 'structure-plan', text: 'mv a b' });
+    expect(onStructurePlan).not.toHaveBeenCalled();
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, nonce, t: 'structure-plan', text: 'mv a b', correlation_id: 'c1' });
+    expect(onStructurePlan).toHaveBeenCalledWith({ text: 'mv a b', correlation_id: 'c1' });
+    handle.notifyStructurePlanResult('applied', 3, null, 'c1');
+    const res = posted.find((p) => p.msg.t === 'structure-plan-result')!;
+    expect(res.msg).toMatchObject({ status: 'applied', applied: 3, correlation_id: 'c1' });
+  });
+
+  it('text 不正(非文字列 / 64KB 超)は orchestrator へ流さず即 rejected', () => {
+    const { child, posted } = stubChild();
+    const onStructurePlan = vi.fn();
+    handle = launchExtensionChannel({ html: '<x>', getProjection: () => ({}), onStructurePlan, ...TRUSTED })!;
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, t: 'hello' });
+    const nonce = posted.find((p) => p.msg.t === 'projection')!.msg.nonce as string;
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, nonce, t: 'structure-plan', text: 42, correlation_id: 'bad1' });
+    fromChild(child, { pkc: PKC_EXT, v: PKC_EXT_V, nonce, t: 'structure-plan', text: 'x'.repeat(64 * 1024 + 1), correlation_id: 'bad2' });
+    expect(onStructurePlan).not.toHaveBeenCalled();
+    const rejects = posted.filter((p) => p.msg.t === 'structure-plan-result');
+    expect(rejects).toHaveLength(2);
+    expect(rejects.every((p) => p.msg.status === 'rejected')).toBe(true);
+    expect(rejects.map((p) => p.msg.correlation_id)).toEqual(['bad1', 'bad2']);
+  });
+});
+
 describe('token 写像 helper', () => {
   it('sandboxTokensFor / allowAttributeFor の語彙', () => {
     expect(sandboxTokensFor(undefined)).toEqual(['allow-scripts']);

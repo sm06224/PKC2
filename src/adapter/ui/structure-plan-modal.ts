@@ -42,13 +42,41 @@ export function copyStructureExport(dispatcher: Dispatcher): boolean {
   return true;
 }
 
-export function openStructurePlanModal(dispatcher: Dispatcher): void {
-  if (isStructurePlanModalOpen()) return;
+/** 外部(拡張チャネル等)から plan を持ち込むときのオプション(改善バッチ⑤)。 */
+export interface StructurePlanModalOptions {
+  /** textarea の初期値(拡張が提案したコマンド列など)。 */
+  initialText?: string;
+  /** 提案元の表示名(hint 行に「〜からの提案」と出す)。 */
+  sourceLabel?: string;
+  /**
+   * modal の結末を 1 回だけ受け取る:適用したら `applied`(適用 op 数付き)、
+   * 適用せず閉じたら `dismissed`。
+   */
+  onResult?: (result: { status: 'applied' | 'dismissed'; applied?: number }) => void;
+}
+
+/**
+ * 構成コマンド modal を開く。開けたら true、既に開いている / readonly /
+ * container 不在なら false(この場合 `onResult` は呼ばれない — 呼び出し側が
+ * rejected を扱う)。
+ */
+export function openStructurePlanModal(
+  dispatcher: Dispatcher,
+  options?: StructurePlanModalOptions,
+): boolean {
+  if (isStructurePlanModalOpen()) return false;
   const state = dispatcher.getState();
   if (!state.container || state.readonly) {
     showToast({ message: '構成コマンドは編集可能なコンテナでのみ使えます', kind: 'warn' });
-    return;
+    return false;
   }
+  // onResult は「適用 or 閉じた」のどちらか一方を正確に 1 回。
+  let resultSent = false;
+  const emitResult = (result: { status: 'applied' | 'dismissed'; applied?: number }): void => {
+    if (resultSent) return;
+    resultSent = true;
+    options?.onResult?.(result);
+  };
 
   const overlay = document.createElement('div');
   overlay.className = 'pkc-structure-plan-overlay';
@@ -67,8 +95,9 @@ export function openStructurePlanModal(dispatcher: Dispatcher): void {
 
   const hint = document.createElement('p');
   hint.className = 'pkc-structure-plan-hint';
-  hint.textContent =
-    '「構成をコピー」で現在のツリーを AI に渡し、返ってきたコマンド列(mv / mkdir / rename)を下に貼り付けてください。適用前に必ずプレビューで確認できます。';
+  hint.textContent = options?.sourceLabel
+    ? `🧩 「${options.sourceLabel}」からの整理プラン提案です。下のプレビューで適用内容を確認してから適用してください(適用するまで何も変わりません)。`
+    : '「構成をコピー」で現在のツリーを AI に渡し、返ってきたコマンド列(mv / mkdir / rename)を下に貼り付けてください。適用前に必ずプレビューで確認できます。';
   panel.appendChild(hint);
 
   const copyBtn = document.createElement('button');
@@ -84,6 +113,7 @@ export function openStructurePlanModal(dispatcher: Dispatcher): void {
   input.setAttribute('data-pkc-region', 'structure-plan-input');
   input.setAttribute('placeholder', '# 例:\nmkdir "アーカイブ" as @arc\nmv lid-123 @arc\nrename lid-456 "新しいタイトル"');
   input.rows = 8;
+  if (options?.initialText) input.value = options.initialText;
   panel.appendChild(input);
 
   const preview = document.createElement('div');
@@ -144,6 +174,7 @@ export function openStructurePlanModal(dispatcher: Dispatcher): void {
   const close = (): void => {
     document.removeEventListener('keydown', onKeydown);
     overlay.remove();
+    emitResult({ status: 'dismissed' }); // 適用済みなら emitResult は no-op
   };
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Escape') close();
@@ -161,6 +192,7 @@ export function openStructurePlanModal(dispatcher: Dispatcher): void {
     const plan = planStructureOps(container, parsed.ops);
     if (parsed.errors.length > 0 || plan.errors.length > 0 || parsed.ops.length === 0) return;
     dispatcher.dispatch({ type: 'APPLY_STRUCTURE_OPS', ops: parsed.ops });
+    emitResult({ status: 'applied', applied: parsed.ops.length });
     close();
     showToast({ message: `構成コマンドを適用しました(${parsed.ops.length} 件)`, kind: 'info' });
   });
@@ -168,4 +200,5 @@ export function openStructurePlanModal(dispatcher: Dispatcher): void {
   const root = document.querySelector<HTMLElement>('#pkc-root') ?? document.body;
   root.appendChild(overlay);
   input.focus();
+  return true;
 }

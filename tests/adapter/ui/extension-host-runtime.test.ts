@@ -46,6 +46,8 @@ function fakeLaunch() {
     delivers: unknown[];
     selected: string[];
     proposeResults: { accepted: boolean; assignedLid: string | null; correlationId: string | null }[];
+    structures: string[];
+    planResults: { status: string; applied: number | null; errors: readonly string[] | null; correlationId: string | null }[];
     closed: boolean;
   }[] = [];
   const launch = (opts: LaunchExtensionOptions): ExtensionChannelHandle => {
@@ -55,6 +57,8 @@ function fakeLaunch() {
       delivers: [] as unknown[],
       selected: [] as string[],
       proposeResults: [] as { accepted: boolean; assignedLid: string | null; correlationId: string | null }[],
+      structures: [] as string[],
+      planResults: [] as { status: string; applied: number | null; errors: readonly string[] | null; correlationId: string | null }[],
       closed: false,
     };
     records.push(rec);
@@ -65,6 +69,9 @@ function fakeLaunch() {
       notifySelected: (lid) => rec.selected.push(lid),
       notifyProposeResult: (accepted, assignedLid, correlationId) =>
         rec.proposeResults.push({ accepted, assignedLid, correlationId }),
+      sendStructure: (text) => rec.structures.push(text),
+      notifyStructurePlanResult: (status, applied, errors, correlationId) =>
+        rec.planResults.push({ status, applied, errors, correlationId }),
       close: () => { rec.closed = true; established = false; },
       isEstablished: () => established,
       // テストから rec.closed を立てると「ユーザーが window を閉じた」を模せる。
@@ -414,6 +421,80 @@ describe('onPropose(#830 R5): create を既存 record:offer 同意経路へ', ()
     recs[0]!.opts.onPropose!({ offer: { body: 'no title' } }); // title 欠落 = 検証 NG
     expect(d.getState().pendingOffers).toHaveLength(0);
     expect(recs[0]!.proposeResults[0]).toEqual({ accepted: false, assignedLid: null, correlationId: null });
+  });
+});
+
+describe('structure / structure-plan(改善バッチ⑤): 構成送付と plan modal 連携', () => {
+  function openHost() {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container() });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    return { d, recs };
+  }
+  afterEach(() => {
+    document.querySelector('[data-pkc-region="structure-plan-overlay"]')?.remove();
+  });
+
+  it('sendStructureToExtension は DSL 語彙説明つき構成 export text を push', () => {
+    const { recs } = openHost();
+    expect(host!.sendStructureToExtension('ext1')).toBe(true);
+    expect(recs[0]!.structures).toHaveLength(1);
+    const text = recs[0]!.structures[0]!;
+    expect(text).toContain('mv <lid> <folderLid|@name|root>'); // 語彙説明
+    expect(text).toContain('- ext1'); // 実ツリー
+  });
+
+  it('structure-plan は plan modal(提案 text 入り)を開き、適用で applied を返す', () => {
+    const { d, recs } = openHost();
+    recs[0]!.opts.onStructurePlan!({ text: 'rename e1 "Renamed"', correlation_id: 'p1' });
+    // silent apply はしない: modal が開くだけで container は不変。
+    expect(d.getState().container!.entries.find((e) => e.lid === 'e1')?.title).not.toBe('Renamed');
+    const input = document.querySelector<HTMLTextAreaElement>('[data-pkc-region="structure-plan-input"]')!;
+    expect(input).not.toBeNull();
+    expect(input.value).toBe('rename e1 "Renamed"');
+    expect(recs[0]!.planResults).toHaveLength(0);
+    // user が modal で適用。
+    document.querySelector<HTMLButtonElement>('[data-pkc-action="structure-plan-apply"]')!.click();
+    expect(d.getState().container!.entries.find((e) => e.lid === 'e1')?.title).toBe('Renamed');
+    expect(recs[0]!.planResults).toEqual([
+      { status: 'applied', applied: 1, errors: null, correlationId: 'p1' },
+    ]);
+  });
+
+  it('適用せず閉じたら dismissed を返す', () => {
+    const { recs } = openHost();
+    recs[0]!.opts.onStructurePlan!({ text: 'rename e1 "Z"', correlation_id: 'p2' });
+    document.querySelector<HTMLButtonElement>('[data-pkc-action="structure-plan-cancel"]')!.click();
+    expect(recs[0]!.planResults).toEqual([
+      { status: 'dismissed', applied: null, errors: null, correlationId: 'p2' },
+    ]);
+  });
+
+  it('readonly は即 rejected(modal を開かない)', () => {
+    const d = createDispatcher();
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container(), readonly: true });
+    const { launch, records: recs } = fakeLaunch();
+    host = createExtensionHost(d, launch);
+    host.openExtension('ext1');
+    recs[0]!.opts.onStructurePlan!({ text: 'rename e1 "Z"', correlation_id: 'p3' });
+    expect(document.querySelector('[data-pkc-region="structure-plan-overlay"]')).toBeNull();
+    expect(recs[0]!.planResults).toHaveLength(1);
+    expect(recs[0]!.planResults[0]!.status).toBe('rejected');
+    expect(recs[0]!.planResults[0]!.correlationId).toBe('p3');
+  });
+
+  it('pending は同時 1 件: modal 表示中の後続提案は rejected', () => {
+    const { recs } = openHost();
+    recs[0]!.opts.onStructurePlan!({ text: 'rename e1 "A"', correlation_id: 'first' });
+    recs[0]!.opts.onStructurePlan!({ text: 'rename e1 "B"', correlation_id: 'second' });
+    expect(recs[0]!.planResults).toHaveLength(1);
+    expect(recs[0]!.planResults[0]!.status).toBe('rejected');
+    expect(recs[0]!.planResults[0]!.correlationId).toBe('second');
+    // 先行提案の text が保たれている(上書きされない)。
+    const input = document.querySelector<HTMLTextAreaElement>('[data-pkc-region="structure-plan-input"]')!;
+    expect(input.value).toBe('rename e1 "A"');
   });
 });
 
