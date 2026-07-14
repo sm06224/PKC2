@@ -1,6 +1,6 @@
 # PKC2 v2.4.0 — Release notes
 
-**Release date**: 2026-05-25(draft、stack PR 13 着地で確定)
+**Release date**: 2026-05-25(確定 2026-07-14 — stack PR 13 着地済み)
 **Schema**: 1(変更なし — additive-only)
 **Previous release**: v2.3.0
 
@@ -9,6 +9,19 @@ v2.4.0 の主題は **PKC Markdown v4 確立**(stack PR 1-13、計 13 PR)です�
 ---
 
 ## Highlights
+
+<!-- この直下の flat bullet だけが About エントリに転記される(parse-changelog.ts は
+     「## Highlights」〜次の「## 」までの `- ` 行を全部拾う。コード例の `- ` も拾って
+     しまうため、詳細な語りは「## Highlights 詳細」以降に置くこと)。 -->
+
+- **`:::format{...}` block 装飾箱**(catalog #60)を 3 形式で実装 — Tier 0 vocabulary(`:::red,bg-yellow,1.2em`)/ Tier 1 class chain(`:::.cls.cls`)/ Tier 2 formal(`:::format{...}`)
+- inline `:text:vocab:`(catalog #9)と**完全対称な block 拡張**。`AstFormatBlock` AST node を追加し、parse / render / canonicalize / 逆経路の全 6 関数が対応(4 経路 byte-equivalent round-trip parity)
+- **Q7 separator policy 統一**(comma / 空白 両許容)+ **Q8 value-only 寛容パース**(4 directive 限定)
+- `:::section{}` の任意 role に CSS class を自動命名(user CSS 連携)
+- **3 audience 同 source 同期**: 人間向け完全 spec v4(97 項目)+ AI 規約書 v4 + manual §12.11 を同時更新
+- 既存 API / データは完全 backward compatible(schema 1 のまま)
+
+## Highlights 詳細
 
 ### PKC Markdown v4 ── block 装飾箱 3 形 + Q7 / Q8 寛容拡張(stack PR 1-13)
 
