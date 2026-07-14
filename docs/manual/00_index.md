@@ -61,17 +61,17 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 | 00 | 索引 | このページ |
 | 01 | はじめに | PKC2 とは何か、設計思想、できること・できないこと |
 | 02 | クイックスタート | 入手からはじめてのエントリ作成まで |
-| 03 | 画面とビュー | サイドバー・詳細ペイン・Detail / Calendar / Kanban ビュー・複数選択・DnD・toast |
+| 03 | 画面とビュー | サイドバー・詳細ペイン・Detail / Calendar / Kanban ビュー・複数選択・DnD・toast・ミニマップ(2026-07、既定 OFF) |
 | 04 | エントリの種類 | text / textlog / todo / form / attachment / folder（TODO 埋め込み含む） |
-| 05 | 日常操作 | 作成・編集・削除・復元・タグ・関連付け・リビジョン・複数選択・DnD・コンテキストメニュー・別ウィンドウ・TEXT↔TEXTLOG 変換・一括読み込み |
+| 05 | 日常操作 | 作成・編集・削除・復元・タグ・関連付け・リビジョン・複数選択・DnD・コンテキストメニュー(表のコピー / エクスポート含む)・別ウィンドウ・TEXT↔TEXTLOG 変換・一括読み込み・WCAG 自動コントラスト補正・構成コマンド(AI 整理プラン) |
 | 06 | キーボードショートカット | 基本・編集・ペイン切替・サイドバー矢印移動・Calendar/Kanban 内移動 |
-| 07 | 保存と持ち出し | IndexedDB と Export の概要・ZIP import 警告 |
+| 07 | 保存と持ち出し | IndexedDB と Export の概要・ZIP import 警告・ストレージ 3 モードの使い分け(IndexedDB / OPFS / Local folder)・差分保存(opt-in) |
 | 08 | 運用ガイド | Export / Import / Rehydrate の詳細と典型シナリオ |
 | 09 | トラブルシューティングと用語集 | 困ったときの対処と用語辞書 |
 | 10 | ファイラ / グラフ拡張 / インベントリ | filer view subset(explorer / contact-sheet / book-base / video-base / novel-base / inventory)+ **グラフ拡張**(別ウィンドウの PKC-Extension、4 view × 5 色分け軸 + ミニマップ + 双方向選択同期)+ frontmatter Properties + 画像 PiP プレビュー + bookmarklet 取込 + サイドバー filer モード |
 | 11 | Bookmarklet サンプル & アセット統合 | PKC-Message v1.1 capture profile の公式 sample(envelope / handshake / user-consent gate)+ 5 公式 site 実例(YouTube / niconico / なろう / カクヨム / Amazon)+ ローカルアセット(PDF / mp3 / mp4 / epub)を Bases UX で統合する設計 + epub reader 将来計画 |
 | 12 | マークダウン拡張記法 | Phase 1 拡張 9 種(L-1 セクション / L-2 ハイライト・ルビ・圏点 / L-4 コメント / L-5 行頭アライン / L-6 簡易インライン / L-7 図表自動採番 / L-8 空行マーカー / L-9 段落字下げ)+ M-7 Variables(`{{vars.x}}`)+ **reform-2026-05 Phase 1+2**(`:::section{role=…}` / `:::comment` / `:::break` / `:::paragraph{align}` / formal inline 4 形 / `:caption:` / `:autoref:` / 寛容 parse + canonical hint log + admonition alias / `layout: a4-2col` 段組組版 / `` ```html-render `` iframe sandbox / em-dot nested inline)+ AI 規約書 v2 + Phase 3 以降の予告 |
-| 13 | アプリランチャーと出力機能 | HTML attachment をアプリとして登録して新規ウィンドウ起動できる Launcher view + **PKC-Extension**(サンドボックス実行が既定 / 全権は同意ダイアログ / 右クリック「拡張へ送る」と紐付け・既定送り先)+ Data… メニュー(🧬 AST / Canonical / Pandoc / HTML を JSONL or Pretty で copy、📄 PDF / 📝 Word / 🎞 PPT の出力)+ 編集中の選択部に追従する PKC MD フォーマットパネル + TEXTLOG の各ログ行を右クリックして Data… 同等の操作 |
+| 13 | アプリランチャーと出力機能 | HTML attachment をアプリとして登録して新規ウィンドウ起動できる Launcher view + **PKC-Extension**(サンドボックス実行が既定 / 全権は同意ダイアログ / 右クリック「拡張へ送る」と紐付け・既定送り先 / **構成を拡張へ送る = AI 整理プラン連携** 2026-07)+ Data… メニュー(🧬 AST / Canonical / Pandoc / HTML を JSONL or Pretty で copy、📄 PDF / 📝 Word / 🎞 PPT の出力)+ 編集中の選択部に追従する PKC MD フォーマットパネル + TEXTLOG の各ログ行を右クリックして Data… 同等の操作 |
 | 14 | テンプレートコマンド集 | `/tmpXX` slash command による template 挿入 + default 14 件(memo / 公式 capture / **レイアウト系 8 件**= 報告書・プレゼン骨子・表中心・議事録・講義ノート・比較対照・2 段組・日報)+ 各 layout の markdown コード + docx/pptx 実機レンダリング PNG + 自前 template の追加手順(PR-W10、2026-05-16) |
 | 15 | PKC Hint 機構 | PKC2 が parse / render 中に気づいた事象を user に伝える機構の完全カタログ。実装済 5 種(`{{vars.X}}` 未定義 / `_N` cap / orphan footnote / malformed `:::role{` / dangling `[@id]`)+ 統一 `AstHint` schema 設計(opt-out 4 階層、code block render-available 誘導の「ブルーオーシャン戦略」)|
 
