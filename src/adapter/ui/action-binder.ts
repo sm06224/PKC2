@@ -7819,9 +7819,16 @@ export function bindActions(
    */
   function isMarkdownTextarea(el: HTMLTextAreaElement): boolean {
     const field = el.getAttribute('data-pkc-field');
+    // user 報告 2026-07-15「text の末尾追記で画像貼付が失敗する」:
+    // このリストに無い markdown 系 textarea への画像 paste は fallback の
+    // 「単独 attachment 作成」に落ち、`![...](asset:...)` が挿入されない。
+    // #862 で追加された text-append / section-edit(章フォーカス編集)を
+    // textlog-append と同格の inline 貼付対象にする。
     return field === 'body'
       || field === 'textlog-append-text'
-      || field === 'textlog-entry-text';
+      || field === 'textlog-entry-text'
+      || field === 'text-append-text'
+      || field === 'section-edit-text';
   }
 
   // ── FI-05: Shared helpers for asset link insertion during editing ──
