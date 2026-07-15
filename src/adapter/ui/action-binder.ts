@@ -285,17 +285,20 @@ import { isUserEntry } from '../../core/model/record';
  * a true drag.
  */
 /**
- * HTML 構造ごと markdown 復元 paste(2026-07-15、opt-in)。
+ * HTML 構造ごと markdown 復元 paste(2026-07-15)。
  * AI チャットの回答を選択コピーすると text/html はレンダリング済み
  * HTML・text/plain は記号なし平文になり、どちらを貼っても見出し /
- * フェンス / 表が失われる。ON にすると text/html を可換変換器で
+ * フェンス / 表が失われる。ON のとき text/html を可換変換器で
  * markdown に復元して挿入する(text/plain が markdown 原文らしい
  * 場合はそちらを優先 = AI の「コピー」ボタン経路を壊さない)。
+ *
+ * 2026-07-15 user 判断で **既定 ON(オプトアウト方式)** へ昇格。
+ * 苦情がなければ将来 flag ごと撤去する予定(撤去台帳 issue 参照)。
  */
-const htmlPasteToMarkdownEnabled = defineFlag<boolean>('editor.html_paste_to_markdown', false, {
+const htmlPasteToMarkdownEnabled = defineFlag<boolean>('editor.html_paste_to_markdown', true, {
   category: 'editor',
   description:
-    'HTML 貼付を markdown に復元(見出し/リスト/コード/表/引用)。AI チャット回答の選択コピー貼付が構造ごと入る(opt-in)。text/plain が markdown 原文のときはそちらを優先',
+    'HTML 貼付を markdown に復元(見出し/リスト/コード/表/引用)。AI チャット回答の選択コピー貼付が構造ごと入る(既定 ON・OFF でオプトアウト)。text/plain が markdown 原文のときはそちらを優先',
 });
 
 const touchTapThresholdPx = defineFlag<number>(
