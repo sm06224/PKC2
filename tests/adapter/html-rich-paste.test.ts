@@ -127,8 +127,17 @@ function pasteHtmlOn(target: Element, html: string, plain: string): void {
   target.dispatchEvent(ev);
 }
 
-describe('paste 統合(flag gate)', () => {
-  it('flag OFF(既定)では構造復元しない(従来の anchor 正規化 = 平文 + リンクのみ)', () => {
+describe('paste 統合(flag gate、2026-07-15 user 判断で既定 ON = オプトアウト方式)', () => {
+  it('既定(ON)で構造付き HTML paste が markdown として挿入される', () => {
+    const ta = setup();
+    pasteHtmlOn(ta, AI_HTML, AI_PLAIN);
+    expect(ta.value).toContain('## 手順');
+    expect(ta.value).toContain('```python');
+    expect(ta.value).toMatch(/\| *名前 *\| *値 *\|/);
+  });
+
+  it('OFF でオプトアウトできる(従来の anchor 正規化 = 平文 + リンクのみ)', () => {
+    setContainerFlagSource({ 'editor.html_paste_to_markdown': false });
     const ta = setup();
     pasteHtmlOn(ta, AI_HTML, AI_PLAIN);
     // 従来挙動: anchor があるので link 正規化は発火するが、構造は復元されない
@@ -137,26 +146,17 @@ describe('paste 統合(flag gate)', () => {
     expect(ta.value).not.toContain('```');
   });
 
-  it('flag ON で構造付き HTML paste が markdown として挿入される', () => {
-    setContainerFlagSource({ 'editor.html_paste_to_markdown': true });
-    const ta = setup();
-    pasteHtmlOn(ta, AI_HTML, AI_PLAIN);
-    expect(ta.value).toContain('## 手順');
-    expect(ta.value).toContain('```python');
-    expect(ta.value).toMatch(/\| *名前 *\| *値 *\|/);
-  });
-
-  it('flag ON でも text/plain が markdown 原文なら介入しない(コピー ボタン経路優先)', () => {
-    setContainerFlagSource({ 'editor.html_paste_to_markdown': true });
+  it('既定 ON でも text/plain が markdown 原文なら介入しない(コピー ボタン経路優先)', () => {
     const ta = setup();
     pasteHtmlOn(ta, AI_HTML, '## 手順\n\n```python\nprint("hello")\n```');
     expect(ta.value).toBe('');
   });
 
-  it('flag OFF でも text/plain が markdown 原文なら anchor 正規化も介入しない(2026-07-15 bug fix)', () => {
+  it('オプトアウト(OFF)でも text/plain が markdown 原文なら anchor 正規化も介入しない(bug fix)', () => {
     // AI の「コピー」ボタン: markdown 原文が text/plain、レンダリング済み
     // HTML(anchor 含む)が text/html に併載されるケース。従来は anchor
     // 正規化が平文化 HTML で原文を上書きし、フェンス / 見出しが壊れていた。
+    setContainerFlagSource({ 'editor.html_paste_to_markdown': false });
     const ta = setup();
     pasteHtmlOn(ta, AI_HTML, '## 手順\n\n```python\nprint("hello")\n```\n[ドキュメント](https://example.com/doc)');
     expect(ta.value).toBe(''); // 介入なし = native paste(test env では不変)
