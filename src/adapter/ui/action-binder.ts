@@ -109,7 +109,7 @@ import {
   computeQuoteAssistOnEnter,
   computeQuoteToggleOnSelection,
 } from '../../features/markdown/quote-assist';
-import { htmlPasteToMarkdown } from './html-paste-to-markdown';
+import { htmlPasteToMarkdown, htmlPasteToRichMarkdown, plainLooksLikeMarkdown } from './html-paste-to-markdown';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
 import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/frontmatter';
@@ -284,6 +284,20 @@ import { isUserEntry } from '../../core/model/record';
  * drag detection and tolerates finger jitter without misreading
  * a true drag.
  */
+/**
+ * HTML 構造ごと markdown 復元 paste(2026-07-15、opt-in)。
+ * AI チャットの回答を選択コピーすると text/html はレンダリング済み
+ * HTML・text/plain は記号なし平文になり、どちらを貼っても見出し /
+ * フェンス / 表が失われる。ON にすると text/html を可換変換器で
+ * markdown に復元して挿入する(text/plain が markdown 原文らしい
+ * 場合はそちらを優先 = AI の「コピー」ボタン経路を壊さない)。
+ */
+const htmlPasteToMarkdownEnabled = defineFlag<boolean>('editor.html_paste_to_markdown', false, {
+  category: 'editor',
+  description:
+    'HTML 貼付を markdown に復元(見出し/リスト/コード/表/引用)。AI チャット回答の選択コピー貼付が構造ごと入る(opt-in)。text/plain が markdown 原文のときはそちらを優先',
+});
+
 const touchTapThresholdPx = defineFlag<number>(
   'touch.tap_threshold_px',
   6,
@@ -8158,6 +8172,48 @@ export function bindActions(
   ]);
 
   /**
+   * 変換済みテキストを textarea のカーソル位置へ挿入する(link 正規化 /
+   * rich 復元 paste 共用)。execCommand('insertText') 優先 = ブラウザの
+   * undo スタックと input event(preview debounce)を保つ。不可なら
+   * 手動 splice + 合成 input event。
+   */
+  function insertTransformedPaste(target: HTMLTextAreaElement, text: string): void {
+    const ok = typeof document.execCommand === 'function'
+      && document.execCommand('insertText', false, text);
+    if (ok) return;
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? start;
+    const before = target.value.slice(0, start);
+    const after = target.value.slice(end);
+    target.value = before + text + after;
+    const pos = start + text.length;
+    target.setSelectionRange(pos, pos);
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /**
+   * flag ON のとき、構造を持つ text/html paste を markdown に復元して
+   * 挿入する。介入しなかったら false(従来の anchor 正規化 → native
+   * paste に fallthrough)。
+   */
+  function maybeHandleHtmlRichPaste(e: ClipboardEvent): boolean {
+    if (!htmlPasteToMarkdownEnabled()) return false;
+    const target = e.target;
+    if (!(target instanceof HTMLTextAreaElement)) return false;
+    const field = target.getAttribute('data-pkc-field');
+    if (!field || !PASTE_LINK_ALLOWED_FIELDS.has(field)) return false;
+
+    const html = e.clipboardData?.getData('text/html') ?? '';
+    const plain = e.clipboardData?.getData('text/plain') ?? '';
+    const markdown = htmlPasteToRichMarkdown(html, plain);
+    if (markdown === null) return false;
+
+    e.preventDefault();
+    insertTransformedPaste(target, markdown);
+    return true;
+  }
+
+  /**
    * PKC permalink → internal markdown link.
    *
    * Runs first in the text-payload branch. Reads `text/plain` from
@@ -8354,29 +8410,20 @@ export function bindActions(
     const html = e.clipboardData?.getData('text/html') ?? '';
     if (!html) return;
 
+    // 2026-07-15 bug fix: text/plain が既に markdown 原文らしい場合は
+    // 介入しない。AI チャットの「コピー」ボタンは markdown 原文を
+    // text/plain に、レンダリング済み HTML を text/html に併載することが
+    // あり、ここで平文化 HTML(anchor 以外の構造が消える)を挿入すると
+    // 原文のフェンス / 見出しを壊してしまう。原文の native paste が常に
+    // 正確(リンクも markdown 記法で既に入っている)。
+    const plain = e.clipboardData?.getData('text/plain') ?? '';
+    if (plainLooksLikeMarkdown(plain)) return;
+
     const transformed = htmlPasteToMarkdown(html);
     if (transformed === null || transformed === '') return;
 
     e.preventDefault();
-
-    // Prefer execCommand('insertText') when available — it preserves
-    // the browser's native undo stack and fires the `input` event
-    // that drives the text-edit preview debounce.
-    const ok = typeof document.execCommand === 'function'
-      && document.execCommand('insertText', false, transformed);
-    if (ok) return;
-
-    // Fallback: manual splice + synthetic input event. Used when
-    // execCommand is unavailable (some embedded / test environments)
-    // or when the browser refused to apply the command.
-    const start = target.selectionStart ?? target.value.length;
-    const end = target.selectionEnd ?? start;
-    const before = target.value.slice(0, start);
-    const after = target.value.slice(end);
-    target.value = before + transformed + after;
-    const pos = start + transformed.length;
-    target.setSelectionRange(pos, pos);
-    target.dispatchEvent(new Event('input', { bubbles: true }));
+    insertTransformedPaste(target, transformed);
   }
 
   function handlePaste(e: ClipboardEvent): void {
@@ -8422,6 +8469,14 @@ export function bindActions(
       // (perf:本文を軽量に保つ。描画は resolver が同一 data: URI へ round-trip)。
       // data: は base64 内包で fetch 不要 = 同期。blob: の次に評価(両方在れば blob 優先)。
       if (maybeHandleDataUriImagePaste(e)) return;
+
+      // ── HTML 構造ごと markdown 復元(2026-07-15、flag opt-in)──
+      //
+      // AI チャット回答の選択コピー等、構造(見出し/リスト/コード/表/
+      // 引用)を持つ text/html を可換変換器で markdown に復元して挿入。
+      // flag OFF / 構造なし / text/plain が markdown 原文らしい場合は
+      // false で従来の anchor 正規化に fallthrough。
+      if (maybeHandleHtmlRichPaste(e)) return;
 
       // ── HTML → Markdown link normalization (S-25 / 2026-04-16) ──
       //
