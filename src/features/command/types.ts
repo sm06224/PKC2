@@ -24,6 +24,7 @@ export type CommandCategory =
   | 'Multi-window' // viewer / monitor / editor window 開く
   | 'Debug'        // flags inspector / debug overlay
   | 'Structure'    // #905 構成コマンド(tree export / mv・mkdir・rename の一括適用)
+  | 'Media'        // #922 録音・画面収録(停止時に asset 化 + 参照埋め込み)
   | 'Help';        // shortcut help / about
 
 /**
