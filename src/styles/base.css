@@ -3304,6 +3304,42 @@ mark.pkc-search-mark {
   z-index: 10000;
 }
 
+/* ── Media capture overlay(#922 録音・画面収録)── */
+.pkc-media-capture-overlay {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30200; /* IDB banner 帯(30000)より上、trust consent(30500)より下 */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-size: 0.85rem;
+}
+.pkc-media-capture-dot {
+  color: #e53e3e;
+  animation: pkc-media-capture-blink 1.2s ease-in-out infinite;
+}
+@keyframes pkc-media-capture-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.pkc-media-capture-elapsed {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.pkc-media-capture-size {
+  opacity: 0.75;
+  font-size: 0.78rem;
+}
+.pkc-media-capture-stop { cursor: pointer; }
+.pkc-media-capture-discard { cursor: pointer; opacity: 0.7; }
+
 /* ── Editor mode ── */
 .pkc-editor {
   /* fill full center pane width */

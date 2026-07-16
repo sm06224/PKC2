@@ -63,7 +63,7 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 | 02 | クイックスタート | 入手からはじめてのエントリ作成まで |
 | 03 | 画面とビュー | サイドバー・詳細ペイン・Detail / Calendar / Kanban ビュー・複数選択・DnD・toast・ミニマップ(2026-07、既定 OFF) |
 | 04 | エントリの種類 | text / textlog / todo / form / attachment / folder（TODO 埋め込み含む） |
-| 05 | 日常操作 | 作成・編集・削除・復元・タグ・関連付け・リビジョン・複数選択・DnD・コンテキストメニュー(表のコピー / エクスポート含む)・別ウィンドウ・TEXT↔TEXTLOG 変換・一括読み込み・WCAG 自動コントラスト補正・構成コマンド(AI 整理プラン)・HTML 貼付の Markdown 復元 |
+| 05 | 日常操作 | 作成・編集・削除・復元・タグ・関連付け・リビジョン・複数選択・DnD・コンテキストメニュー(表のコピー / エクスポート含む)・別ウィンドウ・TEXT↔TEXTLOG 変換・一括読み込み・WCAG 自動コントラスト補正・構成コマンド(AI 整理プラン)・HTML 貼付の Markdown 復元・録音 / 画面収録とマルチメディア埋め込み |
 | 06 | キーボードショートカット | 基本・編集・ペイン切替・サイドバー矢印移動・Calendar/Kanban 内移動 |
 | 07 | 保存と持ち出し | IndexedDB と Export の概要・ZIP import 警告・ストレージ 3 モードの使い分け(IndexedDB / OPFS / Local folder)・差分保存(opt-in) |
 | 08 | 運用ガイド | Export / Import / Rehydrate の詳細と典型シナリオ |

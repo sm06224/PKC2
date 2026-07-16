@@ -18,6 +18,7 @@ import type { CommandMeta } from '../../features/command/types';
 import { registerCommand } from './command-palette';
 import { copyStructureExport, openStructurePlanModal } from './structure-plan-modal';
 import { getSharedExtensionHost } from './extension-host-runtime';
+import { startAudioRecording, startScreenRecording } from './media-capture';
 import { loadExtensionBindings } from '../platform/extension-bindings';
 import { showToast } from './toast';
 import {
@@ -663,5 +664,28 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
         ? { message: '構成テキストを拡張へ送りました(整理プランの提案は確認モーダルに届きます)', kind: 'info' }
         : { message: '拡張へ送れませんでした(popup ブロック等)。拡張を開き直して再実行してください', kind: 'warn' });
     },
+  );
+
+  // ─── #922 録音・画面収録(2026-07-16 user 要望)─────
+  // 「録音と画面収録をマルチメディアで埋め込めるように。会議メモをうまく
+  // 残せるはず」── 停止時に attachment + asset 化し、選択中の TEXT / TEXTLOG
+  // に参照を追記(#921 の埋め込みプレーヤーで本文からそのまま再生できる)。
+  registerCommand(
+    {
+      id: 'media.record-audio',
+      titleJa: '🎙 録音を開始(停止時に選択中のメモへ埋め込み)',
+      titleEn: 'Media: Start audio recording',
+      category: 'Media',
+    },
+    () => { void startAudioRecording(dispatcher); },
+  );
+  registerCommand(
+    {
+      id: 'media.record-screen',
+      titleJa: '🖥 画面収録を開始(停止時に選択中のメモへ埋め込み)',
+      titleEn: 'Media: Start screen recording',
+      category: 'Media',
+    },
+    () => { void startScreenRecording(dispatcher); },
   );
 }

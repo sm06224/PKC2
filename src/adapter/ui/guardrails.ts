@@ -46,7 +46,7 @@ export const attachmentWarnHeavyBytes = defineFlag<number>(
  * NOTE: this is OOM-safety. Inspector edits should not push the
  * value above ~1 GB on typical desktops; the range cap reflects that.
  */
-const attachmentRejectHardBytes = defineFlag<number>(
+export const attachmentRejectHardBytes = defineFlag<number>(
   'attachment.reject_hard_bytes',
   250 * 1024 * 1024,
   {
