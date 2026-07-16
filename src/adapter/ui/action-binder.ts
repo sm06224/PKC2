@@ -110,6 +110,7 @@ import {
   computeQuoteToggleOnSelection,
 } from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown, htmlPasteToRichMarkdown, plainLooksLikeMarkdown } from './html-paste-to-markdown';
+import { hydrateInlineAssetPreviews, buildInlineAssetIndex } from './inline-media-hydrator';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
 import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/frontmatter';
@@ -10534,105 +10535,19 @@ export function populateInlineAssetPreviews(root: HTMLElement, dispatcher: Dispa
   const container = state.container;
   if (!container) return;
 
-  // pgc-235:旧 path は per-chip に container.entries 全件 walk + 全 attachment
-  // body parse で `O(C × K × N)` cost。**1 度だけ全 attachment を index 化**
-  // し、以後 O(1) Map.get で resolve。lazy build:chip が無い container では
-  // index 構築自体を skip。
-  let assetByKey: Map<string, { mime: string; base64: string }> | null = null;
-  const buildAssetIndex = (): Map<string, { mime: string; base64: string }> => {
-    const map = new Map<string, { mime: string; base64: string }>();
-    for (const entry of container.entries) {
-      if (entry.archetype !== 'attachment') continue;
-      const att = parseAttachmentBody(entry.body);
-      if (!att.asset_key) continue;
-      let base64 = '';
-      if (container.assets?.[att.asset_key] != null) {
-        base64 = container.assets[att.asset_key]!;
-      } else if (att.data) {
-        base64 = att.data;
-      }
-      if (!base64 || !att.mime) continue;
-      map.set(att.asset_key, { mime: att.mime, base64 });
-    }
-    return map;
-  };
-
+  // pgc-235:asset index は 1 render cycle で 1 度だけ構築し全 md container で
+  // 共有する。実体の chip 走査 / プレビュー DOM 構築は inline-media-hydrator
+  // (#921 で S2 Viewer / S4 entry-window と共有化)へ委譲。
+  let assetIndex: Map<string, { mime: string; base64: string }> | null = null;
   for (const mdContainer of containers) {
-    const chipLinks = mdContainer.querySelectorAll<HTMLAnchorElement>('a[href^="#asset-"]');
-    for (const chip of chipLinks) {
-      // Skip if already processed (sibling preview exists)
-      if (chip.nextElementSibling?.hasAttribute('data-pkc-inline-preview')) continue;
-
-      const href = chip.getAttribute('href') ?? '';
-      const assetKey = href.slice('#asset-'.length);
-      if (!assetKey) continue;
-
-      if (!assetByKey) assetByKey = buildAssetIndex();
-      const found = assetByKey.get(assetKey);
-      if (!found) continue;
-      const { mime, base64 } = found;
-
-      const previewType = classifyPreviewType(mime);
-      if (previewType !== 'pdf' && previewType !== 'audio' && previewType !== 'video') continue;
-
-      try {
-        const blobUrl = createBlobUrl({ data: base64, mime });
-        const wrapper = document.createElement('div');
-        wrapper.setAttribute('data-pkc-inline-preview', previewType);
-        wrapper.className = 'pkc-inline-preview';
-
-        switch (previewType) {
-          case 'pdf': {
-            const obj = document.createElement('object');
-            obj.className = 'pkc-inline-pdf-preview';
-            obj.type = 'application/pdf';
-            obj.data = blobUrl;
-            obj.setAttribute('data-pkc-blob-url', blobUrl);
-            const fallback = document.createElement('p');
-            fallback.textContent = 'PDF preview not available in this browser.';
-            obj.appendChild(fallback);
-            wrapper.appendChild(obj);
-            // PDF: do NOT hide chip (fallback detection unreliable)
-            break;
-          }
-          case 'audio': {
-            const audio = document.createElement('audio');
-            audio.className = 'pkc-inline-audio-preview';
-            audio.controls = true;
-            audio.preload = 'none';
-            audio.setAttribute('data-pkc-blob-url', blobUrl);
-            const source = document.createElement('source');
-            source.src = blobUrl;
-            source.type = mime;
-            audio.appendChild(source);
-            wrapper.appendChild(audio);
-            // Audio: hide chip
-            chip.style.display = 'none';
-            break;
-          }
-          case 'video': {
-            const video = document.createElement('video');
-            video.className = 'pkc-inline-video-preview';
-            video.controls = true;
-            video.preload = 'none';
-            video.setAttribute('data-pkc-blob-url', blobUrl);
-            const source = document.createElement('source');
-            source.src = blobUrl;
-            source.type = mime;
-            video.appendChild(source);
-            wrapper.appendChild(video);
-            // Video: hide chip
-            chip.style.display = 'none';
-            break;
-          }
-        }
-
-        // Insert preview after the chip link
-        chip.after(wrapper);
-      } catch {
-        // Graceful fallback: keep chip visible, skip preview
-      }
-    }
+    if (!mdContainer.querySelector('a[href^="#asset-"]')) continue;
+    if (!assetIndex) assetIndex = buildInlineAssetIndex(container);
+    hydrateInlineAssetPreviews(mdContainer, container, {
+      assetIndex,
+      // md container 自体は :not() で除外済みだが、入れ子(edit preview 内に
+      // rendered が入る構成)を防御的に除外。
+      excludeClosest: '.pkc-text-edit-preview',
+    });
   }
 }
 

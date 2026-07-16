@@ -52,6 +52,7 @@ import { buildTextlogDoc } from '../../features/textlog/textlog-doc';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
 import { hydrateMermaidPlaceholders } from './mermaid-renderer';
+import { hydrateInlineAssetPreviews } from './inline-media-hydrator';
 import { applyWcagResolverNow } from './wcag-runtime';
 import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { buildAssetMimeMap, buildAssetNameMap } from './renderer';
@@ -325,6 +326,19 @@ export function buildRenderedViewerHtml(
        TEXT). TEXT entries in the same exported document are
        unaffected — this selector only matches log bodies. */
     .pkc-textlog-text.pkc-md-rendered { line-height: 1.35; white-space: normal; }
+    /* ── Inline asset previews(#921)── base.css mirror(3 surface 規約)。
+       popup 独自 var(--pkc-popup-border)で枠線、z-index は単一 document
+       なので不要。 */
+    .pkc-inline-preview { margin: 0.5em 0; }
+    .pkc-inline-pdf-preview {
+      width: 100%; height: 400px;
+      border: 1px solid var(--pkc-popup-border); border-radius: 8px;
+    }
+    .pkc-inline-video-preview {
+      max-width: 100%; max-height: 360px;
+      border: 1px solid var(--pkc-popup-border); border-radius: 8px;
+    }
+    .pkc-inline-audio-preview { width: 100%; }
     .pkc-textlog-text p { margin: 0.2em 0; }
     .pkc-textlog-text ul,
     .pkc-textlog-text ol { margin: 0.2em 0; padding-left: 1.3em; }
@@ -1065,6 +1079,14 @@ export function openRenderedViewer(
     const popupBody = win.document.body;
     if (popupBody) {
       void hydrateMermaidPlaceholders(popupBody);
+      // #921(2026-07-16):本文中の asset 参照 chip を埋め込みプレーヤーに
+      // hydrate(audio / video / pdf)。center pane と同じ DOM を S2 Viewer
+      // でも出す(3 surface 規約)。blob URL は popup document の寿命まで。
+      if (container) {
+        try {
+          hydrateInlineAssetPreviews(popupBody, container);
+        } catch { /* non-fatal — chip download は生きる */ }
+      }
       // 2026-07-06 user 要望「どこで何を見ても見やすく」:WCAG 同系色 shift を
       // Viewer popup(独立 document)にも適用。inline color 指定の text を
       // 実効背景に対して目標コントラストへ寄せる(flag `theme.wcag_auto_shift`

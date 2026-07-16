@@ -68,6 +68,7 @@ import {
   type WindowLayoutEntry,
 } from '../platform/window-layout-store';
 import { pinTargetOrigin } from '../transport/message-bridge';
+import { hydrateInlineAssetPreviews } from './inline-media-hydrator';
 
 /**
  * Target origin for every host→child `postMessage` (#795 Phase 1.5).
@@ -338,6 +339,23 @@ function pkcApplyWcagShift(el: unknown): void {
   try { applyWcagResolverNow(el as HTMLElement); } catch (_e) { /* non-fatal */ }
 }
 (window as unknown as Record<string, unknown>).pkcApplyWcagShift = pkcApplyWcagShift;
+
+/**
+ * #921(2026-07-16):child window の view 本文内 asset 参照 chip を
+ * 埋め込みプレーヤー(audio / video / pdf)に hydrate する parent-side
+ * entry point。child inline script が
+ * `window.opener.pkcHydrateInlineMedia(element)` で呼ぶ(mermaid / WCAG と
+ * 同じ push 流儀)。container は `currentContainerRef`(dispatcher.onState で
+ * 最新化)から解決。要素は `chip.ownerDocument` で作るため cross-document 安全。
+ */
+function pkcHydrateInlineMedia(el: unknown): void {
+  if (!el || typeof (el as HTMLElement).querySelectorAll !== 'function') return;
+  if (!currentContainerRef) return;
+  try {
+    hydrateInlineAssetPreviews(el as HTMLElement, currentContainerRef);
+  } catch (_e) { /* non-fatal — chip download は生きる */ }
+}
+(window as unknown as Record<string, unknown>).pkcHydrateInlineMedia = pkcHydrateInlineMedia;
 
 /**
  * 開いたばかりの child window の初期焼き込み本文(buildWindowHtml /
@@ -2036,6 +2054,17 @@ body {
   font-size: var(--fs-xs);
   overflow-x: auto;
 }
+/* ── Inline asset previews(#921)── base.css mirror(3 surface 規約)。 */
+.pkc-inline-preview { margin: 0.5em 0; }
+.pkc-inline-pdf-preview {
+  width: 100%; height: 400px;
+  border: 1px solid var(--c-border); border-radius: 8px;
+}
+.pkc-inline-video-preview {
+  max-width: 100%; max-height: 360px;
+  border: 1px solid var(--c-border); border-radius: 8px;
+}
+.pkc-inline-audio-preview { width: 100%; }
 .pkc-mermaid-rendered {
   display: block;
   margin: var(--space-3) 0;
@@ -4457,6 +4486,10 @@ function pkcHydrateViewBody() {
   }
   if (typeof window.opener.pkcApplyWcagShift === 'function') {
     try { window.opener.pkcApplyWcagShift(el); } catch (_e) { /* parent closed / xorigin */ }
+  }
+  /* #921: asset 参照 chip → 埋め込みプレーヤー(audio/video/pdf)hydration */
+  if (typeof window.opener.pkcHydrateInlineMedia === 'function') {
+    try { window.opener.pkcHydrateInlineMedia(el); } catch (_e) { /* parent closed / xorigin */ }
   }
 }
 
