@@ -55,6 +55,13 @@ export interface AttachmentBody {
    */
   pkc_extension?: boolean;
   /**
+   * URL 起動タイル marker(#926、2026-07-17、additive)。「+ URL タイル」で
+   * 生成された擬似リダイレクト HTML 添付に、ジャンプ先 URL を記録する。
+   * launcher tile の既定 icon(🔗)と tooltip 表示に使う。HTML 本体にも同じ
+   * URL が焼き込まれており、この field は表示用メタ。
+   */
+  launcher_url?: string;
+  /**
    * Boot 時の自動起動 (#790)。`pkc_extension` と併用。`?pkc-safe-mode=1` が
    * 付いている起動では skip される(extension 起因ハングからの復旧導線)。
    */
@@ -94,6 +101,7 @@ export function parseAttachmentBody(body: string): AttachmentBody {
       pkc_extension: typeof parsed.pkc_extension === 'boolean' ? parsed.pkc_extension : undefined,
       startup: typeof parsed.startup === 'boolean' ? parsed.startup : undefined,
       extension_manifest: parseExtensionManifest(parsed.extension_manifest),
+      launcher_url: typeof parsed.launcher_url === 'string' ? parsed.launcher_url : undefined,
     };
   } catch {
     return { name: '', mime: 'application/octet-stream' };
