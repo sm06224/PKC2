@@ -1,0 +1,33 @@
+/* PKC2 OneNote 送信拡張 — 最小 UI(dark 基調、host テーマ非依存の自己完結) */
+:root {
+  --bg: #14171a;
+  --surface: #1d2126;
+  --fg: #d5dce3;
+  --muted: #8a97a5;
+  --border: #333b44;
+  --accent: #4c8dd8;
+  --ok: #3f9e5f;
+  --warn: #c98a2b;
+  --error: #cf5252;
+}
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.6 system-ui, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+h1 { font-size: 1.1rem; margin: 0; }
+section.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+section.card h2 { font-size: 0.9rem; margin: 0 0 8px; color: var(--muted); }
+label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+input, select, textarea, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+input, select, textarea { width: 100%; box-sizing: border-box; }
+textarea { resize: vertical; }
+button { cursor: pointer; background: var(--surface); }
+button:hover { border-color: var(--accent); }
+.row { display: flex; gap: 8px; align-items: end; }
+.row > .grow { flex: 1; }
+#status { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.85rem; }
+#status[data-kind="ok"] { border-color: var(--ok); color: var(--ok); }
+#status[data-kind="warn"] { border-color: var(--warn); color: var(--warn); }
+#status[data-kind="error"] { border-color: var(--error); color: var(--error); }
+#warnings { color: var(--warn); font-size: 0.82rem; margin: 6px 0 0; padding-left: 18px; }
+#part-summary { color: var(--muted); font-size: 0.8rem; }
+#result-link { display: none; color: var(--accent); }
+.hint { color: var(--muted); font-size: 0.78rem; }

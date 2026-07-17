@@ -1,9 +1,12 @@
-# OneNote 送信拡張 — 設計(2026-07、設計のみ・実装は別途 go)
+# OneNote 送信拡張 — 設計(2026-07)
 
 > user 要望(2026-07-16)「onenote に変換可能な方法をリサーチしてほしい。
 > onenote をうまく作ってそれを使ってさらに copilot を回すみたいな使い方
-> したいよね」→ リサーチ提示(2026-07-17)→ user「続けて」で設計 doc 化。
-> **実装はしない**(CLAUDE.md 許可作業⑥)。着手には user の明示 go が要る。
+> したいよね」→ リサーチ提示 → 設計 doc 化 → user 全権委任
+> (2026-07-17「いいと思ったことをやれ」)で **v0 実装済み**:
+> `PKC2-Extensions/onenote/`(単一 HTML 拡張 + pure payload builder +
+> host repo unit test)。認証は v0 = トークン手貼り(下記 §7 OQ-2 が
+> 決まるまで)。README = `PKC2-Extensions/onenote/README.md`。
 
 ## 0. 目的とゴール像
 

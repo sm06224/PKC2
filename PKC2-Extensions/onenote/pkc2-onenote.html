@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PKC2 → OneNote 送信</title>
+    <style>
+:root{--bg:#14171a;--surface:#1d2126;--fg:#d5dce3;--muted:#8a97a5;--border:#333b44;--accent:#4c8dd8;--ok:#3f9e5f;--warn:#c98a2b;--error:#cf5252}html,body{background:var(--bg);height:100%;color:var(--fg);margin:0;font:14px/1.6 system-ui,sans-serif}main{flex-direction:column;gap:12px;max-width:860px;margin:0 auto;padding:16px;display:flex}h1{margin:0;font-size:1.1rem}section.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px}section.card h2{color:var(--muted);margin:0 0 8px;font-size:.9rem}label{color:var(--muted);margin-bottom:4px;font-size:.8rem;display:block}input,select,textarea,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px}input,select,textarea{box-sizing:border-box;width:100%}textarea{resize:vertical}button{cursor:pointer;background:var(--surface)}button:hover{border-color:var(--accent)}.row{align-items:end;gap:8px;display:flex}.row>.grow{flex:1}#status{border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.85rem}#status[data-kind=ok]{border-color:var(--ok);color:var(--ok)}#status[data-kind=warn]{border-color:var(--warn);color:var(--warn)}#status[data-kind=error]{border-color:var(--error);color:var(--error)}#warnings{color:var(--warn);margin:6px 0 0;padding-left:18px;font-size:.82rem}#part-summary{color:var(--muted);font-size:.8rem}#result-link{color:var(--accent);display:none}.hint{color:var(--muted);font-size:.78rem}
+/*$vite$:1*/
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>📓 PKC2 → OneNote 送信</h1>
+      <div id="status" data-kind="info">PKC2 からメモを「🧩 送る ▸」で受け取り待ちです…</div>
+
+      <section class="card">
+        <h2>1. 受領したメモ</h2>
+        <label for="page-title">OneNote ページタイトル</label>
+        <input id="page-title" type="text" placeholder="会議メモ 2026-07-17" />
+        <label for="memo-preview" style="margin-top:8px">本文(markdown、受領内容)</label>
+        <textarea id="memo-preview" rows="6" readonly></textarea>
+        <ul id="warnings"></ul>
+        <div id="part-summary"></div>
+        <p class="hint">録音・画像など本文が参照する添付は、それぞれの attachment entry も「送る ▸」で本拡張へ送ってください(受領すると警告が消えます)。</p>
+      </section>
+
+      <section class="card">
+        <h2>2. Microsoft Graph</h2>
+        <label for="token">アクセストークン(Graph Explorer 等で取得、scope: Notes.ReadWrite)</label>
+        <input id="token" type="password" placeholder="eyJ0eXAiOiJKV1..." autocomplete="off" />
+        <div class="row" style="margin-top:8px">
+          <div class="grow">
+            <label for="section">送信先セクション</label>
+            <select id="section"></select>
+          </div>
+          <button id="load-sections" type="button">セクション読込</button>
+        </div>
+        <p class="hint">トークンは保存されません(このウィンドウのメモリ内のみ・約 1 時間有効)。</p>
+      </section>
+
+      <section class="card">
+        <h2>3. 送信</h2>
+        <div class="row">
+          <button id="send" type="button">📤 OneNote ページを作成</button>
+          <a id="result-link" target="_blank" rel="noopener noreferrer"></a>
+        </div>
+        <details style="margin-top:8px">
+          <summary class="hint">送信する XHTML を確認</summary>
+          <textarea id="xhtml-preview" rows="10" readonly></textarea>
+        </details>
+      </section>
+    </main>
+    <script>
+(function(){function e(e){let t=e.replace(/\r\n?/g,`
+`).split(`
+`),n=[],r=0;for(;r<t.length;){let e=t[r];if(e.trim()===``){r++;continue}let i=/^```(\S*)\s*$/.exec(e);if(i){let e=[];for(r++;r<t.length&&!/^```\s*$/.test(t[r]);)e.push(t[r]),r++;r++,n.push({kind:`code`,lang:i[1]??``,text:e.join(`
+`)});continue}let a=/^(#{1,6})\s+(.+)$/.exec(e);if(a){n.push({kind:`heading`,level:a[1].length,inline:a[2]}),r++;continue}if(/^\s*(?:[-*+]|\d+[.)])\s+/.test(e)){let i=/^\s*\d+[.)]\s+/.test(e),a=[];for(;r<t.length&&/^\s*(?:[-*+]|\d+[.)])\s+/.test(t[r]);)a.push(t[r].replace(/^\s*(?:[-*+]|\d+[.)])\s+/,``)),r++;n.push({kind:`list`,ordered:i,items:a});continue}if(/^>\s?/.test(e)){let e=[];for(;r<t.length&&/^>\s?/.test(t[r]);)e.push(t[r].replace(/^>\s?/,``)),r++;n.push({kind:`quote`,inline:e.join(` `)});continue}if(/^\|.+\|\s*$/.test(e)){let e=[];for(;r<t.length&&/^\|.+\|\s*$/.test(t[r]);){let n=t[r].trim().replace(/^\||\|$/g,``).split(`|`).map(e=>e.trim());n.every(e=>/^:?-{2,}:?$/.test(e))||e.push(n),r++}e.length>0&&n.push({kind:`table`,rows:e});continue}let o=[e];for(r++;r<t.length&&t[r].trim()!==``&&!/^(#{1,6})\s/.test(t[r])&&!/^```/.test(t[r])&&!/^\s*(?:[-*+]|\d+[.)])\s+/.test(t[r])&&!/^>\s?/.test(t[r])&&!/^\|.+\|\s*$/.test(t[r]);)o.push(t[r]),r++;n.push({kind:`para`,inline:o.join(` `)})}return n}var t=/(!?\[[^\]\n]*\]\([^)\s]+\))|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(`[^`\n]+`)/g;function n(e,n,r){let i=[],a=0;for(let o of n.matchAll(t)){let t=o.index??0;t>a&&i.push(e.createTextNode(n.slice(a,t)));let s=o[0];if(s.startsWith("`")){let t=e.createElement(`code`);t.textContent=s.slice(1,-1),i.push(t)}else if(s.startsWith(`**`)){let t=e.createElement(`b`);t.textContent=s.slice(2,-2),i.push(t)}else if(s.startsWith(`*`)){let t=e.createElement(`i`);t.textContent=s.slice(1,-1),i.push(t)}else{let t=s.startsWith(`!`),n=/^!?\[([^\]]*)\]\(([^)\s]+)\)$/.exec(s),a=n[1]??``,o=n[2]??``;if(o.startsWith(`asset:`)){let e=o.slice(6);i.push(t?r.imageEl(e,a):r.objectEl(e,a))}else if(t&&o.startsWith(`data:image/`)){let t=e.createElement(`img`);t.setAttribute(`src`,o),a&&t.setAttribute(`alt`,a),i.push(t)}else if(/^https?:\/\//.test(o)){let t=e.createElement(`a`);t.setAttribute(`href`,o),t.textContent=a||o,i.push(t)}else i.push(e.createTextNode(a||o))}a=t+s.length}return a<n.length&&i.push(e.createTextNode(n.slice(a))),i}function r(t){let r=document.implementation.createHTMLDocument(``),i=[],a=[],o=new Map,s=0,c=0,l={imageEl(e,n){let c=t.assets.get(e);if(!c||!c.mime.startsWith(`image/`))return c||i.push(`画像 asset 未受領: ${e}(この添付も拡張へ送ってください)`),r.createTextNode(n?`[画像: ${n}]`:`[画像: ${e}]`);let l=o.get(e);if(l===void 0&&(s>=5?(i.push(`画像は 1 ページ 5 枚まで — ${c.filename} は省略しました`),l=null):(s++,l={name:`img${s}`,mime:c.mime,filename:c.filename,base64:c.base64},a.push(l)),o.set(e,l)),!l)return r.createTextNode(`[画像(省略): ${c.filename}]`);let u=r.createElement(`img`);return u.setAttribute(`data-render-src`,`name:${l.name}`),n&&u.setAttribute(`alt`,n),u},objectEl(e,n){let s=t.assets.get(e);if(!s)return i.push(`添付 asset 未受領: ${e}(この添付も拡張へ送ってください)`),r.createTextNode(n?`[添付: ${n}]`:`[添付: ${e}]`);let l=o.get(e);if(l===void 0&&(c>=1?(i.push(`ファイル添付は 1 ページ 1 個まで — ${s.filename} は省略しました`),l=null):(c++,l={name:`file${c}`,mime:s.mime,filename:s.filename,base64:s.base64},a.push(l)),o.set(e,l)),!l)return r.createTextNode(`[添付(省略): ${s.filename}]`);let u=r.createElement(`object`);return u.setAttribute(`data-attachment`,l.filename),u.setAttribute(`data`,`name:${l.name}`),u.setAttribute(`type`,l.mime),u}},u=r.body;for(let i of e(t.markdown))switch(i.kind){case`heading`:{let e=r.createElement(`h${Math.min(i.level,6)}`);for(let t of n(r,i.inline,l))e.appendChild(t);u.appendChild(e);break}case`para`:{let e=r.createElement(`p`);for(let t of n(r,i.inline,l))e.appendChild(t);u.appendChild(e);break}case`list`:{let e=r.createElement(i.ordered?`ol`:`ul`);for(let t of i.items){let i=r.createElement(`li`);for(let e of n(r,t,l))i.appendChild(e);e.appendChild(i)}u.appendChild(e);break}case`code`:{let e=r.createElement(`pre`);e.textContent=i.text,u.appendChild(e);break}case`quote`:{let e=r.createElement(`p`),t=r.createElement(`i`);for(let e of n(r,i.inline,l))t.appendChild(e);e.appendChild(t),u.appendChild(e);break}case`table`:{let e=r.createElement(`table`);for(let t of i.rows){let i=r.createElement(`tr`);for(let e of t){let t=r.createElement(`td`);for(let i of n(r,e,l))t.appendChild(i);i.appendChild(t)}e.appendChild(i)}u.appendChild(e);break}}let d=r.createElement(`title`);if(d.textContent=t.title,r.head.appendChild(d),t.createdIso){let e=r.createElement(`meta`);e.setAttribute(`name`,`created`),e.setAttribute(`content`,t.createdIso),r.head.appendChild(e)}return{xhtml:`<?xml version="1.0" encoding="utf-8" ?>
+`+new XMLSerializer().serializeToString(r.documentElement),parts:a,warnings:i}}function i(e){let t=atob(e),n=new Uint8Array(t.length);for(let e=0;e<t.length;e++)n[e]=t.charCodeAt(e);return n}function a(e,t=`pkc2onenote${Date.now().toString(36)}`){let n=[];n.push(`--${t}\r\nContent-Disposition: form-data; name="Presentation"\r
+Content-Type: application/xhtml+xml\r
+\r
+`+e.xhtml+`\r
+`);for(let r of e.parts)n.push(`--${t}\r\nContent-Disposition: form-data; name="${r.name}"\r\nContent-Type: ${r.mime}\r\n\r\n`),n.push(i(r.base64)),n.push(`\r
+`);return n.push(`--${t}--\r\n`),{contentType:`multipart/form-data; boundary=${t}`,bodyParts:n}}var o=`pkc-ext`,s=null,c=new Map,l=null;function u(e){return document.getElementById(e)}function d(e,t=`info`){let n=u(`status`);n.textContent=e,n.setAttribute(`data-kind`,t)}var f=null,p=null;function m(){let e=window.opener??(window.parent===window?null:window.parent);if(!e){d(`スタンドアロン起動です(PKC2 から拡張として開くと entry を受け取れます)`,`warn`);return}window.addEventListener(`message`,e=>{let t=e.data;!t||t.pkc!==o||t.v!==1||(p===null&&typeof t.nonce==`string`&&(p=e.source,f=t.nonce),!(e.source!==p||t.nonce!==f)&&t.t===`deliver`&&h(t.payload))});try{e.postMessage({pkc:o,v:1,t:`hello`},`*`)}catch{}}function h(e){e&&(e.kind===`entry`&&typeof e.body==`string`?(s={lid:e.lid??``,body:e.body},u(`memo-preview`).value=e.body,d(`メモを受領しました(${e.lid??`?`})。不足添付があれば下の警告に出ます`,`ok`)):e.kind===`asset`&&e.asset_key&&typeof e.data_base64==`string`&&(c.set(e.asset_key,{mime:e.mime??`application/octet-stream`,filename:e.filename??e.asset_key,base64:e.data_base64}),d(`添付を受領しました: ${e.filename??e.asset_key}(計 ${c.size} 件)`,`ok`)),g())}function g(){if(!s)return;l=r({title:u(`page-title`).value||`PKC2 メモ`,markdown:s.body,assets:c,createdIso:new Date().toISOString()});let e=u(`warnings`);e.innerHTML=``;for(let t of l.warnings){let n=document.createElement(`li`);n.textContent=t,e.appendChild(n)}u(`part-summary`).textContent=`parts: 本文 + 画像 ${l.parts.filter(e=>e.name.startsWith(`img`)).length} / 添付 ${l.parts.filter(e=>e.name.startsWith(`file`)).length}`,u(`xhtml-preview`).value=l.xhtml}var _=`https://graph.microsoft.com/v1.0`;function v(){return u(`token`).value.trim()}async function y(){if(!v()){d(`先にアクセストークンを貼り付けてください`,`warn`);return}d(`セクション一覧を取得中…`);try{let e=await fetch(`${_}/me/onenote/sections?$select=id,displayName&$expand=parentNotebook($select=displayName)&$top=100`,{headers:{Authorization:`Bearer ${v()}`}});if(!e.ok)throw Error(`${e.status} ${await e.text()}`);let t=await e.json(),n=u(`section`);n.innerHTML=``;for(let e of t.value){let t=document.createElement(`option`);t.value=e.id,t.textContent=`${e.parentNotebook?.displayName??`?`} / ${e.displayName}`,n.appendChild(t)}d(`セクション ${t.value.length} 件を読み込みました`,`ok`)}catch(e){d(`セクション取得に失敗: ${e.message}`,`error`)}}async function b(){if(!s||!l){d(`先に PKC2 からメモを送ってください`,`warn`);return}if(!v()){d(`アクセストークンを貼り付けてください`,`warn`);return}let e=u(`section`).value;if(!e){d(`送信先セクションを選んでください`,`warn`);return}g();let{contentType:t,bodyParts:n}=a(l);d(`OneNote へ送信中…`);try{let r=await fetch(`${_}/me/onenote/sections/${encodeURIComponent(e)}/pages`,{method:`POST`,headers:{Authorization:`Bearer ${v()}`,"Content-Type":t},body:new Blob(n)});if(!r.ok)throw Error(`${r.status} ${await r.text()}`);let i=(await r.json()).links?.oneNoteWebUrl?.href??``,a=u(`result-link`);i&&(a.href=i,a.textContent=`📓 作成したページを OneNote で開く(Copilot Notebook の参照に追加できます)`,a.style.display=`inline`),d(`✅ OneNote ページを作成しました`,`ok`)}catch(e){d(`送信に失敗: ${e.message}`,`error`)}}function x(){u(`load-sections`).addEventListener(`click`,()=>{y()}),u(`send`).addEventListener(`click`,()=>{b()}),u(`page-title`).addEventListener(`input`,g),m()}document.readyState===`loading`?document.addEventListener(`DOMContentLoaded`,x):x()})();
+    </script>
+  </body>
+</html>
