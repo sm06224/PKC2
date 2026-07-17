@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled, shellLauncherUrlTilesEnabled } from './shell-flags';
 import { diffRows } from '../../features/diff/line-diff';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
@@ -7541,8 +7541,18 @@ function renderLauncherView(state: AppState): HTMLElement {
   title.textContent = '🚀 App Launcher';
   header.appendChild(title);
   const hint = createElement('span', 'pkc-launcher-view-hint');
-  hint.textContent = '登録済 HTML アプリ — クリックで新規ウィンドウ起動';
+  hint.textContent = '登録済 HTML アプリ / 🧩 拡張 / 🔗 URL — クリックで起動';
   header.appendChild(hint);
+  // #926: URL タイル追加(flag opt-in)。押すと action-binder が URL / 名前を
+  // 尋ね、擬似リダイレクト HTML を attachment 化して tile に並べる。
+  if (shellLauncherUrlTilesEnabled()) {
+    const addUrlBtn = createElement('button', 'pkc-btn pkc-btn-small pkc-launcher-add-url');
+    addUrlBtn.setAttribute('type', 'button');
+    addUrlBtn.setAttribute('data-pkc-action', 'launcher-add-url');
+    addUrlBtn.setAttribute('title', 'URL 起動タイルを追加(referrer を送らない中継ページ経由で開く)');
+    addUrlBtn.textContent = '+ URL タイル';
+    header.appendChild(addUrlBtn);
+  }
   view.appendChild(header);
 
   const assets = state.container?.assets ?? {};
@@ -7571,20 +7581,40 @@ function renderLauncherView(state: AppState): HTMLElement {
     }
     return null;
   };
-  const registered: { lid: string; name: string; iconText: string; iconImageUrl: string | null }[] = [];
+  const registered: {
+    lid: string; name: string; iconText: string; iconImageUrl: string | null;
+    kind: 'app' | 'extension' | 'url';
+    tooltip: string;
+  }[] = [];
   for (const entry of state.container?.entries ?? []) {
     if (entry.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(entry.body, entry);
-    if (att.registered_as_app !== true) continue;
+    // #926 導線見直し: registered_as_app に加えて **PKC-Extension も自動で
+    // 並べる**(従来は両フラグ ON にしないと launcher に出ず、拡張の起動
+    // 導線が分かりにくかった)。click は既存 open-html-attachment action が
+    // pkc_extension を判別して extension host 起動へ分岐する。
+    const isExtension = att.pkc_extension === true;
+    if (att.registered_as_app !== true && !isExtension) continue;
     if (classifyPreviewType(att.mime) !== 'html') continue;
+    const isUrlTile = typeof att.launcher_url === 'string' && att.launcher_url.length > 0;
+    const kind = isExtension ? 'extension' : (isUrlTile ? 'url' : 'app');
     const iconImageUrl = att.app_icon_asset_key
       ? resolveAppIconDataUrl(att.app_icon_asset_key)
       : null;
+    const name = entry.title || att.name || '(untitled)';
     registered.push({
       lid: entry.lid,
-      name: entry.title || att.name || '(untitled)',
-      iconText: typeof att.app_icon === 'string' && att.app_icon.length > 0 ? att.app_icon : '🌐',
+      name,
+      iconText: typeof att.app_icon === 'string' && att.app_icon.length > 0
+        ? att.app_icon
+        : (kind === 'extension' ? '🧩' : kind === 'url' ? '🔗' : '🌐'),
       iconImageUrl,
+      kind,
+      tooltip: kind === 'extension'
+        ? `${name} を PKC-Extension として起動`
+        : kind === 'url'
+          ? `${att.launcher_url} へジャンプ(referrer を送らない中継ページ経由)`
+          : `${name} を新規ウィンドウで起動`,
     });
   }
 
@@ -7613,8 +7643,9 @@ function renderLauncherView(state: AppState): HTMLElement {
     // 既存 open-html-attachment action を再利用、tile click = "Open in New Window"
     tile.setAttribute('data-pkc-action', 'open-html-attachment');
     tile.setAttribute('data-pkc-lid', app.lid);
+    tile.setAttribute('data-pkc-launcher-kind', app.kind);
     tile.setAttribute('aria-label', `Launch ${app.name}`);
-    tile.setAttribute('title', `${app.name} を新規ウィンドウで起動`);
+    tile.setAttribute('title', app.tooltip);
 
     const iconEl = createElement('span', 'pkc-launcher-tile-icon');
     if (app.iconImageUrl) {

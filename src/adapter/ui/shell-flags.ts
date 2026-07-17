@@ -574,3 +574,17 @@ export const shellMinimapEnabled = defineFlag<boolean>(
       'center pane に抽象化バーのミニマップを表示(クリック/ドラッグでスクロール)。OFF で従来表示',
   },
 );
+
+// #926(2026-07-17、user 要望):launcher の「+ URL タイル」追加 UI。
+// ON で URL / 名前を入力 → 擬似リダイレクト HTML(referrer を送らない中継
+// ページ)を attachment 化して launcher に並べる。opt-in で導入し、実機
+// 評価後に既定 ON を判断する。
+export const shellLauncherUrlTilesEnabled = defineFlag<boolean>(
+  'shell.launcher_url_tiles',
+  false,
+  {
+    category: 'shell',
+    description:
+      'ランチャーの「+ URL タイル」追加 UI(referrer を送らない中継ページ経由の URL ジャンプ)。opt-in',
+  },
+);

@@ -111,6 +111,7 @@ import {
 } from '../../features/markdown/quote-assist';
 import { htmlPasteToMarkdown, htmlPasteToRichMarkdown, plainLooksLikeMarkdown } from './html-paste-to-markdown';
 import { hydrateInlineAssetPreviews, buildInlineAssetIndex } from './inline-media-hydrator';
+import { isLaunchableUrl, buildUrlRedirectHtml, urlTileFilename } from '../../features/launcher/url-tile';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
 import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/frontmatter';
@@ -3078,6 +3079,62 @@ export function bindActions(
         // 領域 3: テキスト系添付を新しい TEXT エントリへ変換。
         if (lid) convertAttachmentEntryToText(lid, dispatcher);
         break;
+      case 'launcher-add-url': {
+        // #926: URL 起動タイルの追加(flag `shell.launcher_url_tiles` 配下の
+        // ボタンからのみ到達)。擬似リダイレクト HTML を attachment 化して
+        // 既存 launcher 機構(registered_as_app)に乗せる。v1 は prompt の
+        // 最小 UI(opt-in 段階。定着したら form 化を検討)。
+        const state = dispatcher.getState();
+        if (state.readonly || !state.container) break;
+        const rawUrl = window.prompt('ジャンプ先 URL(http / https)');
+        if (!rawUrl) break;
+        if (!isLaunchableUrl(rawUrl)) {
+          showToast({ message: 'URL は http:// または https:// で指定してください', kind: 'warn' });
+          break;
+        }
+        const url = rawUrl.trim();
+        const rawTitle = window.prompt('タイル名(空なら URL をそのまま表示)', '') ?? '';
+        const tileTitle = rawTitle.trim() || url.replace(/^https?:\/\//, '').slice(0, 40);
+        const html = buildUrlRedirectHtml({ url, title: tileTitle });
+        if (!html) break;
+        const bytes = new TextEncoder().encode(html);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
+        const base64 = btoa(bin);
+        const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const name = urlTileFilename(tileTitle);
+        dispatcher.dispatch({
+          type: 'PASTE_ATTACHMENT',
+          name,
+          mime: 'text/html',
+          size: bytes.length,
+          assetKey,
+          assetData: base64,
+          contextLid: state.selectedLid ?? '',
+        });
+        // dispatch は同期 — mint された attachment を asset_key で特定し、
+        // launcher メタ(registered_as_app / 🔗 / launcher_url)を追記。
+        const minted = dispatcher.getState().container?.entries.find((e) => {
+          if (e.archetype !== 'attachment') return false;
+          return parseAttachmentBody(e.body).asset_key === assetKey;
+        });
+        if (minted) {
+          const att = parseAttachmentBody(minted.body);
+          dispatcher.dispatch({
+            type: 'QUICK_UPDATE_ENTRY',
+            lid: minted.lid,
+            body: JSON.stringify({
+              ...att,
+              registered_as_app: true,
+              app_icon: '🔗',
+              launcher_url: url,
+            }),
+          });
+          dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid: minted.lid, title: tileTitle });
+        }
+        showToast({ message: `URL タイルを追加しました: ${tileTitle}`, kind: 'info' });
+        break;
+      }
       case 'open-html-attachment': {
         // Direct surfacing of `createHtmlOpenButton` at the attachment
         // card level so HTML / SVG users do not need to scroll into the
