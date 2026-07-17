@@ -1,0 +1,12 @@
+{
+  "name": "pkc2-onenote-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "AGPL-3.0",
+  "description": "PKC2 → OneNote sender extension — deliver で受けた会議メモ + 録音を Microsoft Graph OneNote API でページ化(runtime 依存ゼロ、vite は host repo の devDependency を利用)",
+  "scripts": {
+    "build": "vite build && node build-singlefile.mjs",
+    "typecheck": "tsc --noEmit"
+  }
+}
