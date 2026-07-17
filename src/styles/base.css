@@ -11849,6 +11849,26 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   cursor: pointer;
 }
 .pkc-launcher-tile-ctl:hover { border-color: var(--c-accent); }
+/* DnD 並び替え(#928 改): drag 中の tile を薄く、挿入位置は左右のバーで示す */
+.pkc-launcher-tile-wrap[data-pkc-dragging] { opacity: 0.4; }
+.pkc-launcher-tile-wrap[data-pkc-drop-side]::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--c-accent);
+  pointer-events: none;
+}
+.pkc-launcher-tile-wrap[data-pkc-drop-side='before']::before { left: calc(-1 * var(--space-2)); }
+.pkc-launcher-tile-wrap[data-pkc-drop-side='after']::before { right: calc(-1 * var(--space-2)); }
+/* grid 余白への drop(グループ末尾へ追加)ハイライト */
+.pkc-launcher-grid[data-pkc-drag-over] {
+  outline: 2px dashed var(--c-accent);
+  outline-offset: 4px;
+  border-radius: var(--radius);
+}
 .pkc-launcher-tile {
   display: flex;
   flex-direction: column;

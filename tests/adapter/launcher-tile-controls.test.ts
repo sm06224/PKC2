@@ -1,8 +1,13 @@
 /** @vitest-environment happy-dom */
 /**
- * #928 — launcher タイルの hover 操作(ⓘ 詳細導線 / ◀▶ 並び替え / 🏷
- * グループ)統合 test。観測点は consumer 側(選択 state / body の
+ * #928 — launcher タイル操作の統合 test(ⓘ 詳細導線 / drag & drop 並び替え・
+ * グループ移動 / 🏷 グループ)。観測点は consumer 側(選択 state / body の
  * app_order・app_group / 再 render の並びと見出し)。
+ *
+ * 2026-07-17 user 指摘「並び替えはボタンではなくマウス操作が主」を受け、
+ * ◀▶ ボタンは撤去済み。並び替えは wrapper の DnD(synthetic DragEvent)で
+ * 検証する。実マウスの visual parity は
+ * tests/smoke/launcher-tile-dnd-parity.spec.ts。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
@@ -65,9 +70,31 @@ function tileOrder(): string[] {
     (t) => t.getAttribute('data-pkc-lid')!,
   );
 }
-function ctl(lid: string, action: string, dir?: string): HTMLButtonElement {
-  const sel = `[data-pkc-action="${action}"][data-pkc-lid="${lid}"]${dir ? `[data-pkc-dir="${dir}"]` : ''}`;
-  return root.querySelector<HTMLButtonElement>(sel)!;
+function ctl(lid: string, action: string): HTMLButtonElement {
+  return root.querySelector<HTMLButtonElement>(
+    `[data-pkc-action="${action}"][data-pkc-lid="${lid}"]`,
+  )!;
+}
+
+function wrapOf(lid: string): HTMLElement {
+  return root.querySelector<HTMLElement>(`[data-pkc-launcher-draggable][data-pkc-lid="${lid}"]`)!;
+}
+
+/** synthetic DragEvent(happy-dom には DragEvent が無いため Event を拡張)。 */
+function dragEvent(type: string, clientX = 0): Event {
+  const evt = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(evt, 'dataTransfer', {
+    value: { setData: () => {}, effectAllowed: 'move', dropEffect: 'move' },
+  });
+  Object.defineProperty(evt, 'clientX', { value: clientX });
+  return evt;
+}
+
+/** fromLid の tile wrap を dragstart → target 要素へ drop(clientX で before/after)。 */
+function dragTo(fromLid: string, target: HTMLElement, clientX: number): void {
+  wrapOf(fromLid).dispatchEvent(dragEvent('dragstart'));
+  target.dispatchEvent(dragEvent('drop', clientX));
+  wrapOf(fromLid)?.dispatchEvent(dragEvent('dragend'));
 }
 
 describe('ⓘ 詳細導線(#928)', () => {
@@ -79,26 +106,50 @@ describe('ⓘ 詳細導線(#928)', () => {
   });
 });
 
-describe('◀▶ 並び替え(#928)', () => {
-  it('▶ で後ろへ移動し、app_order が正規化保存され、再 render の並びが変わる', () => {
+describe('drag & drop 並び替え(#928 改)', () => {
+  it('tile を別 tile の後ろ半分へ drop → app_order が正規化保存され並びが変わる', () => {
     const d = setup();
     expect(tileOrder()).toEqual(['a1', 'a2', 'a3']);
-    ctl('a1', 'launcher-move-tile', 'next').click();
-    // body へ order 保存(a2=0, a1=1, a3=2)
+    // happy-dom の rect は全て 0 → mid=0。clientX=10 は「後ろ半分」= after。
+    dragTo('a1', wrapOf('a3'), 10);
     const orders = Object.fromEntries(
       d.getState().container!.entries
         .filter((e) => e.archetype === 'attachment')
         .map((e) => [e.lid, parseAttachmentBody(e.body).app_order]),
     );
-    expect(orders).toEqual({ a1: 1, a2: 0, a3: 2 });
-    expect(tileOrder()).toEqual(['a2', 'a1', 'a3']);
+    expect(orders).toEqual({ a1: 2, a2: 0, a3: 1 });
+    expect(tileOrder()).toEqual(['a2', 'a3', 'a1']);
   });
 
-  it('先頭で ◀ は no-op', () => {
+  it('tile の前半分へ drop → 直前に入る', () => {
     const d = setup();
-    ctl('a1', 'launcher-move-tile', 'prev').click();
+    // clientX=-10 < mid(0) = before。
+    dragTo('a3', wrapOf('a1'), -10);
+    expect(tileOrder()).toEqual(['a3', 'a1', 'a2']);
+    expect(parseAttachmentBody(
+      d.getState().container!.entries.find((e) => e.lid === 'a3')!.body,
+    ).app_order).toBe(0);
+  });
+
+  it('並びが変わらない drop(直後 tile の before)は書き込みなしの no-op', () => {
+    const d = setup();
+    dragTo('a1', wrapOf('a2'), -10);
     expect(tileOrder()).toEqual(['a1', 'a2', 'a3']);
     expect(parseAttachmentBody(d.getState().container!.entries[0]!.body).app_order).toBeUndefined();
+  });
+
+  it('別グループの grid 余白へ drop → app_group が移り末尾に追加される', () => {
+    const d = setup();
+    vi.spyOn(window, 'prompt').mockReturnValueOnce('Tools');
+    ctl('a3', 'launcher-set-group').click();
+    const toolsGrid = root.querySelector<HTMLElement>('[data-pkc-launcher-group="Tools"]')!;
+    dragTo('a1', toolsGrid, 0);
+    expect(parseAttachmentBody(
+      d.getState().container!.entries.find((e) => e.lid === 'a1')!.body,
+    ).app_group).toBe('Tools');
+    const tools = root.querySelector<HTMLElement>('[data-pkc-launcher-group="Tools"]')!;
+    expect([...tools.querySelectorAll('.pkc-launcher-tile')].map((t) => t.getAttribute('data-pkc-lid')))
+      .toEqual(['a3', 'a1']);
   });
 });
 

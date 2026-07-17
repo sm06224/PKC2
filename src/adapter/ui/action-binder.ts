@@ -112,7 +112,7 @@ import {
 import { htmlPasteToMarkdown, htmlPasteToRichMarkdown, plainLooksLikeMarkdown } from './html-paste-to-markdown';
 import { hydrateInlineAssetPreviews, buildInlineAssetIndex } from './inline-media-hydrator';
 import { isLaunchableUrl, buildUrlRedirectHtml, urlTileFilename } from '../../features/launcher/url-tile';
-import { moveLauncherTile } from '../../features/launcher/tile-order';
+import { dropLauncherTile, type LauncherDropTarget } from '../../features/launcher/tile-order';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
 import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/frontmatter';
@@ -3086,41 +3086,6 @@ export function bindActions(
         if (!lid) break;
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid, revealInSidebar: true });
         dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
-        break;
-      }
-      case 'launcher-move-tile': {
-        // #928: グループ内で 1 つ前 / 後ろへ。pure helper が返す正規化済み
-        // order をグループ全員へ書き戻す(order 未設定混在でも安定化)。
-        if (!lid) break;
-        const dir = target.getAttribute('data-pkc-dir') === 'prev' ? 'prev' : 'next';
-        const st = dispatcher.getState();
-        if (st.readonly || !st.container) break;
-        const tiles: { lid: string; group?: string; order?: number; seq: number; body: string }[] = [];
-        let seq = 0;
-        for (const e of st.container.entries) {
-          if (e.archetype !== 'attachment') continue;
-          const a = parseAttachmentBody(e.body);
-          if (a.registered_as_app !== true && a.pkc_extension !== true) continue;
-          if (classifyPreviewType(a.mime) !== 'html') continue;
-          tiles.push({
-            lid: e.lid,
-            ...(a.app_group !== undefined ? { group: a.app_group } : {}),
-            ...(a.app_order !== undefined ? { order: a.app_order } : {}),
-            seq: seq++,
-            body: e.body,
-          });
-        }
-        const updates = moveLauncherTile(tiles, lid, dir);
-        for (const u of updates) {
-          const tile = tiles.find((t) => t.lid === u.lid)!;
-          const a = parseAttachmentBody(tile.body);
-          if (a.app_order === u.order) continue; // 変化なしは書かない
-          dispatcher.dispatch({
-            type: 'QUICK_UPDATE_ENTRY',
-            lid: u.lid,
-            body: JSON.stringify({ ...a, app_order: u.order }),
-          });
-        }
         break;
       }
       case 'launcher-set-group': {
@@ -7373,6 +7338,122 @@ export function bindActions(
     removeMultiDragGhost();
   }
 
+  // ── DnD: launcher tile 並び替え / グループ移動(#928 改)──
+  // 2026-07-17 user 指摘「並び替えはボタンではなくマウス操作が主」を受け、
+  // ◀▶ ボタン方式を撤去して drag & drop 主体へ。tile 上 = 前後へ挿入
+  // (左右どちら半分かで before/after)、grid 余白 = そのグループ末尾へ。
+  // 落下差分の計算は pure な dropLauncherTile(features/launcher/tile-order)。
+
+  let launcherDraggedLid: string | null = null;
+
+  /** launcher に並ぶ全 tile の meta + body(renderer と同じ抽出条件)。 */
+  function collectLauncherTiles(): { lid: string; group?: string; order?: number; seq: number; body: string }[] {
+    const st = dispatcher.getState();
+    const tiles: { lid: string; group?: string; order?: number; seq: number; body: string }[] = [];
+    let seq = 0;
+    for (const e of st.container?.entries ?? []) {
+      if (e.archetype !== 'attachment') continue;
+      const a = parseAttachmentBody(e.body);
+      if (a.registered_as_app !== true && a.pkc_extension !== true) continue;
+      if (classifyPreviewType(a.mime) !== 'html') continue;
+      tiles.push({
+        lid: e.lid,
+        ...(a.app_group !== undefined ? { group: a.app_group } : {}),
+        ...(a.app_order !== undefined ? { order: a.app_order } : {}),
+        seq: seq++,
+        body: e.body,
+      });
+    }
+    return tiles;
+  }
+
+  function clearLauncherDropMarks(): void {
+    for (const el of root.querySelectorAll('[data-pkc-drop-side]')) el.removeAttribute('data-pkc-drop-side');
+    for (const el of root.querySelectorAll('[data-pkc-launcher-group][data-pkc-drag-over]')) {
+      el.removeAttribute('data-pkc-drag-over');
+    }
+  }
+
+  function handleLauncherDragStart(e: DragEvent): void {
+    const wrap = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-launcher-draggable]');
+    if (!wrap) return;
+    const lid = wrap.getAttribute('data-pkc-lid');
+    if (!lid) return;
+    launcherDraggedLid = lid;
+    e.dataTransfer?.setData('text/plain', lid);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    requestAnimationFrame(() => wrap.setAttribute('data-pkc-dragging', 'true'));
+  }
+
+  /** hover 中 tile の左右どちら半分かで挿入位置(before/after)を決める。 */
+  function launcherDropSide(e: DragEvent, wrap: HTMLElement): 'before' | 'after' {
+    const rect = wrap.getBoundingClientRect();
+    return e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+  }
+
+  function handleLauncherDragOver(e: DragEvent): void {
+    if (!launcherDraggedLid) return;
+    const el = e.target as HTMLElement;
+    const wrap = el.closest<HTMLElement>('[data-pkc-launcher-draggable]');
+    if (wrap && wrap.getAttribute('data-pkc-lid') !== launcherDraggedLid) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      clearLauncherDropMarks();
+      wrap.setAttribute('data-pkc-drop-side', launcherDropSide(e, wrap));
+      return;
+    }
+    const grid = el.closest<HTMLElement>('[data-pkc-launcher-group]');
+    if (grid && !wrap) {
+      // grid 余白(tile 以外)への hover = そのグループ末尾へ追加。
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      clearLauncherDropMarks();
+      grid.setAttribute('data-pkc-drag-over', 'true');
+    }
+  }
+
+  function handleLauncherDrop(e: DragEvent): void {
+    if (!launcherDraggedLid) return;
+    const el = e.target as HTMLElement;
+    const wrap = el.closest<HTMLElement>('[data-pkc-launcher-draggable]');
+    const grid = el.closest<HTMLElement>('[data-pkc-launcher-group]');
+    let target: LauncherDropTarget | null = null;
+    if (wrap && wrap.getAttribute('data-pkc-lid') !== launcherDraggedLid) {
+      target = { kind: 'tile', lid: wrap.getAttribute('data-pkc-lid')!, place: launcherDropSide(e, wrap) };
+    } else if (grid && !wrap) {
+      target = { kind: 'group', group: grid.getAttribute('data-pkc-launcher-group') ?? '' };
+    }
+    const dragged = launcherDraggedLid;
+    launcherDraggedLid = null;
+    clearLauncherDropMarks();
+    if (!target) return;
+    e.preventDefault();
+
+    const st = dispatcher.getState();
+    if (!st.container || st.phase !== 'ready' || st.readonly) return;
+    const tiles = collectLauncherTiles();
+    const updates = dropLauncherTile(tiles, dragged, target);
+    for (const u of updates) {
+      const tile = tiles.find((t) => t.lid === u.lid)!;
+      const a = parseAttachmentBody(tile.body);
+      const groupChanged = u.group !== undefined && (u.group || undefined) !== a.app_group;
+      if (a.app_order === u.order && !groupChanged) continue; // 変化なしは書かない
+      const nextBody: Record<string, unknown> = { ...a, app_order: u.order };
+      if (u.group !== undefined) {
+        if (u.group === '') delete nextBody.app_group;
+        else nextBody.app_group = u.group;
+      }
+      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: u.lid, body: JSON.stringify(nextBody) });
+    }
+  }
+
+  function handleLauncherDragEnd(e: DragEvent): void {
+    const wrap = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-launcher-draggable]');
+    if (wrap) wrap.removeAttribute('data-pkc-dragging');
+    launcherDraggedLid = null;
+    clearLauncherDropMarks();
+  }
+
   // ── DnD: cleanup helper ──
   // Clears all drag state, timers, and visual attributes across all DnD systems.
   // Called as a safety net from fallback handlers when normal cleanup may not fire.
@@ -7382,6 +7463,8 @@ export function bindActions(
     draggedLid = null;
     kanbanDraggedLid = null;
     calendarDraggedLid = null;
+    launcherDraggedLid = null;
+    clearLauncherDropMarks();
     isMultiDrag = false;
     removeMultiDragGhost();
     if (viewSwitchTimer) {
@@ -9536,9 +9619,11 @@ export function bindActions(
   root.addEventListener('dragstart', handleDragStart);
   root.addEventListener('dragstart', handleKanbanDragStart);
   root.addEventListener('dragstart', handleCalendarDragStart);
+  root.addEventListener('dragstart', handleLauncherDragStart);
   root.addEventListener('dragover', handleDragOver);
   root.addEventListener('dragover', handleKanbanDragOver);
   root.addEventListener('dragover', handleCalendarDragOver);
+  root.addEventListener('dragover', handleLauncherDragOver);
   root.addEventListener('dragover', handleViewSwitchDragOver);
   root.addEventListener('dragover', handleFileDropOver);
   root.addEventListener('dragover', handleEditorFileDropOver);
@@ -9551,6 +9636,7 @@ export function bindActions(
   root.addEventListener('drop', handleDrop);
   root.addEventListener('drop', handleKanbanDrop);
   root.addEventListener('drop', handleCalendarDrop);
+  root.addEventListener('drop', handleLauncherDrop);
   root.addEventListener('drop', handleFileDrop);
   root.addEventListener('drop', handleEditorFileDrop);
 
@@ -9580,6 +9666,7 @@ export function bindActions(
   root.addEventListener('dragend', handleDragEnd);
   root.addEventListener('dragend', handleKanbanDragEnd);
   root.addEventListener('dragend', handleCalendarDragEnd);
+  root.addEventListener('dragend', handleLauncherDragEnd);
   root.addEventListener('contextmenu', handleContextMenu);
   root.addEventListener('mousedown', handleStaleDragCleanup);
   // Capture-phase shell-menu-overlay tracker — see the
@@ -9668,9 +9755,11 @@ export function bindActions(
     root.removeEventListener('dragstart', handleDragStart);
     root.removeEventListener('dragstart', handleKanbanDragStart);
     root.removeEventListener('dragstart', handleCalendarDragStart);
+    root.removeEventListener('dragstart', handleLauncherDragStart);
     root.removeEventListener('dragover', handleDragOver);
     root.removeEventListener('dragover', handleKanbanDragOver);
     root.removeEventListener('dragover', handleCalendarDragOver);
+    root.removeEventListener('dragover', handleLauncherDragOver);
     root.removeEventListener('dragover', handleViewSwitchDragOver);
     root.removeEventListener('dragover', handleFileDropOver);
     root.removeEventListener('dragover', handleEditorFileDropOver);
@@ -9683,6 +9772,7 @@ export function bindActions(
     root.removeEventListener('drop', handleDrop);
     root.removeEventListener('drop', handleKanbanDrop);
     root.removeEventListener('drop', handleCalendarDrop);
+    root.removeEventListener('drop', handleLauncherDrop);
     root.removeEventListener('drop', handleFileDrop);
     root.removeEventListener('drop', handleEditorFileDrop);
     if (editingFileInput) { editingFileInput.remove(); editingFileInput = null; }
@@ -9690,6 +9780,7 @@ export function bindActions(
     root.removeEventListener('dragend', handleDragEnd);
     root.removeEventListener('dragend', handleKanbanDragEnd);
     root.removeEventListener('dragend', handleCalendarDragEnd);
+    root.removeEventListener('dragend', handleLauncherDragEnd);
     root.removeEventListener('contextmenu', handleContextMenu);
     root.removeEventListener('mousedown', handleStaleDragCleanup);
     root.removeEventListener('keyup', handleTextEditPreviewUpdate);
