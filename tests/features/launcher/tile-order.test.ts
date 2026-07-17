@@ -1,8 +1,8 @@
 /**
- * #928 — launcher タイルの並び・移動(pure)unit test。
+ * #928 — launcher タイルの並び・drag & drop 落下差分(pure)unit test。
  */
 import { describe, it, expect } from 'vitest';
-import { sortLauncherTiles, moveLauncherTile, normalizeGroup } from '@features/launcher/tile-order';
+import { sortLauncherTiles, dropLauncherTile, normalizeGroup } from '@features/launcher/tile-order';
 
 const t = (lid: string, group?: string, order?: number, seq = 0) =>
   ({ lid, group, order, seq });
@@ -29,34 +29,59 @@ describe('sortLauncherTiles', () => {
   });
 });
 
-describe('moveLauncherTile', () => {
-  it('next で隣と入れ替え、グループ全体が 0..n-1 に正規化される', () => {
-    const updates = moveLauncherTile(
-      [t('a', 'G', undefined, 0), t('b', 'G', undefined, 1), t('c', 'G', undefined, 2), t('other', undefined, undefined, 3)],
-      'a',
-      'next',
-    );
+describe('dropLauncherTile', () => {
+  const base = () => [t('a', undefined, undefined, 0), t('b', undefined, undefined, 1), t('c', undefined, undefined, 2)];
+
+  it('tile の後ろへ drop → 挿入位置に入りグループ全体が 0..n-1 に正規化', () => {
+    const updates = dropLauncherTile(base(), 'a', { kind: 'tile', lid: 'c', place: 'after' });
     expect(updates).toEqual([
       { lid: 'b', order: 0 },
-      { lid: 'a', order: 1 },
-      { lid: 'c', order: 2 },
+      { lid: 'c', order: 1 },
+      { lid: 'a', order: 2 },
     ]);
   });
 
-  it('端では動けない(空配列)', () => {
-    const tiles = [t('a', undefined, 0, 0), t('b', undefined, 1, 1)];
-    expect(moveLauncherTile(tiles, 'a', 'prev')).toEqual([]);
-    expect(moveLauncherTile(tiles, 'b', 'next')).toEqual([]);
-    expect(moveLauncherTile(tiles, 'nope', 'next')).toEqual([]);
+  it('tile の前へ drop → その tile の直前に入る', () => {
+    const updates = dropLauncherTile(base(), 'c', { kind: 'tile', lid: 'a', place: 'before' });
+    expect(updates).toEqual([
+      { lid: 'c', order: 0 },
+      { lid: 'a', order: 1 },
+      { lid: 'b', order: 2 },
+    ]);
   });
 
-  it('移動は同一グループ内に閉じる(他グループの order は触らない)', () => {
-    const updates = moveLauncherTile(
-      [t('g1a', 'G1', 0, 0), t('g1b', 'G1', 1, 1), t('g2a', 'G2', 0, 2)],
-      'g1b',
-      'prev',
-    );
-    expect(updates.map((u) => u.lid).sort()).toEqual(['g1a', 'g1b']);
+  it('並びが変わらない drop(直後の tile の before など)は no-op', () => {
+    expect(dropLauncherTile(base(), 'a', { kind: 'tile', lid: 'b', place: 'before' })).toEqual([]);
+    expect(dropLauncherTile(base(), 'a', { kind: 'tile', lid: 'a', place: 'after' })).toEqual([]);
+    expect(dropLauncherTile(base(), 'nope', { kind: 'tile', lid: 'a', place: 'after' })).toEqual([]);
+    expect(dropLauncherTile(base(), 'a', { kind: 'tile', lid: 'nope', place: 'after' })).toEqual([]);
+  });
+
+  it('別グループの tile 上へ drop → そのグループへ移動し dragged だけ group を持つ', () => {
+    const tiles = [t('a', undefined, undefined, 0), t('g1', 'G', 0, 1), t('g2', 'G', 1, 2)];
+    const updates = dropLauncherTile(tiles, 'a', { kind: 'tile', lid: 'g1', place: 'after' });
+    expect(updates).toEqual([
+      { lid: 'g1', order: 0 },
+      { lid: 'a', order: 1, group: 'G' },
+      { lid: 'g2', order: 2 },
+    ]);
+  });
+
+  it('group(grid 余白)へ drop → そのグループ末尾へ追加、"" は解除', () => {
+    const tiles = [t('a', undefined, 0, 0), t('g1', 'G', 0, 1)];
+    expect(dropLauncherTile(tiles, 'a', { kind: 'group', group: 'G' })).toEqual([
+      { lid: 'g1', order: 0 },
+      { lid: 'a', order: 1, group: 'G' },
+    ]);
+    expect(dropLauncherTile(tiles, 'g1', { kind: 'group', group: '' })).toEqual([
+      { lid: 'a', order: 0 },
+      { lid: 'g1', order: 1, group: '' },
+    ]);
+  });
+
+  it('同一グループ末尾へ既に居る tile の group drop は no-op', () => {
+    const tiles = [t('a', undefined, 0, 0), t('b', undefined, 1, 1)];
+    expect(dropLauncherTile(tiles, 'b', { kind: 'group', group: '' })).toEqual([]);
   });
 });
 

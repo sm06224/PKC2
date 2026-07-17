@@ -7658,7 +7658,8 @@ function renderLauncherView(state: AppState): HTMLElement {
     }
     grid = createElement('div', 'pkc-launcher-grid');
     grid.setAttribute('data-pkc-region', 'launcher-grid');
-    if (groupName !== '') grid.setAttribute('data-pkc-launcher-group', groupName);
+    // drop 先判定に使うため既定グループ('')も含め常に付与(DnD 並び替え)。
+    grid.setAttribute('data-pkc-launcher-group', groupName);
     view.appendChild(grid);
     return grid;
   };
@@ -7666,10 +7667,15 @@ function renderLauncherView(state: AppState): HTMLElement {
   for (const app of sorted) {
     const targetGrid = ensureGrid(normalizeGroup(app.group));
 
-    // #928: hover 操作(ⓘ 詳細 / ◀▶ 並び替え / 🏷 グループ)を重ねるため、
-    // tile button を wrapper で包む(button 入れ子は不可)。
+    // #928: hover 操作(ⓘ 詳細 / 🏷 グループ)を重ねるため、tile button を
+    // wrapper で包む(button 入れ子は不可)。並び替え・グループ移動は
+    // wrapper の drag & drop が主(2026-07-17 user 指摘で ◀▶ ボタンを撤去)。
     const wrap = createElement('div', 'pkc-launcher-tile-wrap');
     wrap.setAttribute('data-pkc-region', 'launcher-tile-wrap');
+    wrap.setAttribute('draggable', 'true');
+    wrap.setAttribute('data-pkc-launcher-draggable', 'true');
+    wrap.setAttribute('data-pkc-lid', app.lid);
+    wrap.setAttribute('data-pkc-tile-group', normalizeGroup(app.group));
 
     const tile = createElement('button', 'pkc-launcher-tile');
     tile.setAttribute('type', 'button');
@@ -7702,7 +7708,7 @@ function renderLauncherView(state: AppState): HTMLElement {
 
     wrap.appendChild(tile);
 
-    // hover 操作列(#928): 添付エントリ詳細への導線 + 並び替え + グループ設定。
+    // hover 操作列(#928): 添付エントリ詳細への導線 + グループ設定。
     const controls = createElement('div', 'pkc-launcher-tile-controls');
     const mkCtl = (action: string, label: string, tip: string, extra?: Record<string, string>): void => {
       const b = createElement('button', 'pkc-launcher-tile-ctl');
@@ -7716,8 +7722,6 @@ function renderLauncherView(state: AppState): HTMLElement {
       controls.appendChild(b);
     };
     mkCtl('launcher-open-detail', 'ⓘ', 'この添付エントリの詳細を開く(アイコン・登録・削除など)');
-    mkCtl('launcher-move-tile', '◀', '前へ移動', { 'data-pkc-dir': 'prev' });
-    mkCtl('launcher-move-tile', '▶', '後ろへ移動', { 'data-pkc-dir': 'next' });
     mkCtl('launcher-set-group', '🏷', 'グループを設定(空で解除)');
     wrap.appendChild(controls);
 
