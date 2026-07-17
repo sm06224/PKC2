@@ -62,6 +62,16 @@ export interface AttachmentBody {
    */
   launcher_url?: string;
   /**
+   * launcher のグループ名(#928、additive)。未設定 = 既定グループ(先頭)。
+   * タイルの 🏷 からいつでも設定 / 解除できる。
+   */
+  app_group?: string;
+  /**
+   * launcher のグループ内並び順(#928、additive)。未設定 = 登録順の末尾。
+   * タイルの ◀ ▶ 移動時にグループ全体が 0..n-1 へ正規化される。
+   */
+  app_order?: number;
+  /**
    * Boot 時の自動起動 (#790)。`pkc_extension` と併用。`?pkc-safe-mode=1` が
    * 付いている起動では skip される(extension 起因ハングからの復旧導線)。
    */
@@ -102,6 +112,8 @@ export function parseAttachmentBody(body: string): AttachmentBody {
       startup: typeof parsed.startup === 'boolean' ? parsed.startup : undefined,
       extension_manifest: parseExtensionManifest(parsed.extension_manifest),
       launcher_url: typeof parsed.launcher_url === 'string' ? parsed.launcher_url : undefined,
+      app_group: typeof parsed.app_group === 'string' ? parsed.app_group : undefined,
+      app_order: typeof parsed.app_order === 'number' ? parsed.app_order : undefined,
     };
   } catch {
     return { name: '', mime: 'application/octet-stream' };

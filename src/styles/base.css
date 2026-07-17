@@ -11810,6 +11810,45 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: var(--space-3);
 }
+/* #928: グループ見出し + hover 操作(ⓘ/◀▶/🏷)付き tile wrapper */
+.pkc-launcher-group-title {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--fs-md);
+  color: var(--c-fg-dim);
+  border-bottom: 1px dashed var(--c-border);
+  padding-bottom: var(--space-1);
+}
+.pkc-launcher-tile-wrap {
+  position: relative;
+  display: flex;
+}
+.pkc-launcher-tile-wrap > .pkc-launcher-tile {
+  flex: 1;
+}
+.pkc-launcher-tile-controls {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.pkc-launcher-tile-wrap:hover .pkc-launcher-tile-controls,
+.pkc-launcher-tile-wrap:focus-within .pkc-launcher-tile-controls {
+  opacity: 1;
+}
+.pkc-launcher-tile-ctl {
+  padding: 2px 5px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.pkc-launcher-tile-ctl:hover { border-color: var(--c-accent); }
 .pkc-launcher-tile {
   display: flex;
   flex-direction: column;
