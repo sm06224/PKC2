@@ -18,6 +18,7 @@ import {
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
 import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled, shellLauncherUrlTilesEnabled } from './shell-flags';
+import { sortLauncherTiles, normalizeGroup } from '@features/launcher/tile-order';
 import { diffRows } from '../../features/diff/line-diff';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
 import { buildAboutShowcaseElement } from './about-showcase';
@@ -7585,7 +7586,9 @@ function renderLauncherView(state: AppState): HTMLElement {
     lid: string; name: string; iconText: string; iconImageUrl: string | null;
     kind: 'app' | 'extension' | 'url';
     tooltip: string;
+    group?: string; order?: number; seq: number;
   }[] = [];
+  let seq = 0;
   for (const entry of state.container?.entries ?? []) {
     if (entry.archetype !== 'attachment') continue;
     const att = parseAttachmentBody(entry.body, entry);
@@ -7615,6 +7618,9 @@ function renderLauncherView(state: AppState): HTMLElement {
         : kind === 'url'
           ? `${att.launcher_url} へジャンプ(referrer を送らない中継ページ経由)`
           : `${name} を新規ウィンドウで起動`,
+      ...(att.app_group !== undefined ? { group: att.app_group } : {}),
+      ...(att.app_order !== undefined ? { order: att.app_order } : {}),
+      seq: seq++,
     });
   }
 
@@ -7635,9 +7641,36 @@ function renderLauncherView(state: AppState): HTMLElement {
     return view;
   }
 
-  const grid = createElement('div', 'pkc-launcher-grid');
-  grid.setAttribute('data-pkc-region', 'launcher-grid');
-  for (const app of registered) {
+  // #928: グループ化 + 並び替え(app_group / app_order、pure helper で整列)。
+  const sorted = sortLauncherTiles(registered);
+  const hasGroups = sorted.some((t) => normalizeGroup(t.group) !== '');
+
+  let currentGroup: string | null = null;
+  let grid: HTMLElement | null = null;
+  const ensureGrid = (groupName: string): HTMLElement => {
+    if (grid && currentGroup === groupName) return grid;
+    currentGroup = groupName;
+    if (hasGroups) {
+      const h = createElement('h3', 'pkc-launcher-group-title');
+      h.setAttribute('data-pkc-region', 'launcher-group-title');
+      h.textContent = groupName === '' ? '(未分類)' : groupName;
+      view.appendChild(h);
+    }
+    grid = createElement('div', 'pkc-launcher-grid');
+    grid.setAttribute('data-pkc-region', 'launcher-grid');
+    if (groupName !== '') grid.setAttribute('data-pkc-launcher-group', groupName);
+    view.appendChild(grid);
+    return grid;
+  };
+
+  for (const app of sorted) {
+    const targetGrid = ensureGrid(normalizeGroup(app.group));
+
+    // #928: hover 操作(ⓘ 詳細 / ◀▶ 並び替え / 🏷 グループ)を重ねるため、
+    // tile button を wrapper で包む(button 入れ子は不可)。
+    const wrap = createElement('div', 'pkc-launcher-tile-wrap');
+    wrap.setAttribute('data-pkc-region', 'launcher-tile-wrap');
+
     const tile = createElement('button', 'pkc-launcher-tile');
     tile.setAttribute('type', 'button');
     // 既存 open-html-attachment action を再利用、tile click = "Open in New Window"
@@ -7667,9 +7700,29 @@ function renderLauncherView(state: AppState): HTMLElement {
     labelEl.textContent = app.name;
     tile.appendChild(labelEl);
 
-    grid.appendChild(tile);
+    wrap.appendChild(tile);
+
+    // hover 操作列(#928): 添付エントリ詳細への導線 + 並び替え + グループ設定。
+    const controls = createElement('div', 'pkc-launcher-tile-controls');
+    const mkCtl = (action: string, label: string, tip: string, extra?: Record<string, string>): void => {
+      const b = createElement('button', 'pkc-launcher-tile-ctl');
+      b.setAttribute('type', 'button');
+      b.setAttribute('data-pkc-action', action);
+      b.setAttribute('data-pkc-lid', app.lid);
+      b.setAttribute('title', tip);
+      b.setAttribute('aria-label', tip);
+      for (const [k, v] of Object.entries(extra ?? {})) b.setAttribute(k, v);
+      b.textContent = label;
+      controls.appendChild(b);
+    };
+    mkCtl('launcher-open-detail', 'ⓘ', 'この添付エントリの詳細を開く(アイコン・登録・削除など)');
+    mkCtl('launcher-move-tile', '◀', '前へ移動', { 'data-pkc-dir': 'prev' });
+    mkCtl('launcher-move-tile', '▶', '後ろへ移動', { 'data-pkc-dir': 'next' });
+    mkCtl('launcher-set-group', '🏷', 'グループを設定(空で解除)');
+    wrap.appendChild(controls);
+
+    targetGrid.appendChild(wrap);
   }
-  view.appendChild(grid);
 
   return view;
 }

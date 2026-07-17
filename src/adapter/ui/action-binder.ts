@@ -112,6 +112,7 @@ import {
 import { htmlPasteToMarkdown, htmlPasteToRichMarkdown, plainLooksLikeMarkdown } from './html-paste-to-markdown';
 import { hydrateInlineAssetPreviews, buildInlineAssetIndex } from './inline-media-hydrator';
 import { isLaunchableUrl, buildUrlRedirectHtml, urlTileFilename } from '../../features/launcher/url-tile';
+import { moveLauncherTile } from '../../features/launcher/tile-order';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
 import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/frontmatter';
@@ -3079,6 +3080,66 @@ export function bindActions(
         // 領域 3: テキスト系添付を新しい TEXT エントリへ変換。
         if (lid) convertAttachmentEntryToText(lid, dispatcher);
         break;
+      case 'launcher-open-detail': {
+        // #928: タイルから添付エントリ本体(detail)への導線。asset の詳細
+        // (アイコン変更 / 登録解除 / 削除等)に launcher から直接飛べる。
+        if (!lid) break;
+        dispatcher.dispatch({ type: 'SELECT_ENTRY', lid, revealInSidebar: true });
+        dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
+        break;
+      }
+      case 'launcher-move-tile': {
+        // #928: グループ内で 1 つ前 / 後ろへ。pure helper が返す正規化済み
+        // order をグループ全員へ書き戻す(order 未設定混在でも安定化)。
+        if (!lid) break;
+        const dir = target.getAttribute('data-pkc-dir') === 'prev' ? 'prev' : 'next';
+        const st = dispatcher.getState();
+        if (st.readonly || !st.container) break;
+        const tiles: { lid: string; group?: string; order?: number; seq: number; body: string }[] = [];
+        let seq = 0;
+        for (const e of st.container.entries) {
+          if (e.archetype !== 'attachment') continue;
+          const a = parseAttachmentBody(e.body);
+          if (a.registered_as_app !== true && a.pkc_extension !== true) continue;
+          if (classifyPreviewType(a.mime) !== 'html') continue;
+          tiles.push({
+            lid: e.lid,
+            ...(a.app_group !== undefined ? { group: a.app_group } : {}),
+            ...(a.app_order !== undefined ? { order: a.app_order } : {}),
+            seq: seq++,
+            body: e.body,
+          });
+        }
+        const updates = moveLauncherTile(tiles, lid, dir);
+        for (const u of updates) {
+          const tile = tiles.find((t) => t.lid === u.lid)!;
+          const a = parseAttachmentBody(tile.body);
+          if (a.app_order === u.order) continue; // 変化なしは書かない
+          dispatcher.dispatch({
+            type: 'QUICK_UPDATE_ENTRY',
+            lid: u.lid,
+            body: JSON.stringify({ ...a, app_order: u.order }),
+          });
+        }
+        break;
+      }
+      case 'launcher-set-group': {
+        // #928: グループ設定(空入力で解除)。v1 は prompt の最小 UI。
+        if (!lid) break;
+        const st = dispatcher.getState();
+        if (st.readonly || !st.container) break;
+        const entry = st.container.entries.find((e) => e.lid === lid);
+        if (!entry || entry.archetype !== 'attachment') break;
+        const a = parseAttachmentBody(entry.body);
+        const input = window.prompt('グループ名(空で解除)', a.app_group ?? '');
+        if (input === null) break;
+        const group = input.trim();
+        const nextBody: Record<string, unknown> = { ...a };
+        if (group === '') delete nextBody.app_group;
+        else nextBody.app_group = group;
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: JSON.stringify(nextBody) });
+        break;
+      }
       case 'launcher-add-url': {
         // #926: URL 起動タイルの追加(flag `shell.launcher_url_tiles` 配下の
         // ボタンからのみ到達)。擬似リダイレクト HTML を attachment 化して
