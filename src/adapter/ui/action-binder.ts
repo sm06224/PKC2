@@ -180,7 +180,7 @@ import {
   clearDefaultTarget,
   matchKeyForEntry,
 } from '../platform/extension-bindings';
-import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab } from './tab-strip';
+import { recordTabClose, closeActiveTab, reopenLastClosedTab, persistTabState, shellTabsEnabled, recordTabOpen as recordTabOpenForReopen, openViewTab, togglePinTab, buildTabContextMenu, reopenClosedTabByLid } from './tab-strip';
 import { toggleSplitView } from './split-view';
 import { setActivityBarActiveTab, toggleActivityBarSide } from './activity-bar';
 import { setActivitySearchQuery } from './activity-search-tab';
@@ -1718,14 +1718,38 @@ export function bindActions(
             dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
           }
         } else {
-          // 最後の tab が閉じられた ── state.selectedLid が既に null の場合
-          // DESELECT_ENTRY は no-render(scope='none')になるため、`SYS_SYNC_
-          // CHILD_WINDOWS` を現値で dispatch して **state object 参照を
-          // 更新** することで強制 re-render を引き起こす(scope='full')。
-          // childWindowLids array が常に新規生成されるので、tab strip が
-          // 確実に rebuild される。
+          // 最後の tab が閉じられた ── selectedLid が残っていると render 時
+          // 同期(#932、buildTabStripElement)が tab を復活させてしまうため
+          // 明示 DESELECT する(閉じる = そのエントリを開いていない、の
+          // ブラウザ流セマンティクスにも一致)。selectedLid が既に null の
+          // 場合 DESELECT_ENTRY は no-render(scope='none')になるため、
+          // `SYS_SYNC_CHILD_WINDOWS` を現値で dispatch して **state object
+          // 参照を更新** することで強制 re-render を引き起こす(scope='full')。
           const st = dispatcher.getState();
-          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+          if (st.selectedLid) {
+            dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
+          } else {
+            dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+          }
+        }
+        break;
+      }
+      case 'reopen-closed-tab': {
+        // #932: tab strip 右クリック menu の「最近閉じたタブ」個別復元。
+        if (!lid) break;
+        const closed = reopenClosedTabByLid(lid);
+        if (!closed) break;
+        if (closed.kind === 'view' && closed.mode) {
+          openViewTab(closed.mode);
+          persistTabState();
+          dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: closed.mode });
+        } else {
+          const container = dispatcher.getState().container;
+          if (container) {
+            recordTabOpenForReopen(closed.lid, container);
+            persistTabState();
+          }
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: closed.lid });
         }
         break;
       }
@@ -5761,8 +5785,14 @@ export function bindActions(
         if (newActive) {
           dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: newActive });
         } else {
+          // #932: selectedLid が残ると render 時同期が tab を復活させる ──
+          // close-tab case と同じく明示 DESELECT(詳細はそちらのコメント)。
           const st = dispatcher.getState();
-          dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+          if (st.selectedLid) {
+            dispatcher.dispatch({ type: 'DESELECT_ENTRY' });
+          } else {
+            dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
+          }
         }
         return;
       }
@@ -7602,6 +7632,24 @@ export function bindActions(
     // Allow native context menu on editable form controls (copy/paste support)
     if (rawTarget instanceof HTMLTextAreaElement ||
         (rawTarget instanceof HTMLInputElement && rawTarget.type !== 'button' && rawTarget.type !== 'submit')) {
+      return;
+    }
+
+    // Case 0a — #932: tab strip 右クリック = ブラウザ流のタブ menu。
+    // 開いているタブの一覧選択 / 最近閉じたタブの復元 / このタブを閉じる。
+    // tab strip は shell.tabs_enabled ON のときだけ DOM に存在するので、
+    // ここでの追加 flag gate は不要。
+    if (rawTarget.closest('[data-pkc-region="tab-strip"]')) {
+      e.preventDefault();
+      dismissContextMenu();
+      const tabEl = rawTarget.closest<HTMLElement>('.pkc-tab[data-pkc-lid]');
+      const menu = buildTabContextMenu(
+        e.clientX,
+        e.clientY,
+        tabEl?.getAttribute('data-pkc-lid') ?? null,
+      );
+      root.appendChild(menu);
+      clampMenuToViewport(menu);
       return;
     }
 

@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled, shellLauncherUrlTilesEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled, shellLauncherUrlTilesEnabled, shellCompactEntryLabelsEnabled } from './shell-flags';
 import { sortLauncherTiles, normalizeGroup } from '@features/launcher/tile-order';
 import { diffRows } from '../../features/diff/line-diff';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
@@ -4816,6 +4816,9 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   // wiped the sidebar's scroll position back to 0, manifesting as
   // "大量のエントリでクリックすると左ペインが上に戻る".
   list.setAttribute('data-pkc-region', 'entry-list');
+  // #932: opt-in 小字 + 折り返し表示(長いエントリ名対策)。class は行の
+  // memo 対象外の親 UL に付けるので、flag flip が既存 memo 行にも即効く。
+  if (shellCompactEntryLabelsEnabled()) list.classList.add('pkc-compact-labels');
   const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null || (state.unreferencedAttachmentsOnly ?? false);
 
   // v1 backlink count badge: per-target count map. PR #192 routes
@@ -5470,6 +5473,8 @@ function renderEntryItem(
 
   const title = createElement('span', 'pkc-entry-title');
   title.textContent = `${archetypeIcon(entry.archetype)} ${entry.title || '(untitled)'}`;
+  // #932: 省略表示でも全文を確認できるよう tooltip は常時付与。
+  title.setAttribute('title', entry.title || '(untitled)');
   li.appendChild(title);
 
   // Todo status indicator

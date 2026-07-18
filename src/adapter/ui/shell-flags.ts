@@ -588,3 +588,16 @@ export const shellLauncherUrlTilesEnabled = defineFlag<boolean>(
       'ランチャーの「+ URL タイル」追加 UI(referrer を送らない中継ページ経由の URL ジャンプ)。opt-in',
   },
 );
+
+// #932(2026-07-17、user 要望):左ペイン / タブでエントリ名が表示しきれ
+// ないケースへの opt-in 対策。ON で entry list とタブのエントリ名を小さい
+// 字 + 2 行折り返しで表示する(全文はツールチップで常時参照可)。
+export const shellCompactEntryLabelsEnabled = defineFlag<boolean>(
+  'shell.compact_entry_labels',
+  false,
+  {
+    category: 'shell',
+    description:
+      '左ペインとタブのエントリ名を小さい字 + 折り返しで表示(長い名前対策、全文はツールチップ)。opt-in',
+  },
+);
