@@ -27,7 +27,7 @@
 import type { Container } from '../../core/model/container';
 import type { AppState } from '../state/app-state';
 import type { Dispatcher } from '../state/dispatcher';
-import { shellTabsEnabled } from './shell-flags';
+import { shellTabsEnabled, shellCompactEntryLabelsEnabled } from './shell-flags';
 
 /**
  * Tab info ── entry tab(specific entry を open)と view tab(workspace-level
@@ -39,7 +39,7 @@ import { shellTabsEnabled } from './shell-flags';
  */
 type ViewMode = 'calendar' | 'kanban' | 'filer' | 'launcher';
 
-interface TabInfo {
+export interface TabInfo {
   readonly lid: string;
   readonly archetype: string;
   readonly title: string;
@@ -149,7 +149,9 @@ export function recordTabOpen(lid: string, container: Container | null): void {
   const found = openTabs.find((t) => t.lid === lid);
   if (found) {
     activeLid = lid;
-    markJustFocused(lid);
+    // 開いた直後(justOpened 中)の再記録では pulse を重ねない ── render 時
+    // 同期(buildTabStripElement)と wireTabStrip listener の二重呼び対策。
+    if (lid !== justOpenedLid) markJustFocused(lid);
     return;
   }
   // 新規 ── 上限 reached なら最も古い non-active を削る
@@ -467,13 +469,130 @@ export function popRecentlyClosed(): TabInfo | null {
 }
 
 /**
+ * #932:最近閉じた tab の一覧(新しい順)。tab strip 右クリック menu の
+ * 「最近閉じたタブ」section の data source。
+ */
+export function getRecentlyClosedTabs(): readonly TabInfo[] {
+  return recentlyClosed;
+}
+
+/**
+ * #932:lid 指定で recently-closed から取り出す(menu からの個別復元)。
+ * 見つからなければ null。caller が entry tab なら SELECT_ENTRY、view tab
+ * なら openViewTab + SET_VIEW_MODE で復元する。
+ */
+export function reopenClosedTabByLid(lid: string): TabInfo | null {
+  const idx = recentlyClosed.findIndex((t) => t.lid === lid);
+  if (idx < 0) return null;
+  const [tab] = recentlyClosed.splice(idx, 1);
+  return tab ?? null;
+}
+
+/**
+ * #932:tab strip 右クリックの「タブ一覧」context menu。ブラウザ流の
+ * (a) 開いているタブの選択リスト (b) 最近閉じたタブの復元 (c) 右クリック
+ * した tab への操作(閉じる)を 1 menu で提供する。
+ *
+ * item は既存 action delegation に乗せる(select-entry / switch-view-tab /
+ * close-tab / reopen-closed-tab)── menu 自体の dismiss は action-binder の
+ * 「menu 内 click → action 発火後 rAF で dismiss」既存 flow が処理する。
+ */
+export function buildTabContextMenu(x: number, y: number, contextLid: string | null): HTMLElement {
+  const menu = document.createElement('div');
+  menu.className = 'pkc-context-menu pkc-tab-context-menu';
+  menu.setAttribute('data-pkc-region', 'context-menu');
+  menu.style.position = 'absolute';
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+  menu.style.zIndex = '999';
+
+  const addHeader = (text: string): void => {
+    const h = document.createElement('div');
+    h.className = 'pkc-context-menu-header';
+    h.textContent = text;
+    menu.appendChild(h);
+  };
+  const addSeparator = (): void => {
+    const sep = document.createElement('div');
+    sep.className = 'pkc-context-menu-separator';
+    menu.appendChild(sep);
+  };
+  const addItem = (
+    label: string,
+    action: string,
+    lid: string,
+    opts?: { active?: boolean; viewMode?: string },
+  ): void => {
+    const btn = document.createElement('button');
+    btn.className = 'pkc-context-menu-item pkc-tab-menu-item';
+    btn.setAttribute('type', 'button');
+    btn.setAttribute('data-pkc-action', action);
+    btn.setAttribute('data-pkc-lid', lid);
+    if (opts?.viewMode) btn.setAttribute('data-pkc-view-mode', opts.viewMode);
+    if (opts?.active) btn.setAttribute('data-pkc-tab-menu-active', 'true');
+    btn.textContent = `${opts?.active ? '✓ ' : ''}${label}`;
+    btn.setAttribute('title', label);
+    menu.appendChild(btn);
+  };
+  const tabLabel = (t: TabInfo): string => {
+    const icon = isViewTabInfo(t) && t.mode
+      ? VIEW_TAB_META[t.mode].icon
+      : (ARCHETYPE_ICON[t.archetype] ?? '📄');
+    return `${icon} ${t.title}`;
+  };
+
+  addHeader(`開いているタブ(${openTabs.length})`);
+  for (const t of openTabs) {
+    const isView = isViewTabInfo(t);
+    addItem(tabLabel(t), isView ? 'switch-view-tab' : 'select-entry', t.lid, {
+      active: t.lid === activeLid,
+      ...(isView && t.mode ? { viewMode: t.mode } : {}),
+    });
+  }
+
+  if (recentlyClosed.length > 0) {
+    addSeparator();
+    addHeader('最近閉じたタブ');
+    for (const t of recentlyClosed) {
+      addItem(tabLabel(t), 'reopen-closed-tab', t.lid);
+    }
+  }
+
+  if (contextLid) {
+    const target = openTabs.find((t) => t.lid === contextLid);
+    if (target && !target.pinned) {
+      addSeparator();
+      addItem(`✕ 「${target.title}」を閉じる`, 'close-tab', contextLid);
+    }
+  }
+
+  return menu;
+}
+
+/**
  * tab strip element を build する(pure DOM 構築、host への append は caller)。
  * `state.phase === 'editing'` で active なら dirty `●` を出す。
  */
 export function buildTabStripElement(state: AppState): HTMLElement {
+  // render 時同期(2026-07-17 user 指摘「エントリを開いた際にタブが増える
+  // べきのところ、次の操作の render でタブが増える」fix)。main.ts では
+  // render の onState が wireTabStrip より先に登録されているため、同一
+  // dispatch 内の render 時点では listener の recordTabOpen がまだ走って
+  // いない。canonical state を信じ、未記録の selectedLid をこの render
+  // pass 内で記録して「開いた瞬間にタブが出る」を保証する(既に記録済み
+  // なら no-op なので listener との二重呼びも安全)。
+  if (
+    state.selectedLid && state.container
+    && !isViewTabLid(state.selectedLid)
+    && !openTabs.some((t) => t.lid === state.selectedLid)
+  ) {
+    recordTabOpen(state.selectedLid, state.container);
+  }
+
   const strip = document.createElement('div');
   strip.className = 'pkc-tab-strip';
   strip.setAttribute('data-pkc-region', 'tab-strip');
+  if (shellCompactEntryLabelsEnabled()) strip.classList.add('pkc-compact-labels');
 
   if (openTabs.length === 0) {
     strip.classList.add('pkc-tab-strip-empty');

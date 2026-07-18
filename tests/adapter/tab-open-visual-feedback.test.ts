@@ -130,12 +130,14 @@ describe('pgc-137 tab open visual feedback', () => {
   it('連続 recordTabOpen 同 lid:timer が refresh される(連打追従)', async () => {
     const c = makeContainer();
     recordTabOpen('e1', c);
-    // 200ms 待った後にもう一度同 lid open
+    // #932: open 直後(justOpened 中)の再記録は focus pulse を重ねない
+    // 仕様になったため、open feedback を落としてから re-focus を検証する。
+    resetTabOpenFeedback();
+    recordTabOpen('e1', c); // re-focus(250ms timer 開始)
     await new Promise((resolve) => setTimeout(resolve, 200));
-    recordTabOpen('e1', c); // re-focus
-    // 200ms 経過済 + new 250ms timer = 元 timer 効かず
+    recordTabOpen('e1', c); // 連打 → timer refresh
     await new Promise((resolve) => setTimeout(resolve, 100));
-    // 100ms 経過時点では新 timer の 250ms 内なので focused 継続
+    // 元 timer(250ms)は経過済みだが、refresh 後 100ms なので focused 継続
     expect(getJustFocusedLid()).toBe('e1');
   });
 
@@ -150,6 +152,7 @@ describe('pgc-137 tab open visual feedback', () => {
   it('resetTabOpenFeedback() で両 state が 即座に clear', () => {
     const c = makeContainer();
     recordTabOpen('e1', c);
+    resetTabOpenFeedback(); // #932: open 直後の再記録は pulse しないため先に clear
     recordTabOpen('e1', c); // re-focus
     expect(getJustFocusedLid()).toBe('e1');
     resetTabOpenFeedback();

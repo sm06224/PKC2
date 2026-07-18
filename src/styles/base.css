@@ -12467,6 +12467,45 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   color: var(--c-accent);
   font-size: 0.7rem;
 }
+/* #932: tab strip 右クリックのタブ一覧 menu */
+.pkc-tab-context-menu {
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  max-width: 320px;
+}
+.pkc-context-menu-header {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-2xs);
+  color: var(--c-muted);
+  user-select: none;
+}
+.pkc-tab-menu-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkc-tab-menu-item[data-pkc-tab-menu-active='true'] {
+  font-weight: 600;
+}
+/* #932: opt-in 小字 + 折り返し(shell.compact_entry_labels)。
+   entry list は親 UL、tab strip は strip 自体に .pkc-compact-labels が付く */
+.pkc-entry-list.pkc-compact-labels .pkc-entry-title {
+  font-size: var(--fs-2xs);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.pkc-tab-strip.pkc-compact-labels .pkc-tab-title {
+  font-size: var(--fs-2xs);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.25;
+}
 .pkc-tab-dirty .pkc-tab-title::before {
   content: '';
 }
