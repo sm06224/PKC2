@@ -80,7 +80,13 @@ describe('launcher 導線見直し(#926)', () => {
     expect(appTile.getAttribute('data-pkc-launcher-kind')).toBe('app');
   });
 
-  it('flag OFF(既定)では「+ URL タイル」ボタンは出ない', () => {
+  it('既定 ON(#935 で昇格)でボタンが出る、OFF(オプトアウト)で消える', () => {
+    setup();
+    expect(root.querySelector('[data-pkc-action="launcher-add-url"]')).not.toBeNull();
+    setContainerFlagSource({ 'shell.launcher_url_tiles': false });
+    cleanup?.();
+    cleanup = null;
+    root.innerHTML = '';
     setup();
     expect(root.querySelector('[data-pkc-action="launcher-add-url"]')).toBeNull();
   });

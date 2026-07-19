@@ -11869,6 +11869,14 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
   outline-offset: 4px;
   border-radius: var(--radius);
 }
+/* #935: 未登録 HTML 添付タイル(起動可・登録前なので控えめに) */
+.pkc-launcher-tile-unregistered {
+  opacity: 0.62;
+  border-style: dashed;
+}
+.pkc-launcher-tile-unregistered:hover {
+  opacity: 1;
+}
 .pkc-launcher-tile {
   display: flex;
   flex-direction: column;
