@@ -21,7 +21,7 @@ import {
   deleteLogEntry,
 } from '../../features/textlog/textlog-body';
 import {
-  collectAssetData, parseAttachmentBody, serializeAttachmentBody, classifyPreviewType,
+  collectAssetData, parseAttachmentBody, patchAttachmentBody, classifyPreviewType,
   isTextConvertibleAttachment, decodeAttachmentText,
 } from './attachment-presenter';
 import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
@@ -2998,7 +2998,10 @@ export function bindActions(
         const newAllow = checked
           ? [...currentAllow, sandboxAttr]
           : currentAllow.filter((a) => a !== sandboxAttr);
-        const updatedBody = serializeAttachmentBody({ ...att, sandbox_allow: newAllow });
+        // #935: 保存的 patch(他 field を消さない)。空になったら省略規約で削除。
+        const updatedBody = patchAttachmentBody(curEntry.body, {
+          sandbox_allow: newAllow.length > 0 ? newAllow : undefined,
+        });
         preserveCenterPaneScroll(() => {
           dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
         });
@@ -3012,9 +3015,11 @@ export function bindActions(
         const curState = dispatcher.getState();
         const curEntry = curState.container?.entries.find((e) => e.lid === lid);
         if (!curEntry || curEntry.archetype !== 'attachment') break;
-        const att = parseAttachmentBody(curEntry.body);
         const checked = (target as HTMLInputElement).checked;
-        const updatedBody = serializeAttachmentBody({ ...att, registered_as_app: checked });
+        // #935: 保存的 patch(他 field を消さない)。false は省略規約で削除。
+        const updatedBody = patchAttachmentBody(curEntry.body, {
+          registered_as_app: checked ? true : undefined,
+        });
         preserveCenterPaneScroll(() => {
           dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
         });
@@ -3031,9 +3036,13 @@ export function bindActions(
         const att = parseAttachmentBody(curEntry.body);
         const checked = (target as HTMLInputElement).checked;
         if (!checked) unbindExtension(lid);
-        const next = { ...att, pkc_extension: checked, startup: checked ? att.startup : false };
+        // #935: 保存的 patch。OFF 時は startup も落とす(従来挙動を維持)。
+        const nextBody = patchAttachmentBody(curEntry.body, {
+          pkc_extension: checked ? true : undefined,
+          startup: checked && att.startup === true ? true : undefined,
+        });
         preserveCenterPaneScroll(() => {
-          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: serializeAttachmentBody(next) });
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: nextBody });
         });
         break;
       }
@@ -3058,7 +3067,12 @@ export function bindActions(
         if (!att.pkc_extension) break;
         const checked = (target as HTMLInputElement).checked;
         preserveCenterPaneScroll(() => {
-          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: serializeAttachmentBody({ ...att, startup: checked }) });
+          // #935: 保存的 patch(他 field を消さない)。
+          dispatcher.dispatch({
+            type: 'QUICK_UPDATE_ENTRY',
+            lid,
+            body: patchAttachmentBody(curEntry.body, { startup: checked ? true : undefined }),
+          });
         });
         break;
       }
@@ -3112,6 +3126,21 @@ export function bindActions(
         dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
         break;
       }
+      case 'launcher-register-tile': {
+        // #935: 未登録 section の 📌 = 1-click 登録(設定消失事故からの
+        // 復旧導線を兼ねる)。保存的 patch で他 field は保持。
+        if (!lid) break;
+        const st935 = dispatcher.getState();
+        if (st935.readonly || !st935.container) break;
+        const ent935 = st935.container.entries.find((e) => e.lid === lid);
+        if (!ent935 || ent935.archetype !== 'attachment') break;
+        dispatcher.dispatch({
+          type: 'QUICK_UPDATE_ENTRY',
+          lid,
+          body: patchAttachmentBody(ent935.body, { registered_as_app: true }),
+        });
+        break;
+      }
       case 'launcher-set-group': {
         // #928: グループ設定(空入力で解除)。v1 は prompt の最小 UI。
         if (!lid) break;
@@ -3123,10 +3152,12 @@ export function bindActions(
         const input = window.prompt('グループ名(空で解除)', a.app_group ?? '');
         if (input === null) break;
         const group = input.trim();
-        const nextBody: Record<string, unknown> = { ...a };
-        if (group === '') delete nextBody.app_group;
-        else nextBody.app_group = group;
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: JSON.stringify(nextBody) });
+        // #935: 保存的 patch(他 field を消さない)。空入力は削除 = 解除。
+        dispatcher.dispatch({
+          type: 'QUICK_UPDATE_ENTRY',
+          lid,
+          body: patchAttachmentBody(entry.body, { app_group: group === '' ? undefined : group }),
+        });
         break;
       }
       case 'launcher-add-url': {
@@ -3169,12 +3200,11 @@ export function bindActions(
           return parseAttachmentBody(e.body).asset_key === assetKey;
         });
         if (minted) {
-          const att = parseAttachmentBody(minted.body);
+          // #935: 保存的 patch(他 field を消さない)。
           dispatcher.dispatch({
             type: 'QUICK_UPDATE_ENTRY',
             lid: minted.lid,
-            body: JSON.stringify({
-              ...att,
+            body: patchAttachmentBody(minted.body, {
               registered_as_app: true,
               app_icon: '🔗',
               launcher_url: url,
@@ -3986,8 +4016,12 @@ export function bindActions(
         const att = parseAttachmentBody(ent.body);
         const newName = prompt('Enter new file name:', att.name);
         if (!newName || newName === att.name) break;
-        const updated = JSON.stringify({ ...att, name: newName });
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        // #935: 保存的 patch(他 field を消さない)。
+        dispatcher.dispatch({
+          type: 'QUICK_UPDATE_ENTRY',
+          lid,
+          body: patchAttachmentBody(ent.body, { name: newName }),
+        });
         break;
       }
       case 'ctx-move-to-root': {
@@ -6755,10 +6789,9 @@ export function bindActions(
         const curState = dispatcher.getState();
         const curEntry = curState.container?.entries.find((e) => e.lid === lid);
         if (curEntry && curEntry.archetype === 'attachment') {
-          const att = parseAttachmentBody(curEntry.body);
           const icon = target.value.trim();
-          const updatedBody = serializeAttachmentBody({
-            ...att,
+          // #935: 保存的 patch(他 field を消さない)。
+          const updatedBody = patchAttachmentBody(curEntry.body, {
             app_icon: icon.length > 0 ? icon : undefined,
           });
           dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
@@ -6775,10 +6808,9 @@ export function bindActions(
         const curState = dispatcher.getState();
         const curEntry = curState.container?.entries.find((e) => e.lid === lid);
         if (curEntry && curEntry.archetype === 'attachment') {
-          const att = parseAttachmentBody(curEntry.body);
           const key = target.value.trim();
-          const updatedBody = serializeAttachmentBody({
-            ...att,
+          // #935: 保存的 patch(他 field を消さない)。
+          const updatedBody = patchAttachmentBody(curEntry.body, {
             app_icon_asset_key: key.length > 0 ? key : undefined,
           });
           dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updatedBody });
@@ -7468,12 +7500,14 @@ export function bindActions(
       const a = parseAttachmentBody(tile.body);
       const groupChanged = u.group !== undefined && (u.group || undefined) !== a.app_group;
       if (a.app_order === u.order && !groupChanged) continue; // 変化なしは書かない
-      const nextBody: Record<string, unknown> = { ...a, app_order: u.order };
-      if (u.group !== undefined) {
-        if (u.group === '') delete nextBody.app_group;
-        else nextBody.app_group = u.group;
-      }
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: u.lid, body: JSON.stringify(nextBody) });
+      // #935: 保存的 patch(他 field を消さない)。'' グループは削除 = 解除。
+      const patch: Record<string, unknown> = { app_order: u.order };
+      if (u.group !== undefined) patch.app_group = u.group === '' ? undefined : u.group;
+      dispatcher.dispatch({
+        type: 'QUICK_UPDATE_ENTRY',
+        lid: u.lid,
+        body: patchAttachmentBody(tile.body, patch),
+      });
     }
   }
 

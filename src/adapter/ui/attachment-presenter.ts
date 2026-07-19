@@ -187,6 +187,44 @@ export function serializeAttachmentBody(att: AttachmentBody): string {
   if (att.pkc_extension === true) obj.pkc_extension = true;
   if (att.startup === true) obj.startup = true;
   if (att.extension_manifest !== undefined) obj.extension_manifest = att.extension_manifest;
+  // #935 bug fix: #926-#929 で増えた 3 field が serialize から抜けており、
+  // カードのトグル操作(登録 / アイコン等)のたびに URL タイルの
+  // launcher_url やグループ・並びが消えていた。
+  if (typeof att.launcher_url === 'string' && att.launcher_url.length > 0) obj.launcher_url = att.launcher_url;
+  if (typeof att.app_group === 'string' && att.app_group.length > 0) obj.app_group = att.app_group;
+  if (typeof att.app_order === 'number') obj.app_order = att.app_order;
+  return JSON.stringify(obj);
+}
+
+/**
+ * attachment body を**保存的に**部分更新する(#935)。raw JSON を直接 parse
+ * して未知 field を保持したまま patch を適用する。
+ *
+ * `parseAttachmentBody`(whitelist copy)+ `serializeAttachmentBody`(既知
+ * field のみ)による再構築は、whitelist / serialize に載っていない field を
+ * 無言で破壊する ── 実際に launcher 登録設定の消失事故を起こした
+ * (user 報告 2026-07-20)。**body の部分更新は必ずこちらを使う**こと。
+ *
+ * patch の値が `undefined` の key は削除する(「未設定 = 省略」の serialize
+ * 規約を維持)。body が JSON でない場合は patch のみから構築する。
+ */
+export function patchAttachmentBody(
+  rawBody: string,
+  patch: Record<string, unknown>,
+): string {
+  let obj: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(rawBody);
+    obj = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? { ...(parsed as Record<string, unknown>) }
+      : {};
+  } catch {
+    obj = {};
+  }
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) delete obj[k];
+    else obj[k] = v;
+  }
   return JSON.stringify(obj);
 }
 
@@ -707,6 +745,18 @@ export const attachmentPresenter: DetailPresenter = {
     dataField.value = isLegacyFormat(att) ? (att.data ?? '') : '';
     container.appendChild(dataField);
 
+    // #935 bug fix: 元 body の raw JSON を持ち回る。collectBody はこれを
+    // ベースに管理 field(name / mime / asset_key / size)だけ上書きする
+    // 保存的 merge を行う ── 従来は 4 項目から再構築していたため、編集
+    // 保存のたびに registered_as_app / pkc_extension / app_icon /
+    // sandbox_allow / startup / extension_manifest / launcher メタが
+    // **全て消えて**いた(launcher から消え「起動できなくなる」実害)。
+    const originalBodyField = document.createElement('input');
+    originalBodyField.type = 'hidden';
+    originalBodyField.setAttribute('data-pkc-field', 'attachment-original-body');
+    originalBodyField.value = entry.body;
+    container.appendChild(originalBodyField);
+
     // Size field
     const sizeField = document.createElement('input');
     sizeField.type = 'hidden';
@@ -801,16 +851,25 @@ export const attachmentPresenter: DetailPresenter = {
     const mimeEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-mime"]');
     const assetKeyEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-asset-key"]');
     const sizeEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-size"]');
+    const originalEl = root.querySelector<HTMLInputElement>('[data-pkc-field="attachment-original-body"]');
 
     const name = nameEl?.value ?? '';
     const mime = mimeEl?.value ?? 'application/octet-stream';
     const asset_key = assetKeyEl?.value || undefined;
     const size = sizeEl?.value ? Number(sizeEl.value) : undefined;
 
-    const body: AttachmentBody = { name, mime };
-    if (size !== undefined && size > 0) body.size = size;
-    if (asset_key) body.asset_key = asset_key;
-    return serializeAttachmentBody(body);
+    // #935 bug fix: 元 body をベースに管理 field だけを上書きする保存的
+    // merge。registered_as_app 等の設定 field(未知 field 含む)は編集
+    // 保存で消えない。legacy inline `data` は従来どおり常に落とす ──
+    // bytes は hidden attachment-data field が運び、action-binder が
+    // assets へ移行する(migration 契約)。
+    return patchAttachmentBody(originalEl?.value ?? '{}', {
+      name,
+      mime,
+      size: size !== undefined && size > 0 ? size : undefined,
+      asset_key,
+      data: undefined,
+    });
   },
 };
 

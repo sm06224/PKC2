@@ -7593,6 +7593,8 @@ function renderLauncherView(state: AppState): HTMLElement {
     tooltip: string;
     group?: string; order?: number; seq: number;
   }[] = [];
+  // #935: 未登録の HTML 添付(launcher からの起動・登録導線)。
+  const unregistered: { lid: string; name: string; iconText: string }[] = [];
   let seq = 0;
   for (const entry of state.container?.entries ?? []) {
     if (entry.archetype !== 'attachment') continue;
@@ -7602,8 +7604,18 @@ function renderLauncherView(state: AppState): HTMLElement {
     // 導線が分かりにくかった)。click は既存 open-html-attachment action が
     // pkc_extension を判別して extension host 起動へ分岐する。
     const isExtension = att.pkc_extension === true;
-    if (att.registered_as_app !== true && !isExtension) continue;
     if (classifyPreviewType(att.mime) !== 'html') continue;
+    if (att.registered_as_app !== true && !isExtension) {
+      // #935: 未登録の HTML 添付も launcher から起動・登録できるよう別
+      // section に集める(「ランチャー画面から asset の HTML にたどり
+      // 着けない」+ 設定消失事故からの一発復旧導線)。
+      unregistered.push({
+        lid: entry.lid,
+        name: entry.title || att.name || '(untitled)',
+        iconText: typeof att.app_icon === 'string' && att.app_icon.length > 0 ? att.app_icon : '🌐',
+      });
+      continue;
+    }
     const isUrlTile = typeof att.launcher_url === 'string' && att.launcher_url.length > 0;
     const kind = isExtension ? 'extension' : (isUrlTile ? 'url' : 'app');
     const iconImageUrl = att.app_icon_asset_key
@@ -7640,10 +7652,11 @@ function renderLauncherView(state: AppState): HTMLElement {
     const code = document.createElement('code');
     code.textContent = 'アプリランチャーに登録';
     line2.appendChild(code);
-    line2.appendChild(document.createTextNode(' checkbox を ON にすると、ここに tile が並びます。'));
+    line2.appendChild(document.createTextNode(' checkbox を ON にするか、下の 📌 で登録すると、ここに tile が並びます。'));
     empty.appendChild(line2);
     view.appendChild(empty);
-    return view;
+    // #935: 未登録 HTML があれば下でその section を出す(early return しない)。
+    if (unregistered.length === 0) return view;
   }
 
   // #928: グループ化 + 並び替え(app_group / app_order、pure helper で整列)。
@@ -7731,6 +7744,57 @@ function renderLauncherView(state: AppState): HTMLElement {
     wrap.appendChild(controls);
 
     targetGrid.appendChild(wrap);
+  }
+
+  // #935: 未登録の HTML 添付 section。クリックで起動(open-html-attachment
+  // は登録状態に依らず動く)、📌 で 1-click 登録、ⓘ で詳細へ。設定消失事故
+  // からの復旧導線も兼ねる。DnD の drop 対象・draggable にはしない
+  // (data-pkc-launcher-group を付けない)。
+  if (unregistered.length > 0) {
+    const h = createElement('h3', 'pkc-launcher-group-title');
+    h.setAttribute('data-pkc-region', 'launcher-unregistered-title');
+    h.textContent = `未登録の HTML 添付(${unregistered.length})`;
+    view.appendChild(h);
+    const ugrid = createElement('div', 'pkc-launcher-grid');
+    ugrid.setAttribute('data-pkc-region', 'launcher-grid-unregistered');
+    for (const u of unregistered) {
+      const wrap = createElement('div', 'pkc-launcher-tile-wrap');
+      wrap.setAttribute('data-pkc-region', 'launcher-tile-wrap');
+
+      const tile = createElement('button', 'pkc-launcher-tile pkc-launcher-tile-unregistered');
+      tile.setAttribute('type', 'button');
+      tile.setAttribute('data-pkc-action', 'open-html-attachment');
+      tile.setAttribute('data-pkc-lid', u.lid);
+      tile.setAttribute('data-pkc-launcher-kind', 'unregistered');
+      tile.setAttribute('aria-label', `Launch ${u.name}`);
+      tile.setAttribute('title', `${u.name} を新規ウィンドウで起動(未登録)`);
+      const iconEl = createElement('span', 'pkc-launcher-tile-icon');
+      iconEl.textContent = u.iconText;
+      iconEl.setAttribute('aria-hidden', 'true');
+      tile.appendChild(iconEl);
+      const labelEl = createElement('span', 'pkc-launcher-tile-label');
+      labelEl.textContent = u.name;
+      tile.appendChild(labelEl);
+      wrap.appendChild(tile);
+
+      const controls = createElement('div', 'pkc-launcher-tile-controls');
+      const mkUCtl = (action: string, label: string, tip: string): void => {
+        const b = createElement('button', 'pkc-launcher-tile-ctl');
+        b.setAttribute('type', 'button');
+        b.setAttribute('data-pkc-action', action);
+        b.setAttribute('data-pkc-lid', u.lid);
+        b.setAttribute('title', tip);
+        b.setAttribute('aria-label', tip);
+        b.textContent = label;
+        controls.appendChild(b);
+      };
+      mkUCtl('launcher-open-detail', 'ⓘ', 'この添付エントリの詳細を開く');
+      mkUCtl('launcher-register-tile', '📌', 'アプリランチャーに登録');
+      wrap.appendChild(controls);
+
+      ugrid.appendChild(wrap);
+    }
+    view.appendChild(ugrid);
   }
 
   return view;
