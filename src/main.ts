@@ -14,6 +14,7 @@ import { render } from './adapter/ui/renderer';
 import { computeRenderScope } from './adapter/ui/render-scope';
 import { getFilterIndexes } from './adapter/ui/filter-cache';
 import type { AppState } from './adapter/state/app-state';
+import { createCoalescedListener } from './adapter/state/coalesced-listener';
 import { createLocationNavTracker } from './adapter/ui/location-nav';
 import { preferredEditFocusSelector } from './adapter/ui/edit-focus';
 import {
@@ -214,7 +215,10 @@ async function boot(): Promise<void> {
   // closure so its internal `lastTicket` survives between ticks.
   const locationNavTracker = createLocationNavTracker();
 
-  dispatcher.onState((state) => {
+  // #938 R11: render subscriber 本体。従来は onState に直接渡していた
+  // closure を named function に切り出し、下の coalescing wrapper 経由で
+  // 登録する(flag OFF では従来どおり dispatch ごと同期実行)。
+  const renderOnState = (state: AppState): void => {
     // PR #177: scope-driven short-circuit so the renderer subscriber
     // skips the full pre/post-render hook chain (continuity capture,
     // blob cleanup, attachment-preview hydration, etc) when the
@@ -400,7 +404,17 @@ async function boot(): Promise<void> {
     populateAttachmentPreviews(root, dispatcher);
     // Populate inline asset previews for non-image chips in rendered markdown
     populateInlineAssetPreviews(root, dispatcher);
-  });
+  };
+
+  // #938 R11: render coalescing(flag `perf.render_coalescing`、既定 OFF)。
+  // ON のとき同一 tick 内の連射 dispatch(bulk restore の N 件
+  // RESTORE_ENTRY 等)を最終 state の 1 render に集約する。実行時に
+  // 最新 state を読み直すので中間 state は描画されない。OFF では
+  // createCoalescedListener が同期 pass-through になり従来挙動そのまま。
+  const coalescedRender = createCoalescedListener(() =>
+    renderOnState(dispatcher.getState()),
+  );
+  dispatcher.onState(() => coalescedRender());
 
   // 2a-A4. Collapsed-folder persistence (viewer-local). Writes
   // through to localStorage whenever `state.collapsedFolders`
