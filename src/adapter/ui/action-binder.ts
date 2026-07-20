@@ -4407,6 +4407,15 @@ export function bindActions(
         dispatcher.dispatch({ type: 'RESET_FLAG', key });
         break;
       }
+      case 'set-bool-flag': {
+        // #938 R10: shell menu の機能トグル(Tabs 等)用の汎用 boolean
+        // SET_FLAG dispatch。readonly gate は reducer 側が持つ。
+        const key = target.getAttribute('data-pkc-flag-key');
+        if (!key) break;
+        const value = target.getAttribute('data-pkc-flag-value') === 'true';
+        dispatcher.dispatch({ type: 'SET_FLAG', key, value });
+        break;
+      }
       case 'reset-all-flags': {
         // R7(#938): native confirm → inline dialog(日本語統一)。
         void showInlineConfirm({
