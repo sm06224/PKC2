@@ -59,6 +59,16 @@ export interface ContainerStore {
    * `saveDiff()` は marker が無ければ全件書込みから始める。
    */
   saveDiff(container: Container, previous: Container | null): Promise<void>;
+  /**
+   * #938 R1: cid の「persist 済み asset」記録を破棄する。
+   *
+   * save/saveDiff は dirty-tracking により **persist 済みと確認できた
+   * asset key を書かない**(key → bytes immutable invariant)。同一 key の
+   * bytes を差し替えうる経路(container import / 外部由来の container
+   * 差し替え)は、保存前に本メソッドで記録を破棄すること ── 次の保存が
+   * 全 asset を書き直す。通常の編集経路では呼ぶ必要はない。
+   */
+  invalidatePersistedAssets(containerId: string): void;
   load(containerId: string): Promise<Container | null>;
   loadDefault(): Promise<Container | null>;
   /**
@@ -215,20 +225,47 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
   // marker を読んで判定する。save()/saveDiff() の成功時に更新。
   const splitState = new Map<string, boolean>();
 
+  // #938 R1(dirty-tracking): cid → 「store に persist 済みと確認できた
+  // asset key」の session 内記録。asset は **key → bytes immutable**(内容が
+  // 変われば新 key を mint する)という既存 invariant を前提に、putAssets は
+  // 未 persist の key だけ書く。従来は保存のたびに常駐 working-set(最大
+  // 48MB)を全 put し直しており、実環境(リアルタイム AV 等)での書込増幅の
+  // 本丸だった(refinement-research-2026-07.md §1)。
+  //
+  // 記録の更新は「store への書込成功」or「store からの読出成功」のみ
+  // (推測で足さない = 誤 skip によるデータ損失を構造的に防ぐ)。削除系
+  // (purge / deleteAsset / del / clearAll)は記録からも落とす。
+  const persistedAssets = new Map<string, Set<string>>();
+  function persistedSetFor(cid: string): Set<string> {
+    let s = persistedAssets.get(cid);
+    if (!s) {
+      s = new Set();
+      persistedAssets.set(cid, s);
+    }
+    return s;
+  }
+
   /** container.assets を additive-only で書く(段階2 #868、save/saveDiff 共通)。 */
   async function putAssets(container: Container): Promise<void> {
-    // Additive-only (段階2 #868): put every asset in `container.assets`,
+    // Additive-only (段階2 #868): put assets in `container.assets`,
     // delete nothing. `container.assets` may be a partial working-set
     // (lazy loading) — diff-deleting "keys not present here" would
     // erase every un-loaded asset, i.e. silent data loss. Deletion is
-    // the explicit job of `purgeAssetsExcept`. Putting a key that
-    // already holds the same bytes is a harmless idempotent overwrite.
+    // the explicit job of `purgeAssetsExcept`.
+    //
+    // #938 R1: persist 済みの key は skip(bytes immutable invariant)。
     const cid = container.meta.container_id;
+    const persisted = persistedSetFor(cid);
     const assetOps: BatchOp[] = [];
+    const written: string[] = [];
     for (const [key, data] of Object.entries(container.assets)) {
+      if (persisted.has(key)) continue;
       assetOps.push({ kind: 'put', key: assetFullKey(cid, key), value: data });
+      written.push(key);
     }
+    if (assetOps.length === 0) return;
     await assets.applyBatch(assetOps);
+    for (const k of written) persisted.add(k);
   }
 
   async function save(container: Container): Promise<void> {
@@ -380,10 +417,13 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     const pairs = await assets.getAllByPrefix(assetPrefix(cid));
     if (pairs.length === 0) return container;
     const reassembled: Record<string, string> = {};
+    const persisted = persistedSetFor(cid);
     for (const { key, value } of pairs) {
       const assetKey = key.slice(assetPrefix(cid).length);
       if (typeof value === 'string') {
         reassembled[assetKey] = value;
+        // #938 R1: store から読めた = persist 済み。
+        persisted.add(assetKey);
       }
     }
     return { ...container, assets: reassembled };
@@ -438,25 +478,34 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       assets.applyBatch(assetOps),
     ]);
     splitState.delete(containerId);
+    persistedAssets.delete(containerId); // #938 R1
   }
 
   async function saveAsset(cid: string, key: string, data: string): Promise<void> {
     await assets.put(assetFullKey(cid, key), data);
+    persistedSetFor(cid).add(key); // #938 R1
   }
 
   async function loadAsset(cid: string, key: string): Promise<string | null> {
     const result = await assets.get(assetFullKey(cid, key));
-    return typeof result === 'string' ? result : null;
+    if (typeof result !== 'string') return null;
+    persistedSetFor(cid).add(key); // #938 R1: 読めた = persist 済み
+    return result;
   }
 
   async function deleteAsset(cid: string, key: string): Promise<void> {
     await assets.delete(assetFullKey(cid, key));
+    persistedSetFor(cid).delete(key); // #938 R1
   }
 
   async function listAssetKeys(cid: string): Promise<string[]> {
     const prefix = assetPrefix(cid);
     const keys = await assets.getKeysByPrefix(prefix);
-    return keys.map((k) => k.slice(prefix.length));
+    const out = keys.map((k) => k.slice(prefix.length));
+    // #938 R1: store に存在が確認できた key は persist 済み。
+    const persisted = persistedSetFor(cid);
+    for (const k of out) persisted.add(k);
+    return out;
   }
 
   async function loadAssetMeta(cid: string): Promise<AssetMetaIndex | null> {
@@ -483,11 +532,15 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       }
     }
     if (ops.length > 0) await assets.applyBatch(ops);
+    // #938 R1: 消した key は persist 記録からも落とす。
+    const persisted = persistedSetFor(cid);
+    for (const k of deletedKeys) persisted.delete(k);
     return deletedKeys;
   }
 
   async function clearAll(): Promise<void> {
     await Promise.all([containers.clear(), assets.clear()]);
+    persistedAssets.clear(); // #938 R1
   }
 
   async function listContainers(): Promise<ContainerSummary[]> {
@@ -581,6 +634,9 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     loadAssetMeta,
     saveAssetMeta,
     purgeAssetsExcept,
+    invalidatePersistedAssets: (containerId: string): void => {
+      persistedAssets.delete(containerId); // #938 R1
+    },
   };
 }
 

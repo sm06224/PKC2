@@ -60,6 +60,42 @@ const placeholderMinHeightPx = defineFlag<number>(
   },
 );
 const IO_ROOT_MARGIN = '400px 0px';
+
+// ── #938 R3: hydrate 済み article の実高さ memo ──────────────────────
+// 「スクロールがついてこない」の残存原因は placeholder の仮高さ(固定
+// 160px)と実体高さの差 ── flush のたびに総高さ・つまみ位置が跳ねる。
+// 一度 hydrate した article の実高さを logId 単位で記憶し、以後の
+// placeholder に使うことでスクロールジオメトリを安定させる(再 render・
+// reload をまたいでも同 session 内なら有効)。log 編集で高さが変わっても
+// 次の hydrate で再計測されて収束する。
+const hydratedHeights = new Map<string, number>();
+const MAX_HEIGHT_MEMO = 8000;
+
+function heightMemoKey(lid: string, logId: string): string {
+  return `${lid}:${logId}`;
+}
+
+/** hydrate 直後の実測高さを記録(0 以下 = 未レイアウトは記録しない)。 */
+export function recordHydratedHeight(lid: string, logId: string, px: number): void {
+  if (!(px > 0)) return;
+  const key = heightMemoKey(lid, logId);
+  // 概算 LRU: 上限到達時は最古(挿入順先頭)を捨てる。
+  if (!hydratedHeights.has(key) && hydratedHeights.size >= MAX_HEIGHT_MEMO) {
+    const oldest = hydratedHeights.keys().next().value;
+    if (oldest !== undefined) hydratedHeights.delete(oldest);
+  }
+  hydratedHeights.delete(key);
+  hydratedHeights.set(key, px);
+}
+
+export function getMemoizedHeight(lid: string, logId: string): number | null {
+  return hydratedHeights.get(heightMemoKey(lid, logId)) ?? null;
+}
+
+/** test 用: memo を全消去。 */
+export function resetHydratedHeightMemo(): void {
+  hydratedHeights.clear();
+}
 // user 報告 2026-06-13「センターペインのスクロールが空回りする(スクロール
 // バーは動くのに実際のスクロールがしない)」: hydration の `replaceWith` は
 // placeholder(min-height 160px)と実体の高さ差を生む。これが**アクティブ
@@ -170,7 +206,17 @@ export function renderLogArticlePlaceholder(
 
   const textEl = document.createElement('div');
   textEl.className = 'pkc-textlog-text pkc-textlog-text-pending';
-  textEl.style.minHeight = `${placeholderMinHeightPx()}px`;
+  // #938 R3: 実測済みの高さがあれば固定 160px ではなくそれを使う。
+  // article 全体(header 込み)の実測値なので article 側 min-height に
+  // 乗せ、textEl の仮 min-height は外す(実測 < 160px の短い log でも
+  // ジオメトリが一致する)。
+  const memoized = getMemoizedHeight(lid, log.id);
+  if (memoized !== null) {
+    article.style.minHeight = `${memoized}px`;
+    article.setAttribute('data-pkc-height-memo', String(memoized));
+  } else {
+    textEl.style.minHeight = `${placeholderMinHeightPx()}px`;
+  }
   article.appendChild(textEl);
 
   return article;
@@ -189,6 +235,10 @@ function hydrateArticle(
     );
     real.setAttribute('data-pkc-hydrated', 'true');
     placeholder.replaceWith(real);
+    // #938 R3: 差し替え直後の実高さを記録(同期 layout 1 回。hydrate は
+    // 元々重い操作なので許容)。画像等の遅延ロードで後から伸びる分は
+    // 次回 hydrate の再計測で収束する。
+    recordHydratedHeight(ctx.lid, ctx.log.id, real.offsetHeight);
   } catch (e) {
     console.warn('[PKC2] textlog hydrate failed for log', ctx.log.id, e);
   }

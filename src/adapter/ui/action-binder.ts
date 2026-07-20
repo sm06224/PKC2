@@ -359,14 +359,15 @@ export function bindActions(
   let colorPickerLid: string | null = null;
   let colorPickerEl: HTMLElement | null = null;
   let colorPickerTrigger: HTMLElement | null = null;
-  // PR-MMM (2026-05-06、user 修正指示5「左ペインのダブルクリック検知
-  // までの間だけでも要素の再描画を抑止して左ペインの行ズレ防止」):
-  // sidebar 単一 click による SELECT_ENTRY dispatch を ~250ms 遅延
-  // させ、その間に dblclick が来たら timer を cancel して dblclick
-  // action 直接実行に切り替える。両 click 間に再描画が走らないため
-  // 行 / 文字位置が固定される。
-  let sidebarSelectTimer: number | null = null;
-  let sidebarSelectLid: string | null = null;
+  // #938 R2(2026-07-20、refinement-research §3):sidebar 単一 click の
+  // SELECT_ENTRY を**即時 dispatch** に戻す(旧 PR-MMM は dblclick 検知の
+  // ため ~250ms 遅延させており「左ペインだけワンテンポ遅い」体感の筆頭
+  // 原因だった)。PR-MMM が守っていた「click 1 の再描画で行がズレて
+  // click 2 が別行に当たる」問題は、直前 click の座標・lid を記録し、
+  // dblclick(detail>=2)時に **300ms / 8px 以内なら 1 打目の行へ
+  // redirect** することで解決する(ブラウザの click count は座標 +
+  // 時間ベースなので行がズレても detail=2 は届く)。
+  let lastSidebarClick: { lid: string; x: number; y: number; t: number } | null = null;
 
   // PR-OOO (2026-05-06、user 修正指示6「TEXTAREA の TAB キー押下で全角
   // 空白が入力されることがある(過去のショートカットキーが残っている
@@ -1784,17 +1785,21 @@ export function bindActions(
           }
         };
         if (me.detail >= 2) {
-          // PR-MMM (2026-05-06、user 修正指示5「左ペインのダブルクリック
-          // 検知までの間だけでも要素の再描画を抑止して左ペインの行
-          // ズレ防止をしたい」):dblclick 確定時は pending sidebar
-          // SELECT_ENTRY timer を cancel して dblclick action を直接
-          // 実行。これにより click 1 と click 2 の間に再描画が走らない。
-          if (sidebarSelectTimer !== null) {
-            window.clearTimeout(sidebarSelectTimer);
-            sidebarSelectTimer = null;
-            sidebarSelectLid = null;
+          // #938 R2: click 1 の即時 SELECT_ENTRY 再描画で行がズレていても
+          // dblclick を正しい行に当てる ── 直前 click が 300ms / 8px 以内
+          // なら **1 打目の行**へ redirect(ユーザーは指を動かしていない
+          // のだから、狙いは 1 打目に押した行)。
+          let dblLid = lid;
+          if (
+            fromSidebarClick && lastSidebarClick
+            && performance.now() - lastSidebarClick.t < 300
+            && Math.abs(me.clientX - lastSidebarClick.x) < 8
+            && Math.abs(me.clientY - lastSidebarClick.y) < 8
+          ) {
+            dblLid = lastSidebarClick.lid;
           }
-          handleDblClickAction(lid);
+          lastSidebarClick = null;
+          handleDblClickAction(dblLid);
         } else if (me.ctrlKey || me.metaKey) {
           dispatcher.dispatch({ type: 'TOGGLE_MULTI_SELECT', lid });
         } else if (me.shiftKey) {
@@ -1899,30 +1904,13 @@ export function bindActions(
           if (!stayInFiler && currentState.viewMode !== 'detail') {
             dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: 'detail' });
           }
-          // PR-MMM (2026-05-06、user 修正指示5):sidebar からの単一
-          // click は dblclick window(250ms)分だけ SELECT_ENTRY 発火
-          // を delay する。同窓内で次の click が detail≥2 で来たら
-          // 上の dblclick 分岐が timer を cancel して dblclick action
-          // を直接 dispatch。timer が満了する前に他の sidebar entry が
-          // click されたら、より新しい click のみ生かして古い timer は
-          // 破棄(LRU 1)。
-          // 非 sidebar click(center / meta / overlay)は従来通り即時
-          // dispatch — 編集対象の選択を delay すると体感悪化のため。
+          // #938 R2: sidebar click も**即時** SELECT_ENTRY(旧 PR-MMM の
+          // 250ms 遅延を撤去)。dblclick の行ズレ対策は上の detail>=2
+          // 分岐の redirect が担う(座標・lid の記録だけここで行う)。
           if (fromSidebarClick) {
-            if (sidebarSelectTimer !== null) {
-              window.clearTimeout(sidebarSelectTimer);
-            }
-            sidebarSelectLid = lid;
-            sidebarSelectTimer = window.setTimeout(() => {
-              sidebarSelectTimer = null;
-              if (sidebarSelectLid === lid) {
-                dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
-                sidebarSelectLid = null;
-              }
-            }, 250);
-          } else {
-            dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
+            lastSidebarClick = { lid, x: me.clientX, y: me.clientY, t: performance.now() };
           }
+          dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
         }
         break;
       }

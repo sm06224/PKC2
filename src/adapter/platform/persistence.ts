@@ -286,6 +286,14 @@ export function mountPersistence(
       // Arm the explicit IDB purge for the next save cycle (段階2 #868).
       pendingPurge = true;
     }
+    if (event.type === 'CONTAINER_IMPORTED' || event.type === 'CONTAINER_LOADED') {
+      // #938 R1: import / 外部由来の container 差し替えは同一 asset key の
+      // bytes を差し替えうる唯一の経路。dirty-tracking の「persist 済み」
+      // 記録を破棄し、次の保存で全 asset を書き直させる(通常編集の
+      // 保存は skip 最適化のまま)。
+      const cid = dispatcher.getState().container?.meta.container_id;
+      if (cid) store.invalidatePersistedAssets(cid);
+    }
     if (SAVE_TRIGGERS.has(event.type)) {
       scheduleSave();
     }
