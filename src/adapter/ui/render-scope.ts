@@ -44,6 +44,12 @@
  *                        + meta panes consume asset bytes; the O(N) sidebar
  *                        tree / header / overlays never read them. See
  *                        `replaceAssetRegions`.
+ *   - `'calendar-only'`  only `calendarYear` / `calendarMonth` changed
+ *                        (SET_CALENDAR_MONTH = 月送り) while the calendar
+ *                        view is showing (#938 R8). The month is consumed
+ *                        exclusively by the calendar grid inside the center
+ *                        pane — sidebar / header / meta / overlays never
+ *                        read it — so only the center region is swapped.
  *   - `'full'`           current full-shell rebuild
  */
 
@@ -57,6 +63,7 @@ export type RenderScope =
   | 'selection'
   | 'entry-body'
   | 'assets-only'
+  | 'calendar-only'
   | 'full';
 
 /**
@@ -222,8 +229,13 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // ケースで render-scope が `'none'` を返し、filter が画面に反映され
   // ない bug。`'full'` trigger に追加して filer 再描画を起こす。
   if (state.filerSearchQuery !== prev.filerSearchQuery) return 'full';
-  if (state.calendarYear !== prev.calendarYear) return 'full';
-  if (state.calendarMonth !== prev.calendarMonth) return 'full';
+  // `calendarYear` / `calendarMonth`(月送り)は immediate-full から #938 R8
+  // で外した。calendar view 表示中で他 bucket が全て不変なら、下の
+  // combination section が `'calendar-only'` に解決する。co-varying な変化は
+  // 各 narrow 解決 block 内の guard と最後の fall-through が 'full' に落とす
+  // ため、他 field と同時変化が narrow scope に吸収されることはない。
+  const calendarNavChanged =
+    state.calendarYear !== prev.calendarYear || state.calendarMonth !== prev.calendarMonth;
   // `multiSelectedLids` / `textlogSelection` / `textToTextlogModal` are NOT
   // immediate-full triggers: SELECT_ENTRY clears them on every plain
   // navigation, so leaving them here would defeat the `'selection'` scope.
@@ -352,6 +364,7 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
     if (selectionChanged || sidebarOnlyChanged || settingsChanged || !noMultiBarTransition) {
       return 'full';
     }
+    if (calendarNavChanged) return 'full';
     if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
     if (state.textlogSelection !== prev.textlogSelection) return 'full';
     if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
@@ -363,6 +376,7 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
     // is standalone, like sidebar-only). A multi-bar transition also needs
     // the full sidebar rebuild.
     if (sidebarOnlyChanged || settingsChanged || !noMultiBarTransition) return 'full';
+    if (calendarNavChanged) return 'full';
     return 'selection';
   }
 
@@ -376,6 +390,7 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   // co-varying narrow bucket ⇒ 'full'.
   if (entryBodyChangeLid !== null) {
     if (sidebarOnlyChanged || settingsChanged || !noMultiBarTransition) return 'full';
+    if (calendarNavChanged) return 'full';
     if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
     if (state.textlogSelection !== prev.textlogSelection) return 'full';
     if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
@@ -390,6 +405,22 @@ export function computeRenderScope(state: AppState, prev: AppState | null): Rend
   if (state.multiSelectedLids !== prev.multiSelectedLids) return 'full';
   if (state.textlogSelection !== prev.textlogSelection) return 'full';
   if (state.textToTextlogModal !== prev.textToTextlogModal) return 'full';
+
+  // ── Calendar-nav resolution (#938 R8) ───────────────────────────
+  // Reaching here means EVERY other trigger is identical (container /
+  // selection / phase / viewMode / overlays / multi / textlog) — the only
+  // remaining candidates are calendar nav and the sidebar / settings
+  // buckets. SET_CALENDAR_MONTH(月送り)changes ONLY the two calendar
+  // fields, so the common case resolves here. The month is consumed
+  // exclusively by the calendar grid in the center pane; restrict to the
+  // calendar view actually showing (any other view ⇒ 'full',保守的)and
+  // ready phase. Co-varying sidebar / settings buckets ⇒ 'full'.
+  if (calendarNavChanged) {
+    if (state.phase !== 'ready') return 'full';
+    if (state.viewMode !== 'calendar') return 'full';
+    if (sidebarOnlyChanged || settingsChanged) return 'full';
+    return 'calendar-only';
+  }
 
   // ── Combination resolution ──────────────────────────────────────
   // Multiple narrow buckets changed → fall back to 'full' since the

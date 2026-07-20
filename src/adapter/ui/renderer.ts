@@ -77,7 +77,7 @@ import {
 } from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
-import { getFilterIndexes } from './filter-cache';
+import { getFilterIndexes, getTodosByDate } from './filter-cache';
 import { start as profileStart } from '../../runtime/profile';
 import { computeRenderScope, findEntryBodyChangeLid } from './render-scope';
 import type { TreeNode } from '../../features/relation/tree';
@@ -118,7 +118,7 @@ function parseAttachmentBody(body: string, entry?: Entry): AttachmentBody {
   return parsed;
 }
 import { deriveDisplayFilename } from './image-optimize/paste-optimization';
-import { groupTodosByDate, getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
+import { getMonthGrid, dateKey, monthName } from '../../features/calendar/calendar-data';
 import { pad2 } from '../../features/datetime/datetime-format';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
@@ -420,6 +420,14 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   if (scope === 'assets-only') {
     const endProfile = profileStart('render:scope=assets-only');
     replaceAssetRegions(state, root);
+    endProfile();
+    return;
+  }
+  if (scope === 'calendar-only') {
+    // #938 R8: 月送り(SET_CALENDAR_MONTH)は calendar grid を含む center
+    // pane だけを差し替える。sidebar / header / meta は月に依存しない。
+    const endProfile = profileStart('render:scope=calendar-only');
+    replaceCenterRegion(state, root);
     endProfile();
     return;
   }
@@ -5941,9 +5949,11 @@ function renderCalendarView(state: AppState): HTMLElement {
   }
   cal.appendChild(header);
 
-  // Build todo map
-  const entries = state.container?.entries ?? [];
-  const todoMap = groupTodosByDate(entries, state.showArchived);
+  // Build todo map(#938 R8: container ref + showArchived で memoize。
+  // 月送りごとの全 entry walk + todo body parse を排除する)
+  const todoMap = state.container
+    ? getTodosByDate(state.container, state.showArchived)
+    : {};
 
   // Month grid
   const weeks = getMonthGrid(state.calendarYear, state.calendarMonth);

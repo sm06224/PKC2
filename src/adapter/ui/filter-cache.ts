@@ -28,6 +28,7 @@
  */
 
 import type { Container } from '../../core/model/container';
+import { groupTodosByDate, type CalendarTodo } from '../../features/calendar/calendar-data';
 import { collectDescendantLids, getStructuralParent } from '../../features/relation/tree';
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
@@ -199,6 +200,38 @@ export function getStructuralParentFolderTitle(
   return parent.title;
 }
 
+// ── todo→date memo(#938 R8) ─────────────────────────────────────
+// calendar view は render のたびに `groupTodosByDate`(全 entry walk +
+// todo body の JSON parse)を回していた。月送り(SET_CALENDAR_MONTH)は
+// container ref を変えないので、filter-cache と同じ container-identity
+// キーで memoize する。`showArchived` も結果に影響するため複合キー。
+let cachedTodoContainer: Container | null = null;
+let cachedTodoShowArchived: boolean | null = null;
+let cachedTodosByDate: Record<string, CalendarTodo[]> | null = null;
+
+/**
+ * `groupTodosByDate(container.entries, showArchived)` の memo 版。
+ * container ref + showArchived が前回と同じなら O(1) でキャッシュを返す。
+ * container の immutable 更新(todo 追加 / 日付変更 / archive)は ref が
+ * 変わるので自然に invalidate される。
+ */
+export function getTodosByDate(
+  container: Container,
+  showArchived: boolean,
+): Record<string, CalendarTodo[]> {
+  if (
+    cachedTodoContainer === container
+    && cachedTodoShowArchived === showArchived
+    && cachedTodosByDate
+  ) {
+    return cachedTodosByDate;
+  }
+  cachedTodosByDate = groupTodosByDate(container.entries, showArchived);
+  cachedTodoContainer = container;
+  cachedTodoShowArchived = showArchived;
+  return cachedTodosByDate;
+}
+
 /**
  * Test-only reset. Used by tests that exercise multiple synthetic
  * containers in a single suite to prevent cache bleed between cases.
@@ -206,4 +239,7 @@ export function getStructuralParentFolderTitle(
 export function __resetFilterIndexCacheForTest(): void {
   cachedContainer = null;
   cachedIndexes = null;
+  cachedTodoContainer = null;
+  cachedTodoShowArchived = null;
+  cachedTodosByDate = null;
 }
