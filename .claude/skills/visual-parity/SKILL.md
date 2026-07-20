@@ -61,6 +61,11 @@ import { test, expect, type Page } from '@playwright/test';
 import { bootReady } from './_helpers/boot-ready';
 
 test('parity: <シナリオ名>', async ({ page }) => {
+  // ページ内例外の混入をテスト失敗として観測する(描画は無事に見えても
+  // 裏で throw していた、を見逃さない)。最後に空 assert する。
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+
   await page.goto('/pkc2.html');
   await bootReady(page);          // boot 待ちは必ずこの helper(下記の落とし穴参照)
 
@@ -83,6 +88,7 @@ test('parity: <シナリオ名>', async ({ page }) => {
   await expect(page.locator('<結果の観測点>')).toBeVisible();
 
   await page.screenshot({ path: 'test-results/<spec名>.png' });
+  expect(errors, errors.join('\n')).toEqual([]);
 });
 ```
 
