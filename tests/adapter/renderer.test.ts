@@ -8379,8 +8379,10 @@ describe('Shell Menu & Help Foundation (P2)', () => {
     // missing from the help. Original 4 groups (Panes / Editing /
     // Date-Time / Slash) are preserved for backward-compat assertions
     // below.
+    // #938 R10 で「Views & Tabs」群が追加され 9 groups。
     const groups = overlay!.querySelectorAll('.pkc-shortcut-group');
-    expect(groups.length).toBe(8);
+    expect(groups.length).toBe(9);
+    expect(overlay!.textContent).toContain('Views & Tabs');
     // Contains slash command section
     expect(overlay!.textContent).toContain('Slash Commands');
     expect(overlay!.textContent).toContain('input assist menu');

@@ -1885,6 +1885,37 @@ function renderShellMenu(
   scanlineSection.appendChild(scanlineButtons);
   card.appendChild(scanlineSection);
 
+  // #938 R10(2026-07-20 洗練化): タブ機能の発見可能性昇格。
+  // `shell.tabs_enabled` は Flags Inspector の奥で眠っていた(refinement-
+  // research §5「タブ機能が flag 裏で発見不能」)。設定メニューに Off/On
+  // segmented control を常設し、SET_FLAG 経由で container に永続化する。
+  const tabsSection = createElement('div', 'pkc-shell-menu-section');
+  const tabsLabel = createElement('span', 'pkc-shell-menu-label');
+  tabsLabel.textContent = 'Tabs';
+  tabsSection.appendChild(tabsLabel);
+  const tabsButtons = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const tabsOn = shellTabsEnabled();
+  const tabsChoices: { value: 'false' | 'true'; label: string }[] = [
+    { value: 'false', label: '○ Off' },
+    { value: 'true', label: '◉ On' },
+  ];
+  for (const { value, label } of tabsChoices) {
+    const btn = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+    btn.setAttribute('data-pkc-action', 'set-bool-flag');
+    btn.setAttribute('data-pkc-flag-key', 'shell.tabs_enabled');
+    btn.setAttribute('data-pkc-flag-value', value);
+    const isActive = (value === 'true') === tabsOn;
+    btn.setAttribute('data-pkc-active', String(isActive));
+    if (isActive) btn.setAttribute('data-pkc-theme-active', 'true');
+    btn.textContent = label;
+    tabsButtons.appendChild(btn);
+  }
+  tabsSection.appendChild(tabsButtons);
+  const tabsHint = createElement('div', 'pkc-shell-menu-hint');
+  tabsHint.textContent = 'ブラウザ風タブ(開いたエントリの一覧をセンター上部に表示。右クリックで一覧・復元)';
+  tabsSection.appendChild(tabsHint);
+  card.appendChild(tabsSection);
+
   // Accent color picker (FI-12 follow-up). A native <input type="color">
   // + a reset button. Runtime-only — persistence is deferred to the
   // hidden system settings entry design (see
@@ -2838,6 +2869,14 @@ function renderShortcutHelp(): HTMLElement {
     { key: 'Ctrl+? / ⌘+?', desc: 'Toggle this help' },
     { key: 'Ctrl+Click / ⌘+Click', desc: 'Toggle multi-select (sidebar)' },
     { key: 'Shift+Click', desc: 'Range select (sidebar)' },
+    // #938 R10: keymap registry(既定 ON)の view / tab / history chord を
+    // help に掲載(refinement-research §5「発見可能性」)。
+    { key: '', desc: '', group: 'Views & Tabs' },
+    { key: 'Alt+1 〜 Alt+6', desc: 'Switch view (Detail / Calendar / Kanban / Filer / Graph / Launcher)' },
+    { key: 'Alt+← / Alt+→', desc: 'History back / forward' },
+    { key: 'Ctrl+PageDown / PageUp', desc: 'Next / previous tab (Tabs ON 時)' },
+    { key: 'Alt+W', desc: 'Close active tab (Tabs ON 時)' },
+    { key: 'Ctrl+Shift+T', desc: 'Reopen last closed tab (Tabs ON 時)' },
     { key: '', desc: '', group: 'Navigation (sidebar / list)' },
     { key: 'Arrow Up / Down', desc: 'Move selection in sidebar tree' },
     { key: 'Arrow Left / Right', desc: 'Collapse / expand folder; jump to parent / first child' },

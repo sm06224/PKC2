@@ -13240,3 +13240,10 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
   border-color: #b91c1c;
   color: #fff;
 }
+
+/* ── #938 R10(2026-07-20 洗練化): shell menu 機能トグルの補足文 ── */
+.pkc-shell-menu-hint {
+  font-size: var(--fs-sm);
+  color: var(--c-muted);
+  margin-top: var(--space-1);
+}
