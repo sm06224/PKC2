@@ -790,6 +790,7 @@ export function createContainerStore(
     loadDefaultShallow,
     loadDefaultMetaShallow,
     loadBodies,
+    loadBodiesFor,
     delete: del,
     clearAll,
     listContainers,
