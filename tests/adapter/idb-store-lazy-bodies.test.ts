@@ -10,14 +10,15 @@ import { createContainerStore } from '@adapter/platform/idb-store';
 import { createMemoryAdapter } from '@adapter/platform/storage/memory-adapter';
 import type { StorageAdapter } from '@adapter/platform/storage/storage-adapter';
 import type { Container } from '@core/model/container';
+import type { Entry } from '@core/model/record';
 
 const T = '2026-07-20T00:00:00Z';
 
-function entry(lid: string, title: string, body: string) {
-  return { lid, title, body, archetype: 'text' as const, created_at: T, updated_at: T };
+function entry(lid: string, title: string, body: string): Entry {
+  return { lid, title, body, archetype: 'text', created_at: T, updated_at: T };
 }
 
-function makeContainer(entries: ReturnType<typeof entry>[]): Container {
+function makeContainer(entries: Entry[]): Container {
   return {
     meta: { container_id: 'cv2', title: 't', created_at: T, updated_at: T, schema_version: 1 },
     entries, relations: [], revisions: [], assets: {},
@@ -25,7 +26,7 @@ function makeContainer(entries: ReturnType<typeof entry>[]): Container {
 }
 
 /** containers bucket の生 key 一覧(prefix filter)。 */
-async function rawKeys(adapter: StorageAdapter, prefix: string): Promise<string[]> {
+async function rawKeys(adapter: StorageAdapter, prefix: string): Promise<readonly string[]> {
   return adapter.bucket('containers').getKeysByPrefix(prefix);
 }
 async function rawGet(adapter: StorageAdapter, key: string): Promise<unknown> {
