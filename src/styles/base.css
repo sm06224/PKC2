@@ -336,6 +336,20 @@ html, body {
  * The banner lives OUTSIDE the state-driven render cycle so it
  * never disappears on re-render.
  */
+/* #940: FSA 再接続バナー(pkc-idb-warning の見た目を継承しつつボタン付き) */
+.pkc-fsa-reconnect-btn {
+  margin-left: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  white-space: nowrap;
+}
+.pkc-fsa-reconnect-btn:hover { border-color: var(--c-accent); }
+.pkc-fsa-reconnect-btn:disabled { opacity: 0.6; cursor: default; }
 .pkc-idb-warning {
   position: fixed;
   top: 0;

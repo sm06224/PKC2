@@ -168,5 +168,23 @@ describe('createConfiguredStore', () => {
     }));
     expect(res.backend).toBe('idb');
     expect(res.store).toBe(idb);
+    // #940: silent fallback ではなく再接続用の handle を caller に返す
+    expect(res.fsaPending).toEqual({ name: 'folder', handle: { name: 'folder' } });
+  });
+
+  it("#940: 'fsa' + handle 無しなら fsaPending も無し(素の IDB boot)", async () => {
+    const res = await createConfiguredStore(fsaDeps({
+      loadFsaHandle: async () => null,
+    }));
+    expect(res.backend).toBe('idb');
+    expect(res.fsaPending).toBeUndefined();
+  });
+
+  it('#940: handle に name が無くても表示用 fallback 名で fsaPending を返す', async () => {
+    const res = await createConfiguredStore(fsaDeps({
+      loadFsaHandle: async () => ({}),
+      verifyFsaPermission: async () => false,
+    }));
+    expect(res.fsaPending?.name).toBe('(フォルダ)');
   });
 });

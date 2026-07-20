@@ -55,6 +55,8 @@ import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
 import { probeIDBAvailability } from './adapter/platform/idb-store';
 import { createConfiguredStoreFromEnv } from './adapter/platform/storage-backend';
+import { verifyFsaPermission } from './adapter/platform/storage/fsa-adapter';
+import { showFsaReconnectBanner } from './adapter/platform/fsa-reconnect-banner';
 import {
   ensureDefaultWorkspace,
   activeWorkspaceContainers,
@@ -625,7 +627,21 @@ async function boot(): Promise<void> {
   // set to 'opfs' and OPFS is usable (secure context — NOT file://), the
   // store is OPFS-backed, migrating the existing IDB default container
   // across once. Falls back to IDB safely otherwise.
-  const { store } = await createConfiguredStoreFromEnv();
+  const { store, fsaPending } = await createConfiguredStoreFromEnv();
+  // #940: FSA 選択中に permission が prompt に落ちて IDB へ fallback した
+  // boot では、silent に「新規コンテナ状態」で開いたように見せず、再接続
+  // バナーを常駐表示する。ボタン click = user gesture で requestPermission
+  // → granted なら reload して FSA から boot し直す。
+  if (fsaPending) {
+    showFsaReconnectBanner({
+      folderName: fsaPending.name,
+      onReconnect: async () => {
+        const ok = await verifyFsaPermission(fsaPending.handle, true);
+        if (ok) window.location.reload();
+        return ok;
+      },
+    });
+  }
   // 段階3 (#868) lazy asset loading. Boot loads the container shallow
   // (no asset bytes — see loadFromStore); the working-set manager keeps
   // `container.assets` populated with just what the visible view
