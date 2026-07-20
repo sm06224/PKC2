@@ -5,6 +5,26 @@ import { createIDBAdapter } from './storage/idb-adapter';
 import { createMemoryAdapter } from './storage/memory-adapter';
 import { collectReferencedAssetKeys } from '../../features/asset/asset-scan';
 import type { AssetMetaIndex } from '../../features/asset/asset-meta';
+import { defineFlag } from '../flags';
+
+/**
+ * #940 案 A 段階1(2026-07-20 user go「実装を続行しよう」): storage layout v2。
+ * ON にすると差分保存(saveDiff)が entry を meta(body 空)と本文
+ * (`__body__` record)に分離して書く。読み込みは段階1 では全 body を
+ * 復元する(挙動不変)── boot の meta-first 化は段階2、body working-set は
+ * 段階3。旧ビルド互換の注意は差分保存と同一(unaware ビルドで storage を
+ * 直接開くと本文が空に見える。OFF 保存で v1 へ書き戻る)。
+ */
+export const lazyEntryBodiesEnabled = defineFlag<boolean>(
+  'persistence.lazy_entry_bodies',
+  false,
+  {
+    category: 'perf',
+    description:
+      '案 A 段階1: entry 本文を別 record に分離する storage layout v2(差分保存 ON が前提)。留意: ON 保存した storage は旧ビルドから本文が見えない(OFF 保存で復帰)',
+    tier: 0,
+  },
+);
 
 /**
  * ContainerStore: high-level facade for Container persistence.
@@ -173,6 +193,8 @@ const ASSET_META_PREFIX = '__assetmeta__:';
 const SPLIT_ENTRY_PREFIX = '__entry__:';
 /** 差分保存(split 形式)の per-revision record key prefix。 */
 const SPLIT_REV_PREFIX = '__rev__:';
+/** #940 案 A 段階1(layout v2): per-entry body record の key prefix。 */
+const BODY_PREFIX = '__body__:';
 
 /**
  * split 形式の core record に付く marker。順序リストは
@@ -186,7 +208,16 @@ interface SplitMarker {
   entryOrder: string[];
   revOrder: string[];
 }
-type StoredContainerRecord = Container & { __pkc_split__?: SplitMarker };
+/**
+ * #940 案 A 段階1: layout marker。`2` = per-entry record が meta(body 空)
+ * になり、本文は `__body__:cid:lid` record に分離されている。旧ビルド互換の
+ * 注意は `__pkc_split__` と同一(unaware ビルドで開くと本文が空に見える)。
+ * flag OFF 保存で v1(split or inline)へ書き戻して収束する双方向設計。
+ */
+type StoredContainerRecord = Container & {
+  __pkc_split__?: SplitMarker;
+  __pkc_layout__?: number;
+};
 
 function assetFullKey(cid: string, assetKey: string): string {
   return `${cid}:${assetKey}`;
@@ -205,6 +236,12 @@ function splitEntryPrefix(cid: string): string {
 function splitRevKey(cid: string, revId: string): string {
   return `${SPLIT_REV_PREFIX}${cid}:${revId}`;
 }
+function bodyKey(cid: string, lid: string): string {
+  return `${BODY_PREFIX}${cid}:${lid}`;
+}
+function bodyPrefix(cid: string): string {
+  return `${BODY_PREFIX}${cid}:`;
+}
 function splitRevPrefix(cid: string): string {
   return `${SPLIT_REV_PREFIX}${cid}:`;
 }
@@ -216,7 +253,15 @@ function splitRevPrefix(cid: string): string {
  * place where Container-shape knowledge meets the kv primitive — keep
  * adapters dumb and the facade small.
  */
-export function createContainerStore(adapter: StorageAdapter): ContainerStore {
+export interface ContainerStoreOptions {
+  /** #940 案 A: 書込 layout の選択(true = v2 meta/body 分離)。既定 = flag。 */
+  lazyEntryBodies?: () => boolean;
+}
+
+export function createContainerStore(
+  adapter: StorageAdapter,
+  opts?: ContainerStoreOptions,
+): ContainerStore {
   const containers = adapter.bucket('containers');
   const assets = adapter.bucket('assets');
 
@@ -224,6 +269,10 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
   // セッション内 memo。undefined の cid は初回アクセス時に record の
   // marker を読んで判定する。save()/saveDiff() の成功時に更新。
   const splitState = new Map<string, boolean>();
+  // #940 案 A: cid → storage 上の layout(1 = 従来 / 2 = meta/body 分離)。
+  const layoutState = new Map<string, number>();
+  // 案 A 段階1 の書込 layout 選択(既定 = module flag。test は注入)。
+  const lazyBodies = opts?.lazyEntryBodies ?? ((): boolean => lazyEntryBodiesEnabled());
 
   // #938 R1(dirty-tracking): cid → 「store に persist 済みと確認できた
   // asset key」の session 内記録。asset は **key → bytes immutable**(内容が
@@ -288,11 +337,14 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       const stale = [
         ...(await containers.getKeysByPrefix(splitEntryPrefix(cid))),
         ...(await containers.getKeysByPrefix(splitRevPrefix(cid))),
+        // #940 案 A: layout v2 の body record も inline 復帰時に掃除。
+        ...(await containers.getKeysByPrefix(bodyPrefix(cid))),
       ];
       if (stale.length > 0) {
         await containers.applyBatch(stale.map((key) => ({ kind: 'delete' as const, key })));
       }
       splitState.set(cid, false);
+      layoutState.set(cid, 1);
     }
   }
 
@@ -304,14 +356,30 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     // (inline record しか無い = per-entry record が存在しない)ので
     // 全件書込みへフォールバック。判定はセッション初回のみ record を読む。
     let isSplit = splitState.get(cid);
-    if (isSplit === undefined) {
+    let layout = layoutState.get(cid);
+    if (isSplit === undefined || layout === undefined) {
       const rec = (await containers.get(cid)) as StoredContainerRecord | undefined;
       isSplit = rec?.__pkc_split__ !== undefined;
+      layout = rec?.__pkc_layout__ === 2 ? 2 : 1;
     }
-    const base = isSplit && previous && previous.meta.container_id === cid ? previous : null;
+    // #940 案 A 段階1: v2 = meta(body 空)+ __body__ record 分離。
+    // diff base は「storage の layout が目標 layout と一致」する時だけ有効
+    // ── layout をまたぐ差分は混在 state(body の無い meta が正に見える)
+    // を作るため、必ず全件書込みで切り替える。
+    const wantV2 = lazyBodies();
+    const targetLayout = wantV2 ? 2 : 1;
+    const base = isSplit && layout === targetLayout
+      && previous && previous.meta.container_id === cid ? previous : null;
 
     const ops: BatchOp[] = [];
     const deletes: BatchOp[] = [];
+    const entryPut = (e: Entry): void => {
+      if (wantV2) {
+        ops.push({ kind: 'put', key: splitEntryKey(cid, e.lid), value: { ...e, body: '' } });
+      } else {
+        ops.push({ kind: 'put', key: splitEntryKey(cid, e.lid), value: e });
+      }
+    };
     if (base) {
       // 参照比較の差分:reducer は immutable update(未変更 entry /
       // revision はオブジェクト参照を保つ)なので、参照が変わったものが
@@ -319,10 +387,21 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       // (正しさは変わらない)。
       const prevEntries = new Map(base.entries.map((e) => [e.lid, e]));
       for (const e of container.entries) {
-        if (prevEntries.get(e.lid) !== e) ops.push({ kind: 'put', key: splitEntryKey(cid, e.lid), value: e });
+        const prev = prevEntries.get(e.lid);
+        if (prev !== e) {
+          entryPut(e);
+          // v2: body は変わった時だけ書く(title 等 meta だけの変更で
+          // 本文を再書込しない)。新規 entry(prev 無し)は必ず書く。
+          if (wantV2 && (!prev || prev.body !== e.body)) {
+            ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
+          }
+        }
         prevEntries.delete(e.lid);
       }
-      for (const lid of prevEntries.keys()) deletes.push({ kind: 'delete', key: splitEntryKey(cid, lid) });
+      for (const lid of prevEntries.keys()) {
+        deletes.push({ kind: 'delete', key: splitEntryKey(cid, lid) });
+        if (wantV2) deletes.push({ kind: 'delete', key: bodyKey(cid, lid) });
+      }
       const prevRevs = new Map(base.revisions.map((r) => [r.id, r]));
       for (const r of container.revisions) {
         if (prevRevs.get(r.id) !== r) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
@@ -332,14 +411,21 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     } else {
       // 全件書込み + stale key 掃除。assets と違い entries / revisions は
       // メモリ上で常に完全な集合なので diff-delete は安全(段階2 の
-      // additive-only 制約は assets 固有)。
-      for (const e of container.entries) ops.push({ kind: 'put', key: splitEntryKey(cid, e.lid), value: e });
+      // additive-only 制約は assets 固有)。layout 切替(v1↔v2)も必ず
+      // この経路を通り、非対象 layout の残骸 key も併せて掃除される。
+      for (const e of container.entries) {
+        entryPut(e);
+        if (wantV2) ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
+      }
       for (const r of container.revisions) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
       const live = new Set(ops.map((o) => o.key));
       for (const k of await containers.getKeysByPrefix(splitEntryPrefix(cid))) {
         if (!live.has(k)) deletes.push({ kind: 'delete', key: k });
       }
       for (const k of await containers.getKeysByPrefix(splitRevPrefix(cid))) {
+        if (!live.has(k)) deletes.push({ kind: 'delete', key: k });
+      }
+      for (const k of await containers.getKeysByPrefix(bodyPrefix(cid))) {
         if (!live.has(k)) deletes.push({ kind: 'delete', key: k });
       }
     }
@@ -354,6 +440,7 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       revisions: [],
       assets: {},
       __pkc_split__: marker,
+      ...(wantV2 ? { __pkc_layout__: 2 } : {}),
     };
     // 1 バッチ(IDB では単一 tx = 原子的)。順序は puts → core → deletes:
     // FS 系 backend の逐次 best-effort でどこで中断しても、次回の保存
@@ -365,6 +452,7 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       ...deletes,
     ]);
     splitState.set(cid, true);
+    layoutState.set(cid, targetLayout);
   }
 
   /**
@@ -376,13 +464,24 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
   async function reassembleSplit(cid: string, record: StoredContainerRecord): Promise<Container> {
     const marker = record.__pkc_split__;
     if (!marker) return record;
-    const [entryPairs, revPairs] = await Promise.all([
+    const isV2 = record.__pkc_layout__ === 2;
+    layoutState.set(cid, isV2 ? 2 : 1);
+    const [entryPairs, revPairs, bodyPairs] = await Promise.all([
       containers.getAllByPrefix(splitEntryPrefix(cid)),
       containers.getAllByPrefix(splitRevPrefix(cid)),
+      // #940 案 A 段階1: layout v2 は本文が別 record。段階1 では全 body を
+      // 読む(挙動不変)── boot の meta-first 化は段階2。
+      isV2 ? containers.getAllByPrefix(bodyPrefix(cid)) : Promise.resolve([]),
     ]);
+    const bodyByLid = new Map<string, string>();
+    for (const { key, value } of bodyPairs) {
+      if (typeof value === 'string') bodyByLid.set(key.slice(bodyPrefix(cid).length), value);
+    }
     const entryByLid = new Map<string, Entry>();
     for (const { key, value } of entryPairs) {
-      entryByLid.set(key.slice(splitEntryPrefix(cid).length), value as Entry);
+      const lid = key.slice(splitEntryPrefix(cid).length);
+      const e = value as Entry;
+      entryByLid.set(lid, isV2 ? { ...e, body: bodyByLid.get(lid) ?? '' } : e);
     }
     const entries: Entry[] = [];
     for (const lid of marker.entryOrder) {
@@ -406,7 +505,7 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       }
     }
     for (const r of revById.values()) revisions.push(r);
-    const { __pkc_split__: _m, ...rest } = record;
+    const { __pkc_split__: _m, __pkc_layout__: _l, ...rest } = record;
     return { ...rest, entries, revisions, assets: {} };
   }
 
@@ -465,10 +564,11 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
     const prefix = assetPrefix(containerId);
     const assetKeys = await assets.getKeysByPrefix(prefix);
     const assetOps: BatchOp[] = assetKeys.map((key) => ({ kind: 'delete', key }));
-    // split 形式の per-entry / per-revision record も一緒に消す。
+    // split 形式の per-entry / per-revision / per-body record も一緒に消す。
     const splitKeys = [
       ...(await containers.getKeysByPrefix(splitEntryPrefix(containerId))),
       ...(await containers.getKeysByPrefix(splitRevPrefix(containerId))),
+      ...(await containers.getKeysByPrefix(bodyPrefix(containerId))),
     ];
     await Promise.all([
       containers.applyBatch([
@@ -478,6 +578,7 @@ export function createContainerStore(adapter: StorageAdapter): ContainerStore {
       assets.applyBatch(assetOps),
     ]);
     splitState.delete(containerId);
+    layoutState.delete(containerId); // #940 案 A
     persistedAssets.delete(containerId); // #938 R1
   }
 
