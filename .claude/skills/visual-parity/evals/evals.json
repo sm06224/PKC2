@@ -1,0 +1,20 @@
+{
+  "skill_name": "visual-parity",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "検索で見出しヒット行(sub-location)がサイドバーに出て、クリックすると該当エントリの見出し位置へ飛ぶ機能に visual parity smoke test がまだ無い。tests/smoke/ に parity spec を 1 本追加して、ローカルで green まで持っていって。",
+      "expected_output": "bootReady / elementFromPoint / 実マウス操作 / screenshot を備えた spec がローカル green",
+      "files": [],
+      "assertions": [
+        "spec_green_locally: playwright 実行が pass で終わっている(run-report に passed が記録されている)",
+        "uses_bootReady_helper: spec が ./_helpers/boot-ready の bootReady を import して boot 待ちに使っている(shell.waitFor 等の禁止パターンなし)",
+        "uses_elementFromPoint: 操作前に document.elementFromPoint で到達可能性を検証している",
+        "uses_real_input: page.mouse.click / page.keyboard など OS イベント経由の操作がある",
+        "saves_screenshot: page.screenshot で test-results/ に証拠を残している",
+        "data_pkc_selectors: 機能 selector が data-pkc-* 属性ベース(bare CSS class を機能 selector に使っていない)",
+        "typecheck_clean: npm run typecheck を実行して clean を確認している"
+      ]
+    }
+  ]
+}
