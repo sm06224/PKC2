@@ -99,6 +99,8 @@ export interface ContainerStore {
   loadDefaultMetaShallow(): Promise<{ container: Container | null; bodiesDeferred: boolean }>;
   /** #940 案 A 段階2: layout v2 の本文 record を一括で読む(lid → body)。 */
   loadBodies(containerId: string): Promise<Record<string, string>>;
+  /** #940 案 A 段階3: 指定 lid の本文だけ読む(部分 hydrate)。 */
+  loadBodiesFor(containerId: string, lids: readonly string[]): Promise<Record<string, string>>;
   load(containerId: string): Promise<Container | null>;
   loadDefault(): Promise<Container | null>;
   /**
@@ -266,6 +268,13 @@ function splitRevPrefix(cid: string): string {
 export interface ContainerStoreOptions {
   /** #940 案 A: 書込 layout の選択(true = v2 meta/body 分離)。既定 = flag。 */
   lazyEntryBodies?: () => boolean;
+  /**
+   * #940 案 A 段階3: 「この entry の本文は未 hydrate(container 上の '' は
+   * 実体ではない)」の判定。true の entry は v2 書込で body record を
+   * 書かず、既存 `__body__` record を掃除からも除外する ── 部分 hydrate
+   * 状態の full-write が本文を空で上書きする事故の構造的防止。
+   */
+  isBodyPending?: (cid: string, lid: string) => boolean;
 }
 
 export function createContainerStore(
@@ -402,7 +411,9 @@ export function createContainerStore(
           entryPut(e);
           // v2: body は変わった時だけ書く(title 等 meta だけの変更で
           // 本文を再書込しない)。新規 entry(prev 無し)は必ず書く。
-          if (wantV2 && (!prev || prev.body !== e.body)) {
+          // 段階3: 未 hydrate entry の '' を書かない(防御の二重化)。
+          if (wantV2 && (!prev || prev.body !== e.body)
+              && !opts?.isBodyPending?.(cid, e.lid)) {
             ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
           }
         }
@@ -425,10 +436,20 @@ export function createContainerStore(
       // この経路を通り、非対象 layout の残骸 key も併せて掃除される。
       for (const e of container.entries) {
         entryPut(e);
-        if (wantV2) ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
+        if (wantV2) {
+          // 段階3: 未 hydrate の entry は body を書かない(既存 record 温存)。
+          if (opts?.isBodyPending?.(cid, e.lid)) continue;
+          ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
+        }
       }
       for (const r of container.revisions) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
       const live = new Set(ops.map((o) => o.key));
+      // 段階3: pending entry の既存 body record は stale 扱いしない。
+      if (wantV2 && opts?.isBodyPending) {
+        for (const e of container.entries) {
+          if (opts.isBodyPending(cid, e.lid)) live.add(bodyKey(cid, e.lid));
+        }
+      }
       for (const k of await containers.getKeysByPrefix(splitEntryPrefix(cid))) {
         if (!live.has(k)) deletes.push({ kind: 'delete', key: k });
       }
@@ -586,6 +607,18 @@ export function createContainerStore(
     const isV2 = rec.__pkc_layout__ === 2;
     const assembled = await reassembleSplit(defaultId, rec, { skipBodies: true });
     return { container: { ...assembled, assets: {} }, bodiesDeferred: isV2 };
+  }
+
+  async function loadBodiesFor(
+    containerId: string,
+    lids: readonly string[],
+  ): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    await Promise.all(lids.map(async (lid) => {
+      const v = await containers.get(bodyKey(containerId, lid));
+      if (typeof v === 'string') out[lid] = v;
+    }));
+    return out;
   }
 
   async function loadBodies(containerId: string): Promise<Record<string, string>> {
