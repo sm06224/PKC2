@@ -761,8 +761,9 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
       return e;
     });
     const container = changed ? { ...state.container, entries } : state.container;
+    // #940 段階3: partial merge は bodiesPending を維持(全件で解除)。
     return {
-      state: { ...state, container, bodiesPending: false },
+      state: { ...state, container, bodiesPending: action.partial === true ? state.bodiesPending : false },
       events: [{ type: 'BODIES_HYDRATED' }],
     };
   }

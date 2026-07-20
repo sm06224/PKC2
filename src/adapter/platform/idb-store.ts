@@ -6,6 +6,7 @@ import { createMemoryAdapter } from './storage/memory-adapter';
 import { collectReferencedAssetKeys } from '../../features/asset/asset-scan';
 import type { AssetMetaIndex } from '../../features/asset/asset-meta';
 import { defineFlag } from '../flags';
+import { isBodyPendingGlobal } from './body-working-set';
 
 /**
  * #940 案 A 段階1(2026-07-20 user go「実装を続行しよう」): storage layout v2。
@@ -292,6 +293,8 @@ export function createContainerStore(
   const layoutState = new Map<string, number>();
   // 案 A 段階1 の書込 layout 選択(既定 = module flag。test は注入)。
   const lazyBodies = opts?.lazyEntryBodies ?? ((): boolean => lazyEntryBodiesEnabled());
+  // #940 段階3: pending 判定(既定 = body-working-set の global)。
+  const bodyPending = opts?.isBodyPending ?? isBodyPendingGlobal;
 
   // #938 R1(dirty-tracking): cid → 「store に persist 済みと確認できた
   // asset key」の session 内記録。asset は **key → bytes immutable**(内容が
@@ -413,7 +416,7 @@ export function createContainerStore(
           // 本文を再書込しない)。新規 entry(prev 無し)は必ず書く。
           // 段階3: 未 hydrate entry の '' を書かない(防御の二重化)。
           if (wantV2 && (!prev || prev.body !== e.body)
-              && !opts?.isBodyPending?.(cid, e.lid)) {
+              && !bodyPending(cid, e.lid)) {
             ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
           }
         }
@@ -438,16 +441,16 @@ export function createContainerStore(
         entryPut(e);
         if (wantV2) {
           // 段階3: 未 hydrate の entry は body を書かない(既存 record 温存)。
-          if (opts?.isBodyPending?.(cid, e.lid)) continue;
+          if (bodyPending(cid, e.lid)) continue;
           ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
         }
       }
       for (const r of container.revisions) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
       const live = new Set(ops.map((o) => o.key));
       // 段階3: pending entry の既存 body record は stale 扱いしない。
-      if (wantV2 && opts?.isBodyPending) {
+      if (wantV2) {
         for (const e of container.entries) {
-          if (opts.isBodyPending(cid, e.lid)) live.add(bodyKey(cid, e.lid));
+          if (bodyPending(cid, e.lid)) live.add(bodyKey(cid, e.lid));
         }
       }
       for (const k of await containers.getKeysByPrefix(splitEntryPrefix(cid))) {

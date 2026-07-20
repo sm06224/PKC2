@@ -102,3 +102,40 @@ describe('persistence の保存保留(#940 段階2)', () => {
     handle.dispose();
   });
 });
+
+// ── #940 段階3: body working-set(需要駆動 hydrate + pending 保護)──
+import { mountBodyWorkingSet } from '@adapter/platform/body-working-set';
+
+describe('body working-set(#940 段階3)', () => {
+  it('選択で需要 hydrate、idle backfill で全件収束、pending 中の full-write は本文を守る', async () => {
+    const adapter = createMemoryAdapter();
+    const bws: { handle?: ReturnType<typeof mountBodyWorkingSet> } = {};
+    const store = createContainerStore(adapter, {
+      lazyEntryBodies: () => true,
+      isBodyPending: (cid, lid) => bws.handle?.isPending(cid, lid) ?? false,
+    });
+    await store.saveDiff(makeContainer([entry('e1', 'One', 'BODY-1'), entry('e2', 'Two', 'BODY-2')]), null);
+
+    const { container } = await store.loadDefaultMetaShallow();
+    const d = createDispatcher();
+    bws.handle = mountBodyWorkingSet(d, { store });
+    d.dispatch({ type: 'SYS_INIT_COMPLETE', container: container!, bodiesDeferred: true });
+    expect(bws.handle.pendingCount()).toBe(2);
+
+    // pending 中の full-write(previous=null)でも本文 record は無傷
+    await store.saveDiff(d.getState().container!, null);
+    expect(await store.loadBodies('cv2')).toEqual({ e1: 'BODY-1', e2: 'BODY-2' });
+
+    // 選択 → 需要 hydrate
+    d.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
+    await bws.handle.ensure(['e1']);
+    expect(d.getState().container!.entries.find((e) => e.lid === 'e1')!.body).toBe('BODY-1');
+    expect(d.getState().bodiesPending).toBe(true); // まだ e2 が pending
+
+    // barrier で全件
+    await bws.handle.ensureAll();
+    expect(d.getState().bodiesPending).toBe(false);
+    expect(d.getState().container!.entries.find((e) => e.lid === 'e2')!.body).toBe('BODY-2');
+    bws.handle.dispose();
+  });
+});

@@ -73,6 +73,7 @@ import {
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import { mountBodyWorkingSet } from './adapter/platform/body-working-set';
 import { registerExportStore } from './adapter/platform/idb-store';
 import { mountWorkingSet } from './adapter/platform/asset-working-set';
 import { mountAssetMetaIndex } from './adapter/platform/asset-meta-index';
@@ -1110,16 +1111,11 @@ async function boot(): Promise<void> {
           embedded: embedCtx.embedded,
           bodiesDeferred,
         });
-        // #940 案 A 段階2: layout v2 の meta-first boot。本文を background で
-        // 復元して merge する(復元完了までは persistence が保存を保留し、
-        // merge は body='' の entry にだけ適用される ── 二重の安全)。
+        // #940 案 A 段階3: layout v2 の meta-first boot。本文は
+        // body-working-set が需要駆動 + idle backfill で hydrate する
+        // (選択/編集は即時、全文系は barrier、保存は復元完了まで保留)。
         if (bodiesDeferred) {
-          void store.loadBodies(container.meta.container_id).then((bodies) => {
-            dispatcher.dispatch({ type: 'SYS_BODIES_LOADED', bodies });
-          }).catch((err) => {
-            console.warn('[PKC2] body hydration failed:', err);
-            dispatcher.dispatch({ type: 'SYS_BODIES_LOADED', bodies: {} });
-          });
+          mountBodyWorkingSet(dispatcher, { store });
         }
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
