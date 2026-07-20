@@ -59,7 +59,7 @@ import { sortEntries } from '../../features/search/sort';
 import type { SortKey, SortDirection } from '../../features/search/sort';
 import { applyManualOrder } from '../../features/entry-order/entry-order';
 import { selectRecentEntries } from '../../features/entry-order/recent-entries';
-import { findSubLocationHits } from '../../features/search/sub-location-search';
+import { findSubLocationHits, searchSublocScanMaxRows } from '../../features/search/sub-location-search';
 import type { SubLocationHit } from '../../features/search/sub-location-search';
 import { buildConnectedLidSet, buildInboundCountMap, getRelationsForEntry, resolveRelations } from '../../features/relation/selector';
 import { buildConnectednessSets, type ConnectednessSets } from '../../features/connectedness';
@@ -3955,13 +3955,23 @@ function markChildWindowItems(
   sidebar: HTMLElement,
   lids: readonly string[] | undefined,
 ): void {
-  if (!lids || lids.length === 0) return;
-  const inWindow = new Set(lids);
+  // #938 R9: 付与だけでなく除去も行う reconcile pass に変更。従来は
+  // 「window close → full render で行が rebuild される」ことに依存して
+  // marker が消えていたが、行 memo(flat PR #179 / tree R9)は node を
+  // 温存するため、明示的に剥がさないと stale marker が残る。title は
+  // この pass が設定した文言のときだけ除去する(他要素の title を
+  // 巻き込まない)。
+  const inWindow = new Set(lids ?? []);
   sidebar.querySelectorAll<HTMLElement>('[data-pkc-lid]').forEach((el) => {
     const lid = el.getAttribute('data-pkc-lid');
     if (lid && inWindow.has(lid)) {
       el.setAttribute('data-pkc-in-window', 'true');
       el.setAttribute('title', '別ウィンドウで編集中');
+    } else if (el.hasAttribute('data-pkc-in-window')) {
+      el.removeAttribute('data-pkc-in-window');
+      if (el.getAttribute('title') === '別ウィンドウで編集中') {
+        el.removeAttribute('title');
+      }
     }
   });
 }
@@ -4868,6 +4878,13 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     // suspect in PR #179's residual cost.
     const endFlatLoop = profileStart('render:sidebar:flat-loop');
     let endSubLocation: (() => void) | null = null;
+    // #938 R9: sub-location 展開は先頭 N 行に限定(可視件数限定)。
+    // flat list は仮想化されていないため、hit を持つ entry が多い
+    // container では走査 + hit 行構築がキーストロークごとに件数比例で
+    // 積み上がる。ユーザーが目視するのはリスト先頭のみ — 上限以降の
+    // entry は行自体は従来どおり表示し、sub-location 展開だけ省略。
+    const sublocRowCap = searchSublocScanMaxRows();
+    let sublocRowsScanned = 0;
     for (const entry of entries) {
       list.appendChild(
         getOrCreateMemoizedEntryItem(
@@ -4885,7 +4902,8 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
       // [] for other archetypes). Limited to the top 5 matches per
       // entry by the indexer's maxPerEntry default — keeps the list
       // scannable on frequent terms.
-      if (query !== '') {
+      if (query !== '' && sublocRowsScanned < sublocRowCap) {
+        sublocRowsScanned++;
         if (!endSubLocation) endSubLocation = profileStart('render:sidebar:sublocation-scan');
         const hits = findSubLocationHits(entry, query);
         for (const hit of hits) {
@@ -4897,6 +4915,8 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     endFlatLoop();
   } else {
     // Tree mode: build from structural relations
+    // #938 R9: tree 行 memo(flat 行の PR #179 memo と同 doctrine)。
+    clearTreeRowMemoIfStale(state.container);
     const endBuildTree = profileStart('tree:buildTree');
     const tree = buildTree(entries, state.container.relations);
     endBuildTree();
@@ -5263,6 +5283,60 @@ function reorderTreeByEntries(tree: TreeNode[], entries: readonly Entry[]): Tree
   return walk(tree);
 }
 
+// ── #938 R9: tree-row memoization ────────────────────────────────
+//
+// flat 行は PR #179 で memo 済だったが、tree 行(renderTreeNode)は
+// 「装飾の invalidation matrix が複雑」として対象外のまま残り、filter
+// 無しの full render(c-5000 で 60-67ms)の主コストだった。装飾が依存
+// する軸は実際には有限で、すべて安価に比較できる:
+//
+//   - depth(padding)                → tree 形状 = relations = container ref
+//     で不変だが、保守的に param 比較にも含める
+//   - collapsed(chevron / attr)     → state.collapsedFolders
+//   - childCount(folder count 表示) → tree 形状
+//   - hasMoveButtons(manual mode の ↑↓ は選択行のみ)→ selectedLid ほか
+//
+// これらを memo entry に記録し、1 つでも違えばその行だけ rebuild する。
+// container ref 変化は flat memo と同じく全 invalidate。選択 highlight
+// は flat と同じ post-pass(`applyEntryRowSelectionAttrs`)。
+interface TreeRowMemoEntry {
+  li: HTMLElement;
+  depth: number;
+  collapsed: boolean;
+  childCount: number;
+  hasMoveButtons: boolean;
+  /**
+   * γ-A3 の「別ウィンドウで編集中」marker(markChildWindowItems)は行
+   * subtree の title を上書きする。in-window ⇄ 通常の遷移で行を rebuild
+   * し、folder toggle 等の元 title を確実に復元するため param に含める。
+   */
+  inWindow: boolean;
+}
+
+let cachedContainerForTreeRowMemo: import('@core/model/container').Container | null = null;
+let treeRowMemo = new WeakMap<Entry, TreeRowMemoEntry>();
+
+function clearTreeRowMemoIfStale(
+  container: import('@core/model/container').Container | null,
+): void {
+  if (container !== cachedContainerForTreeRowMemo) {
+    cachedContainerForTreeRowMemo = container;
+    treeRowMemo = new WeakMap();
+  }
+}
+
+/** manual mode の ↑↓ button gate(renderEntryItem 内の条件の mirror)。 */
+function treeRowHasMoveButtons(entry: Entry, state: AppState): boolean {
+  return (
+    entry.lid === state.selectedLid
+    && state.sortKey === 'manual'
+    && state.viewMode === 'detail'
+    && !state.readonly
+    && state.importPreview === null
+    && state.batchImportPreview === null
+  );
+}
+
 function renderTreeNode(
   node: TreeNode,
   parent: HTMLElement,
@@ -5271,6 +5345,52 @@ function renderTreeNode(
   connectedLids?: ReadonlySet<string>,
   connectednessSets?: ConnectednessSets | null,
 ): void {
+  const isCollapsed =
+    node.entry.archetype === 'folder' && state.collapsedFolders.includes(node.entry.lid);
+  const hasMoveButtons = treeRowHasMoveButtons(node.entry, state);
+  const inWindow = (state.childWindowLids ?? []).includes(node.entry.lid);
+
+  const memo = treeRowMemo.get(node.entry);
+  let li: HTMLElement;
+  if (
+    memo
+    && memo.depth === node.depth
+    && memo.collapsed === isCollapsed
+    && memo.childCount === node.children.length
+    && memo.hasMoveButtons === hasMoveButtons
+    && memo.inWindow === inWindow
+  ) {
+    li = memo.li;
+  } else {
+    li = buildTreeRow(node, state, isCollapsed, backlinkCounts, connectedLids, connectednessSets);
+    treeRowMemo.set(node.entry, {
+      li,
+      depth: node.depth,
+      collapsed: isCollapsed,
+      childCount: node.children.length,
+      hasMoveButtons,
+      inWindow,
+    });
+  }
+  // 選択 highlight は flat memo と同じ post-pass(cache hit でも最新化)。
+  applyEntryRowSelectionAttrs(li, node.entry, state);
+  parent.appendChild(li);
+  // Skip rendering children when the folder is collapsed.
+  if (isCollapsed) return;
+  for (const child of node.children) {
+    renderTreeNode(child, parent, state, backlinkCounts, connectedLids, connectednessSets);
+  }
+}
+
+/** tree 行の実構築(memo miss 時のみ)。従来の renderTreeNode の装飾部。 */
+function buildTreeRow(
+  node: TreeNode,
+  state: AppState,
+  isCollapsed: boolean,
+  backlinkCounts?: ReadonlyMap<string, number>,
+  connectedLids?: ReadonlySet<string>,
+  connectednessSets?: ConnectednessSets | null,
+): HTMLElement {
   const li = renderEntryItem(node.entry, state, backlinkCounts, connectedLids, connectednessSets);
   if (node.depth > 0) {
     li.style.paddingLeft = `${0.6 + node.depth * 1.2}rem`;
@@ -5278,13 +5398,11 @@ function renderTreeNode(
   // All tree items are draggable
   li.setAttribute('draggable', 'true');
   li.setAttribute('data-pkc-draggable', 'true');
-  let isCollapsed = false;
   if (node.entry.archetype === 'folder') {
     li.setAttribute('data-pkc-folder', 'true');
     li.setAttribute('data-pkc-drop-target', 'true');
 
     // Expand/collapse toggle — shown only when folder has children.
-    isCollapsed = state.collapsedFolders.includes(node.entry.lid);
     if (node.children.length > 0) {
       const toggle = createElement('button', 'pkc-folder-toggle');
       toggle.setAttribute('data-pkc-action', 'toggle-folder-collapse');
@@ -5308,12 +5426,7 @@ function renderTreeNode(
     childCount.textContent = `(${node.children.length})`;
     li.appendChild(childCount);
   }
-  parent.appendChild(li);
-  // Skip rendering children when the folder is collapsed.
-  if (isCollapsed) return;
-  for (const child of node.children) {
-    renderTreeNode(child, parent, state, backlinkCounts, connectedLids, connectednessSets);
-  }
+  return li;
 }
 
 // ── PR #179: container-derived index memoization ────────────────
@@ -5388,13 +5501,8 @@ export function __resetIndexMemoForTest(): void {
 // so cached rows always reflect the current selectedLid /
 // multiSelectedLids without needing a cache-key dimension.
 //
-// Tree mode (renderTreeNode) is intentionally NOT memoized: each
-// row is decorated with depth-padding + drag handle + folder-toggle
-// + child-count, and folder rows additionally depend on tree-shape
-// state (collapsed children); the cache invalidation matrix would
-// outweigh the win. Search keystroke / filter toggle scenarios
-// always run in flat mode (`hasActiveFilter`), which is exactly
-// where the cache pays off.
+// Tree mode は長らく対象外だったが、#938 R9 で専用 memo(treeRowMemo、
+// 装飾パラメータ比較つき)が付いた — renderTreeNode 直上の doc 参照。
 let cachedContainerForRowMemo: import('@core/model/container').Container | null = null;
 let entryRowMemo = new WeakMap<Entry, HTMLElement>();
 
@@ -5446,6 +5554,10 @@ function getOrCreateMemoizedEntryItem(
 export function __resetEntryRowMemoForTest(): void {
   cachedContainerForRowMemo = null;
   entryRowMemo = new WeakMap();
+  // #938 R9: tree 行 memo も同じ test hook で reset する(既存テストは
+  // この 1 本で「行 memo なしのクリーンな状態」を期待している)。
+  cachedContainerForTreeRowMemo = null;
+  treeRowMemo = new WeakMap();
 }
 
 function renderEntryItem(

@@ -164,18 +164,21 @@ describe('PR #179 — flat-mode entry-row memoization', () => {
     expect(entryRowFor('a3')?.getAttribute('data-pkc-multi-selected')).toBeNull();
   });
 
-  it('tree mode does NOT use the flat-mode cache (rows are rebuilt fresh)', () => {
+  it('tree mode は専用 memo で行を reuse する(#938 R9 で仕様変更)', () => {
     // Tree mode = no active filter (default for a freshly-loaded container).
+    // PR #179 時点では「tree は memo しない」が pinned 仕様だったが、
+    // #938 R9 で装飾パラメータ比較つきの tree 専用 memo が入り、同一
+    // container の再 render は行 node の identity を維持するようになった。
+    // 詳細な tree memo の挙動(invalidate / collapse / marker)は
+    // tree-row-memo-and-subloc-cap.test.ts が担保する。
     const container = fixture();
     const prev = readyState(container);
     render(prev, root);
     const liBefore = entryRowFor('a1');
     expect(liBefore).not.toBeNull();
 
-    // Same state, second render — tree mode does not consult the
-    // cache, so we expect the row to be rebuilt fresh.
     render(prev, root, null);
     const liAfter = entryRowFor('a1');
-    expect(liAfter).not.toBe(liBefore);
+    expect(liAfter).toBe(liBefore);
   });
 });

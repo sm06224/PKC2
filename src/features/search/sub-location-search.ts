@@ -72,6 +72,25 @@ const searchMaxResultsPerEntry = defineFlag<number>(
   },
 );
 
+/**
+ * Live getter — sub-location 展開を sidebar の先頭何行まで行うか
+ * (#938 R9「可視件数限定」)。flat list は仮想化されていないため、
+ * hit を持つ entry が多い container では body 走査 + hit 行 DOM 構築が
+ * キーストロークごとに件数比例で積み上がっていた。ユーザーが実際に
+ * 目視するのはリスト先頭のみ — それ以降の entry は行自体は表示しつつ
+ * sub-location 展開だけを省略する。
+ */
+export const searchSublocScanMaxRows = defineFlag<number>(
+  'search.subloc_scan_max_rows',
+  60,
+  {
+    range: [1, 5000],
+    category: 'ui',
+    description: '検索 sub-location 展開を sidebar の先頭何行まで行うか(それ以降は entry 行のみ)',
+    tier: 0,
+  },
+);
+
 const SNIPPET_WIDTH = 80;
 const LABEL_WIDTH = 40;
 
