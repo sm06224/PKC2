@@ -7676,6 +7676,46 @@ export function bindActions(
       return;
     }
 
+    // Case 0b — #938 R4: launcher タイルの右クリック menu。hover-only の
+    // ⓘ/🏷/📌 と DnD 並び替えの代替導線(touch でも到達可能にする)。
+    // tile wrap は launcher 描画時のみ DOM に存在するため flag gate 不要。
+    {
+      const tileWrap = rawTarget.closest<HTMLElement>('[data-pkc-region="launcher-tile-wrap"]');
+      const tileBtn = tileWrap?.querySelector<HTMLElement>('.pkc-launcher-tile[data-pkc-lid]');
+      if (tileWrap && tileBtn) {
+        e.preventDefault();
+        dismissContextMenu();
+        const tileLid = tileBtn.getAttribute('data-pkc-lid')!;
+        const kind = tileBtn.getAttribute('data-pkc-launcher-kind') ?? 'app';
+        const menu = document.createElement('div');
+        menu.className = 'pkc-context-menu pkc-launcher-tile-menu';
+        menu.setAttribute('data-pkc-region', 'context-menu');
+        menu.style.position = 'absolute';
+        menu.style.left = `${e.clientX}px`;
+        menu.style.top = `${e.clientY}px`;
+        menu.style.zIndex = '999';
+        const item = (label: string, act: string): void => {
+          const b = document.createElement('button');
+          b.className = 'pkc-context-menu-item';
+          b.setAttribute('type', 'button');
+          b.setAttribute('data-pkc-action', act);
+          b.setAttribute('data-pkc-lid', tileLid);
+          b.textContent = label;
+          menu.appendChild(b);
+        };
+        item('▶ 起動', 'open-html-attachment');
+        item('ⓘ 詳細を開く(アイコン・登録・削除)', 'launcher-open-detail');
+        if (kind === 'unregistered') {
+          item('📌 アプリランチャーに登録', 'launcher-register-tile');
+        } else {
+          item('🏷 グループを設定…', 'launcher-set-group');
+        }
+        root.appendChild(menu);
+        clampMenuToViewport(menu);
+        return;
+      }
+    }
+
     // Case 0 — pgc-84(MASTER.md §4.7): Object-aware context menu。
     // 右クリック対象が link / image / heading / selected text のいずれか
     // なら、object 専用の小さな menu を出す。flag OFF なら下流の case に
