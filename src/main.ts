@@ -298,6 +298,18 @@ async function boot(): Promise<void> {
       prevRenderState = state;
       return;
     }
+    if (renderScope === 'calendar-only') {
+      // #938 R8: 月送り(SET_CALENDAR_MONTH)。calendar grid を含む center
+      // pane だけが差し替わる(sidebar / header / meta は月に依存しない)。
+      // calendar cell は asset preview / blob URL を持たないので preview
+      // hydration 系 hook は不要。continuity は center scroll / focus 維持用。
+      const continuity = captureRenderContinuity(root);
+      render(state, root, prevRenderState);
+      restoreRenderContinuity(root, continuity);
+      locationNavTracker.consume(root, state.pendingNav ?? null);
+      prevRenderState = state;
+      return;
+    }
     if (renderScope === 'assets-only') {
       // #868 段階3: the working-set republished resident asset bytes
       // (SET_WORKING_SET_ASSETS). The renderer swaps only the center +

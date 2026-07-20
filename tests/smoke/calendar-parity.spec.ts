@@ -100,3 +100,47 @@ test('calendar: today cell carries today marker AND paints at visible coords', a
   expect(hit.date).toBe(key);
   expect(hit.today).toBe('true');
 });
+
+test('calendar 月送り(#938 R8 calendar-only scope): 実クリックで grid が新しい月に描画される', async ({
+  page,
+}) => {
+  await bootAndSeedOneTodo(page);
+
+  await page
+    .locator('[data-pkc-action="set-view-mode"][data-pkc-view-mode="calendar"]')
+    .click();
+  await expect(page.locator('[data-pkc-region="calendar-view"]')).toBeVisible();
+
+  const titleBefore = await page.locator('.pkc-calendar-title').textContent();
+
+  // ▶ を実マウスでクリック → タイトルが変わり、grid が新しい月の cell を
+  // 視認可能座標に描画する(R8 で month 送りは center-only 差し替えに
+  // なったため、部分 render 経路が実ブラウザで正しく塗ることを確認)。
+  await page.locator('[data-pkc-action="calendar-next"]').click();
+  const titleAfter = await page.locator('.pkc-calendar-title').textContent();
+  expect(titleAfter).not.toBe(titleBefore);
+
+  // 新しい月の 15 日 cell が elementFromPoint で到達可能(占有されていない)
+  const cell15 = page.locator('.pkc-calendar-cell[data-pkc-date$="-15"]');
+  await expect(cell15).toBeVisible();
+  const box = await cell15.boundingBox();
+  if (!box) throw new Error('day-15 cell has no bounding box');
+  const hit = await page.evaluate(
+    ({ x, y }: { x: number; y: number }) =>
+      document
+        .elementFromPoint(x, y)
+        ?.closest<HTMLElement>('.pkc-calendar-cell[data-pkc-date]')
+        ?.getAttribute('data-pkc-date') ?? null,
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+  );
+  expect(hit).toMatch(/-15$/);
+
+  // sidebar は部分 render 後も表示されたまま(wipe されていない)。
+  // 「full render と DOM 等価」の厳密検証は unit 側
+  // (render-scope-calendar-only.test.ts)が担保する。
+  await expect(page.locator('[data-pkc-region="sidebar"]')).toBeVisible();
+
+  // ◀ で元の月に戻れる(往復)
+  await page.locator('[data-pkc-action="calendar-prev"]').click();
+  await expect(page.locator('.pkc-calendar-title')).toHaveText(titleBefore ?? '');
+});
