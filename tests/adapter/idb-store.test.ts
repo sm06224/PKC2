@@ -189,9 +189,14 @@ describe('MemoryStore: assets separation (Phase 1)', () => {
     expect(loaded!.assets['ast-b']).toBe('B');
   });
 
-  it('save updates the bytes of an existing key (idempotent overwrite)', async () => {
+  it('同一 key の byte 差し替えは invalidatePersistedAssets 経由(#938 R1 契約)', async () => {
     const store = createMemoryStore();
     await store.save(mockContainer('c1', { 'ast-1': 'old' }));
+    // dirty-tracking により persist 済み key の再 put は skip される
+    await store.save(mockContainer('c1', { 'ast-1': 'new' }));
+    expect(await store.loadAsset('c1', 'ast-1')).toBe('old');
+    // import 等の byte 差し替え経路は invalidate してから保存する
+    store.invalidatePersistedAssets('c1');
     await store.save(mockContainer('c1', { 'ast-1': 'new' }));
     expect(await store.loadAsset('c1', 'ast-1')).toBe('new');
   });
@@ -202,6 +207,8 @@ describe('MemoryStore: assets separation (Phase 1)', () => {
     await store.save(mockContainer('c2', { 'ast-1': 'from-c2', 'ast-only-c2': 'only-c2' }));
 
     // Re-saving c1 with a different/partial asset set never disturbs c2.
+    // (#938 R1: byte 差し替えを伴うため invalidate してから保存)
+    store.invalidatePersistedAssets('c1');
     await store.save(mockContainer('c1', { 'ast-1': 'from-c1-new' }));
 
     const c1 = await store.load('c1');

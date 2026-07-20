@@ -198,7 +198,9 @@ describe('ContainerStore.saveDiff(差分保存)', () => {
     const store = createContainerStore(createMemoryAdapter());
     const c1: Container = { ...makeContainer(), assets: { 'a.png': 'AAA', 'b.png': 'BBB' } };
     await store.saveDiff(c1, null);
-    // 部分 working-set(b.png 非常駐)で再保存しても b.png は残る
+    // 部分 working-set(b.png 非常駐)で再保存しても b.png は残る。
+    // #938 R1: byte 差し替え(AAA→AAA2)は invalidate 経由の契約。
+    store.invalidatePersistedAssets('c-diff');
     const c2: Container = { ...c1, assets: { 'a.png': 'AAA2' } };
     await store.saveDiff(c2, c1);
     expect(await store.loadAsset('c-diff', 'a.png')).toBe('AAA2');

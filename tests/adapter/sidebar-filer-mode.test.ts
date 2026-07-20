@@ -157,9 +157,7 @@ describe('filer モード sidebar (Phase γ-A1)', () => {
     const d = boot();
     // root scope:folder f1 を click
     root.querySelector<HTMLElement>('.pkc-sidebar-filer-item[data-pkc-lid="f1"]')!.click();
-    // sidebar click は dblclick window(250ms)分 debounce される(PR-MMM)
-    expect(d.getState().selectedLid).toBeNull();
-    await new Promise((r) => setTimeout(r, 300));
+    // #938 R2: sidebar click は即時 SELECT_ENTRY(旧 250ms 遅延は撤去)
     expect(d.getState().selectedLid).toBe('f1');
     // consumer:sidebar が f1 scope に入り子エントリ e1 を表示
     const lids = filerItems().map((li) => li.getAttribute('data-pkc-lid'));
