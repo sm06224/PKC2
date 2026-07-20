@@ -11,6 +11,7 @@ import { formPresenter } from '@adapter/ui/form-presenter';
 import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import type { Container } from '@core/model/container';
 import type { DomainEvent } from '@core/action/domain-event';
+import { submitInlineDialog, cancelInlineDialog } from './helpers/inline-dialog-helper';
 import { setContainerFlagSource } from '@adapter/flags';
 
 // pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
@@ -288,26 +289,21 @@ describe('Mutation → Shell integration', () => {
   // v1 relation delete UI: clicking `×` in a Relations / Backlinks row
   // confirms then dispatches DELETE_RELATION. See
   // docs/development/relation-delete-ui-v1.md.
-  it('delete-relation click with confirm removes the relation from container', () => {
+  // R7(#938): native confirm → inline dialog。
+  it('delete-relation click with confirm removes the relation from container', async () => {
     const { dispatcher } = setup();
 
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
     dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
     expect(dispatcher.getState().container!.relations).toHaveLength(1);
 
-    // Mock the native confirm to auto-accept.
-    const originalConfirm = window.confirm;
-    window.confirm = () => true;
-    try {
-      const deleteBtn = root.querySelector<HTMLElement>(
-        '[data-pkc-region="relations"] [data-pkc-action="delete-relation"]',
-      );
-      expect(deleteBtn).not.toBeNull();
-      expect(deleteBtn!.getAttribute('data-pkc-relation-id')).toBeTruthy();
-      deleteBtn!.click();
-    } finally {
-      window.confirm = originalConfirm;
-    }
+    const deleteBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="relations"] [data-pkc-action="delete-relation"]',
+    );
+    expect(deleteBtn).not.toBeNull();
+    expect(deleteBtn!.getAttribute('data-pkc-relation-id')).toBeTruthy();
+    deleteBtn!.click();
+    await submitInlineDialog();
 
     expect(dispatcher.getState().container!.relations).toHaveLength(0);
     // Row gone from the Outgoing relations group after re-render
@@ -315,23 +311,18 @@ describe('Mutation → Shell integration', () => {
     expect(outgoing!.querySelector('.pkc-relation-item')).toBeNull();
   });
 
-  it('delete-relation click is a no-op when confirm is cancelled', () => {
+  it('delete-relation click is a no-op when confirm is cancelled', async () => {
     const { dispatcher } = setup();
 
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 'e1' });
     dispatcher.dispatch({ type: 'CREATE_RELATION', from: 'e1', to: 'e2', kind: 'semantic' });
     expect(dispatcher.getState().container!.relations).toHaveLength(1);
 
-    const originalConfirm = window.confirm;
-    window.confirm = () => false;
-    try {
-      const deleteBtn = root.querySelector<HTMLElement>(
-        '[data-pkc-region="relations"] [data-pkc-action="delete-relation"]',
-      );
-      deleteBtn!.click();
-    } finally {
-      window.confirm = originalConfirm;
-    }
+    const deleteBtn = root.querySelector<HTMLElement>(
+      '[data-pkc-region="relations"] [data-pkc-action="delete-relation"]',
+    );
+    deleteBtn!.click();
+    await cancelInlineDialog();
 
     // Relation survived the cancel.
     expect(dispatcher.getState().container!.relations).toHaveLength(1);

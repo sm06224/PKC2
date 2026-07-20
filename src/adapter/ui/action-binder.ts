@@ -54,6 +54,7 @@ import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
+import { showInlinePrompt, showInlineConfirm, showInlineForm } from './inline-dialog';
 import {
   prepareOptimizedIntake,
   deriveDisplayFilename,
@@ -2130,8 +2131,19 @@ export function bindActions(
         break;
       }
       case 'delete-entry':
-        if (lid && confirm('Delete this entry? This cannot be undone.')) {
-          dispatcher.dispatch({ type: 'DELETE_ENTRY', lid });
+        // R7(#938): native confirm → inline dialog。削除後はゴミ箱
+        // (削除済み revision)から復元可能なので文言もそれに合わせる。
+        if (lid) {
+          const delLid = lid;
+          void showInlineConfirm({
+            title: 'このエントリを削除しますか？',
+            detail: 'ゴミ箱から復元できます。',
+            okLabel: '削除',
+            danger: true,
+            anchor: target,
+          }).then((ok) => {
+            if (ok) dispatcher.dispatch({ type: 'DELETE_ENTRY', lid: delLid });
+          });
         }
         break;
       case 'begin-export': {
@@ -2280,28 +2292,49 @@ export function bindActions(
         if (!st.container) break;
         const revs = getRevisionsByBulkId(st.container, bulkId);
         if (revs.length === 0) break;
-        const msg = `このバルク操作の ${revs.length} 件をまとめて元に戻しますか？`;
-        if (!confirm(msg)) break;
-        for (const rev of revs) {
-          dispatcher.dispatch({
-            type: 'RESTORE_ENTRY',
-            lid: rev.entry_lid,
-            revision_id: rev.id,
-          });
-        }
+        // R7(#938): native confirm → inline dialog。
+        void showInlineConfirm({
+          title: `このバルク操作の ${revs.length} 件をまとめて元に戻しますか？`,
+          okLabel: '元に戻す',
+          anchor: target,
+        }).then((ok) => {
+          if (!ok) return;
+          for (const rev of revs) {
+            dispatcher.dispatch({
+              type: 'RESTORE_ENTRY',
+              lid: rev.entry_lid,
+              revision_id: rev.id,
+            });
+          }
+        });
         break;
       }
       case 'purge-trash': {
-        if (!confirm('ゴミ箱を空にしますか？\n削除済みエントリの全履歴が完全に削除され、復元できなくなります。')) break;
-        dispatcher.dispatch({ type: 'PURGE_TRASH' });
+        // R7(#938): native confirm → inline dialog(破壊的 = danger)。
+        void showInlineConfirm({
+          title: 'ゴミ箱を空にしますか？',
+          detail: '削除済みエントリの全履歴が完全に削除され、復元できなくなります。',
+          okLabel: '完全に削除',
+          danger: true,
+          anchor: target,
+        }).then((ok) => {
+          if (ok) dispatcher.dispatch({ type: 'PURGE_TRASH' });
+        });
         break;
       }
       case 'bulk-delete': {
         const st = dispatcher.getState();
         const count = st.multiSelectedLids.length;
         if (count === 0) break;
-        if (!confirm(`${count}件のエントリを削除しますか？`)) break;
-        dispatcher.dispatch({ type: 'BULK_DELETE' });
+        void showInlineConfirm({
+          title: `${count}件のエントリを削除しますか？`,
+          detail: 'ゴミ箱から復元できます。',
+          okLabel: '削除',
+          danger: true,
+          anchor: target,
+        }).then((ok) => {
+          if (ok) dispatcher.dispatch({ type: 'BULK_DELETE' });
+        });
         break;
       }
       case 'clear-multi-select':
@@ -2420,13 +2453,19 @@ export function bindActions(
         break;
       case 'save-search': {
         // Saved Searches v1 — spec: docs/development/saved-searches-v1.md §5.1.
-        // window.prompt is a minimal v1 label-entry UX; empty / cancel
-        // are silent no-ops (reducer also short-circuits on empty).
-        const raw = window.prompt('Save current search as:');
-        if (raw === null) break;
-        const name = raw.trim();
-        if (name === '') break;
-        dispatcher.dispatch({ type: 'SAVE_SEARCH', name });
+        // R7(#938): window.prompt → inline dialog(文言も日本語へ統一)。
+        // empty / cancel は従来どおり silent no-op(reducer も空を弾く)。
+        void showInlinePrompt({
+          title: '現在の検索を保存',
+          placeholder: '保存名',
+          okLabel: '保存',
+          anchor: target,
+        }).then((raw) => {
+          if (raw === null) return;
+          const name = raw.trim();
+          if (name === '') return;
+          dispatcher.dispatch({ type: 'SAVE_SEARCH', name });
+        });
         break;
       }
       case 'quick-save-search': {
@@ -2493,12 +2532,18 @@ export function bindActions(
           dispatcher
             .getState()
             .container?.meta.saved_searches?.find((s) => s.id === id)?.name ?? '';
-        const raw = window.prompt('保存検索の新しい名前:', current);
-        if (raw === null) break;
-        const name = raw.trim();
-        if (name === '') break;
-        if (name === current) break;
-        dispatcher.dispatch({ type: 'RENAME_SAVED_SEARCH', id, name });
+        // R7(#938): window.prompt → inline dialog。
+        void showInlinePrompt({
+          title: '保存検索の名前を変更',
+          initial: current,
+          okLabel: '変更',
+          anchor: target,
+        }).then((raw) => {
+          if (raw === null) return;
+          const name = raw.trim();
+          if (name === '' || name === current) return;
+          dispatcher.dispatch({ type: 'RENAME_SAVED_SEARCH', id, name });
+        });
         break;
       }
       case 'create-relation': {
@@ -2605,8 +2650,15 @@ export function bindActions(
         // docs/development/relation-delete-ui-v1.md.
         const relId = target.getAttribute('data-pkc-relation-id');
         if (!relId) break;
-        if (!confirm('Delete this relation?')) break;
-        dispatcher.dispatch({ type: 'DELETE_RELATION', id: relId });
+        // R7(#938): native confirm → inline dialog(日本語統一)。
+        void showInlineConfirm({
+          title: 'このリレーションを削除しますか？',
+          okLabel: '削除',
+          danger: true,
+          anchor: target,
+        }).then((ok) => {
+          if (ok) dispatcher.dispatch({ type: 'DELETE_RELATION', id: relId });
+        });
         break;
       }
       case 'jump-to-references-section': {
@@ -3131,77 +3183,99 @@ export function bindActions(
         break;
       }
       case 'launcher-set-group': {
-        // #928: グループ設定(空入力で解除)。v1 は prompt の最小 UI。
+        // #928: グループ設定(空入力で解除)。R7(#938): prompt → inline dialog。
         if (!lid) break;
         const st = dispatcher.getState();
         if (st.readonly || !st.container) break;
         const entry = st.container.entries.find((e) => e.lid === lid);
         if (!entry || entry.archetype !== 'attachment') break;
         const a = parseAttachmentBody(entry.body);
-        const input = window.prompt('グループ名(空で解除)', a.app_group ?? '');
-        if (input === null) break;
-        const group = input.trim();
-        // #935: 保存的 patch(他 field を消さない)。空入力は削除 = 解除。
-        dispatcher.dispatch({
-          type: 'QUICK_UPDATE_ENTRY',
-          lid,
-          body: patchAttachmentBody(entry.body, { app_group: group === '' ? undefined : group }),
+        const groupLid = lid;
+        void showInlinePrompt({
+          title: 'グループを設定',
+          detail: '空のまま OK で解除します。',
+          initial: a.app_group ?? '',
+          placeholder: 'グループ名',
+          okLabel: '設定',
+          anchor: target,
+        }).then((input) => {
+          if (input === null) return;
+          const group = input.trim();
+          // #935: 保存的 patch(他 field を消さない)。空入力は削除 = 解除。
+          // dialog は非同期なので body は解決時点の最新を読み直す。
+          const cur = dispatcher.getState().container?.entries.find((e) => e.lid === groupLid);
+          if (!cur || cur.archetype !== 'attachment') return;
+          dispatcher.dispatch({
+            type: 'QUICK_UPDATE_ENTRY',
+            lid: groupLid,
+            body: patchAttachmentBody(cur.body, { app_group: group === '' ? undefined : group }),
+          });
         });
         break;
       }
       case 'launcher-add-url': {
         // #926: URL 起動タイルの追加(flag `shell.launcher_url_tiles` 配下の
         // ボタンからのみ到達)。擬似リダイレクト HTML を attachment 化して
-        // 既存 launcher 機構(registered_as_app)に乗せる。v1 は prompt の
-        // 最小 UI(opt-in 段階。定着したら form 化を検討)。
-        const state = dispatcher.getState();
-        if (state.readonly || !state.container) break;
-        const rawUrl = window.prompt('ジャンプ先 URL(http / https)');
-        if (!rawUrl) break;
-        if (!isLaunchableUrl(rawUrl)) {
-          showToast({ message: 'URL は http:// または https:// で指定してください', kind: 'warn' });
-          break;
-        }
-        const url = rawUrl.trim();
-        const rawTitle = window.prompt('タイル名(空なら URL をそのまま表示)', '') ?? '';
-        const tileTitle = rawTitle.trim() || url.replace(/^https?:\/\//, '').slice(0, 40);
-        const html = buildUrlRedirectHtml({ url, title: tileTitle });
-        if (!html) break;
-        const bytes = new TextEncoder().encode(html);
-        let bin = '';
-        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
-        const base64 = btoa(bin);
-        const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const name = urlTileFilename(tileTitle);
-        dispatcher.dispatch({
-          type: 'PASTE_ATTACHMENT',
-          name,
-          mime: 'text/html',
-          size: bytes.length,
-          assetKey,
-          assetData: base64,
-          contextLid: state.selectedLid ?? '',
-        });
-        // dispatch は同期 — mint された attachment を asset_key で特定し、
-        // launcher メタ(registered_as_app / 🔗 / launcher_url)を追記。
-        const minted = dispatcher.getState().container?.entries.find((e) => {
-          if (e.archetype !== 'attachment') return false;
-          return parseAttachmentBody(e.body).asset_key === assetKey;
-        });
-        if (minted) {
-          // #935: 保存的 patch(他 field を消さない)。
+        // 既存 launcher 機構(registered_as_app)に乗せる。
+        // R7(#938): prompt 2 連発 → 1 つのインラインフォーム(URL + タイル名)。
+        if (dispatcher.getState().readonly || !dispatcher.getState().container) break;
+        void showInlineForm({
+          title: 'URL タイルを追加',
+          fields: [
+            { key: 'url', label: 'ジャンプ先 URL(http / https)', placeholder: 'https://' },
+            { key: 'title', label: 'タイル名(空なら URL をそのまま表示)' },
+          ],
+          okLabel: '追加',
+          anchor: target,
+          validate: (v) =>
+            isLaunchableUrl(v['url'] ?? '')
+              ? null
+              : 'URL は http:// または https:// で指定してください',
+        }).then((values) => {
+          if (values === null) return;
+          const state = dispatcher.getState();
+          if (state.readonly || !state.container) return;
+          const url = (values['url'] ?? '').trim();
+          const tileTitle =
+            (values['title'] ?? '').trim() || url.replace(/^https?:\/\//, '').slice(0, 40);
+          const html = buildUrlRedirectHtml({ url, title: tileTitle });
+          if (!html) return;
+          const bytes = new TextEncoder().encode(html);
+          let bin = '';
+          for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
+          const base64 = btoa(bin);
+          const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const name = urlTileFilename(tileTitle);
           dispatcher.dispatch({
-            type: 'QUICK_UPDATE_ENTRY',
-            lid: minted.lid,
-            body: patchAttachmentBody(minted.body, {
-              registered_as_app: true,
-              app_icon: '🔗',
-              launcher_url: url,
-            }),
+            type: 'PASTE_ATTACHMENT',
+            name,
+            mime: 'text/html',
+            size: bytes.length,
+            assetKey,
+            assetData: base64,
+            contextLid: state.selectedLid ?? '',
           });
-          dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid: minted.lid, title: tileTitle });
-        }
-        showToast({ message: `URL タイルを追加しました: ${tileTitle}`, kind: 'info' });
+          // dispatch は同期 — mint された attachment を asset_key で特定し、
+          // launcher メタ(registered_as_app / 🔗 / launcher_url)を追記。
+          const minted = dispatcher.getState().container?.entries.find((e) => {
+            if (e.archetype !== 'attachment') return false;
+            return parseAttachmentBody(e.body).asset_key === assetKey;
+          });
+          if (minted) {
+            // #935: 保存的 patch(他 field を消さない)。
+            dispatcher.dispatch({
+              type: 'QUICK_UPDATE_ENTRY',
+              lid: minted.lid,
+              body: patchAttachmentBody(minted.body, {
+                registered_as_app: true,
+                app_icon: '🔗',
+                launcher_url: url,
+              }),
+            });
+            dispatcher.dispatch({ type: 'RENAME_ENTRY_TITLE', lid: minted.lid, title: tileTitle });
+          }
+          showToast({ message: `URL タイルを追加しました: ${tileTitle}`, kind: 'info' });
+        });
         break;
       }
       case 'open-html-attachment': {
@@ -4003,13 +4077,24 @@ export function bindActions(
         const ent = st.container?.entries.find((e) => e.lid === lid);
         if (!ent || ent.archetype !== 'attachment') break;
         const att = parseAttachmentBody(ent.body);
-        const newName = prompt('Enter new file name:', att.name);
-        if (!newName || newName === att.name) break;
-        // #935: 保存的 patch(他 field を消さない)。
-        dispatcher.dispatch({
-          type: 'QUICK_UPDATE_ENTRY',
-          lid,
-          body: patchAttachmentBody(ent.body, { name: newName }),
+        // R7(#938): prompt → inline dialog(日本語統一)。
+        const renameLid = lid;
+        void showInlinePrompt({
+          title: 'ファイル名を変更',
+          initial: att.name,
+          okLabel: '変更',
+          anchor: target,
+        }).then((newName) => {
+          if (!newName || newName === att.name) return;
+          // #935: 保存的 patch(他 field を消さない)。非同期解決なので
+          // body は最新を読み直す。
+          const cur = dispatcher.getState().container?.entries.find((e) => e.lid === renameLid);
+          if (!cur || cur.archetype !== 'attachment') return;
+          dispatcher.dispatch({
+            type: 'QUICK_UPDATE_ENTRY',
+            lid: renameLid,
+            body: patchAttachmentBody(cur.body, { name: newName }),
+          });
         });
         break;
       }
@@ -4323,8 +4408,15 @@ export function bindActions(
         break;
       }
       case 'reset-all-flags': {
-        if (!confirm('Reset all flags to default? This affects only the current Container.')) break;
-        dispatcher.dispatch({ type: 'RESET_ALL_FLAGS' });
+        // R7(#938): native confirm → inline dialog(日本語統一)。
+        void showInlineConfirm({
+          title: '全フラグを既定値に戻しますか？',
+          detail: '現在のコンテナにのみ影響します。',
+          okLabel: 'リセット',
+          anchor: target,
+        }).then((ok) => {
+          if (ok) dispatcher.dispatch({ type: 'RESET_ALL_FLAGS' });
+        });
         break;
       }
       case 'save-url-flags-to-container': {

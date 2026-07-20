@@ -101,7 +101,7 @@ describe('spreadsheet Phase 4 chart modal', () => {
     expect(parsed.charts ?? []).toEqual([]);
   });
 
-  it('case 8: Y 軸列を 1 つも選ばずに 「作成」 → alert + chart 未追加', () => {
+  it('case 8: Y 軸列を 1 つも選ばずに 「作成」 → 警告 toast + chart 未追加', () => {
     const el = mountEditor('{"rows":[["x","y"],["1","10"]]}');
     el.querySelector<HTMLButtonElement>('[data-pkc-action="spreadsheet-add-chart"]')!.click();
     // default で y=1 がチェック済 → 解除
@@ -109,12 +109,11 @@ describe('spreadsheet Phase 4 chart modal', () => {
     cb1.checked = false;
     const cb0 = document.querySelector<HTMLInputElement>('input[data-pkc-chart-ycol-input="0"]')!;
     cb0.checked = false;
-    let alerted = false;
-    const orig = window.alert;
-    window.alert = () => { alerted = true; };
     document.querySelector<HTMLButtonElement>('[data-pkc-chart-create-action]')!.click();
-    window.alert = orig;
-    expect(alerted).toBe(true);
+    // R7(#938): alert → toast
+    const toast = document.querySelector('[data-pkc-region="toast"]');
+    expect(toast?.textContent).toContain('Y 軸列');
+    toast?.remove();
   });
 
   it('case 9: overlay click(modal 外)でも modal 閉じる', () => {
@@ -127,14 +126,13 @@ describe('spreadsheet Phase 4 chart modal', () => {
     // ここでは overlay.click() 経由で target が overlay になる pattern を検証
   });
 
-  it('case 10: 1 列だけ(cols < 2)では chart 追加が拒否される(alert)', () => {
+  it('case 10: 1 列だけ(cols < 2)では chart 追加が拒否される(警告 toast)', () => {
     const el = mountEditor('{"rows":[["only"]]}');
-    let alerted = false;
-    const orig = window.alert;
-    window.alert = () => { alerted = true; };
     el.querySelector<HTMLButtonElement>('[data-pkc-action="spreadsheet-add-chart"]')!.click();
-    window.alert = orig;
-    expect(alerted).toBe(true);
+    // R7(#938): alert → toast
+    const toast = document.querySelector('[data-pkc-region="toast"]');
+    expect(toast?.textContent).toContain('2 列');
+    toast?.remove();
     // modal は出現していない
     expect(document.querySelector('.pkc-spreadsheet-chart-modal')).toBeNull();
   });

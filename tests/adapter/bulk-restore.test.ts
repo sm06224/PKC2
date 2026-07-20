@@ -35,6 +35,7 @@ import { textlogPresenter } from '@adapter/ui/textlog-presenter';
 import { serializeTodoBody } from '@features/todo/todo-body';
 import type { Container } from '@core/model/container';
 import { setContainerFlagSource } from '@adapter/flags';
+import { submitInlineDialog, cancelInlineDialog } from './helpers/inline-dialog-helper';
 
 // pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
 // tree sidebar の構造を検証する本 suite は tree mode に固定する。
@@ -302,8 +303,7 @@ describe('action-binder — restore-bulk handler', () => {
     unbind = bindActions(root, dispatcher);
   }
 
-  it('dispatches RESTORE_ENTRY for every revision in the bulk group after confirm', () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
+  it('dispatches RESTORE_ENTRY for every revision in the bulk group after confirm', async () => {
     bootstrap(containerWithBulkStatusHistory(), 't1');
     // Trigger click on the Revert bulk button
     const btn = root.querySelector(
@@ -312,6 +312,8 @@ describe('action-binder — restore-bulk handler', () => {
     expect(btn).not.toBeNull();
     dispatched.length = 0; // clear bootstrap dispatches
     btn!.click();
+    // R7(#938): native confirm → inline dialog。OK して続行。
+    await submitInlineDialog();
     // Three RESTORE_ENTRY dispatches — one per revision in bulk-abc.
     const restores = dispatched.filter((d) => d.type === 'RESTORE_ENTRY');
     expect(restores.length).toBe(3);
@@ -319,14 +321,14 @@ describe('action-binder — restore-bulk handler', () => {
     expect(lids).toEqual(new Set(['t1', 't2', 't3']));
   });
 
-  it('dispatches nothing when the user cancels the confirmation', () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
+  it('dispatches nothing when the user cancels the confirmation', async () => {
     bootstrap(containerWithBulkStatusHistory(), 't1');
     const btn = root.querySelector(
       '[data-pkc-region="revision-info"] [data-pkc-action="restore-bulk"]',
     ) as HTMLButtonElement | null;
     dispatched.length = 0;
     btn!.click();
+    await cancelInlineDialog();
     const restores = dispatched.filter((d) => d.type === 'RESTORE_ENTRY');
     expect(restores.length).toBe(0);
   });
@@ -357,8 +359,7 @@ describe('integration — bulk restore reverts all entries', () => {
     vi.restoreAllMocks();
   });
 
-  it('BULK_SET_STATUS → Revert bulk → all entries return to pre-bulk status', () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
+  it('BULK_SET_STATUS → Revert bulk → all entries return to pre-bulk status', async () => {
     const dispatcher = createDispatcher();
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerWithBulkStatusHistory() });
     dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: 't1' });
@@ -378,6 +379,7 @@ describe('integration — bulk restore reverts all entries', () => {
       '[data-pkc-region="revision-info"] [data-pkc-action="restore-bulk"]',
     ) as HTMLButtonElement;
     btn.click();
+    await submitInlineDialog();
 
     // All three entries restored to 'open'.
     for (const lid of ['t1', 't2', 't3']) {
@@ -387,8 +389,7 @@ describe('integration — bulk restore reverts all entries', () => {
     }
   });
 
-  it('BULK_DELETE → Restore bulk → all entries re-created', () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
+  it('BULK_DELETE → Restore bulk → all entries re-created', async () => {
     const dispatcher = createDispatcher();
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: containerWithBulkDeleteHistory() });
     dispatcher.onState((s) => render(s, root));
@@ -406,13 +407,13 @@ describe('integration — bulk restore reverts all entries', () => {
     const btn = det.querySelector('[data-pkc-action="restore-bulk"]') as HTMLButtonElement;
     expect(btn).not.toBeNull();
     btn.click();
+    await submitInlineDialog();
 
     const lids = new Set(dispatcher.getState().container!.entries.map((e) => e.lid));
     expect(lids).toEqual(new Set(['survivor', 't1', 't2', 't3']));
   });
 
-  it('partial-success: stale revision in the bulk group is silently skipped', () => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
+  it('partial-success: stale revision in the bulk group is silently skipped', async () => {
     const c = containerWithBulkStatusHistory();
     // Mangle one revision so parseRevisionSnapshot rejects it —
     // RESTORE_ENTRY will silently no-op for that lid.
@@ -428,6 +429,7 @@ describe('integration — bulk restore reverts all entries', () => {
       '[data-pkc-region="revision-info"] [data-pkc-action="restore-bulk"]',
     ) as HTMLButtonElement;
     btn.click();
+    await submitInlineDialog();
 
     // t1 and t3 restored to open, t2 stays done (stale rev skipped).
     const status = (lid: string) => {

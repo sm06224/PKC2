@@ -14,6 +14,11 @@ import { parseAttachmentBody, attachmentPresenter } from '@adapter/ui/attachment
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { setContainerFlagSource } from '@adapter/flags';
 import type { Container } from '@core/model/container';
+import {
+  getInlineDialog,
+  submitInlineDialog,
+  cancelInlineDialog,
+} from './helpers/inline-dialog-helper';
 
 registerPresenter('attachment', attachmentPresenter);
 
@@ -97,15 +102,14 @@ describe('URL タイル追加(flag ON、#926)', () => {
     setContainerFlagSource({ 'shell.launcher_url_tiles': true });
   });
 
-  it('ボタン → prompt → 擬似リダイレクト添付が mint され 🔗 タイルになる', () => {
+  it('ボタン → インラインフォーム → 擬似リダイレクト添付が mint され 🔗 タイルになる', async () => {
     const d = setup();
     const btn = root.querySelector<HTMLButtonElement>('[data-pkc-action="launcher-add-url"]')!;
     expect(btn).not.toBeNull();
 
-    vi.spyOn(window, 'prompt')
-      .mockReturnValueOnce('https://example.com/portal')
-      .mockReturnValueOnce('社内ポータル');
+    // R7(#938): prompt 2 連発 → 1 フォーム(url + title)。
     btn.click();
+    await submitInlineDialog({ url: 'https://example.com/portal', title: '社内ポータル' });
 
     const c = d.getState().container!;
     const minted = c.entries.find((e) => {
@@ -133,18 +137,25 @@ describe('URL タイル追加(flag ON、#926)', () => {
     expect(tile.textContent).toContain('社内ポータル');
   });
 
-  it('不正 URL は拒否(mint されない)', () => {
+  it('不正 URL は拒否(dialog 内 error 表示、mint されない)', async () => {
     const d = setup();
-    vi.spyOn(window, 'prompt').mockReturnValueOnce('javascript:alert(1)');
     root.querySelector<HTMLButtonElement>('[data-pkc-action="launcher-add-url"]')!.click();
+    await submitInlineDialog({ url: 'javascript:alert(1)' });
+    // validate が弾くので dialog は開いたまま + error 表示
+    const dialog = getInlineDialog()!;
+    expect(dialog).not.toBeNull();
+    const err = dialog.querySelector<HTMLElement>('[data-pkc-region="inline-dialog-error"]')!;
+    expect(err.hidden).toBe(false);
+    expect(err.textContent).toContain('http');
     const c = d.getState().container!;
     expect(c.entries.filter((e) => e.archetype === 'attachment')).toHaveLength(2); // 既存 2 件のみ
+    await cancelInlineDialog();
   });
 
-  it('prompt キャンセルは no-op', () => {
+  it('フォームのキャンセルは no-op', async () => {
     const d = setup();
-    vi.spyOn(window, 'prompt').mockReturnValueOnce(null);
     root.querySelector<HTMLButtonElement>('[data-pkc-action="launcher-add-url"]')!.click();
+    await cancelInlineDialog();
     expect(d.getState().container!.entries).toHaveLength(2);
   });
 });

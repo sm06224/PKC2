@@ -16,6 +16,7 @@ import { render } from '@adapter/ui/renderer';
 import { parseAttachmentBody, attachmentPresenter } from '@adapter/ui/attachment-presenter';
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import type { Container } from '@core/model/container';
+import { submitInlineDialog } from './helpers/inline-dialog-helper';
 
 registerPresenter('attachment', attachmentPresenter);
 
@@ -138,10 +139,11 @@ describe('drag & drop 並び替え(#928 改)', () => {
     expect(parseAttachmentBody(d.getState().container!.entries[0]!.body).app_order).toBeUndefined();
   });
 
-  it('別グループの grid 余白へ drop → app_group が移り末尾に追加される', () => {
+  it('別グループの grid 余白へ drop → app_group が移り末尾に追加される', async () => {
     const d = setup();
-    vi.spyOn(window, 'prompt').mockReturnValueOnce('Tools');
+    // R7(#938): prompt → inline dialog。
     ctl('a3', 'launcher-set-group').click();
+    await submitInlineDialog('Tools');
     const toolsGrid = root.querySelector<HTMLElement>('[data-pkc-launcher-group="Tools"]')!;
     dragTo('a1', toolsGrid, 0);
     expect(parseAttachmentBody(
@@ -154,10 +156,11 @@ describe('drag & drop 並び替え(#928 改)', () => {
 });
 
 describe('🏷 グループ(#928)', () => {
-  it('グループ設定で app_group が保存され、見出し付きで分かれて並ぶ', () => {
+  it('グループ設定で app_group が保存され、見出し付きで分かれて並ぶ', async () => {
     const d = setup();
-    vi.spyOn(window, 'prompt').mockReturnValueOnce('Tools');
+    // R7(#938): prompt → inline dialog。
     ctl('a3', 'launcher-set-group').click();
+    await submitInlineDialog('Tools');
 
     expect(parseAttachmentBody(
       d.getState().container!.entries.find((e) => e.lid === 'a3')!.body,
@@ -172,11 +175,12 @@ describe('🏷 グループ(#928)', () => {
     expect([...toolsGrid.querySelectorAll('.pkc-launcher-tile')].map((t) => t.getAttribute('data-pkc-lid'))).toEqual(['a3']);
   });
 
-  it('空入力でグループ解除、グループが無ければ見出しも出ない', () => {
+  it('空入力でグループ解除、グループが無ければ見出しも出ない', async () => {
     const d = setup();
-    vi.spyOn(window, 'prompt').mockReturnValueOnce('G').mockReturnValueOnce('');
     ctl('a3', 'launcher-set-group').click();
+    await submitInlineDialog('G');
     ctl('a3', 'launcher-set-group').click();
+    await submitInlineDialog('');
     expect(parseAttachmentBody(
       d.getState().container!.entries.find((e) => e.lid === 'a3')!.body,
     ).app_group).toBeUndefined();

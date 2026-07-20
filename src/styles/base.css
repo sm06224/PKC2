@@ -13130,3 +13130,113 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
     opacity: 1 !important;
   }
 }
+
+/* ── #938 R7(2026-07-20 洗練化): inline dialog(native prompt/confirm 置換) ──
+   toast と同カテゴリの runtime 一時 UI。context menu と同じ surface
+   トークンで popover として描画。z-index は context menu(20000)より
+   上(dialog は menu 経由で開かれるため)。 */
+.pkc-inline-dialog {
+  position: fixed;
+  z-index: 21000;
+  min-width: 260px;
+  max-width: min(420px, calc(100vw - 16px));
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: pkc-menu-open 100ms ease-out;
+  font-family: var(--font-sans);
+}
+
+.pkc-inline-dialog-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--c-fg);
+}
+
+.pkc-inline-dialog-detail {
+  font-size: var(--fs-sm);
+  color: var(--c-muted);
+  white-space: pre-line;
+}
+
+.pkc-inline-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.pkc-inline-dialog-label {
+  font-size: var(--fs-sm);
+  color: var(--c-muted);
+}
+
+.pkc-inline-dialog-input {
+  font-size: var(--fs-md);
+  font-family: var(--font-sans);
+  color: var(--c-fg);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+}
+
+.pkc-inline-dialog-input:focus {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -1px;
+}
+
+.pkc-inline-dialog-error {
+  font-size: var(--fs-sm);
+  color: var(--c-warn-fg, #b91c1c);
+  background: var(--c-warn, #fef2f2);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+}
+
+.pkc-inline-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.pkc-inline-dialog-ok,
+.pkc-inline-dialog-cancel {
+  font-size: var(--fs-md);
+  font-family: var(--font-sans);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-3);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.pkc-inline-dialog-cancel {
+  background: none;
+  border: 1px solid var(--c-border);
+  color: var(--c-fg);
+}
+
+.pkc-inline-dialog-cancel:hover {
+  background: color-mix(in srgb, var(--c-fg) 8%, transparent);
+}
+
+.pkc-inline-dialog-ok {
+  background: var(--c-accent);
+  border: 1px solid var(--c-accent);
+  color: var(--c-accent-fg);
+}
+
+.pkc-inline-dialog-ok:hover {
+  opacity: 0.85;
+}
+
+.pkc-inline-dialog-ok--danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}

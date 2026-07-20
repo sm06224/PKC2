@@ -90,6 +90,7 @@ import {
   bootWarningMessage,
 } from './adapter/platform/storage-estimate';
 import { showToast } from './adapter/ui/toast';
+import { showInlinePrompt, showInlineConfirm } from './adapter/ui/inline-dialog';
 import { summarizeZipImportWarnings } from './adapter/ui/zip-import-warnings';
 import { exportContainerAsHtml } from './adapter/platform/exporter';
 import { importFromFile, formatImportErrors } from './adapter/platform/importer';
@@ -2135,11 +2136,18 @@ function mountContainerSwitchHandler(root: HTMLElement, store: ContainerStore): 
     if (delEl) {
       const cid = delEl.getAttribute('data-pkc-cid');
       if (!cid) return;
-      if (!confirm('このコンテナを削除しますか？元に戻せません。')) return;
-      void (async (): Promise<void> => {
+      // R7(#938): native confirm → inline dialog。
+      void showInlineConfirm({
+        title: 'このコンテナを削除しますか？',
+        detail: '元に戻せません。',
+        okLabel: '削除',
+        danger: true,
+        anchor: delEl,
+      }).then(async (ok) => {
+        if (!ok) return;
         await removeContainerFromActiveWorkspace(store, cid);
         location.reload();
-      })();
+      });
       return;
     }
     // ── Workspace actions (#773 PR-WS-B2) ──
@@ -2153,25 +2161,36 @@ function mountContainerSwitchHandler(root: HTMLElement, store: ContainerStore): 
       })();
       return;
     }
-    if (el.closest<HTMLElement>('[data-pkc-action="new-workspace"]')) {
-      const name = prompt('新しいワークスペース名:', 'Workspace');
-      if (name === null) return; // cancelled
-      void (async (): Promise<void> => {
+    const wsNewEl = el.closest<HTMLElement>('[data-pkc-action="new-workspace"]');
+    if (wsNewEl) {
+      // R7(#938): prompt → inline dialog。
+      void showInlinePrompt({
+        title: '新しいワークスペース名',
+        initial: 'Workspace',
+        okLabel: '作成',
+        anchor: wsNewEl,
+      }).then(async (name) => {
+        if (name === null) return; // cancelled
         await createWorkspace(store, name, createEmptyContainer());
         location.reload();
-      })();
+      });
       return;
     }
     const wsRenameEl = el.closest<HTMLElement>('[data-pkc-action="rename-workspace"]');
     if (wsRenameEl) {
       const wid = wsRenameEl.getAttribute('data-pkc-wid');
       if (!wid) return;
-      const name = prompt('ワークスペース名を変更:', wsRenameEl.getAttribute('data-pkc-wname') ?? '');
-      if (name === null) return;
-      void (async (): Promise<void> => {
+      // R7(#938): prompt → inline dialog。
+      void showInlinePrompt({
+        title: 'ワークスペース名を変更',
+        initial: wsRenameEl.getAttribute('data-pkc-wname') ?? '',
+        okLabel: '変更',
+        anchor: wsRenameEl,
+      }).then(async (name) => {
+        if (name === null) return;
         await renameWorkspace(store, wid, name);
         location.reload();
-      })();
+      });
       return;
     }
   });
@@ -2182,24 +2201,32 @@ function mountClearLocalDataHandler(root: HTMLElement, store: ContainerStore): v
     const target = (e.target as HTMLElement).closest<HTMLElement>('[data-pkc-action="clear-local-data"]');
     if (!target) return;
 
+    // R7(#938): native confirm / prompt / alert → inline dialog + toast。
     // Stage 1: explain what will happen
-    const stage1 = confirm(
-      '⚠ ワークスペースリセット ⚠\n\n'
-      + '以下のデータがすべて削除されます:\n'
-      + '• ブラウザに保存されたローカルデータ (IndexedDB)\n'
-      + '• 未エクスポートの変更内容\n\n'
-      + 'HTML に埋め込まれた元データから再読み込みされます。\n'
-      + 'この操作は取り消せません。\n\n'
-      + '続行しますか？',
-    );
+    const stage1 = await showInlineConfirm({
+      title: '⚠ ワークスペースリセット',
+      detail:
+        '以下のデータがすべて削除されます:\n'
+        + '• ブラウザに保存されたローカルデータ (IndexedDB)\n'
+        + '• 未エクスポートの変更内容\n\n'
+        + 'HTML に埋め込まれた元データから再読み込みされます。\n'
+        + 'この操作は取り消せません。',
+      okLabel: '続行',
+      danger: true,
+      anchor: target,
+    });
     if (!stage1) return;
 
-    // Stage 2: require typed confirmation
-    const typed = prompt(
-      '本当に削除しますか？\n'
-      + '確認のため「RESET」と入力してください:',
-    );
-    if (typed !== 'RESET') return;
+    // Stage 2: require typed confirmation(誤入力は dialog 内 error で
+    // 開いたまま再入力させる。cancel は null で中断)
+    const typed = await showInlinePrompt({
+      title: '本当に削除しますか？',
+      detail: '確認のため「RESET」と入力してください。',
+      okLabel: '削除を実行',
+      anchor: target,
+      validate: (v) => (v === 'RESET' ? null : '「RESET」と入力してください'),
+    });
+    if (typed === null) return;
 
     try {
       await store.clearAll();
@@ -2207,7 +2234,7 @@ function mountClearLocalDataHandler(root: HTMLElement, store: ContainerStore): v
       location.reload();
     } catch (err) {
       console.error('[PKC2] Failed to clear local data:', err);
-      alert('ローカルデータの削除に失敗しました。');
+      showToast({ message: 'ローカルデータの削除に失敗しました。', kind: 'error' });
     }
   });
 }

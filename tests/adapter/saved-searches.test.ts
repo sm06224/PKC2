@@ -11,6 +11,12 @@ import { render } from '@adapter/ui/renderer';
 import type { Container } from '@core/model/container';
 import type { SavedSearch } from '@core/model/saved-search';
 import { setContainerFlagSource } from '@adapter/flags';
+import {
+  getInlineDialog,
+  submitInlineDialog,
+  cancelInlineDialog,
+} from './helpers/inline-dialog-helper';
+import { dismissActiveInlineDialog } from '@adapter/ui/inline-dialog';
 
 // pgc-37: sidebar.mode の default が filer へ切替わったため、legacy
 // tree sidebar の構造を検証する本 suite は tree mode に固定する。
@@ -87,6 +93,7 @@ beforeEach(() => {
   document.body.appendChild(root);
   return () => {
     cleanup?.();
+    dismissActiveInlineDialog();
     for (const fn of _trackedUnsubs) fn();
     _trackedUnsubs.length = 0;
     root.remove();
@@ -218,12 +225,12 @@ describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
 
   // 2026-04-26 follow-up to the sidebar audit: the legacy
   // prompt-based ★ button was dropped, so the rename affordance now
-  // lives on the saved-search row itself. Click → window.prompt →
-  // RENAME_SAVED_SEARCH dispatch, with the same `stopPropagation`
-  // guard the delete × button uses so the parent row's
-  // `apply-saved-search` does not fire alongside.
+  // lives on the saved-search row itself. R7(#938)で window.prompt →
+  // inline dialog 化。click → dialog 出現 → 入力 + OK →
+  // RENAME_SAVED_SEARCH dispatch。delete × と同じ `stopPropagation`
+  // guard で親行の `apply-saved-search` は発火しない。
 
-  it('rename ✏ button opens a prompt seeded with the current name and dispatches RENAME', () => {
+  it('rename ✏ button opens an inline dialog seeded with the current name and dispatches RENAME', async () => {
     const dispatcher = setup(
       mkContainer([
         mkSaved('keep', 'Keep'),
@@ -231,19 +238,17 @@ describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
       ]),
     );
 
-    const promptSpy = vi.fn(() => 'New Name');
-    vi.stubGlobal('prompt', promptSpy);
-    let calls: unknown[];
-    try {
-      root.querySelector<HTMLElement>(
-        '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
-      )!.click();
-      calls = [...promptSpy.mock.calls];
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    root.querySelector<HTMLElement>(
+      '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
+    )!.click();
 
-    expect(calls).toEqual([['保存検索の新しい名前:', 'Old Name']]);
+    const dialog = getInlineDialog()!;
+    expect(dialog).not.toBeNull();
+    // 現在名が seed されている
+    const input = dialog.querySelector<HTMLInputElement>('[data-pkc-field="dialog-value"]')!;
+    expect(input.value).toBe('Old Name');
+    await submitInlineDialog('New Name');
+
     const state = dispatcher.getState();
     const me = state.container!.meta.saved_searches!.find((s) => s.id === 'me');
     expect(me!.name).toBe('New Name');
@@ -253,29 +258,21 @@ describe('Saved Searches v1 — click behavior (§5 / §6)', () => {
     expect(state.searchQuery).toBe('');
   });
 
-  it('rename ✏ prompt cancel (null) does not dispatch', () => {
+  it('rename ✏ dialog cancel does not dispatch', async () => {
     const dispatcher = setup(mkContainer([mkSaved('me', 'Old')]));
-    vi.stubGlobal('prompt', vi.fn(() => null));
-    try {
-      root.querySelector<HTMLElement>(
-        '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
-      )!.click();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    root.querySelector<HTMLElement>(
+      '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
+    )!.click();
+    await cancelInlineDialog();
     expect(dispatcher.getState().container!.meta.saved_searches![0]!.name).toBe('Old');
   });
 
-  it('rename ✏ empty / whitespace name is a silent no-op', () => {
+  it('rename ✏ empty / whitespace name is a silent no-op', async () => {
     const dispatcher = setup(mkContainer([mkSaved('me', 'Old')]));
-    vi.stubGlobal('prompt', vi.fn(() => '   '));
-    try {
-      root.querySelector<HTMLElement>(
-        '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
-      )!.click();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    root.querySelector<HTMLElement>(
+      '[data-pkc-action="rename-saved-search"][data-pkc-saved-id="me"]',
+    )!.click();
+    await submitInlineDialog('   ');
     expect(dispatcher.getState().container!.meta.saved_searches![0]!.name).toBe('Old');
   });
 });

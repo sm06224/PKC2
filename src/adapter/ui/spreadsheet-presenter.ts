@@ -39,6 +39,7 @@ import {
   type ColumnFormat,
 } from '@features/spreadsheet/spreadsheet-body';
 import { getFormatLocale } from './format-context';
+import { showToast } from './toast';
 import { createZipBlob } from '../platform/zip-package';
 // user direction 2026-06-03「他のプロダクトを参考にするとか一旦依存するとかで
 // まともになりませんか?」 fix:自前 SVG chart を捨て Chart.js に置換。
@@ -1164,7 +1165,8 @@ function addChart(wrapper: HTMLElement): void {
   const body = readBodyState(wrapper);
   const cols = getColumnCount(body);
   if (cols < 2) {
-    alert('グラフ作成には最低 2 列必要です。');
+    // R7(#938): alert → toast。
+    showToast({ message: 'グラフ作成には最低 2 列必要です。', kind: 'warn' });
     return;
   }
   openChartModal(wrapper, body, cols);
@@ -1360,7 +1362,8 @@ function openChartModal(wrapper: HTMLElement, body: SpreadsheetBody, cols: numbe
       yCols.push(parseInt(cb.value, 10));
     });
     if (yCols.length === 0) {
-      alert('Y 軸列を 1 つ以上選択してください。');
+      // R7(#938): alert → toast。
+      showToast({ message: 'Y 軸列を 1 つ以上選択してください。', kind: 'warn' });
       return;
     }
     const startRow = Math.max(0, parseInt(startInput.value, 10) || 0);
@@ -1684,7 +1687,12 @@ function copyEmbedLink(wrapper: HTMLElement, seamless: boolean): void {
   const embed = `![${alt}](entry:${lid})`;
   if (navigator.clipboard) {
     navigator.clipboard.writeText(embed).catch(() => {
-      alert(`埋め込み記法をコピーできませんでした。手動でコピーしてください:\n${embed}`);
+      // R7(#938): alert → toast(自動で消えないよう dismiss は手動)。
+      showToast({
+        message: `埋め込み記法をコピーできませんでした。手動でコピーしてください: ${embed}`,
+        kind: 'warn',
+        autoDismissMs: 0,
+      });
     });
     const toast = document.createElement('div');
     toast.className = 'pkc-spreadsheet-toast';
@@ -1692,7 +1700,8 @@ function copyEmbedLink(wrapper: HTMLElement, seamless: boolean): void {
     wrapper.appendChild(toast);
     setTimeout(() => toast.remove(), 1500);
   } else {
-    alert(`埋め込み記法:\n${embed}`);
+    // R7(#938): alert → toast(clipboard API 不在環境の手動コピー用)。
+    showToast({ message: `埋め込み記法: ${embed}`, kind: 'info', autoDismissMs: 0 });
   }
 }
 
