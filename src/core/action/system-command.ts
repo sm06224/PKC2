@@ -171,7 +171,13 @@ export interface BatchImportResultSummary {
  * All type literals are string constants (minify-safe).
  */
 export type SystemCommand =
-  | { type: 'SYS_INIT_COMPLETE'; container: Container; embedded?: boolean; readonly?: boolean; lightSource?: boolean; viewOnlySource?: boolean }
+  | { type: 'SYS_INIT_COMPLETE'; container: Container; embedded?: boolean; readonly?: boolean; lightSource?: boolean; viewOnlySource?: boolean; bodiesDeferred?: boolean }
+  /**
+   * #940 案 A 段階2: meta-first boot の本文 background 復元。lid → body の
+   * map を container.entries へ merge する。**本文が '' の entry にだけ**
+   * 適用する(boot 後にユーザーが書いた本文を上書きしない)。
+   */
+  | { type: 'SYS_BODIES_LOADED'; bodies: Record<string, string> }
   | { type: 'SYS_INIT_ERROR'; error: string }
   | { type: 'SYS_FINISH_EXPORT' }
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }

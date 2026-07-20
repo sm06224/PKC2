@@ -113,6 +113,7 @@ export type DomainEvent =
    * already live in the store, not a content mutation.
    */
   | { type: 'WORKING_SET_UPDATED' }
+  | { type: 'BODIES_HYDRATED' }
   | { type: 'ERROR_OCCURRED'; error: string };
 
 /** Extract the type literal from a DomainEvent. */

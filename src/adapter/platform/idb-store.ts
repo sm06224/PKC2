@@ -89,6 +89,16 @@ export interface ContainerStore {
    * 全 asset を書き直す。通常の編集経路では呼ぶ必要はない。
    */
   invalidatePersistedAssets(containerId: string): void;
+  /**
+   * #940 案 A 段階2: 既定 container を meta だけで読む(layout v2 のとき
+   * body record を読まない = entries の body は '')。戻り値
+   * `bodiesDeferred` が true のとき、caller は `loadBodies` で本文を
+   * background 復元して merge する責務を負う。v1 storage では
+   * `loadDefaultShallow` と同一(bodiesDeferred = false)。
+   */
+  loadDefaultMetaShallow(): Promise<{ container: Container | null; bodiesDeferred: boolean }>;
+  /** #940 案 A 段階2: layout v2 の本文 record を一括で読む(lid → body)。 */
+  loadBodies(containerId: string): Promise<Record<string, string>>;
   load(containerId: string): Promise<Container | null>;
   loadDefault(): Promise<Container | null>;
   /**
@@ -461,7 +471,11 @@ export function createContainerStore(
    * marker の順序リストが正本。リストに無い stray record(全件書込みの
    * 中断で残った余り)は末尾に付ける — 消すより安全側。
    */
-  async function reassembleSplit(cid: string, record: StoredContainerRecord): Promise<Container> {
+  async function reassembleSplit(
+    cid: string,
+    record: StoredContainerRecord,
+    opts2?: { skipBodies?: boolean },
+  ): Promise<Container> {
     const marker = record.__pkc_split__;
     if (!marker) return record;
     const isV2 = record.__pkc_layout__ === 2;
@@ -469,9 +483,11 @@ export function createContainerStore(
     const [entryPairs, revPairs, bodyPairs] = await Promise.all([
       containers.getAllByPrefix(splitEntryPrefix(cid)),
       containers.getAllByPrefix(splitRevPrefix(cid)),
-      // #940 案 A 段階1: layout v2 は本文が別 record。段階1 では全 body を
-      // 読む(挙動不変)── boot の meta-first 化は段階2。
-      isV2 ? containers.getAllByPrefix(bodyPrefix(cid)) : Promise.resolve([]),
+      // #940 案 A: layout v2 は本文が別 record。段階2 の meta-first boot は
+      // skipBodies で本文読込を後回しにする(entries の body は '')。
+      isV2 && !opts2?.skipBodies
+        ? containers.getAllByPrefix(bodyPrefix(cid))
+        : Promise.resolve([]),
     ]);
     const bodyByLid = new Map<string, string>();
     for (const { key, value } of bodyPairs) {
@@ -558,6 +574,27 @@ export function createContainerStore(
     const defaultId = await containers.get(DEFAULT_KEY);
     if (typeof defaultId !== 'string') return null;
     return loadShallow(defaultId);
+  }
+
+  // #940 案 A 段階2: meta-first boot 用。v2 なら本文を読まず即返す。
+  async function loadDefaultMetaShallow(): Promise<{ container: Container | null; bodiesDeferred: boolean }> {
+    const defaultId = await containers.get(DEFAULT_KEY);
+    if (typeof defaultId !== 'string') return { container: null, bodiesDeferred: false };
+    const record = await containers.get(defaultId);
+    if (!record) return { container: null, bodiesDeferred: false };
+    const rec = record as StoredContainerRecord;
+    const isV2 = rec.__pkc_layout__ === 2;
+    const assembled = await reassembleSplit(defaultId, rec, { skipBodies: true });
+    return { container: { ...assembled, assets: {} }, bodiesDeferred: isV2 };
+  }
+
+  async function loadBodies(containerId: string): Promise<Record<string, string>> {
+    const pairs = await containers.getAllByPrefix(bodyPrefix(containerId));
+    const out: Record<string, string> = {};
+    for (const { key, value } of pairs) {
+      if (typeof value === 'string') out[key.slice(bodyPrefix(containerId).length)] = value;
+    }
+    return out;
   }
 
   async function del(containerId: string): Promise<void> {
@@ -718,6 +755,8 @@ export function createContainerStore(
     loadDefault,
     loadShallow,
     loadDefaultShallow,
+    loadDefaultMetaShallow,
+    loadBodies,
     delete: del,
     clearAll,
     listContainers,

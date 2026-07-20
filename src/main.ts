@@ -1045,7 +1045,7 @@ async function boot(): Promise<void> {
     const pkcData = await readPkcData();
     endReadPkcData();
     const endLoadFromStore = profileStart('boot:loadFromStore');
-    const { container: idbContainer } = await loadFromStore(store);
+    const { container: idbContainer, bodiesDeferred } = await loadFromStore(store);
     endLoadFromStore();
     let chosen = chooseBootSource(pkcData, idbContainer);
 
@@ -1108,7 +1108,19 @@ async function boot(): Promise<void> {
           type: 'SYS_INIT_COMPLETE',
           container,
           embedded: embedCtx.embedded,
+          bodiesDeferred,
         });
+        // #940 案 A 段階2: layout v2 の meta-first boot。本文を background で
+        // 復元して merge する(復元完了までは persistence が保存を保留し、
+        // merge は body='' の entry にだけ適用される ── 二重の安全)。
+        if (bodiesDeferred) {
+          void store.loadBodies(container.meta.container_id).then((bodies) => {
+            dispatcher.dispatch({ type: 'SYS_BODIES_LOADED', bodies });
+          }).catch((err) => {
+            console.warn('[PKC2] body hydration failed:', err);
+            dispatcher.dispatch({ type: 'SYS_BODIES_LOADED', bodies: {} });
+          });
+        }
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);

@@ -196,6 +196,14 @@ export function mountPersistence(
     }
 
     const currentState = dispatcher.getState();
+    // #940 案 A 段階2: meta-first boot の本文復元が終わるまで保存しない。
+    // 本文が '' のままの container を全件書込みすると storage の本文を
+    // 空で上書きしうる(diff 経路は安全だが full-write fallback が危険)。
+    // 復元完了(SYS_BODIES_LOADED)後の保存で最新 state が書かれる。
+    if (currentState.bodiesPending) {
+      scheduleSave();
+      return;
+    }
     const container = currentState.container;
     if (!container) {
       // No container to persist or purge against — drop any armed
@@ -353,14 +361,21 @@ export function mountPersistence(
  */
 export async function loadFromStore(
   store: ContainerStore,
-): Promise<{ source: 'idb' | 'none'; container: import('../../core/model/container').Container | null }> {
+): Promise<{
+  source: 'idb' | 'none';
+  container: import('../../core/model/container').Container | null;
+  /** #940 案 A 段階2: layout v2 で本文が未読(caller が SYS_BODIES_LOADED で復元)。 */
+  bodiesDeferred: boolean;
+}> {
   try {
-    const container = await store.loadDefaultShallow();
+    // #940 案 A 段階2: meta-first。v2 storage では本文を読まず即返し、
+    // caller(main.ts)が background で loadBodies → SYS_BODIES_LOADED。
+    const { container, bodiesDeferred } = await store.loadDefaultMetaShallow();
     if (container) {
-      return { source: 'idb', container };
+      return { source: 'idb', container, bodiesDeferred };
     }
   } catch (err) {
     console.warn('[PKC2] IDB load failed, falling back to pkc-data:', err);
   }
-  return { source: 'none', container: null };
+  return { source: 'none', container: null, bodiesDeferred: false };
 }
