@@ -55,6 +55,8 @@ import { installMainReloadGuard } from './adapter/ui/main-reload-guard';
 import { wireEventLogToConsole } from './adapter/ui/event-log';
 import { probeIDBAvailability } from './adapter/platform/idb-store';
 import { createConfiguredStoreFromEnv } from './adapter/platform/storage-backend';
+import { verifyFsaPermission } from './adapter/platform/storage/fsa-adapter';
+import { showFsaReconnectBanner } from './adapter/platform/fsa-reconnect-banner';
 import {
   ensureDefaultWorkspace,
   activeWorkspaceContainers,
@@ -71,6 +73,7 @@ import {
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import { mountBodyWorkingSet } from './adapter/platform/body-working-set';
 import { registerExportStore } from './adapter/platform/idb-store';
 import { mountWorkingSet } from './adapter/platform/asset-working-set';
 import { mountAssetMetaIndex } from './adapter/platform/asset-meta-index';
@@ -625,7 +628,21 @@ async function boot(): Promise<void> {
   // set to 'opfs' and OPFS is usable (secure context — NOT file://), the
   // store is OPFS-backed, migrating the existing IDB default container
   // across once. Falls back to IDB safely otherwise.
-  const { store } = await createConfiguredStoreFromEnv();
+  const { store, fsaPending } = await createConfiguredStoreFromEnv();
+  // #940: FSA 選択中に permission が prompt に落ちて IDB へ fallback した
+  // boot では、silent に「新規コンテナ状態」で開いたように見せず、再接続
+  // バナーを常駐表示する。ボタン click = user gesture で requestPermission
+  // → granted なら reload して FSA から boot し直す。
+  if (fsaPending) {
+    showFsaReconnectBanner({
+      folderName: fsaPending.name,
+      onReconnect: async () => {
+        const ok = await verifyFsaPermission(fsaPending.handle, true);
+        if (ok) window.location.reload();
+        return ok;
+      },
+    });
+  }
   // 段階3 (#868) lazy asset loading. Boot loads the container shallow
   // (no asset bytes — see loadFromStore); the working-set manager keeps
   // `container.assets` populated with just what the visible view
@@ -1029,7 +1046,7 @@ async function boot(): Promise<void> {
     const pkcData = await readPkcData();
     endReadPkcData();
     const endLoadFromStore = profileStart('boot:loadFromStore');
-    const { container: idbContainer } = await loadFromStore(store);
+    const { container: idbContainer, bodiesDeferred } = await loadFromStore(store);
     endLoadFromStore();
     let chosen = chooseBootSource(pkcData, idbContainer);
 
@@ -1092,7 +1109,14 @@ async function boot(): Promise<void> {
           type: 'SYS_INIT_COMPLETE',
           container,
           embedded: embedCtx.embedded,
+          bodiesDeferred,
         });
+        // #940 案 A 段階3: layout v2 の meta-first boot。本文は
+        // body-working-set が需要駆動 + idle backfill で hydrate する
+        // (選択/編集は即時、全文系は barrier、保存は復元完了まで保留)。
+        if (bodiesDeferred) {
+          mountBodyWorkingSet(dispatcher, { store });
+        }
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);
         maybeOpenFlagsInspectorFromUrl(dispatcher);

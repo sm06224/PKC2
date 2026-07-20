@@ -71,6 +71,14 @@ export interface ConfiguredStoreResult {
   backend: StorageBackend;
   /** True when a one-time IDB→OPFS migration ran during this boot. */
   migrated: boolean;
+  /**
+   * #940: FSA 選択中だが保存 handle の permission が boot 時 `'prompt'`
+   * (Chromium は再起動後ほぼ必ずこうなる)で silent に IDB へ fallback
+   * したとき、その handle を運ぶ。caller(main.ts)はこれを見て
+   * 「前回のフォルダに再接続」バナーを出す ── 従来はここで何も知らせず
+   * 「新規コンテナ状態で開く」ように見えていた(user 報告 2026-07-21)。
+   */
+  fsaPending?: { name: string; handle: unknown };
 }
 
 /**
@@ -94,12 +102,26 @@ export async function createConfiguredStore(
   ) {
     const handle = await deps.loadFsaHandle();
     // Boot has no user gesture, so only QUERY permission (never request).
-    // A lapsed (`'prompt'`) permission falls through to IDB; the user
-    // re-grants by re-picking the folder via the UI.
     if (handle && (await deps.verifyFsaPermission(handle, false))) {
       const fsaStore = createContainerStore(deps.makeFsaAdapter(handle));
       const migrated = await migrateFromIdbIfEmpty(fsaStore, deps.makeIdbStore);
       return { store: fsaStore, backend: 'fsa', migrated };
+    }
+    if (handle) {
+      // #940: permission が `'prompt'` に落ちている(Chromium は再起動後
+      // ほぼ必ずこうなる)。IDB に fallback しつつ handle を返し、caller が
+      // 「再接続」バナー(user gesture で requestPermission → reload)を
+      // 出せるようにする。従来の silent fallback は「前回パスを読み込まず
+      // 新規コンテナ状態で開く」ように見えるバグだった。
+      const name = typeof (handle as { name?: unknown }).name === 'string'
+        ? (handle as { name: string }).name
+        : '(フォルダ)';
+      return {
+        store: deps.makeIdbStore(),
+        backend: 'idb',
+        migrated: false,
+        fsaPending: { name, handle },
+      };
     }
   }
   return { store: deps.makeIdbStore(), backend: 'idb', migrated: false };

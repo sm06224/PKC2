@@ -294,6 +294,8 @@ export interface AppState {
    * always initialize to `false` via `createInitialState()`.
    */
   viewOnlySource?: boolean;
+  /** #940 案 A 段階2: meta-first boot 中(本文 background 復元待ち)。 */
+  bodiesPending?: boolean;
   /** Shell menu open/close state. Runtime-only, not persisted. */
   menuOpen?: boolean;
   /**
@@ -657,6 +659,7 @@ export function createInitialState(): AppState {
     readonly: false,
     lightSource: false,
     viewOnlySource: false,
+    bodiesPending: false,
     showArchived: false,
     searchHideBuckets: true,
     unreferencedAttachmentsOnly: false,
@@ -744,6 +747,26 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
   // updated_at and emits WORKING_SET_UPDATED (NOT a save trigger). A
   // no-op when there is no container (boot race) or the map is
   // reference-identical.
+  if (action.type === 'SYS_BODIES_LOADED') {
+    // #940 案 A 段階2: 本文 background 復元の merge。本文が '' の entry に
+    // だけ適用(boot 後のユーザー編集を上書きしない)。イベントは
+    // SAVE_TRIGGERS 非対象(復元は mutation ではない)。
+    if (!state.container) return { state: { ...state, bodiesPending: false }, events: [] };
+    let changed = false;
+    const entries = state.container.entries.map((e) => {
+      if (e.body === '' && typeof action.bodies[e.lid] === 'string' && action.bodies[e.lid] !== '') {
+        changed = true;
+        return { ...e, body: action.bodies[e.lid]! };
+      }
+      return e;
+    });
+    const container = changed ? { ...state.container, entries } : state.container;
+    // #940 段階3: partial merge は bodiesPending を維持(全件で解除)。
+    return {
+      state: { ...state, container, bodiesPending: action.partial === true ? state.bodiesPending : false },
+      events: [{ type: 'BODIES_HYDRATED' }],
+    };
+  }
   if (action.type === 'SET_WORKING_SET_ASSETS') {
     if (!state.container) return { state, events: [] };
     if (state.container.assets === action.assets) return { state, events: [] };
@@ -1326,6 +1349,8 @@ function reduceInitializing(state: AppState, action: Dispatchable): ReduceResult
         readonly: action.readonly ?? false,
         lightSource: action.lightSource ?? false,
         viewOnlySource: action.viewOnlySource ?? false,
+        // #940 案 A 段階2: meta-first boot 中(本文 background 復元待ち)。
+        bodiesPending: action.bodiesDeferred ?? false,
         error: null,
       };
       const cid = action.container?.meta?.container_id ?? 'unknown';

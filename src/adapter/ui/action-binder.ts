@@ -113,6 +113,7 @@ import { htmlPasteToMarkdown, htmlPasteToRichMarkdown, plainLooksLikeMarkdown } 
 import { hydrateInlineAssetPreviews, buildInlineAssetIndex } from './inline-media-hydrator';
 import { isLaunchableUrl, buildUrlRedirectHtml, urlTileFilename } from '../../features/launcher/url-tile';
 import { dropLauncherTile, type LauncherDropTarget } from '../../features/launcher/tile-order';
+import { activeBodyWorkingSet } from '../platform/body-working-set';
 import { maybeHandleLinkPaste } from './link-paste-handler';
 import { formatExternalPermalink } from '../../features/link/permalink';
 import { setFrontmatter, parseFrontmatterScalar } from '../../features/markdown/frontmatter';
@@ -8940,6 +8941,16 @@ export function bindActions(
     if (focusEntryWindow(lid)) return;
     if (shellEditModeEnabled() && dispatcher.getState().editMode === 'window') {
       handleDblClickAction(lid);
+      return;
+    }
+    // #940 段階3: 本文が未 hydrate なら先に hydrate してから編集に入る
+    // (空の editor を開いて本文を失う事故の構造的防止)。
+    const bws = activeBodyWorkingSet();
+    const cid = dispatcher.getState().container?.meta.container_id;
+    if (bws && cid && bws.isPending(cid, lid)) {
+      void bws.ensure([lid]).then(() => {
+        dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
+      });
       return;
     }
     dispatcher.dispatch({ type: 'BEGIN_EDIT', lid });
