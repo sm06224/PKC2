@@ -376,14 +376,17 @@ export function createContainerStore(
 
     // storage 上がまだ split 形式でなければ previous は使えない
     // (inline record しか無い = per-entry record が存在しない)ので
-    // 全件書込みへフォールバック。判定はセッション初回のみ record を読む。
-    let isSplit = splitState.get(cid);
-    let layout = layoutState.get(cid);
-    if (isSplit === undefined || layout === undefined) {
-      const rec = (await containers.get(cid)) as StoredContainerRecord | undefined;
-      isSplit = rec?.__pkc_split__ !== undefined;
-      layout = rec?.__pkc_layout__ === 2 ? 2 : 1;
-    }
+    // 全件書込みへフォールバック。
+    //
+    // #940 段階5 の健全性 suite が捕捉した実バグの修正: この判定を
+    // session memo に頼ると、**別 store インスタンス**(複数タブ /
+    // backend 移行 / flag 切替をまたぐ再構築)が layout を変えた後に
+    // stale memo で diff 書込みし、marker と実体が食い違って全 body が
+    // 空に見える破壊が起きる。核心判定は毎回 core record を実読する
+    // (小 record 1 get / 保存 ── 差分保存の節約に対して無視できる)。
+    const rec = (await containers.get(cid)) as StoredContainerRecord | undefined;
+    const isSplit = rec?.__pkc_split__ !== undefined;
+    const layout = rec?.__pkc_layout__ === 2 ? 2 : 1;
     // #940 案 A 段階1: v2 = meta(body 空)+ __body__ record 分離。
     // diff base は「storage の layout が目標 layout と一致」する時だけ有効
     // ── layout をまたぐ差分は混在 state(body の無い meta が正に見える)
@@ -923,7 +926,21 @@ export function registerExportStore(store: ContainerStore | null): void {
  */
 export async function hydrateForExport(container: Container): Promise<Container> {
   if (!activeExportStore) return container;
-  return hydrateReferencedAssets(activeExportStore, container);
+  const withAssets = await hydrateReferencedAssets(activeExportStore, container);
+  // #940 段階4: 未 hydrate の本文(body working-set の pending)も export
+  // 前に必ず復元する ── export 内容が lazy 化の影響を受けない barrier。
+  const cid = withAssets.meta.container_id;
+  const pendingLids = withAssets.entries
+    .filter((e) => isBodyPendingGlobal(cid, e.lid))
+    .map((e) => e.lid);
+  if (pendingLids.length === 0) return withAssets;
+  const bodies = await activeExportStore.loadBodiesFor(cid, pendingLids);
+  return {
+    ...withAssets,
+    entries: withAssets.entries.map((e) =>
+      bodies[e.lid] !== undefined ? { ...e, body: bodies[e.lid]! } : e,
+    ),
+  };
 }
 
 // ── Availability probe ──────────────────────

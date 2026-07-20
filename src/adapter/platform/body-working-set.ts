@@ -102,6 +102,15 @@ export function mountBodyWorkingSet(
       initFromState();
       scheduleIdleBackfill();
     }
+    // #940 段階4: 全文系への遷移は全件 barrier(検索クエリ入力 /
+    // kanban・calendar への view 切替は本文全体を前提とする)。
+    if (pending.size > 0) {
+      const enteredFullText =
+        (s.searchQuery !== prev.searchQuery && s.searchQuery !== '')
+        || (s.viewMode !== prev.viewMode
+            && (s.viewMode === 'kanban' || s.viewMode === 'calendar'));
+      if (enteredFullText) void ensureAll();
+    }
     // 選択 / 編集対象は即 hydrate。
     const want: string[] = [];
     if (s.selectedLid && pending.has(s.selectedLid)) want.push(s.selectedLid);
