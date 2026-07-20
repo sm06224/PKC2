@@ -115,13 +115,16 @@ export const shellKeymapRegistryEnabled = defineFlag<boolean>(
 // ON で center / sidebar / meta / header の **background**(specific element に
 // 着いていない場所)を右クリックすると region-aware menu が出る。OFF で
 // 従来挙動(specific element でだけ menu、background は browser native)。
+// #938 R4(2026-07-20 洗練化ラウンド): 既定 ON(オプトアウト)へ昇格。
+// hover-only 操作の代替導線として universal menu を全面に立てる
+// (refinement-research-2026-07.md §5 ── flag OFF のまま眠っていた)。
 export const shellContextMenuUniversalEnabled = defineFlag<boolean>(
   'shell.context_menu_universal_enabled',
-  false,
+  true,
   {
     category: 'shell',
     description:
-      'Context Menu の universal 化(region 背景の右クリックで region-aware menu)',
+      'Context Menu の universal 化(region 背景の右クリックで region-aware menu)。OFF で従来挙動(オプトアウト)',
   },
 );
 

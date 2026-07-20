@@ -97,3 +97,33 @@ describe('未登録 HTML 添付 section(#935)', () => {
     expect(root.querySelector('[data-pkc-region="launcher-grid-unregistered"] .pkc-launcher-tile')).not.toBeNull();
   });
 });
+
+describe('launcher タイルの右クリック menu(#938 R4)', () => {
+  function rightClick(el: HTMLElement): void {
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  }
+  function menu(): HTMLElement | null {
+    return root.querySelector<HTMLElement>('[data-pkc-region="context-menu"]');
+  }
+
+  it('登録タイル: 起動 / ⓘ / 🏷 が並び、ⓘ で detail へ移る', () => {
+    const d = setup();
+    rightClick(root.querySelector<HTMLElement>('.pkc-launcher-tile[data-pkc-lid="reg"]')!);
+    const m = menu()!;
+    expect(m).not.toBeNull();
+    expect(m.querySelector('[data-pkc-action="open-html-attachment"][data-pkc-lid="reg"]')).not.toBeNull();
+    expect(m.querySelector('[data-pkc-action="launcher-set-group"][data-pkc-lid="reg"]')).not.toBeNull();
+    m.querySelector<HTMLElement>('[data-pkc-action="launcher-open-detail"][data-pkc-lid="reg"]')!.click();
+    expect(d.getState().selectedLid).toBe('reg');
+    expect(d.getState().viewMode).toBe('detail');
+  });
+
+  it('未登録タイル: 🏷 の代わりに 📌 登録が出て、click で登録される', () => {
+    const d = setup();
+    rightClick(root.querySelector<HTMLElement>('.pkc-launcher-tile[data-pkc-lid="unreg"]')!);
+    const m = menu()!;
+    expect(m.querySelector('[data-pkc-action="launcher-set-group"]')).toBeNull();
+    m.querySelector<HTMLElement>('[data-pkc-action="launcher-register-tile"][data-pkc-lid="unreg"]')!.click();
+    expect(JSON.parse(d.getState().container!.entries.find((e) => e.lid === 'unreg')!.body).registered_as_app).toBe(true);
+  });
+});

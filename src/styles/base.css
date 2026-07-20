@@ -13113,3 +13113,20 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
   border-radius: 2px;
   pointer-events: none;
 }
+
+/* ── #938 R5(2026-07-20 洗練化): touch フォールバック ──────────────
+   hover でしか現れない操作(opacity:0 → :hover で表示)は、hover を
+   持たない端末(touch)では構造的に到達不能だった(refinement-research
+   §5: `hover:none` フォールバック 0 件)。coarse-pointer / hover 無し
+   環境では常時表示にする。対象 = launcher タイル操作列 / エントリ行の
+   リンクコピー / コードブロック copy / カレンダー日別追加 / textlog
+   ログ編集ボタン。 */
+@media (hover: none), (pointer: coarse) {
+  .pkc-launcher-tile-controls,
+  .pkc-entry-copy-link,
+  .pkc-md-block > .pkc-md-copy-btn,
+  .pkc-calendar-day-add,
+  .pkc-textlog-edit-btn {
+    opacity: 1 !important;
+  }
+}
