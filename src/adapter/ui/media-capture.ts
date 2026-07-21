@@ -24,8 +24,30 @@
 
 import type { Dispatcher } from '../state/dispatcher';
 import { showToast } from './toast';
+import { showInlineConfirm } from './inline-dialog';
 import { attachmentRejectHardBytes } from './guardrails';
+import { defineFlag } from '../../core/flags';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from '../../features/textlog/textlog-body';
+
+/**
+ * #949(user 報告 2026-07-21「画面収録が長くなると異常終了」): 埋め込み
+ * 経路は blob → base64 → container 全体 JSON 保存とメモリが多段増幅し、
+ * 長時間収録(100MB 級)でタブごと落ちて**収録が全損**していた。この
+ * 閾値を超える収録は、停止時に「埋め込む / ファイルとしてダウンロード」
+ * をインラインダイアログで選ばせる(user 要望「PKC に直接書き込まない
+ * オプション」)。0 に設定するとサイズによらず毎回確認する。
+ */
+export const mediaCaptureEmbedMaxBytes = defineFlag<number>(
+  'media.capture_embed_max_bytes',
+  25 * 1024 * 1024,
+  {
+    range: [0, 1024 * 1024 * 1024],
+    category: 'storage',
+    description:
+      '収録をこのサイズ(bytes)まで無確認で PKC に埋め込む。超えたら埋め込み/ダウンロードの確認を出す。0 = 毎回確認',
+    tier: 0,
+  },
+);
 
 /** テスト注入用の縫い目(MediaRecorder / getUserMedia / getDisplayMedia)。 */
 export interface MediaCaptureDeps {
@@ -35,6 +57,10 @@ export interface MediaCaptureDeps {
   recorderCtor?: typeof MediaRecorder;
   /** サイズ上限 bytes(既定 = attachment hard reject flag)。 */
   maxBytes?: number;
+  /** 埋め込み確認の閾値 bytes(既定 = media.capture_embed_max_bytes flag)。 */
+  embedConfirmBytes?: number;
+  /** blob → base64 変換(テストで失敗を注入する縫い目)。 */
+  toBase64?: (blob: Blob) => Promise<string>;
 }
 
 interface ActiveSession {
@@ -186,6 +212,22 @@ function teardown(session: ActiveSession): void {
   if (active === session) active = null;
 }
 
+/**
+ * 収録 blob をファイルとしてダウンロードする(PKC には書き込まない)。
+ * #949: 埋め込み経路のメモリ増幅を完全に回避でき、変換や保存が失敗しても
+ * 収録データが失われない安全経路。
+ */
+function downloadRecording(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 /** blob → base64(data: prefix なし)。 */
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -329,17 +371,48 @@ async function startCapture(
         return;
       }
       const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
-      let base64: string;
-      try {
-        base64 = await blobToBase64(blob);
-      } catch (err) {
-        showToast({ message: `収録の保存に失敗しました: ${(err as Error).message ?? 'read error'}`, kind: 'error' });
-        return;
-      }
-
       const ts = new Date(startedAt).toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
       const name = kind === 'audio' ? `recording-${ts}.${ext}` : `screen-${ts}.${ext}`;
+
+      // #949: 閾値超過(または flag=0)の収録は保存先を確認する。埋め込みは
+      // blob → base64 → container 全体 JSON 保存とメモリが多段増幅し、
+      // 長時間収録ではタブごと落ちて収録が全損するリスクがある。
+      // Esc / 外側クリック / キャンセルは**ダウンロード側**に倒す
+      // (どの経路でもデータがファイルとして必ず残る安全設計)。
+      const confirmThreshold = deps.embedConfirmBytes ?? mediaCaptureEmbedMaxBytes();
+      if (blob.size > confirmThreshold) {
+        const embed = await showInlineConfirm({
+          title: `収録サイズは ${formatBytes(blob.size)} です。保存方法を選んでください`,
+          detail:
+            'PKC への埋め込みはコンテナを肥大化させ、保存・エクスポートを重くします。\n'
+            + '大きい収録は「ダウンロード」を推奨します(PKC には書き込まれず、ファイルとして残ります)。',
+          okLabel: '📦 PKC に埋め込む',
+          cancelLabel: '📥 ダウンロード',
+        });
+        if (!embed) {
+          downloadRecording(blob, name);
+          showToast({
+            message: `収録をファイルとして保存しました(${name} / ${formatBytes(blob.size)})。PKC には書き込んでいません`,
+            kind: 'info',
+          });
+          return;
+        }
+      }
+
+      let base64: string;
+      try {
+        base64 = await (deps.toBase64 ?? blobToBase64)(blob);
+      } catch (err) {
+        // #949: 変換失敗でも収録を捨てない — ダウンロードに fallback。
+        downloadRecording(blob, name);
+        showToast({
+          message: `埋め込み用の変換に失敗したため、収録をファイルとして保存しました(${name}): ${(err as Error).message ?? 'read error'}`,
+          kind: 'warn',
+        });
+        return;
+      }
+
       const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       // context が消えている(entry 削除等)場合も attachment 単体としては残す。
