@@ -208,6 +208,108 @@ describe('画面収録(#922)', () => {
   });
 });
 
+describe('#949 保存先の選択(埋め込み / ダウンロード)', () => {
+  function dialog(): HTMLElement | null {
+    return document.querySelector('[data-pkc-region="inline-dialog"]');
+  }
+  function stubDownload() {
+    // happy-dom には createObjectURL が無い場合があるので直接生やす。
+    (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL =
+      vi.fn(() => 'blob:fake');
+    (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = vi.fn();
+    const clicked: string[] = [];
+    const orig = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      clicked.push(this.download);
+    };
+    return { clicked, restore: () => { HTMLAnchorElement.prototype.click = orig; } };
+  }
+
+  it('閾値超過 → dialog 出現、ダウンロード選択で PKC に書き込まれない', async () => {
+    const d = setup('memo');
+    const dl = stubDownload();
+    try {
+      await startScreenRecording(d, {
+        getDisplayMedia: async () => fakeStream() as never,
+        recorderCtor: FakeRecorder as never,
+        embedConfirmBytes: 100,
+      });
+      FakeRecorder.last!.emit(200); // 200 > 100 = 閾値超過
+      (document.querySelector('[data-pkc-action="media-capture-stop"]') as HTMLButtonElement).click();
+
+      await vi.waitFor(() => expect(dialog()).not.toBeNull());
+      // cancel(📥 ダウンロード)側を選択
+      (dialog()!.querySelector('[data-pkc-action="dialog-cancel"]') as HTMLButtonElement).click();
+
+      await vi.waitFor(() => expect(dl.clicked.length).toBe(1));
+      expect(dl.clicked[0]).toMatch(/^screen-.*\.webm$/);
+      // PKC には一切書き込まれていない
+      const c = d.getState().container!;
+      expect(c.entries.find((e) => e.archetype === 'attachment')).toBeUndefined();
+      expect(Object.keys(c.assets)).toHaveLength(0);
+    } finally {
+      dl.restore();
+    }
+  });
+
+  it('閾値超過 → 埋め込み選択で従来どおり attachment 化される', async () => {
+    const d = setup('memo');
+    await startScreenRecording(d, {
+      getDisplayMedia: async () => fakeStream() as never,
+      recorderCtor: FakeRecorder as never,
+      embedConfirmBytes: 100,
+    });
+    FakeRecorder.last!.emit(200);
+    (document.querySelector('[data-pkc-action="media-capture-stop"]') as HTMLButtonElement).click();
+
+    await vi.waitFor(() => expect(dialog()).not.toBeNull());
+    (dialog()!.querySelector('[data-pkc-action="dialog-ok"]') as HTMLButtonElement).click();
+
+    await vi.waitFor(() => {
+      const att = d.getState().container!.entries.find((e) => e.archetype === 'attachment');
+      expect(att?.title).toMatch(/^screen-.*\.webm$/);
+    });
+  });
+
+  it('閾値以下は dialog なしで従来どおり自動埋め込み(摩擦を増やさない)', async () => {
+    const d = setup('memo');
+    await startScreenRecording(d, {
+      getDisplayMedia: async () => fakeStream() as never,
+      recorderCtor: FakeRecorder as never,
+      embedConfirmBytes: 1000,
+    });
+    FakeRecorder.last!.emit(200); // 200 ≤ 1000
+    (document.querySelector('[data-pkc-action="media-capture-stop"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => {
+      const att = d.getState().container!.entries.find((e) => e.archetype === 'attachment');
+      expect(att?.title).toMatch(/^screen-.*\.webm$/);
+    });
+    expect(dialog()).toBeNull();
+  });
+
+  it('base64 変換失敗 → 収録を捨てずダウンロードに fallback', async () => {
+    const d = setup('memo');
+    const dl = stubDownload();
+    try {
+      await startScreenRecording(d, {
+        getDisplayMedia: async () => fakeStream() as never,
+        recorderCtor: FakeRecorder as never,
+        embedConfirmBytes: 1_000_000, // dialog は出さず変換へ直行
+        toBase64: async () => { throw new Error('oom'); },
+      });
+      FakeRecorder.last!.emit(64);
+      (document.querySelector('[data-pkc-action="media-capture-stop"]') as HTMLButtonElement).click();
+
+      await vi.waitFor(() => expect(dl.clicked.length).toBe(1));
+      // PKC 側は無変更(全損しない、が契約)
+      const c = d.getState().container!;
+      expect(c.entries.find((e) => e.archetype === 'attachment')).toBeUndefined();
+    } finally {
+      dl.restore();
+    }
+  });
+});
+
 describe('insertRecordingReference', () => {
   it('編集中は body textarea のカーソル位置へ挿入(input event 発火)', () => {
     const d = setup('memo');
