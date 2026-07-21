@@ -13315,3 +13315,31 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
 .pkc-startup-notice-mute {
   color: var(--c-muted);
 }
+
+/* ── #956: ?pkc-debug=assets 診断 overlay ── */
+.pkc-asset-debug-overlay {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 22000;
+  max-width: min(720px, calc(100vw - 32px));
+  max-height: 50vh;
+  overflow: auto;
+  background: var(--c-surface);
+  border: 2px dashed var(--c-warn, #b45309);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-sm);
+  color: var(--c-fg);
+}
+.pkc-asset-debug-head { font-weight: 600; margin-bottom: var(--space-1); word-break: break-all; }
+.pkc-asset-debug-table { border-collapse: collapse; width: 100%; }
+.pkc-asset-debug-table th, .pkc-asset-debug-table td {
+  border: 1px solid var(--c-border);
+  padding: 2px 6px;
+  text-align: left;
+  word-break: break-all;
+}
+.pkc-asset-debug-table tr[data-pkc-debug-bad="true"] { background: color-mix(in srgb, #b91c1c 18%, transparent); }
+.pkc-asset-debug-actions { display: flex; gap: var(--space-2); margin-top: var(--space-1); }

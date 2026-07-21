@@ -115,6 +115,11 @@ const differentialSaveEnabled = defineFlag<boolean>('persistence.differential_sa
   tier: 0,
 });
 
+/** `?pkc-debug=assets` 診断 overlay 用の現在値 read(#956)。 */
+export function differentialSaveFlagValueForDebug(): boolean {
+  return differentialSaveEnabled();
+}
+
 export interface PersistenceOptions {
   store: ContainerStore;
   debounceMs?: number;
