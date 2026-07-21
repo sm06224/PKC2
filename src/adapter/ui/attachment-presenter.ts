@@ -389,6 +389,24 @@ export function previewModeLabel(type: ReturnType<typeof classifyPreviewType>): 
   }
 }
 
+/**
+ * #956: "asset_key あり・bytes なし" は 2 つの別状態が同じ形に落ちる ──
+ * ① 真の Light export(bytes はどこにも無い)② lazy asset loading(#868)
+ * 下でまだ working-set に回復されていないだけの非常駐 asset。presenter は
+ * state を持たないため、renderer が render 冒頭で `state.lightSource` を
+ * ここへ書き込み、renderBody が両者を区別する。既定 false(= 非常駐扱い)
+ * が安全側: miss 記録 → working-set が回復 → 再 render で治る。
+ */
+let lightSourceHint = false;
+
+export function setAttachmentLightSourceHint(v: boolean): void {
+  lightSourceHint = v;
+}
+
+export function isAttachmentLightSourceHint(): boolean {
+  return lightSourceHint;
+}
+
 export const attachmentPresenter: DetailPresenter = {
   renderBody(entry: Entry, assets?: Record<string, string>): HTMLElement {
     const att = parseAttachmentBody(entry.body);
@@ -401,6 +419,13 @@ export const attachmentPresenter: DetailPresenter = {
     const hasAssetData = !!(att.asset_key && assets?.[att.asset_key]);
     const dataAvailable = !!(att.data || hasAssetData || att.asset_key);
     const dataStripped = !!att.asset_key && !att.data && !hasAssetData;
+    // #956: 非常駐(Light でない)は全 MIME で miss を記録する。従来は
+    // 画像経路(resolveImageDataUrl)だけが記録しており、HTML/URL 添付は
+    // 選択 closure の proactive preload に当たらない限り「Light export」
+    // 表示に落ちたままだった(断続的にしか起きない user 報告の正体)。
+    const pendingHydration = dataStripped && !lightSourceHint;
+    if (pendingHydration && att.asset_key) noteAssetMiss(att.asset_key);
+    const trulyStripped = dataStripped && lightSourceHint;
 
     if (!hasFile) {
       const empty = document.createElement('div');
@@ -456,11 +481,19 @@ export const attachmentPresenter: DetailPresenter = {
     modeBadge.textContent = previewModeLabel(previewType);
     metaRow.appendChild(modeBadge);
 
-    if (dataStripped) {
+    if (trulyStripped) {
       const stripped = document.createElement('span');
       stripped.className = 'pkc-attachment-stripped';
       stripped.textContent = 'Data not included (Light export)';
       metaRow.appendChild(stripped);
+    } else if (pendingHydration) {
+      // 非常駐なだけ:working-set の回復(上で記録した miss)で再 render
+      // されると消える一時表示。Light export と誤認させない。
+      const pending = document.createElement('span');
+      pending.className = 'pkc-attachment-pending';
+      pending.setAttribute('data-pkc-region', 'attachment-loading');
+      pending.textContent = '⏳ ファイル読み込み中…';
+      metaRow.appendChild(pending);
     }
     card.appendChild(metaRow);
 
@@ -471,7 +504,11 @@ export const attachmentPresenter: DetailPresenter = {
     // first. The preview iframe still renders a second copy of the
     // button for discoverability — the two paths share the same
     // `open-html-attachment` action handler.
-    if (dataAvailable && !dataStripped) {
+    // #956: 非常駐(pendingHydration)でも action row は出す ── click 経路
+    // (open-html-attachment / download-attachment)は on-demand hydrate +
+    // direct store fallback を持つので、ボタンは bytes 未回復でも機能する。
+    // 隠すのは真の Light export のみ。
+    if (dataAvailable && !trulyStripped) {
       const actionRow = document.createElement('div');
       actionRow.className = 'pkc-attachment-actions';
       actionRow.setAttribute('data-pkc-region', 'attachment-actions');

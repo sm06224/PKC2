@@ -48,6 +48,7 @@ import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
 import { registerBuiltinKeymaps } from './adapter/ui/keymap-binder';
 import { wireTabStrip, restoreTabState } from './adapter/ui/tab-strip';
 import { mountStartupNotice } from './adapter/ui/startup-notice';
+import { mountAssetDebugOverlay } from './adapter/ui/asset-debug-overlay';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
@@ -695,6 +696,9 @@ async function boot(): Promise<void> {
   // entry) hydrate the needed asset bytes inline rather than waiting for a
   // render-driven miss-recovery cycle.
   registerAssetHydrator((keys) => workingSet.ensure(keys));
+  // #956: `?pkc-debug=assets` 診断 overlay(user 報告切り分け用)。
+  // debug flag が無ければ完全 no-op。
+  mountAssetDebugOverlay(dispatcher, store);
   // 段階4 (#868): resident asset-metadata index so storage profile /
   // guardrails / orphan count / paste dedupe report on the FULL store, not
   // just the resident working-set. Memory-safe backfill + persisted index.

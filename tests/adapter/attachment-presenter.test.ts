@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   parseAttachmentBody,
   serializeAttachmentBody,
@@ -19,9 +19,22 @@ import {
   previewModeLabel,
   SANDBOX_ATTRIBUTES,
   SANDBOX_DESCRIPTIONS,
+  setAttachmentLightSourceHint,
 } from '@adapter/ui/attachment-presenter';
+import { drainAssetMisses, resetAssetMisses } from '../../src/features/asset/asset-miss-recorder';
 import type { Entry } from '@core/model/record';
 import { registerPresenter, getPresenter } from '@adapter/ui/detail-presenter';
+
+// #956: 「asset_key あり・bytes なし」の既定解釈が「非常駐(読み込み待ち)」に
+// 変わったため、Light export の表示を検証する test は hint を明示 ON にする。
+beforeEach(() => {
+  setAttachmentLightSourceHint(false);
+  resetAssetMisses();
+});
+afterEach(() => {
+  setAttachmentLightSourceHint(false);
+  resetAssetMisses();
+});
 
 // "SGVsbG8=" is base64 for "Hello" (5 bytes)
 const HELLO_B64 = 'SGVsbG8=';
@@ -208,9 +221,51 @@ describe('Attachment Presenter', () => {
     });
 
     it('shows stripped notice when asset_key exists but no data (light export)', () => {
+      setAttachmentLightSourceHint(true);
       const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123"}');
       const el = attachmentPresenter.renderBody(entry);
       expect(el.querySelector('.pkc-attachment-stripped')!.textContent).toBe('Data not included (Light export)');
+    });
+
+    // ── #956: 非常駐(lazy loading 未回復)は Light export と区別する ──
+
+    it('#956: non-resident (not light) shows a loading badge instead of the Light-export notice', () => {
+      const entry = makeLegacyEntry('{"name":"app.html","mime":"text/html","asset_key":"ast-h1"}');
+      const el = attachmentPresenter.renderBody(entry);
+      expect(el.querySelector('.pkc-attachment-stripped')).toBeNull();
+      const pending = el.querySelector('[data-pkc-region="attachment-loading"]');
+      expect(pending).not.toBeNull();
+      expect(pending!.textContent).toContain('読み込み中');
+    });
+
+    it('#956: non-resident (not light) records an asset miss for ALL mime types (HTML too)', () => {
+      const entry = makeLegacyEntry('{"name":"app.html","mime":"text/html","asset_key":"ast-h2"}');
+      attachmentPresenter.renderBody(entry);
+      expect(drainAssetMisses()).toContain('ast-h2');
+    });
+
+    it('#956: non-resident (not light) keeps the action row (Download + 🌐 Open for HTML)', () => {
+      const entry = makeLegacyEntry('{"name":"app.html","mime":"text/html","asset_key":"ast-h3"}');
+      const el = attachmentPresenter.renderBody(entry);
+      expect(el.querySelector('[data-pkc-region="attachment-actions"]')).not.toBeNull();
+      expect(el.querySelector('[data-pkc-action="download-attachment"]')).not.toBeNull();
+      expect(el.querySelector('[data-pkc-action="open-html-attachment"]')).not.toBeNull();
+    });
+
+    it('#956: true light export does NOT record a miss and hides the action row', () => {
+      setAttachmentLightSourceHint(true);
+      const entry = makeLegacyEntry('{"name":"app.html","mime":"text/html","asset_key":"ast-h4"}');
+      const el = attachmentPresenter.renderBody(entry);
+      expect(drainAssetMisses()).not.toContain('ast-h4');
+      expect(el.querySelector('[data-pkc-region="attachment-actions"]')).toBeNull();
+      expect(el.querySelector('[data-pkc-region="attachment-loading"]')).toBeNull();
+    });
+
+    it('#956: resident asset renders no loading badge and records no miss', () => {
+      const entry = makeLegacyEntry('{"name":"app.html","mime":"text/html","asset_key":"ast-h5"}');
+      const el = attachmentPresenter.renderBody(entry, { 'ast-h5': 'PGh0bWw+' });
+      expect(el.querySelector('[data-pkc-region="attachment-loading"]')).toBeNull();
+      expect(drainAssetMisses()).not.toContain('ast-h5');
     });
 
     it('shows size when asset_key exists with size field', () => {
@@ -251,6 +306,7 @@ describe('Attachment Presenter', () => {
     });
 
     it('hides the open-in-new-window button when the HTML data has been stripped (light export)', () => {
+      setAttachmentLightSourceHint(true);
       const entry = makeLegacyEntry(
         '{"name":"page.html","mime":"text/html","asset_key":"ast-html","size":100}',
       );
@@ -262,6 +318,7 @@ describe('Attachment Presenter', () => {
 
     it('hides download button when asset_key has no data (even with size)', () => {
       // asset_key with size but no data = light export, data not available for download
+      setAttachmentLightSourceHint(true);
       const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
       const el = attachmentPresenter.renderBody(entry);
       const btn = el.querySelector('[data-pkc-action="download-attachment"]');
@@ -269,6 +326,7 @@ describe('Attachment Presenter', () => {
     });
 
     it('hides download button when data is stripped (light export)', () => {
+      setAttachmentLightSourceHint(true);
       const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123"}');
       const el = attachmentPresenter.renderBody(entry);
       const btn = el.querySelector('[data-pkc-action="download-attachment"]');
@@ -302,6 +360,7 @@ describe('Attachment Presenter', () => {
     });
 
     it('still shows stripped notice when asset_key has no data in container.assets', () => {
+      setAttachmentLightSourceHint(true);
       const entry = makeLegacyEntry('{"name":"photo.jpg","mime":"image/jpeg","asset_key":"ast-123","size":5000}');
       const assets = { 'ast-other': 'irrelevant' };
       const el = attachmentPresenter.renderBody(entry, assets);

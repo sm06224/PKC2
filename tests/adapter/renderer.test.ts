@@ -6,7 +6,7 @@ import { render, renderContextMenu, renderDetachedPanel, buildStorageProfileOver
 import { registerPresenter } from '@adapter/ui/detail-presenter';
 import { todoPresenter } from '@adapter/ui/todo-presenter';
 import { formPresenter } from '@adapter/ui/form-presenter';
-import { attachmentPresenter } from '@adapter/ui/attachment-presenter';
+import { attachmentPresenter, setAttachmentLightSourceHint } from '@adapter/ui/attachment-presenter';
 import type { AppState } from '@adapter/state/app-state';
 import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
@@ -5031,14 +5031,28 @@ describe('Detached View Foundation', () => {
   });
 
   it('renderDetachedPanel for attachment with stripped data shows unavailable message', () => {
+    // #956: 「asset_key あり・bytes なし」= Light export と断定できるのは
+    // light source の時だけになった。本 test は Light export 表示の検証。
+    setAttachmentLightSourceHint(true);
+    try {
+      const panel = renderDetachedPanel(noDataAttEntry, detachedContainer);
+
+      // No download (data stripped)
+      const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+      expect(dlBtn).toBeNull();
+
+      // Shows stripped message
+      expect(panel.textContent).toContain('not available');
+    } finally {
+      setAttachmentLightSourceHint(false);
+    }
+  });
+
+  it('#956: renderDetachedPanel for non-resident attachment (not light) keeps download + loading badge', () => {
     const panel = renderDetachedPanel(noDataAttEntry, detachedContainer);
-
-    // No download (data stripped)
-    const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
-    expect(dlBtn).toBeNull();
-
-    // Shows stripped message
-    expect(panel.textContent).toContain('not available');
+    expect(panel.querySelector('[data-pkc-action="download-attachment"]')).not.toBeNull();
+    expect(panel.querySelector('[data-pkc-region="attachment-loading"]')).not.toBeNull();
+    expect(panel.textContent).not.toContain('not available');
   });
 
   it('renderDetachedPanel shows file info for attachments', () => {
@@ -7764,13 +7778,19 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
     });
 
     it('detached panel hides download when data stripped', () => {
-      const stripped: Container = { ...attachmentContainer, assets: {} };
-      const entry = stripped.entries[0]!;
-      const panel = renderDetachedPanel(entry, stripped);
-      const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
-      expect(dlBtn).toBeNull();
-      const notice = panel.querySelector('.pkc-attachment-stripped');
-      expect(notice).not.toBeNull();
+      // #956: Light export 表示の検証(light hint ON 時のみ断定される)。
+      setAttachmentLightSourceHint(true);
+      try {
+        const stripped: Container = { ...attachmentContainer, assets: {} };
+        const entry = stripped.entries[0]!;
+        const panel = renderDetachedPanel(entry, stripped);
+        const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
+        expect(dlBtn).toBeNull();
+        const notice = panel.querySelector('.pkc-attachment-stripped');
+        expect(notice).not.toBeNull();
+      } finally {
+        setAttachmentLightSourceHint(false);
+      }
     });
 
     it('download button carries data-pkc-lid attribute', () => {

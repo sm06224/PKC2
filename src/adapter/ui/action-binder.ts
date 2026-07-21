@@ -80,7 +80,7 @@ import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml } from '../platform/exporter';
-import { hydrateForExport } from '../platform/idb-store';
+import { hydrateForExport, loadAssetDirect } from '../platform/idb-store';
 import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
@@ -10597,6 +10597,42 @@ function resolveAttachmentData(
  * a brief placeholder, then write the real document. Closes the window if
  * the entry is not an openable HTML attachment after all.
  */
+/**
+ * #956: gesture 用の「必ず bytes を取りに行く」resolver。同期 resolve
+ * (working-set 常駐 / legacy inline)→ on-demand hydrator → 登録済 store
+ * からの direct read、の 3 段 fallback。working-set の refresh race や
+ * budget eviction のタイミングに依存せず、store に bytes が実在する限り
+ * user gesture(HTML app 起動 / Download)が失敗しない。
+ */
+async function resolveAttachmentDataSturdy(
+  lid: string,
+  dispatcher: Dispatcher,
+): Promise<{ data: string; mime: string; name: string } | null> {
+  let resolved = resolveAttachmentData(lid, dispatcher);
+  if (resolved) return resolved;
+
+  const st = dispatcher.getState();
+  const entry = st.container?.entries.find((e) => e.lid === lid);
+  if (!entry || entry.archetype !== 'attachment') return null;
+  const att = parseAttachmentBody(entry.body);
+  if (!att.asset_key) return null;
+
+  if (assetHydrator) {
+    try {
+      await assetHydrator([att.asset_key]);
+    } catch {
+      /* hydration failed — direct store read below is the last resort */
+    }
+    resolved = resolveAttachmentData(lid, dispatcher);
+    if (resolved) return resolved;
+  }
+
+  const cid = st.container?.meta.container_id;
+  const bytes = cid ? await loadAssetDirect(cid, att.asset_key) : null;
+  if (bytes == null) return null;
+  return { data: bytes, mime: att.mime, name: deriveDisplayFilename(att.name, att.mime) };
+}
+
 async function openHtmlAttachmentWindow(
   win: Window | null,
   lid: string,
@@ -10604,27 +10640,19 @@ async function openHtmlAttachmentWindow(
 ): Promise<void> {
   let resolved = resolveAttachmentData(lid, dispatcher);
 
-  if (!resolved && assetHydrator) {
-    // resolveAttachmentData already recorded the miss. Drive the
-    // working-set to load just this entry's asset inline, then retry.
-    const entry = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
-    const att = entry && entry.archetype === 'attachment' ? parseAttachmentBody(entry.body) : null;
-    if (att?.asset_key) {
-      if (win) {
-        win.document.open();
-        win.document.write(
-          '<!doctype html><meta charset="utf-8"><title>Loading…</title>'
-          + '<body style="font-family:system-ui;margin:0;padding:2rem;color:#555">Loading…</body>',
-        );
-        win.document.close();
-      }
-      try {
-        await assetHydrator([att.asset_key]);
-      } catch {
-        /* hydration failed — fall through; resolved stays null below */
-      }
-      resolved = resolveAttachmentData(lid, dispatcher);
+  if (!resolved) {
+    // resolveAttachmentData already recorded the miss. Show a placeholder
+    // while the sturdy resolver drives the working-set (and, if that still
+    // misses, reads the store directly — #956).
+    if (win) {
+      win.document.open();
+      win.document.write(
+        '<!doctype html><meta charset="utf-8"><title>Loading…</title>'
+        + '<body style="font-family:system-ui;margin:0;padding:2rem;color:#555">Loading…</body>',
+      );
+      win.document.close();
     }
+    resolved = await resolveAttachmentDataSturdy(lid, dispatcher);
   }
 
   if (!resolved || classifyPreviewType(resolved.mime) !== 'html') {
@@ -10639,10 +10667,7 @@ async function openHtmlAttachmentWindow(
   }
 }
 
-function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
-  const resolved = resolveAttachmentData(lid, dispatcher);
-  if (!resolved) return;
-
+function triggerBlobDownload(resolved: { data: string; mime: string; name: string }): void {
   const url = createBlobUrl(resolved);
   const a = document.createElement('a');
   a.href = url;
@@ -10653,6 +10678,20 @@ function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, 100);
+}
+
+function downloadAttachment(lid: string, dispatcher: Dispatcher): void {
+  // bytes 常駐(または legacy inline)なら従来通り click gesture 内で同期
+  // ダウンロード。#956: 非常駐時のみ async fallback(hydrate → direct
+  // store read)へ回して bytes を取りに行く。
+  const resolved = resolveAttachmentData(lid, dispatcher);
+  if (resolved) {
+    triggerBlobDownload(resolved);
+    return;
+  }
+  void resolveAttachmentDataSturdy(lid, dispatcher).then((late) => {
+    if (late) triggerBlobDownload(late);
+  });
 }
 
 /**
