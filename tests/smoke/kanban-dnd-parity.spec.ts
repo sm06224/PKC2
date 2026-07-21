@@ -28,9 +28,15 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import { bootReady } from './_helpers/boot-ready';
 
 async function bootAndOpenKanbanWithOneTodo(page: Page): Promise<void> {
   await page.goto('/pkc2.html', { waitUntil: 'load' });
+  // 2026-07-22(#954): 旧式の phase attribute 待ちを canonical bootReady へ
+  // 移行。boot flake 対策に加え、起動後お知らせカードの抑止(helper 側)が
+  // 効くようになる ── カードが done 列の elementFromPoint を覆う regression
+  // を実際に踏んだため。
+  await bootReady(page);
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
 

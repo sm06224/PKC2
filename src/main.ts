@@ -47,6 +47,7 @@ import { wireEntryWindowLiveRefresh } from './adapter/ui/entry-window-live-refre
 import { registerBuiltinCommands } from './adapter/ui/command-palette-builtins';
 import { registerBuiltinKeymaps } from './adapter/ui/keymap-binder';
 import { wireTabStrip, restoreTabState } from './adapter/ui/tab-strip';
+import { mountStartupNotice } from './adapter/ui/startup-notice';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
@@ -567,6 +568,12 @@ async function boot(): Promise<void> {
   // 育つ)── ON にした瞬間既存履歴が tab strip に出る。
   // **本 wiring は restore より後に登録する**(上記 3-TS-R 参照)。
   wireTabStrip(dispatcher);
+
+  // #954(user 指示 2026-07-22): 起動後のお知らせカード。boot 完了
+  // (ready + container)後に 1 回だけ、未読のリリースノートを右下に
+  // 非モーダル表示。オフスイッチ = flag `shell.startup_notice_enabled`
+  // (⚙ Settings「News」トグル)+ カード内「今後表示しない」。
+  mountStartupNotice(dispatcher);
 
   // 3a. Global caret-row indicator (always on, sync-independent).
   // Paints a subtle marker at the focused textarea's caret row

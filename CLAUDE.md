@@ -125,7 +125,8 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 3. **既存問題は別 hotfix PR**:wave に紛れ込ませず即剥がす
 4. **視覚機能 PR は visual parity test 最低 1 件**(上記 Testing 参照)
 5. **新 doc は同 commit で INDEX 登録**(`check:doc-orphans` CI)
-6. **merge は通常時 Claude が実行**(user 委任、2026-06-07)。CI 全 green + audit 通過 + scope 自己監査クリアを確認したうえで squash merge する。ただし次のいずれかに該当する時は merge せず `AskUserQuestion` で user 判断を仰ぐ:scope drift / 後方互換の破壊 / 大規模 refactor / 不可逆操作 / プライム・ディレクティブ(機能を足さない)や frozen 方針への抵触。確認が取れない・CI が green でないものは merge しない
+6. **user-facing 変更はお知らせに掲載**(2026-07-22 user 指示):UI・挙動・既定値が変わる PR は `src/adapter/ui/startup-notice.ts` の `STARTUP_NOTICES` 先頭 entry に 1 行追記(新リリース = 新 entry を先頭追加)。起動後カードとして user に届く
+7. **merge は通常時 Claude が実行**(user 委任、2026-06-07)。CI 全 green + audit 通過 + scope 自己監査クリアを確認したうえで squash merge する。ただし次のいずれかに該当する時は merge せず `AskUserQuestion` で user 判断を仰ぐ:scope drift / 後方互換の破壊 / 大規模 refactor / 不可逆操作 / プライム・ディレクティブ(機能を足さない)や frozen 方針への抵触。確認が取れない・CI が green でないものは merge しない
 
 PR の自己監査(scope drift / CI / unresolved / mergeable / 互換性 grep / bundle)は `docs/development/pr-review-checklist.md` を参照(必要時のみ、儀式化しない)。
 
