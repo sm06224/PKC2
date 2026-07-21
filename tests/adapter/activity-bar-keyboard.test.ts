@@ -77,6 +77,9 @@ describe('pgc-121 Activity Bar tab keyboard shortcut(Alt+Shift+1..6)', () => {
   });
 
   it('command palette から activity.search 実行で active tab が search に', () => {
+    // #951: activity.* は availability で `shell.activity_bar_enabled` 必須に
+    // なった(OFF だと理由 toast + 不実行)。文書化どおり flag ON で検証。
+    setFlags({ activityBar: true });
     bootCommands();
     expect(getActivityBarActiveTab()).toBe('explorer');
     executeCommand('activity.search');
@@ -84,7 +87,7 @@ describe('pgc-121 Activity Bar tab keyboard shortcut(Alt+Shift+1..6)', () => {
   });
 
   it('keymap registry:Alt+Shift+3 で outline tab に switch', () => {
-    setFlags({ keymap: true });
+    setFlags({ keymap: true, activityBar: true });
     bootCommands();
     registerBuiltinKeymaps();
     expect(getActivityBarActiveTab()).toBe('explorer');
@@ -95,7 +98,7 @@ describe('pgc-121 Activity Bar tab keyboard shortcut(Alt+Shift+1..6)', () => {
   });
 
   it('keymap registry:Alt+Shift+6 で pinned tab に switch', () => {
-    setFlags({ keymap: true });
+    setFlags({ keymap: true, activityBar: true });
     bootCommands();
     registerBuiltinKeymaps();
     const e = new KeyboardEvent('keydown', { key: '6', altKey: true, shiftKey: true });
@@ -104,7 +107,7 @@ describe('pgc-121 Activity Bar tab keyboard shortcut(Alt+Shift+1..6)', () => {
   });
 
   it('Alt+1(view mode、Shift なし)は activity tab を変えない(別系列)', () => {
-    setFlags({ keymap: true });
+    setFlags({ keymap: true, activityBar: true });
     bootCommands();
     registerBuiltinKeymaps();
     expect(getActivityBarActiveTab()).toBe('explorer');
@@ -124,7 +127,7 @@ describe('pgc-121 Activity Bar tab keyboard shortcut(Alt+Shift+1..6)', () => {
   });
 
   it('連続 keyboard switch:explorer → search → recent → explorer', () => {
-    setFlags({ keymap: true });
+    setFlags({ keymap: true, activityBar: true });
     bootCommands();
     registerBuiltinKeymaps();
     const k = (n: number) => new KeyboardEvent('keydown', { key: String(n), altKey: true, shiftKey: true });

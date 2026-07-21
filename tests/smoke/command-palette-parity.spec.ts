@@ -104,4 +104,30 @@ test.describe('Command Palette parity', () => {
     // overlay が出ない(no-op)
     await expect(overlay).toHaveCount(0);
   });
+
+  // #951(user 報告「ほとんど機能しなかった」): 使えない command の
+  // silent no-op を廃止した availability 機構の parity。既定状態(tabs
+  // OFF)で tab 系 command がグレー + 理由表示になり、実クリックすると
+  // 理由 toast が出る(黙って何も起きない、が直っている)ことを実機で確認。
+  test('#951: 使えない command はグレー表示 + click で理由 toast', async ({ page }) => {
+    await page.keyboard.press('Control+Shift+P');
+    const overlay = page.locator('[data-pkc-region="command-palette"]');
+    await expect(overlay).toBeVisible();
+    await overlay.locator('[data-pkc-field="cmd-query"]').fill('次の tab');
+
+    const item = overlay.locator('[data-pkc-cmd-id="tab.next"]');
+    await expect(item).toBeVisible();
+    await expect(item).toHaveAttribute('data-pkc-cmd-disabled', 'true');
+    await expect(item.locator('.pkc-command-palette-item-reason')).toContainText('Tabs');
+
+    // 実マウスで click → palette が閉じ、理由 toast が視認可能座標に出る
+    const box = await item.boundingBox();
+    if (!box) throw new Error('disabled item has no bounding box');
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(overlay).toBeHidden();
+    const toast = page.locator('[data-pkc-region="toast"]');
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText('Tabs');
+    await page.screenshot({ path: 'test-results/command-palette-availability-parity.png' });
+  });
 });

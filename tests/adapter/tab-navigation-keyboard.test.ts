@@ -55,8 +55,12 @@ function setFlag(keymap: boolean): void {
   const url = new URL(window.location.href);
   url.searchParams.delete('pkc-flag');
   if (keymap) {
-    url.searchParams.set('pkc-flag', 'shell.keymap_registry_enabled=1');
+    url.searchParams.append('pkc-flag', 'shell.keymap_registry_enabled=1');
   }
+  // #951: tab.* command は availability で `shell.tabs_enabled` 必須に
+  // なった(OFF だと理由 toast + 不実行)。本 suite は tab navigation の
+  // 挙動検証なので、文書化どおり flag ON を前提にする。
+  url.searchParams.append('pkc-flag', 'shell.tabs_enabled=1');
   window.history.replaceState({}, '', url.toString());
   __resetUrlCache();
 }
@@ -68,6 +72,9 @@ describe('pgc-182 tab navigation keyboard(Ctrl+PageDown/Up / Alt+W / Ctrl+Shift+
     resetKeymapRegistry();
     resetCommandRegistry();
     resetTabState();
+    // #951: 全 case で `shell.tabs_enabled=1` を baseline にする(setFlag が
+    // keymap の ON/OFF に関わらず tabs flag を付与する)。
+    setFlag(false);
   });
 
   afterEach(() => {

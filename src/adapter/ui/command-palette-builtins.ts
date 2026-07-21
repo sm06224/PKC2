@@ -15,7 +15,13 @@
 import type { Dispatcher } from '../state/dispatcher';
 import type { ArchetypeId } from '../../core/model/record';
 import type { CommandMeta } from '../../features/command/types';
-import { registerCommand } from './command-palette';
+import { registerCommand, type CommandAvailability } from './command-palette';
+import {
+  shellTabsEnabled,
+  shellSplitViewEnabled,
+  shellFormatPanelDefaultHiddenEnabled,
+  shellActivityBarEnabled,
+} from './shell-flags';
 import { copyStructureExport, openStructurePlanModal } from './structure-plan-modal';
 import { getSharedExtensionHost } from './extension-host-runtime';
 import { startAudioRecording, startScreenRecording } from './media-capture';
@@ -60,6 +66,36 @@ function clickAction(
     el.click();
   };
 }
+
+// ─── #951 availability(silent no-op の廃止)─────────────────────
+// 各 closure は「null = 実行可能 / string = 使えない理由」を返す。理由は
+// user 向け文言で、**どうすれば使えるようになるか**まで書く。palette は
+// これを一覧のグレー表示 + 実行時 toast に使う。
+const tabsAvailability: CommandAvailability = () =>
+  shellTabsEnabled()
+    ? null
+    : 'タブ機能が OFF です(⚙ Settings の「Tabs」を On にすると使えます)';
+const splitViewAvailability: CommandAvailability = () =>
+  shellSplitViewEnabled()
+    ? null
+    : 'Split View が OFF です(Flags Inspector で shell.split_view_enabled を ON)';
+const formatPanelAvailability: CommandAvailability = () =>
+  shellFormatPanelDefaultHiddenEnabled()
+    ? null
+    : 'Format panel は常時表示の設定です(shell.format_panel_default_hidden_enabled ON で toggle 可能に)';
+const activityBarAvailability: CommandAvailability = () =>
+  shellActivityBarEnabled()
+    ? null
+    : 'Activity Bar が OFF です(Flags Inspector で shell.activity_bar_enabled を ON)';
+const editingAvailability: CommandAvailability = () =>
+  typeof document !== 'undefined'
+  && document.querySelector('textarea[data-pkc-field="body"]')
+    ? null
+    : '編集モード中のみ使えます(エントリを開いて ✏ 編集を開始してください)';
+const clickTargetAvailability = (selector: string): CommandAvailability => () =>
+  typeof document !== 'undefined' && document.querySelector(selector)
+    ? null
+    : 'この画面には対象のボタンがありません';
 
 /**
  * builtin commands を全 register。複数回呼んでも duplicate id で警告 +
@@ -123,6 +159,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       keybind: 'Ctrl+\\',
     },
     clickAction('[data-pkc-action="toggle-sidebar"]'),
+    clickTargetAvailability('[data-pkc-action="toggle-sidebar"]'),
   );
   registerCommand(
     {
@@ -133,6 +170,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       keybind: 'Ctrl+Shift+\\',
     },
     clickAction('[data-pkc-action="toggle-meta"]'),
+    clickTargetAvailability('[data-pkc-action="toggle-meta"]'),
   );
   registerCommand(
     {
@@ -142,6 +180,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       category: 'Shell',
     },
     clickAction('[data-pkc-action="toggle-focus-mode"]'),
+    clickTargetAvailability('[data-pkc-action="toggle-focus-mode"]'),
   );
   registerCommand(
     {
@@ -151,6 +190,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       category: 'Shell',
     },
     clickAction('[data-pkc-action="toggle-shell-menu"]'),
+    clickTargetAvailability('[data-pkc-action="toggle-shell-menu"]'),
   );
 
   // ─── Navigation history(pgc-179 wave-α' G2、roadmap 領域 1)──
@@ -196,6 +236,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       category: 'Help',
     },
     clickAction('[data-pkc-action="select-about"]'),
+    clickTargetAvailability('[data-pkc-action="select-about"]'),
   );
   registerCommand(
     {
@@ -237,7 +278,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       openViewTab(v.mode);
       persistTabState();
       dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode: v.mode });
-    });
+    }, tabsAvailability);
   }
 
   // ─── Tab pin(pgc-88、MASTER.md §4.3)─────────
@@ -258,6 +299,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       const st = dispatcher.getState();
       dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
     },
+    tabsAvailability
   );
 
   // ─── Tab navigation(pgc-182 wave-α' #5、v3 統合 master G2 nav 統一)─
@@ -284,6 +326,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: next });
       }
     },
+    tabsAvailability
   );
   registerCommand(
     {
@@ -303,6 +346,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid: prev });
       }
     },
+    tabsAvailability
   );
   registerCommand(
     {
@@ -325,6 +369,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
         }
       }
     },
+    tabsAvailability
   );
   registerCommand(
     {
@@ -345,6 +390,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
         dispatcher.dispatch({ type: 'SELECT_ENTRY', lid });
       }
     },
+    tabsAvailability
   );
 
   // ─── Split View(pgc-89、MASTER.md §5.5)─────
@@ -365,6 +411,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       const st = dispatcher.getState();
       dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
     },
+    splitViewAvailability
   );
 
   // ─── Format panel toggle(pgc-110 + pgc-120、MASTER.md §6.4 step 2)
@@ -384,6 +431,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       const st = dispatcher.getState();
       dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
     },
+    formatPanelAvailability
   );
 
   // ─── Activity Bar tab(pgc-102+〜108、pgc-121:keyboard shortcut 追加)
@@ -415,6 +463,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
         const st = dispatcher.getState();
         dispatcher.dispatch({ type: 'SYS_SYNC_CHILD_WINDOWS', lids: st.childWindowLids ?? [] });
       },
+      activityBarAvailability,
     );
   }
 
@@ -500,6 +549,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
         body: entry.body ?? '',
       });
     },
+    () => (dispatcher.getState().selectedLid ? null : 'エントリを選択してから実行してください'),
   );
 
   // pgc-190 wave-α' #13(handoff §3.4 wave-δ phase 2 textlog):textlog
@@ -538,6 +588,10 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
         latestEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     },
+    () =>
+      typeof document !== 'undefined' && document.querySelector('.pkc-textlog-day')
+        ? null
+        : 'Textlog エントリを表示しているときに使えます',
   );
 
   // ─── 領域 5 編集 command 拡充(2026-05-28、user 督促)─────────────────
@@ -584,7 +638,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       runWithBodyTextarea(w.id, (ta) => {
         applyTransformToTextarea(ta, (s: Selection) => wrapInline(s, w.marker));
       });
-    });
+    }, editingAvailability);
   }
 
   // snippet 系(line-prefix / block insert)── snippet-toolbar の applySnippet 経路を共有
@@ -610,6 +664,7 @@ export function registerBuiltinCommands(dispatcher: Dispatcher): void {
       () => {
         runWithBodyTextarea(s.id, (ta) => applySnippet(ta, s.kind));
       },
+      editingAvailability,
     );
   }
 
