@@ -27,10 +27,26 @@ import type { CommandMeta } from '../../features/command/types';
 import { validateCommandMeta } from '../../features/command/types';
 import { rankCommands, type RankedCommand } from '../../features/command/fuzzy';
 import { shellCommandPaletteEnabled } from './shell-flags';
+import { showToast } from './toast';
+
+/**
+ * #951(user 報告 2026-07-22「コマンドパレットの機能がほとんど機能
+ * しなかった」): 全 command の過半が「flag OFF の機能」「編集中限定」
+ * 「選択必須」のいずれかで、条件を満たさないとき **console.warn だけの
+ * silent no-op** だった。availability 機構を導入し、
+ *   - 実行時: 使えない理由を toast で明示(黙って何もしない、を廃止)
+ *   - 一覧時: 使えない command はグレー表示 + 理由を右側に表示し、
+ *     使える command を先に並べる
+ * 「実行できない」ではなく「なぜ実行できないか・どうすれば使えるか」を
+ * 返すのが契約。
+ */
+export type CommandAvailability = () => string | null;
 
 interface RegisteredCommand {
   readonly meta: CommandMeta;
   readonly handler: () => void;
+  /** null = 実行可能、string = 使えない理由(user 向け文言)。 */
+  readonly availability?: CommandAvailability;
 }
 
 /** In-module registry。test 用に exposeReset 可能。 */
@@ -44,6 +60,7 @@ const registry = new Map<string, RegisteredCommand>();
 export function registerCommand(
   meta: CommandMeta,
   handler: () => void,
+  availability?: CommandAvailability,
 ): boolean {
   const err = validateCommandMeta(meta, new Set(registry.keys()));
   if (err) {
@@ -52,8 +69,22 @@ export function registerCommand(
     }
     return false;
   }
-  registry.set(meta.id, { meta, handler });
+  registry.set(meta.id, { meta, handler, availability });
   return true;
+}
+
+/**
+ * command の現在の可用性。null = 実行可能、string = 使えない理由。
+ * 未登録 id も null(executeCommand 側が false を返す)。
+ */
+export function getCommandAvailability(id: string): string | null {
+  const r = registry.get(id);
+  if (!r?.availability) return null;
+  try {
+    return r.availability();
+  } catch {
+    return null; // availability 判定自体の失敗で command を殺さない
+  }
 }
 
 export function unregisterCommand(id: string): boolean {
@@ -76,6 +107,12 @@ export function getCommandCount(): number {
 export function executeCommand(id: string): boolean {
   const r = registry.get(id);
   if (!r) return false;
+  // #951: 使えない command は黙って no-op せず、理由を toast で返す。
+  const reason = getCommandAvailability(id);
+  if (reason) {
+    showToast({ message: reason, kind: 'warn' });
+    return false;
+  }
   try {
     r.handler();
   } catch (e) {
@@ -188,7 +225,15 @@ export function openCommandPalette(host: HTMLElement): () => void {
 
   function renderList(query: string): void {
     const metas = getCommandMetas();
-    currentItems = rankCommands(query, metas);
+    const ranked = rankCommands(query, metas);
+    // #951: 使える command を先に、使えない command は後ろへ(rank 内の
+    // 相対順は維持)。理由は item 上にも表示するため一度だけ評価する。
+    const reasons = new Map<string, string | null>();
+    for (const r of ranked) reasons.set(r.meta.id, getCommandAvailability(r.meta.id));
+    currentItems = [
+      ...ranked.filter((r) => reasons.get(r.meta.id) === null),
+      ...ranked.filter((r) => reasons.get(r.meta.id) !== null),
+    ];
     list.textContent = '';
     if (currentItems.length === 0) {
       empty.style.display = '';
@@ -201,11 +246,17 @@ export function openCommandPalette(host: HTMLElement): () => void {
     const visible = currentItems.slice(0, 50);
     for (let i = 0; i < visible.length; i++) {
       const r = visible[i]!;
+      const reason = reasons.get(r.meta.id) ?? null;
       const li = document.createElement('li');
       li.className = 'pkc-command-palette-item';
       li.setAttribute('role', 'option');
       li.setAttribute('data-pkc-cmd-id', r.meta.id);
       li.setAttribute('data-pkc-cmd-category', r.meta.category);
+      if (reason) {
+        li.classList.add('pkc-command-palette-item-disabled');
+        li.setAttribute('data-pkc-cmd-disabled', 'true');
+        li.setAttribute('title', reason);
+      }
       if (i === activeIndex) {
         li.setAttribute('aria-selected', 'true');
         li.classList.add('pkc-command-palette-item-active');
@@ -221,7 +272,13 @@ export function openCommandPalette(host: HTMLElement): () => void {
       catSpan.textContent = r.meta.category;
       li.appendChild(catSpan);
 
-      if (r.meta.keybind) {
+      if (reason) {
+        // 使えない理由を右側に小さく表示(click / Enter でも toast で案内)
+        const reasonSpan = document.createElement('span');
+        reasonSpan.className = 'pkc-command-palette-item-reason';
+        reasonSpan.textContent = reason;
+        li.appendChild(reasonSpan);
+      } else if (r.meta.keybind) {
         const kbd = document.createElement('kbd');
         kbd.className = 'pkc-command-palette-item-kbd';
         kbd.textContent = r.meta.keybind;

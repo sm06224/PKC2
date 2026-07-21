@@ -13247,3 +13247,22 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
   color: var(--c-muted);
   margin-top: var(--space-1);
 }
+
+/* ── #951: command palette の使えない command 表示 ──────────────
+   silent no-op の廃止: 条件未達の command はグレー + 理由を右側に表示。
+   click / Enter は toast で同じ理由を案内する(実行はされない)。 */
+.pkc-command-palette-item-disabled {
+  opacity: 0.55;
+}
+.pkc-command-palette-item-disabled .pkc-command-palette-item-title {
+  color: var(--c-muted);
+}
+.pkc-command-palette-item-reason {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--c-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
