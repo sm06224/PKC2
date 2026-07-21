@@ -78,6 +78,7 @@ import {
 import { ARCHETYPE_SUBFOLDER_NAMES } from '../../features/relation/auto-placement';
 import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-scan';
 import { getFilterIndexes, getTodosByDate } from './filter-cache';
+import { shellStartupNoticeEnabled } from './startup-notice';
 import { start as profileStart } from '../../runtime/profile';
 import { computeRenderScope, findEntryBodyChangeLid } from './render-scope';
 import type { TreeNode } from '../../features/relation/tree';
@@ -1915,6 +1916,35 @@ function renderShellMenu(
   tabsHint.textContent = 'ブラウザ風タブ(開いたエントリの一覧をセンター上部に表示。右クリックで一覧・復元)';
   tabsSection.appendChild(tabsHint);
   card.appendChild(tabsSection);
+
+  // #954(2026-07-22): 起動後お知らせのオフスイッチ(R10 の汎用
+  // set-bool-flag トグルを再利用)。
+  const newsSection = createElement('div', 'pkc-shell-menu-section');
+  const newsLabel = createElement('span', 'pkc-shell-menu-label');
+  newsLabel.textContent = 'News';
+  newsSection.appendChild(newsLabel);
+  const newsButtons = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const newsOn = shellStartupNoticeEnabled();
+  const newsChoices: { value: 'false' | 'true'; label: string }[] = [
+    { value: 'false', label: '○ Off' },
+    { value: 'true', label: '◉ On' },
+  ];
+  for (const { value, label } of newsChoices) {
+    const btn = createElement('button', 'pkc-btn-small pkc-shell-menu-theme-btn');
+    btn.setAttribute('data-pkc-action', 'set-bool-flag');
+    btn.setAttribute('data-pkc-flag-key', 'shell.startup_notice_enabled');
+    btn.setAttribute('data-pkc-flag-value', value);
+    const isActive = (value === 'true') === newsOn;
+    btn.setAttribute('data-pkc-active', String(isActive));
+    if (isActive) btn.setAttribute('data-pkc-theme-active', 'true');
+    btn.textContent = label;
+    newsButtons.appendChild(btn);
+  }
+  newsSection.appendChild(newsButtons);
+  const newsHint = createElement('div', 'pkc-shell-menu-hint');
+  newsHint.textContent = '起動後にアップデートのお知らせを表示(1 リリースにつき 1 回)';
+  newsSection.appendChild(newsHint);
+  card.appendChild(newsSection);
 
   // Accent color picker (FI-12 follow-up). A native <input type="color">
   // + a reset button. Runtime-only — persistence is deferred to the

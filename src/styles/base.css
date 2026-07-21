@@ -13266,3 +13266,52 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
   text-overflow: ellipsis;
   max-width: 45%;
 }
+
+/* ── #954: スタートアップお知らせカード ──────────────────────────
+   toast と同カテゴリの非モーダル右下カード。閉じるまで自動消滅しない
+   (リリースノートは読み逃しより滞留を選ぶ)。 */
+.pkc-startup-notice {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 19000; /* toast(既定)より下、context menu より下 */
+  max-width: min(440px, calc(100vw - 32px));
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+  padding: var(--space-3);
+  font-family: var(--font-sans);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pkc-startup-notice-heading {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--c-fg);
+}
+
+.pkc-startup-notice-list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--c-fg);
+}
+
+.pkc-startup-notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.pkc-startup-notice-mute {
+  color: var(--c-muted);
+}
