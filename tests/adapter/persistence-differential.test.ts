@@ -70,8 +70,23 @@ describe('persistence × differential_save flag', () => {
     expect(loaded!.entries.map((e) => e.lid)).toEqual(['e1', 'e2']);
   });
 
-  it('flag OFF(既定): 従来どおり save() を使い saveDiff は呼ばれない', async () => {
-    setContainerFlagSource({}); // 既定 = OFF
+  it('既定(R6 2026-07-22 で ON へ昇格): flag 未指定でも saveDiff 経路', async () => {
+    setContainerFlagSource({}); // 既定 = ON
+    const store = createMemoryStore();
+    const saveSpy = vi.spyOn(store, 'save');
+    const diffSpy = vi.spyOn(store, 'saveDiff');
+    const dispatcher = createDispatcher();
+
+    mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: makeContainer() });
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(diffSpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).not.toHaveBeenCalled();
+  });
+
+  it('flag OFF(オプトアウト): 従来どおり save() を使い saveDiff は呼ばれない', async () => {
+    setContainerFlagSource({ 'persistence.differential_save': false });
     const store = createMemoryStore();
     const saveSpy = vi.spyOn(store, 'save');
     const diffSpy = vi.spyOn(store, 'saveDiff');
@@ -86,7 +101,7 @@ describe('persistence × differential_save flag', () => {
   });
 
   it('セッション中の flag OFF→ON 切替でもデータが欠損しない(inline→split 自己回復)', async () => {
-    setContainerFlagSource({}); // OFF で開始
+    setContainerFlagSource({ 'persistence.differential_save': false }); // OFF で開始
     const store = createMemoryStore();
     const dispatcher = createDispatcher();
 

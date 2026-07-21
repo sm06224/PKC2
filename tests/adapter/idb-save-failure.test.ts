@@ -17,6 +17,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createDispatcher } from '@adapter/state/dispatcher';
 import { createMemoryStore } from '@adapter/platform/idb-store';
 import { mountPersistence } from '@adapter/platform/persistence';
+import { setContainerFlagSource } from '@adapter/flags';
 import {
   showIdbSaveFailureBanner,
   showIdbWarningBanner,
@@ -284,11 +285,16 @@ describe('mountPersistence onError integration', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     vi.useFakeTimers();
+    // R6(2026-07-22)で differential_save が既定 ON。本 suite は
+    // `store.save` の失敗経路を pin するため明示 OFF で従来経路に固定
+    // (diff 経路の担保は differential-default-cross-mode suite)。
+    setContainerFlagSource({ 'persistence.differential_save': false });
   });
 
   afterEach(() => {
     host.remove();
     vi.useRealTimers();
+    setContainerFlagSource({});
     // Clean any banner that may have escaped scope
     document
       .querySelectorAll('[data-pkc-region="idb-save-warning"]')
