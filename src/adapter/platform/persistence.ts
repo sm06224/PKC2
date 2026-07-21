@@ -88,23 +88,30 @@ const persistenceDebounceMs = defineFlag<number>('persistence.debounce_ms', 300,
 });
 
 /**
- * 差分保存(改善バッチ④ 2026-07)。ON にすると自動保存が
+ * 差分保存(改善バッチ④ 2026-07)。ON では自動保存が
  * `store.saveDiff()`(split 形式:entry / revision を個別 record に
  * 分割し、変更分だけ書く)を使う。編集ごとの書込みが container 全体
  * O(n) → 変更分 O(1) になり、大規模 container(数千 entries)でも
  * 保存コストが一定になる。
  *
- * opt-in(既定 OFF)の理由 = 旧ビルド互換:split 形式で保存された
- * storage を「この機能を知らない旧ビルド」で開くと entries が空に
- * 見える(データ自体は残っており、新ビルドで開き直せば戻る)。旧
- * ビルドへ戻す場合は、先に本 flag を OFF にして一度保存(編集)する
- * か、export してから戻すこと。OFF に戻すと次回の自動保存が inline
- * 形式へ書き戻して split record を掃除する(双方向に安全)。
+ * **2026-07-22 R6(#938)user 判断で既定 ON へ昇格**(オプトアウト)。
+ * 全 storage mode(idb / fsa / opfs / memory)が同一の
+ * `createContainerStore(adapter)` を通るため挙動は共通。移行は保存時に
+ * 自動(v1 inline データはそのまま読め、次の保存で split 化)。
+ *
+ * 旧ビルド互換の注意(OFF に戻す理由になり得る唯一の点):split 形式で
+ * 保存された storage を「この機能を知らない旧ビルド」で開くと entries が
+ * 空に見える(データ自体は残っており、新ビルドで開き直せば戻る)。旧
+ * ビルドへ戻す場合は、先に本 flag を OFF にして一度保存(編集)するか、
+ * export してから戻すこと。OFF に戻すと次回の自動保存が inline 形式へ
+ * 書き戻して split record を掃除する(双方向に安全 ──
+ * tests/adapter/differential-default-cross-mode.test.ts が全 adapter 系で
+ * この往復を pin)。
  */
-const differentialSaveEnabled = defineFlag<boolean>('persistence.differential_save', false, {
+const differentialSaveEnabled = defineFlag<boolean>('persistence.differential_save', true, {
   category: 'perf',
   description:
-    '差分保存(entry/revision 単位の split 形式)。編集ごとの書込みが container 全体 O(n) → 変更分 O(1)。留意: ON で保存した storage は旧ビルドから entries が見えない(新ビルドで OFF 保存 or export してから戻す)',
+    '差分保存(entry/revision 単位の split 形式、既定 ON)。編集ごとの書込みが container 全体 O(n) → 変更分 O(1)。旧ビルドで同じ storage を開く予定がある場合のみ OFF(OFF 保存で inline 形式へ戻る)',
   tier: 0,
 });
 

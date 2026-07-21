@@ -25,10 +25,17 @@ const mockContainer: Container = {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // R6(2026-07-22)で differential_save が既定 ON になった。本 suite は
+  // inline save の配管(debounce / viewOnly gate / onError / flush)を
+  // `store.save` spy で pin するため、明示 OFF で従来経路に固定する。
+  // diff 経路は persistence-differential / differential-default-cross-mode
+  // の両 suite が担保する。
+  setContainerFlagSource({ 'persistence.differential_save': false });
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  setContainerFlagSource({});
 });
 
 describe('mountPersistence', () => {
@@ -442,7 +449,7 @@ describe('mountPersistence', () => {
     const saveSpy = vi.spyOn(store, 'save');
     const dispatcher = createDispatcher();
 
-    setContainerFlagSource({ 'persistence.debounce_ms': 50 });
+    setContainerFlagSource({ 'persistence.debounce_ms': 50, 'persistence.differential_save': false });
     // No `debounceMs` override in options → must resolve via flag.
     mountPersistence(dispatcher, { store, unloadTarget: null });
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
@@ -454,7 +461,7 @@ describe('mountPersistence', () => {
     expect(saveSpy).toHaveBeenCalledTimes(1);
 
     // Change the flag mid-session.
-    setContainerFlagSource({ 'persistence.debounce_ms': 500 });
+    setContainerFlagSource({ 'persistence.debounce_ms': 500, 'persistence.differential_save': false });
 
     // New mutation → next scheduleSave must use 500, not the
     // mount-time value of 50.
@@ -475,7 +482,7 @@ describe('mountPersistence', () => {
     const dispatcher = createDispatcher();
 
     // Flag says 5000 but caller pins debounceMs=50 — caller wins.
-    setContainerFlagSource({ 'persistence.debounce_ms': 5000 });
+    setContainerFlagSource({ 'persistence.debounce_ms': 5000, 'persistence.differential_save': false });
     mountPersistence(dispatcher, { store, debounceMs: 50, unloadTarget: null });
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: mockContainer });
 
