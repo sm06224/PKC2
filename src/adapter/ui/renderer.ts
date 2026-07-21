@@ -90,7 +90,7 @@ import { syncLinkMigrationDialogFromState } from './link-migration-dialog';
 import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
 import { parseTodoBody as parseTodoBodyRaw, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS } from './attachment-presenter';
+import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS, setAttachmentLightSourceHint, isAttachmentLightSourceHint } from './attachment-presenter';
 import type { TodoBody } from '../../features/todo/todo-body';
 import type { AttachmentBody } from './attachment-presenter';
 
@@ -377,6 +377,11 @@ function resolveMobilePage(state: AppState): MobilePage {
 }
 
 export function render(state: AppState, root: HTMLElement, prev: AppState | null = null): void {
+  // #956: attachment presenter が「真の Light export」と「lazy loading で
+  // 未回復なだけの非常駐 asset」を区別できるよう、render のたびに
+  // state.lightSource を presenter module へ供給する(presenter interface は
+  // state を受け取らないため)。
+  setAttachmentLightSourceHint(state.lightSource);
   // PR #177: scope-driven short-circuit. When the delta from `prev`
   // → `state` is irrelevant to rendering (`'none'`) or only shifts
   // root attributes (`'settings-only'`), skip the full-shell rebuild
@@ -12224,7 +12229,17 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
     root.appendChild(previewArea);
   }
 
-  if (hasData) {
+  // #956: 非常駐なだけ(Light export でない)なら miss を記録して回復を
+  // 促し、Download ボタンは残す(click 経路が on-demand hydrate する)。
+  const pendingHydration = !hasData && !!att.asset_key && !isAttachmentLightSourceHint();
+  if (pendingHydration) noteAssetMiss(att.asset_key!);
+  if (hasData || pendingHydration) {
+    if (pendingHydration) {
+      const pending = createElement('div', 'pkc-attachment-pending');
+      pending.setAttribute('data-pkc-region', 'attachment-loading');
+      pending.textContent = '⏳ ファイル読み込み中…';
+      root.appendChild(pending);
+    }
     const dlBtn = createElement('button', 'pkc-btn');
     dlBtn.setAttribute('data-pkc-action', 'download-attachment');
     dlBtn.setAttribute('data-pkc-lid', entry.lid);

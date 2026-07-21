@@ -920,6 +920,24 @@ export function registerExportStore(store: ContainerStore | null): void {
 }
 
 /**
+ * #956: last-resort direct asset read via the registered store, bypassing
+ * the working-set entirely. User gestures that must produce bytes on the
+ * spot (open HTML app in new window / download) first try the working-set
+ * hydrator; when that still leaves the key non-resident (refresh race,
+ * budget eviction), this reads the bytes straight from the store so the
+ * gesture never fails while the data actually exists. Returns null when
+ * no store is registered or the bytes truly don't exist.
+ */
+export async function loadAssetDirect(cid: string, key: string): Promise<string | null> {
+  if (!activeExportStore) return null;
+  try {
+    return await activeExportStore.loadAsset(cid, key);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Hydrate a container's referenced assets via the registered export
  * store, for serialization paths (HTML / ZIP / entry-package). No-op
  * (returns the container unchanged) when no store is registered.

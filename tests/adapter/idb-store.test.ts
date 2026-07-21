@@ -5,6 +5,7 @@ import {
   hydrateReferencedAssets,
   registerExportStore,
   hydrateForExport,
+  loadAssetDirect,
 } from '@adapter/platform/idb-store';
 import type { Container } from '@core/model/container';
 
@@ -427,5 +428,27 @@ describe('hydrateForExport seam (段階3 #868)', () => {
     const hydrated = await hydrateForExport(partial);
     // The export now carries the referenced bytes — no silent loss.
     expect(hydrated.assets['ref-1']).toBe('FROM_STORE');
+  });
+});
+
+describe('loadAssetDirect (#956 gesture last-resort read)', () => {
+  afterEach(() => registerExportStore(null));
+
+  it('returns null when no store registered', async () => {
+    registerExportStore(null);
+    expect(await loadAssetDirect('c1', 'k1')).toBeNull();
+  });
+
+  it('reads bytes straight from the registered store, bypassing the working-set', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'k1', 'RAW_BYTES');
+    registerExportStore(store);
+    expect(await loadAssetDirect('c1', 'k1')).toBe('RAW_BYTES');
+  });
+
+  it('returns null for a genuinely missing key (broken ref)', async () => {
+    const store = createMemoryStore();
+    registerExportStore(store);
+    expect(await loadAssetDirect('c1', 'nope')).toBeNull();
   });
 });
