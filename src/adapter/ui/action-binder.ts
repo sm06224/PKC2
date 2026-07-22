@@ -79,7 +79,7 @@ import { applyOnePaneCollapsedToDOM } from './pane-apply';
 import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
-import { exportContainerAsHtml } from '../platform/exporter';
+import { exportContainerAsHtml, containerHasLargeAsset } from '../platform/exporter';
 import { hydrateForExport, loadAssetDirect } from '../platform/idb-store';
 import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
@@ -596,6 +596,11 @@ export function bindActions(
       dataSection.appendChild(btn);
     }
 
+    // P0(#967 二層戦略): バックアップの正本は ZIP(asset 分離・
+    // streaming・巨大データ耐性)。mobile drawer では最上段に格上げする。
+    // 単一 HTML export は「可搬(配布)用」として従来位置に維持。
+    addDataItem('💾 Backup ZIP(推奨バックアップ)', 'export-zip');
+
     // Share — standalone HTML, openable without PKC2.
     addDataItem('📤 Export (HTML, Full)', 'begin-export', {
       'data-pkc-export-mode': 'full',
@@ -609,10 +614,9 @@ export function bindActions(
       addDataItem('📤 Selected as HTML', 'export-selected-entry-html');
     }
 
-    // Archive — Backup ZIP + archetype-filtered batch bundles + the
-    // single-entry bundle. Each line keeps the same archetype-aware
-    // visibility logic the desktop Data… menu uses.
-    addDataItem('📦 Backup ZIP', 'export-zip');
+    // Archive — archetype-filtered batch bundles + the single-entry
+    // bundle(Backup ZIP は最上段へ格上げ済み)。Each line keeps the same
+    // archetype-aware visibility logic the desktop Data… menu uses.
     const hasTextlogs = state.container?.entries.some((e) => e.archetype === 'textlog');
     const hasTexts = state.container?.entries.some((e) => e.archetype === 'text');
     if (hasTextlogs) {
@@ -2149,6 +2153,15 @@ export function bindActions(
       case 'begin-export': {
         const mode = (target.getAttribute('data-pkc-export-mode') ?? 'full') as ExportMode;
         const mutability = (target.getAttribute('data-pkc-export-mutability') ?? 'editable') as ExportMutability;
+        // P0(#967): 巨大 asset を含む full HTML export には ZIP 誘導を
+        // 非ブロッキングで添える(export 自体はそのまま続行)。
+        const expState = dispatcher.getState();
+        if (mode === 'full' && expState.container && containerHasLargeAsset(expState.container)) {
+          showToast({
+            message: '大きなデータのバックアップには 💾 Backup ZIP が確実です(HTML 書き出しはこのまま続行します)',
+            kind: 'info',
+          });
+        }
         dispatcher.dispatch({ type: 'BEGIN_EXPORT', mode, mutability });
         break;
       }

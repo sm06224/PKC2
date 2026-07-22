@@ -1878,4 +1878,58 @@ describe('Issue G — missing-asset warning + compact export', () => {
   });
 });
 
+// ── P0(#967): 巨大データの HTML export に ZIP 誘導 toast ──
+
+describe('P0 — begin-export の Backup ZIP 誘導 toast(#967)', () => {
+  function mountWithContainer(container: Container): ReturnType<typeof createDispatcher> {
+    // 先行 test の toast が document に残留するためクリアしてから観測する
+    document.querySelectorAll('.pkc-toast').forEach((t) => t.remove());
+    const dispatcher = createDispatcher();
+    dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container });
+    render(dispatcher.getState(), root);
+    cleanup = bindActions(root, dispatcher);
+    return dispatcher;
+  }
+
+  function clickFullExport(): void {
+    const btn = root.querySelector<HTMLElement>(
+      'button[data-pkc-action="begin-export"][data-pkc-export-mode="full"]',
+    );
+    expect(btn).not.toBeNull();
+    btn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  }
+
+  function toastText(): string {
+    return Array.from(document.querySelectorAll('.pkc-toast'))
+      .map((t) => t.textContent ?? '')
+      .join(' ');
+  }
+
+  it('8MB 超の attachment を含む container では ZIP 誘導 toast が出る(export は続行)', () => {
+    const big: Container = {
+      ...mockContainer,
+      entries: [
+        ...mockContainer.entries,
+        {
+          lid: 'rec1', title: 'rec',
+          body: JSON.stringify({ name: 'rec.webm', mime: 'video/webm', size: 300_000_000, asset_key: 'k-rec' }),
+          archetype: 'attachment',
+          created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    };
+    const dispatcher = mountWithContainer(big);
+    clickFullExport();
+    expect(toastText()).toContain('Backup ZIP');
+    // export 自体はブロックされない(BEGIN_EXPORT が通っている)
+    expect(dispatcher.getState().phase).toBe('exporting');
+  });
+
+  it('小さな container では誘導 toast は出ない', () => {
+    mountWithContainer(mockContainer);
+    clickFullExport();
+    expect(toastText()).not.toContain('Backup ZIP');
+  });
+});
+
 // ── Interactive task list checkbox toggle ──
