@@ -491,6 +491,29 @@ describe('buildExportBlob(#962: streaming — 全量同時保持しない export
     expect(blob.size).toBe(joined.length);
   });
 
+  it('#966: 巨大 asset(宣言サイズ > 8MB)を含む container は無圧縮(base64)で書き出す', async () => {
+    const raw = btoa('FAKE-RECORDING-BYTES'.repeat(100));
+    const c = createTestContainer({
+      entries: [
+        {
+          lid: 'a1', title: 'rec',
+          body: JSON.stringify({ name: 'rec.webm', mime: 'video/webm', size: 300_000_000, asset_key: 'ast-big' }),
+          archetype: 'attachment', created_at: T, updated_at: T,
+        },
+      ],
+      assets: { 'ast-big': raw },
+    });
+    const blob = await buildExportBlob(c, 'full');
+    const html = await blob.text();
+    const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const data = JSON.parse(match![1]!) as {
+      container: Container; export_meta: { asset_encoding?: string };
+    };
+    // 圧縮工程(per-asset で GB 級の一時コピー)を通さず素通し
+    expect(data.export_meta.asset_encoding).toBe('base64');
+    expect(data.container.assets['ast-big']).toBe(raw);
+  });
+
   it('light mode も Blob 経路で等価', async () => {
     const c = createTestContainer({ assets: { 'ast-a': btoa('x') } });
     const blob = await buildExportBlob(c, 'light', 'editable', { foldBytes: 16 });
