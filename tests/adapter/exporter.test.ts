@@ -2,10 +2,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   serializePkcData,
+  serializePkcDataParts,
   buildExportHtml,
   generateExportFilename,
   exportContainerAsHtml,
 } from '@adapter/platform/exporter';
+import { decompressAssets } from '@adapter/platform/compression';
 import type { Container } from '@core/model/container';
 
 const T = '2026-04-06T00:00:00Z';
@@ -379,7 +381,10 @@ describe('exportContainerAsHtml', () => {
     await exportContainerAsHtml(c, { downloadFn: downloadSpy });
 
     expect(downloadSpy).toHaveBeenCalledTimes(1);
-    const [html, filename] = downloadSpy.mock.calls[0]!;
+    const [content, filename] = downloadSpy.mock.calls[0]!;
+    // #960: downloadFn は parts(string[])を受け取る(単一巨大文字列を
+    // 作らないため)。結合結果が従来の HTML と等価。
+    const html = (content as string[]).join('');
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('id="pkc-data"');
     expect(filename).toMatch(/\.html$/);
@@ -406,11 +411,65 @@ describe('exportContainerAsHtml', () => {
     const c = createTestContainer({ assets: { 'ast-1': btoa('data1') } });
     await exportContainerAsHtml(c, { mode: 'light', downloadFn: downloadSpy });
 
-    const [html] = downloadSpy.mock.calls[0]!;
-    const match = (html as string).match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
+    const [content] = downloadSpy.mock.calls[0]!;
+    const html = (content as string[]).join('');
+    const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(match![1]!);
     expect(data.export_meta.mode).toBe('light');
     expect(data.container.assets).toEqual({});
+  });
+});
+
+describe('serializePkcDataParts(#960: 巨大 asset の string 長上限対策)', () => {
+  it('full export は asset を 1 件 = 1 part で差し込み、結合は正しい JSON になる', async () => {
+    const a = btoa('asset-bytes-A'.repeat(10));
+    const b = btoa('asset-bytes-B'.repeat(10));
+    const c = createTestContainer({ assets: { 'ast-a': a, 'ast-b': b } });
+    const parts = await serializePkcDataParts(c, 'full');
+
+    const data = JSON.parse(parts.join('')) as {
+      container: Container; export_meta: { mode: string; asset_encoding?: string };
+    };
+    // 各 asset 値(圧縮後)は「それ自身が 1 つの part」— 骨格や他 asset と
+    // 連結されない(これが V8 の文字列長上限を回避する根拠)。
+    expect(parts).toContain(data.container.assets['ast-a']!);
+    expect(parts).toContain(data.container.assets['ast-b']!);
+
+    // encoding を通して読み戻すと元の bytes に一致(import 経路と同じ)
+    const restored = await decompressAssets(
+      data.container.assets,
+      data.export_meta.asset_encoding,
+    );
+    expect(restored).toEqual({ 'ast-a': a, 'ast-b': b });
+    expect(data.container.entries).toHaveLength(2);
+    expect(data.export_meta.mode).toBe('full');
+  });
+
+  it('asset 0 件の full export も正しい JSON になる(空 assets object)', async () => {
+    const parts = await serializePkcDataParts(createTestContainer(), 'full');
+    const data = JSON.parse(parts.join('')) as { container: Container };
+    expect(data.container.assets).toEqual({});
+  });
+
+  it('entry body に split token と同じ文字列が含まれても壊れない', async () => {
+    const c = createTestContainer({
+      entries: [{
+        lid: 'e1', title: 'trap',
+        body: '"assets": "__PKC_ASSETS_SPLIT_POINT__"',
+        archetype: 'text', created_at: T, updated_at: T,
+      }],
+      assets: { 'ast-x': btoa('X') },
+    });
+    const parts = await serializePkcDataParts(c, 'full');
+    const data = JSON.parse(parts.join('')) as {
+      container: Container; export_meta: { asset_encoding?: string };
+    };
+    expect(data.container.entries[0]!.body).toBe('"assets": "__PKC_ASSETS_SPLIT_POINT__"');
+    const restored = await decompressAssets(
+      data.container.assets,
+      data.export_meta.asset_encoding,
+    );
+    expect(restored).toEqual({ 'ast-x': btoa('X') });
   });
 });
 
