@@ -29,7 +29,9 @@
  * that writes through whenever `state.collapsedFolders` changes.
  */
 
-/** Identifier stored in localStorage. Namespaced to avoid collisions. */
+import { getUiPref, setUiPref } from './ui-prefs';
+
+/** Storage identifier. Namespaced to avoid collisions. */
 export const FOLDER_PREFS_STORAGE_KEY = 'pkc2.folderPrefs';
 
 type FolderPrefsMap = Record<string, string[]>;
@@ -102,13 +104,9 @@ function loadMap(): FolderPrefsMap {
 }
 
 function readFromStorage(): FolderPrefsMap | null {
-  if (typeof localStorage === 'undefined') return null;
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(FOLDER_PREFS_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  // C11: ui-prefs facade 経由(container バッグ優先 + localStorage
+  // ミラー)。localStorage が毎回初期化される環境でも復元できる。
+  const raw = getUiPref(FOLDER_PREFS_STORAGE_KEY);
   if (!raw) return null;
   let parsed: unknown;
   try {
@@ -136,13 +134,7 @@ function readFromStorage(): FolderPrefsMap | null {
 }
 
 function writeMap(map: FolderPrefsMap): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(FOLDER_PREFS_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    /* quota exceeded / private mode — in-memory cache stays
-     * authoritative for this session. */
-  }
+  setUiPref(FOLDER_PREFS_STORAGE_KEY, JSON.stringify(map));
 }
 
 function isSameSet(a: readonly string[], b: readonly string[]): boolean {

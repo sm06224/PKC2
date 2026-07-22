@@ -23,6 +23,7 @@
 
 import type { Dispatcher } from '../state/dispatcher';
 import { defineFlag } from '../../core/flags';
+import { getUiPref, setUiPref, removeUiPref } from '../platform/ui-prefs';
 
 export interface StartupNotice {
   /** 一意 id(既読管理キー)。`YYYY-MM-DD-slug` 形式。 */
@@ -42,6 +43,7 @@ export const STARTUP_NOTICES: readonly StartupNotice[] = [
     date: '2026-07-22',
     title: '2026-07 更新のお知らせ',
     items: [
+      '改善: 画面設定・お知らせ既読・タブ構成などの UI 設定がデータ本体と一緒に保存されるようになりました(ブラウザの localStorage が毎回消去される環境でも設定が維持されます。バックアップ ZIP / HTML 書き出しにも設定が同乗します)',
       '不具合修正: データが大きい(収録・添付が多い)とエクスポートが「string length」エラーやメモリ不足で失敗しバックアップできない問題を修正(逐次書き出し + 大きな添付は無変換で書き出し)',
       'バックアップは 💾 Backup ZIP を推奨: メニュー最上段に格上げしました(アセット分離形式でデータ量によらず確実。HTML 書き出しは配布・持ち運び用として従来どおり)',
       '改善: 大きな添付(4MB 超)は画面表示では読み込まず、開く / ダウンロード時にだけ読み込むように(巨大な収録がある環境で全体の読み込みが極端に遅くなる問題の対策)。開く / ダウンロードはストレージ直読みで待ち行列を跳ばします',
@@ -72,19 +74,11 @@ const SEEN_KEY = 'pkc2.startup-notice.seen';
 const DISABLED_KEY = 'pkc2.startup-notice.disabled';
 const REGION = 'startup-notice';
 
-function lsGet(key: string): string | null {
-  try {
-    return globalThis.localStorage?.getItem(key) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function lsSet(key: string, value: string): void {
-  try {
-    globalThis.localStorage?.setItem(key, value);
-  } catch { /* private mode 等 ── 既読が効かないだけで安全 */ }
-}
+// C11: 既読管理は ui-prefs facade 経由(container バッグ優先 +
+// localStorage ミラー)。localStorage が毎回初期化される環境で
+// 「起動のたびにお知らせが再表示される」問題を解消する。
+const lsGet = getUiPref;
+const lsSet = setUiPref;
 
 function isAutomated(): boolean {
   try {
@@ -104,10 +98,8 @@ function forceRequested(): boolean {
 
 /** test 用 ── 既読 / 無効化 state をリセット。 */
 export function __resetStartupNoticeForTest(): void {
-  try {
-    globalThis.localStorage?.removeItem(SEEN_KEY);
-    globalThis.localStorage?.removeItem(DISABLED_KEY);
-  } catch { /* noop */ }
+  removeUiPref(SEEN_KEY);
+  removeUiPref(DISABLED_KEY);
   document.querySelector(`[data-pkc-region="${REGION}"]`)?.remove();
 }
 

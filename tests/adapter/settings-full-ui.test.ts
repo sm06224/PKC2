@@ -302,6 +302,7 @@ describe('full settings restore round-trip', () => {
       },
       display: { preferredFont: 'Inter', fontDirectInput: null },
       locale: { language: 'en-US', timezone: 'Asia/Tokyo' },
+      uiPrefs: {},
     };
     dispatcher.dispatch({ type: 'RESTORE_SETTINGS', settings: payload });
 

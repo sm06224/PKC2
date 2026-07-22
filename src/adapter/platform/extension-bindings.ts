@@ -17,6 +17,7 @@
  */
 
 import { peekAttachmentMeta } from '@features/extension-host/projection';
+import { getUiPref, setUiPref } from './ui-prefs';
 
 export const EXTENSION_BINDINGS_KEY = 'pkc2.extensionBindings';
 
@@ -37,22 +38,14 @@ function read(): ExtensionBindings {
 
 function write(next: ExtensionBindings): void {
   cache = next;
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(EXTENSION_BINDINGS_KEY, JSON.stringify(next));
-  } catch {
-    /* quota / disabled — in-memory cache stays authoritative this session */
-  }
+  setUiPref(EXTENSION_BINDINGS_KEY, JSON.stringify(next));
 }
 
 function readFromStorage(): ExtensionBindings | null {
-  if (typeof localStorage === 'undefined') return null;
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(EXTENSION_BINDINGS_KEY);
-  } catch {
-    return null;
-  }
+  // C11: ui-prefs facade 経由(container バッグ優先 + localStorage
+  // ミラー)。紐付けは standing opt-in 契約なので storage 初期化で
+  // 失われないことが特に重要。
+  const raw = getUiPref(EXTENSION_BINDINGS_KEY);
   if (!raw) return null;
   let parsed: unknown;
   try {

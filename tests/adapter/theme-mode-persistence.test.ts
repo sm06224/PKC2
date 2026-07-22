@@ -166,6 +166,7 @@ describe('theme mode restore on boot', () => {
         },
         display: { preferredFont: null, fontDirectInput: null },
         locale: { language: null, timezone: null },
+        uiPrefs: {},
       },
     });
     expect(dispatcher.getState().settings?.theme.mode).toBe('dark');
@@ -191,6 +192,7 @@ describe('theme mode restore on boot', () => {
         },
         display: { preferredFont: null, fontDirectInput: null },
         locale: { language: null, timezone: null },
+        uiPrefs: {},
       },
     });
     const after = events.filter((e) => e.type === 'SETTINGS_CHANGED').length;

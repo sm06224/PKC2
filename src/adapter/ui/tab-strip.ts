@@ -28,6 +28,7 @@ import type { Container } from '../../core/model/container';
 import type { AppState } from '../state/app-state';
 import type { Dispatcher } from '../state/dispatcher';
 import { shellTabsEnabled, shellCompactEntryLabelsEnabled } from './shell-flags';
+import { getUiPref, setUiPref, removeUiPref } from '../platform/ui-prefs';
 
 /**
  * Tab info ── entry tab(specific entry を open)と view tab(workspace-level
@@ -330,17 +331,12 @@ interface SavedTabStrip {
  * silent ignore(persistence は best-effort、必須でない)。
  */
 export function persistTabState(): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    const payload: SavedTabStrip = {
-      lids: openTabs.map((t) => t.lid),
-      active: activeLid,
-      pinned: openTabs.filter((t) => t.pinned).map((t) => t.lid),
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // quota / disabled storage ── silent
-  }
+  const payload: SavedTabStrip = {
+    lids: openTabs.map((t) => t.lid),
+    active: activeLid,
+    pinned: openTabs.filter((t) => t.pinned).map((t) => t.lid),
+  };
+  setUiPref(STORAGE_KEY, JSON.stringify(payload));
 }
 
 /**
@@ -353,11 +349,12 @@ export function persistTabState(): void {
  * (rehydrate UX = boot 時 last-active entry が selected な状態に復元)。
  */
 export function restoreTabState(container: Container | null): string | null {
-  if (typeof localStorage === 'undefined') return null;
   if (!container) return null;
   let saved: SavedTabStrip | null = null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    // C11: ui-prefs facade 経由(container バッグ優先 + localStorage
+    // ミラー)。localStorage が毎回初期化される環境でもタブ構成が戻る。
+    const raw = getUiPref(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (
@@ -411,12 +408,7 @@ export function restoreTabState(container: Container | null): string | null {
 }
 
 export function clearPersistedTabState(): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
+  removeUiPref(STORAGE_KEY);
 }
 
 // ─── keyboard handlers(pgc-86):Ctrl+W close / Ctrl+Shift+T reopen ───

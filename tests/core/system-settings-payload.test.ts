@@ -122,6 +122,7 @@ describe('resolveSettingsPayload', () => {
       theme: { mode: 'dark' as const, scanline: true, accentColor: '#ff00aa', borderColor: '#112233', backgroundColor: null, uiTextColor: '#fafafa', bodyTextColor: null },
       display: { preferredFont: 'Inter', fontDirectInput: null },
       locale: { language: 'en-US', timezone: 'Asia/Tokyo' },
+      uiPrefs: { 'pkc2.editMode': 'window' },
     };
     expect(resolveSettingsPayload(serializeSettingsPayload(input))).toEqual(input);
   });

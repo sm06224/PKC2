@@ -86,6 +86,7 @@ import {
   saveCollapsedFolders,
 } from './adapter/platform/folder-prefs';
 import { loadEditMode } from './adapter/platform/edit-mode-prefs';
+import { initUiPrefs } from './adapter/platform/ui-prefs';
 import { readPkcData, chooseBootSource, finalizeChooserChoice } from './adapter/platform/pkc-data-source';
 import { showBootSourceChooser } from './adapter/ui/boot-source-chooser';
 import {
@@ -1113,6 +1114,7 @@ async function boot(): Promise<void> {
     switch (chosen.source) {
       case 'pkc-data': {
         const container = chosen.container!;
+        primeUiPrefsFromContainer(dispatcher, container);
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
           container,
@@ -1143,6 +1145,7 @@ async function boot(): Promise<void> {
           chosen.container!,
           chosen.systemEntriesFromPkcData ?? [],
         );
+        primeUiPrefsFromContainer(dispatcher, container);
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
           container,
@@ -1171,6 +1174,7 @@ async function boot(): Promise<void> {
           createEmptyContainer(),
           chosen.systemEntriesFromPkcData ?? [],
         );
+        primeUiPrefsFromContainer(dispatcher, container);
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
           container,
@@ -1208,6 +1212,24 @@ async function boot(): Promise<void> {
  * The action does not emit SETTINGS_CHANGED (boot replay is not a user
  * modification) so persistence stays quiet.
  */
+/**
+ * C11 (2026-07-22): container の `__settings__` から UI prefs バッグを
+ * 読んで ui-prefs facade を init する。**SYS_INIT_COMPLETE dispatch の
+ * 前に呼ぶこと** — dispatch は同期で初回 render / tab 復元
+ * (`restoreTabState`)/ pane prefs 読みを走らせるため、その時点で
+ * バッグが有効(localStorage が初期化される環境でも container 側の
+ * prefs で復元できる)でなければならない。
+ */
+function primeUiPrefsFromContainer(
+  dispatcher: Dispatcher,
+  container: Container,
+): void {
+  const entry = container.entries.find(
+    (e) => e.lid === SETTINGS_LID && e.archetype === 'system-settings',
+  );
+  initUiPrefs(resolveSettingsPayload(entry?.body).uiPrefs, dispatcher);
+}
+
 function restoreSettingsFromContainer(
   dispatcher: Dispatcher,
   container: Container,
