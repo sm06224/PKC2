@@ -71,6 +71,7 @@ import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/te
 import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
 import { buildFolderExportBundle } from '../platform/folder-export';
 import { setPaneCollapsed } from '../platform/pane-prefs';
+import { getUiPref, setUiPref } from '../platform/ui-prefs';
 import { getStorageBackendPref, setStorageBackendPref } from '../platform/storage-backend';
 import { flushActivePersistence } from '../platform/persistence';
 import { pickDirectory, verifyFsaPermission } from '../platform/storage/fsa-adapter';
@@ -9444,15 +9445,17 @@ export function bindActions(
     if (filerColResizeActive && filerColResizeTh && filerColResizeKey) {
       const final = filerColResizeTh.getBoundingClientRect().width;
       try {
-        const raw = window.localStorage?.getItem(FILER_COL_WIDTHS_KEY);
+        // C11: ui-prefs facade 経由(container バッグ + localStorage
+        // ミラーへ write-through)。
+        const raw = getUiPref(FILER_COL_WIDTHS_KEY);
         const cur: Record<string, number> =
           raw && typeof raw === 'string'
             ? (JSON.parse(raw) as Record<string, number>) ?? {}
             : {};
         cur[filerColResizeKey] = Math.round(final);
-        window.localStorage?.setItem(FILER_COL_WIDTHS_KEY, JSON.stringify(cur));
+        setUiPref(FILER_COL_WIDTHS_KEY, JSON.stringify(cur));
       } catch {
-        /* localStorage unavailable */
+        /* storage unavailable */
       }
       const handle = filerColResizeTh.querySelector<HTMLElement>(
         '[data-pkc-resizing="true"]',

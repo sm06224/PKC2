@@ -51,11 +51,14 @@ import type { EntryConflict, Resolution } from '../../core/model/merge-conflict'
 import {
   type SystemSettingsPayload,
   SETTINGS_DEFAULTS,
+  UI_PREFS_MAX_KEYS,
   isValidHexColor,
   isValidThemeMode,
   isValidFontFamily,
   isValidLanguageTag,
   isValidTimezone,
+  isValidUiPrefKey,
+  isValidUiPrefValue,
 } from '../../core/model/system-settings-payload';
 import type { ProvenanceRelationData } from '../../features/import/conflict-detect';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
@@ -2688,6 +2691,35 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
         accentColor: next.theme.accentColor ?? undefined,
       };
       return { state: nextState, events: [] };
+    }
+    case 'SET_UI_PREFS': {
+      // C11 — UI preference バッグ(`settings.uiPrefs`)への batched
+      // merge。readonly viewer では localStorage ミラーのみで運用する
+      // ため silent no-op(blocked warn は出さない — facade が
+      // dispatch を抑止し損ねた場合の防衛線)。
+      if (state.readonly || !state.container) return { state, events: [] };
+      const cur = currentSettings(state);
+      const nextPrefs: Record<string, string> = { ...cur.uiPrefs };
+      let prefsChanged = false;
+      for (const [k, v] of Object.entries(action.values)) {
+        if (v === null) {
+          if (k in nextPrefs) {
+            delete nextPrefs[k];
+            prefsChanged = true;
+          }
+          continue;
+        }
+        if (!isValidUiPrefKey(k) || !isValidUiPrefValue(v)) continue;
+        if (nextPrefs[k] === v) continue;
+        nextPrefs[k] = v;
+        prefsChanged = true;
+      }
+      if (!prefsChanged) return { state, events: [] };
+      if (Object.keys(nextPrefs).length > UI_PREFS_MAX_KEYS) {
+        console.warn('[PKC2] SET_UI_PREFS dropped: bag exceeds max keys');
+        return { state, events: [] };
+      }
+      return applySettingsUpdate(state, { ...cur, uiPrefs: nextPrefs });
     }
     case 'SET_FLAG': {
       // Flags Protocol v1 — gated mutation of `__flags__` system entry.

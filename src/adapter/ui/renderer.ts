@@ -152,6 +152,7 @@ import type { LinkIndex, LinkRef } from '../../features/link-index/link-index';
 import type { EntryConflict, Resolution } from '../../core/model/merge-conflict';
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
+import { getUiPref } from '../platform/ui-prefs';
 import { loadExtensionBindings, getDefaultTarget, matchKeyForEntry } from '../platform/extension-bindings';
 import { contrastRatio, wcagGrade, formatContrastRatio } from '../../features/color/wcag-contrast';
 import { setFormatContext, getFormatLocale } from './format-context';
@@ -7069,7 +7070,9 @@ const FILER_COLUMN_WIDTHS_KEY = 'pkc2.filer.column-widths';
 function readFilerColumnWidths(): Record<string, number> {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = window.localStorage?.getItem(FILER_COLUMN_WIDTHS_KEY);
+    // C11: ui-prefs facade 経由(container バッグ優先 + localStorage
+    // ミラー)。
+    const raw = getUiPref(FILER_COLUMN_WIDTHS_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object') return {};

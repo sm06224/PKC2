@@ -21,7 +21,9 @@
  * change. See docs/development/pane-state-persistence.md.
  */
 
-/** Identifier stored in localStorage. Namespaced to avoid collisions. */
+import { getUiPref, setUiPref } from './ui-prefs';
+
+/** Storage identifier. Namespaced to avoid collisions. */
 export const PANE_PREFS_STORAGE_KEY = 'pkc2.panePrefs';
 
 /** The persisted prefs. `true` means the pane is currently collapsed. */
@@ -102,13 +104,9 @@ export function setPaneCollapsed(
 // ── Internal ─────────────────────────────
 
 function readFromStorage(): PanePrefs | null {
-  if (typeof localStorage === 'undefined') return null;
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(PANE_PREFS_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  // C11: ui-prefs facade 経由(container バッグ優先 + localStorage
+  // ミラー)。localStorage が毎回初期化される環境でも復元できる。
+  const raw = getUiPref(PANE_PREFS_STORAGE_KEY);
   if (!raw) return null;
   let parsed: unknown;
   try {
@@ -126,13 +124,7 @@ function readFromStorage(): PanePrefs | null {
 }
 
 function writeToStorage(prefs: PanePrefs): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(PANE_PREFS_STORAGE_KEY, JSON.stringify(prefs));
-  } catch {
-    /* quota exceeded / private mode / etc. — in-memory cache stays
-     * authoritative for this session. */
-  }
+  setUiPref(PANE_PREFS_STORAGE_KEY, JSON.stringify(prefs));
 }
 
 /**

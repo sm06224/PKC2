@@ -23,35 +23,30 @@
  * action-binder の `set-edit-mode` handler が user 選択時に書く。
  */
 
-/** localStorage の key。衝突回避のため `pkc2.` namespace。 */
+import { getUiPref, setUiPref } from './ui-prefs';
+
+/** Storage key。衝突回避のため `pkc2.` namespace。 */
 export const EDIT_MODE_STORAGE_KEY = 'pkc2.editMode';
 
 /**
- * 永続化された編集モードを読む。未設定 / localStorage 不可 / 不正値の
+ * 永続化された編集モードを読む。未設定 / storage 不可 / 不正値の
  * いずれも `null` を返す。`null` = 「永続値なし」= 呼び出し側は既定
  * (inline)を使う、という契約。
+ *
+ * C11: 読み書きは ui-prefs facade 経由(container バッグ優先 +
+ * localStorage ミラー)。localStorage が毎回初期化される環境でも
+ * container 側の値で復元される。
  */
 export function loadEditMode(): 'inline' | 'window' | null {
-  if (typeof localStorage === 'undefined') return null;
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(EDIT_MODE_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  const raw = getUiPref(EDIT_MODE_STORAGE_KEY);
   if (raw === 'inline' || raw === 'window') return raw;
   return null;
 }
 
 /**
- * 編集モードを localStorage に書く。localStorage 不可なら no-op
- * (この session は runtime state のみで動作、reload で既定に戻る)。
+ * 編集モードを書く。storage 不可なら no-op(この session は runtime
+ * state のみで動作、reload で既定に戻る)。
  */
 export function saveEditMode(mode: 'inline' | 'window'): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(EDIT_MODE_STORAGE_KEY, mode);
-  } catch {
-    /* quota exceeded / private mode — runtime state が引き続き authoritative */
-  }
+  setUiPref(EDIT_MODE_STORAGE_KEY, mode);
 }

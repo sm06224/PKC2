@@ -87,6 +87,7 @@ import {
   type AnchorPair,
 } from './split-sync-map';
 import { measureEditorLineTops } from './editor-line-metrics';
+import { getUiPref, setUiPref } from '../platform/ui-prefs';
 
 // ─────────────────────────────────────────────────────────────────
 // PR 2 — Sync orchestration layer (2026-05-05).
@@ -134,25 +135,25 @@ const SYNC_DEBUG_KEY = 'pkc2.split-sync-debug';
  * editor. Making it opt-in keeps the editor's default behaviour
  * minimal; the ⇄ button is always present for users who want it.
  */
-let syncEnabled: boolean = (() => {
-  try {
-    return window.localStorage?.getItem(SYNC_ENABLED_KEY) === 'true';
-  } catch {
-    return false;
+// C11: module import 時ではなく初回参照時に lazy 読み(ui-prefs facade
+// は boot で container バッグを seed するため、import 時読みだと
+// localStorage が初期化される環境で container 側の値を拾えない)。
+let syncEnabledCache: boolean | null = null;
+
+function readSyncEnabled(): boolean {
+  if (syncEnabledCache === null) {
+    syncEnabledCache = getUiPref(SYNC_ENABLED_KEY) === 'true';
   }
-})();
+  return syncEnabledCache;
+}
 
 export function isSyncEnabled(): boolean {
-  return syncEnabled;
+  return readSyncEnabled();
 }
 
 export function setSyncEnabled(enabled: boolean): void {
-  syncEnabled = enabled;
-  try {
-    window.localStorage?.setItem(SYNC_ENABLED_KEY, enabled ? 'true' : 'false');
-  } catch {
-    /* localStorage unavailable */
-  }
+  syncEnabledCache = enabled;
+  setUiPref(SYNC_ENABLED_KEY, enabled ? 'true' : 'false');
   // 2026-07 rebuild: reset the scroll-mapping controller on every
   // toggle so a re-enable starts from a clean slate (no stale owner /
   // echo expectation / mapping built against an old layout).
@@ -424,7 +425,7 @@ export function onEditorPaneScroll(
   textarea: HTMLTextAreaElement,
   preview: HTMLElement,
 ): void {
-  if (!syncEnabled) return;
+  if (!readSyncEnabled()) return;
   const top = textarea.scrollTop;
   if (expectedEditorTop !== null && Math.abs(top - expectedEditorTop) <= 1) {
     expectedEditorTop = null;
@@ -450,7 +451,7 @@ export function onPreviewPaneScroll(
   textarea: HTMLTextAreaElement,
   preview: HTMLElement,
 ): void {
-  if (!syncEnabled) return;
+  if (!readSyncEnabled()) return;
   const top = preview.scrollTop;
   if (expectedPreviewTop !== null && Math.abs(top - expectedPreviewTop) <= 1) {
     expectedPreviewTop = null;
@@ -508,7 +509,7 @@ function updateEditorActiveLine(
   if (!wrapper) return;
   const overlay = wrapper.querySelector<HTMLElement>('.pkc-editor-active-line');
   if (!overlay) return;
-  if (!syncEnabled) {
+  if (!readSyncEnabled()) {
     overlay.style.display = 'none';
     return;
   }
@@ -605,7 +606,7 @@ function updateDebugPanel(textarea: HTMLTextAreaElement, preview?: Element): voi
     `ta scroll:  ${textarea.scrollTop}`,
     `preview line: ${activePreviewLine}`,
     `preview scroll: ${previewScrollTop}`,
-    `sync enabled: ${syncEnabled}`,
+    `sync enabled: ${readSyncEnabled()}`,
     `owner: ${scrollOwner ?? '(none)'}`,
     `map pairs: ${syncMapCache ? syncMapCache.scrollPairs.length : '(not built)'}`,
     `expect ta/pv: ${expectedEditorTop ?? '-'} / ${expectedPreviewTop ?? '-'}`,
@@ -665,7 +666,7 @@ export function syncPreviewToCaret(
   textarea: HTMLTextAreaElement,
   preview: Element,
 ): void {
-  if (!syncEnabled) {
+  if (!readSyncEnabled()) {
     updateEditorActiveLine(textarea);
     updateDebugPanel(textarea, preview);
     return;
@@ -777,7 +778,7 @@ export function syncCaretToPreview(
   clickedEl: Element,
   viewportY: number,
 ): boolean {
-  if (!syncEnabled) return false;
+  if (!readSyncEnabled()) return false;
   let line = findSourceLineForElement(clickedEl);
   if (line === null) {
     line = findSourceLineByPoint(preview, viewportY);

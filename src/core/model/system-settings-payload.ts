@@ -19,6 +19,32 @@
 
 export type ThemeMode = 'dark' | 'light' | 'auto';
 
+/**
+ * C11 (2026-07-22 user 要望「localStorage が必ず初期化される環境でも
+ * 依存しない仕組みを」): UI preference バッグ。`pkc2.*` の viewer
+ * preference(既読 / 編集モード / ペイン折り畳み / タブ復元 など)を
+ * container 側に同乗させ、localStorage はセッション内ミラーに格下げ
+ * する。key は `pkc2.` namespace の文字列、value は文字列(JSON を
+ * 含む)。バッグ全体は有界(key 数 / value 長の上限)で、超過分は
+ * parse 時に黙って落とす。
+ */
+export const UI_PREFS_MAX_KEYS = 512;
+export const UI_PREFS_MAX_KEY_LENGTH = 200;
+export const UI_PREFS_MAX_VALUE_LENGTH = 16 * 1024;
+
+export function isValidUiPrefKey(v: unknown): v is string {
+  return (
+    typeof v === 'string' &&
+    v.startsWith('pkc2.') &&
+    v.length > 'pkc2.'.length &&
+    v.length <= UI_PREFS_MAX_KEY_LENGTH
+  );
+}
+
+export function isValidUiPrefValue(v: unknown): v is string {
+  return typeof v === 'string' && v.length <= UI_PREFS_MAX_VALUE_LENGTH;
+}
+
 export interface SystemSettingsPayload {
   format: 'pkc2-system-settings';
   version: 1;
@@ -39,6 +65,8 @@ export interface SystemSettingsPayload {
     language: string | null;
     timezone: string | null;
   };
+  /** C11: UI preference バッグ(上記参照)。 */
+  uiPrefs: Record<string, string>;
 }
 
 export const SETTINGS_DEFAULTS: SystemSettingsPayload = {
@@ -61,6 +89,7 @@ export const SETTINGS_DEFAULTS: SystemSettingsPayload = {
     language: null,
     timezone: null,
   },
+  uiPrefs: {},
 };
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -132,6 +161,19 @@ export function resolveSettingsPayload(body: string | undefined): SystemSettings
   const locale = (typeof o.locale === 'object' && o.locale !== null)
     ? o.locale as Record<string, unknown>
     : {};
+  const uiPrefsRaw = (
+    typeof o.uiPrefs === 'object' && o.uiPrefs !== null && !Array.isArray(o.uiPrefs)
+  )
+    ? o.uiPrefs as Record<string, unknown>
+    : {};
+  const uiPrefs: Record<string, string> = {};
+  let uiPrefCount = 0;
+  for (const [k, v] of Object.entries(uiPrefsRaw)) {
+    if (uiPrefCount >= UI_PREFS_MAX_KEYS) break;
+    if (!isValidUiPrefKey(k) || !isValidUiPrefValue(v)) continue;
+    uiPrefs[k] = v;
+    uiPrefCount += 1;
+  }
 
   // Migration: old `textColor` field maps to `uiTextColor` for v1 back-compat.
   const migratedUiText = isValidHexColor(theme.uiTextColor)
@@ -158,6 +200,7 @@ export function resolveSettingsPayload(body: string | undefined): SystemSettings
       language: isValidLanguageTag(locale.language) ? locale.language : null,
       timezone: isValidTimezone(locale.timezone) ? locale.timezone : null,
     },
+    uiPrefs,
   };
 }
 

@@ -280,6 +280,15 @@ export type UserAction =
   | { type: 'RESET_TIMEZONE' }
   | { type: 'RESTORE_SETTINGS'; settings: SystemSettingsPayload }
   /**
+   * C11 (2026-07-22): UI preference バッグ(`settings.uiPrefs`)への
+   * batched merge。value `null` は該当 key の削除。dispatch 元は
+   * `adapter/platform/ui-prefs.ts` facade の debounce flush のみ。
+   * readonly / container 無しでは no-op(facade 側は localStorage
+   * ミラーへ書き済み)。emit は `SETTINGS_CHANGED`(persistence が
+   * container を保存する)。
+   */
+  | { type: 'SET_UI_PREFS'; values: Record<string, string | null> }
+  /**
    * Flags Protocol v1 — gated mutation of `__flags__` system entry.
    * `SET_FLAG` / `RESET_FLAG` write to the entry body; values resolve
    * back through `defineFlag` (range / enum gates). `RESET_ALL_FLAGS`
