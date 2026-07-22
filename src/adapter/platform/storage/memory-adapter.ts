@@ -21,6 +21,11 @@ export function createMemoryAdapter(): StorageAdapter {
     ['assets', new Map()],
   ]);
 
+  // P1 slice 1(#967): Blob は immutable なので参照共有で安全。Node の
+  // structuredClone は happy-dom の Blob を clone できない環境があるため
+  // 特別扱いする。
+  const cloneValue = (v: unknown): unknown => (v instanceof Blob ? v : structuredClone(v));
+
   function getBucket(name: BucketName): Map<string, unknown> {
     const b = buckets.get(name);
     if (!b) throw new Error(`[StorageAdapter] unknown bucket "${name}"`);
@@ -32,10 +37,10 @@ export function createMemoryAdapter(): StorageAdapter {
     return {
       async get(key) {
         if (!map.has(key)) return undefined;
-        return structuredClone(map.get(key));
+        return cloneValue(map.get(key));
       },
       async put(key, value) {
-        map.set(key, structuredClone(value));
+        map.set(key, cloneValue(value));
       },
       async delete(key) {
         map.delete(key);
@@ -44,7 +49,7 @@ export function createMemoryAdapter(): StorageAdapter {
         const out: Array<{ key: string; value: unknown }> = [];
         for (const [key, value] of map) {
           if (key.startsWith(prefix)) {
-            out.push({ key, value: structuredClone(value) });
+            out.push({ key, value: cloneValue(value) });
           }
         }
         out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
@@ -61,7 +66,7 @@ export function createMemoryAdapter(): StorageAdapter {
       async applyBatch(ops: BatchOp[]) {
         for (const op of ops) {
           if (op.kind === 'put') {
-            map.set(op.key, structuredClone(op.value));
+            map.set(op.key, cloneValue(op.value));
           } else {
             map.delete(op.key);
           }
@@ -78,5 +83,6 @@ export function createMemoryAdapter(): StorageAdapter {
     close() {
       // No-op for memory.
     },
+    supportsBlobValues: true,
   };
 }

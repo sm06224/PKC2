@@ -109,6 +109,13 @@ export interface StorageAdapter {
   /** Tear down the underlying connection / handles. */
   close(): void;
   /**
+   * P1 slice 1(#967 storage v3): true when this backend can persist
+   * `Blob` values natively(IDB = structured clone / memory = 参照保持)。
+   * false / 未指定の backend(FS 系: 値は JSON 文字列)へは、
+   * ContainerStore が base64 文字列へ変換してから書く。
+   */
+  readonly supportsBlobValues?: boolean;
+  /**
    * True when per-record I/O is expensive on this backend. FS 系
    * (File System Access / OPFS)は 1 record = 1 ファイルで、
    * `createWritable()` が atomic swap のためファイル毎に数十 ms かかる —
