@@ -266,11 +266,45 @@ UI prefs は IDB / 単一 HTML export / Backup ZIP / FSA フォルダに**デー
 4. readonly viewer は構造上 container に書けないため従来どおり(localStorage
    のみ、初期化環境では viewer の既読等は毎回リセット — 許容)
 
+### prefs のみのインポート / エクスポート導線(user 指示 2026-07-22)
+
+データ本体と独立に、**prefs 単体を持ち出し / 持ち込みできる導線**を設ける。
+
+- **形式**: 小さな JSON ファイル(`*.pkc2-prefs.json`)
+
+  ```json
+  {
+    "format": "pkc2-prefs",
+    "version": 1,
+    "exported_at": "…",
+    "settings": { /* SystemSettingsPayload 全体 = theme / display / locale / uiPrefs */ }
+  }
+  ```
+
+- **エクスポート**: ⚙ Settings に「設定のエクスポート」。現在の `__settings__`
+  payload(uiPrefs 含む)をそのままファイル保存。データ・本文・asset は
+  一切含まない(ファイル名と中身で明確に区別できるようにする)
+- **インポート**: ⚙ Settings に「設定のインポート」。validate(format /
+  version / per-field fallback — 既存 resolver を流用)→ 適用前に差分の確認
+  ダイアログ → 承認で現在の container の `__settings__` へ適用
+  (uiPrefs は key 単位 merge、theme / display / locale は上書き)。
+  通常の SET 系 dispatch 経由なので undo 相当(再インポート / 再設定)も自然に効く
+- **解決する場面**:
+  - トレードオフ 1 の補完: 配布物には prefs を載せたくない場合、
+    「strip して配布 + prefs は別ファイルで自分用に持つ」が成立する
+  - トレードオフ 3 の橋渡し: container 単位になった prefs を、別 container /
+    別マシンへ**データを渡さずに**移せる
+  - ファイル完結モード(§4.5): データファイルと並べて prefs ファイルを
+    置いておけば、環境が完全に初期化されても 2 ファイルで完全復元できる
+- readonly viewer でもエクスポートは可(読むだけ)。インポートは書ける
+  container がある時のみ
+
 ### 検証計画
 
 facade / reducer 単体 + **「localStorage 全消去 → container のみから復元」の
-E2E** + 全既存 suite の無修正 pass(passthrough 後方互換の証明)。実装 PR は
-STARTUP_NOTICES 掲載(user-facing 変更)。
+E2E** + prefs 単体の export → 初期化 → import round-trip + 全既存 suite の
+無修正 pass(passthrough 後方互換の証明)。実装 PR は STARTUP_NOTICES 掲載
+(user-facing 変更)。
 
 ## 5. 課題 ↔ 解決の対応
 
