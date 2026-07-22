@@ -115,14 +115,11 @@ describe('Round-trip: HTML Full (mode=full, editable)', () => {
     // the success path can be observed in isolation.
     const source = makeMixedFixture();
 
-    let downloaded: { content: string; filename: string } | null = null;
+    let downloaded: { content: Blob; filename: string } | null = null;
     const result = await exportContainerAsHtml(source, {
+      // #960/#962: downloadFn は Blob を受け取る
       downloadFn: (content, filename) => {
-        // #960: downloadFn は parts(string[])を受け取る
-        downloaded = {
-          content: Array.isArray(content) ? content.join('') : (content as string),
-          filename,
-        };
+        downloaded = { content, filename };
       },
     });
 
@@ -130,11 +127,11 @@ describe('Round-trip: HTML Full (mode=full, editable)', () => {
     expect(result.filename).toMatch(/\.html$/);
     expect(downloaded).not.toBeNull();
     if (!downloaded) return;
-    const { content, filename } = downloaded as { content: string; filename: string };
+    const { content, filename } = downloaded as { content: Blob; filename: string };
     expect(filename).toBe(result.filename);
     // Re-import the downloaded content to verify the downloaded form
     // is the same artifact that buildExportHtml produced.
-    const reimport = await importFromHtml(content, 'downloaded');
+    const reimport = await importFromHtml(await content.text(), 'downloaded');
     expect(reimport.ok).toBe(true);
     if (!reimport.ok) return;
     expect(canonicalEqual(source, reimport.container)).toBe(true);

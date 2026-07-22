@@ -930,6 +930,57 @@ export function registerExportStore(store: ContainerStore | null): void {
 }
 
 /**
+ * #962: export が持ち出すべき asset key の列(referenced ∪ resident)。
+ * `hydrateReferencedAssets` + resident merge と同じ選定規則。順序は
+ * referenced(collect 順)→ 追加の resident。
+ */
+export function collectExportAssetKeys(container: Container): string[] {
+  const keys = [...collectReferencedAssetKeys(container)];
+  const seen = new Set(keys);
+  for (const key of Object.keys(container.assets)) {
+    if (!seen.has(key)) keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * #962: export 用の per-asset 読み出し(resident 優先 → 登録済 store)。
+ * `hydrateReferencedAssets` が全 bytes を 1 つの Record に同時保持するのに
+ * 対し、こちらは 1 件ずつ返す ── 数 GB 級 container の export で全 asset を
+ * ヒープに並べず、呼び出し側が streaming で処理できるようにする。
+ * 読めない key は null(参照は従来どおり broken のまま)。
+ */
+export async function loadExportAsset(
+  container: Container,
+  key: string,
+): Promise<string | null> {
+  const resident = container.assets[key];
+  if (resident != null) return resident;
+  return loadAssetDirect(container.meta.container_id, key);
+}
+
+/**
+ * #962: export 前の pending body 復元だけを行う(asset には触れない)。
+ * `hydrateForExport` の body barrier 部分の単体版 ── streaming export は
+ * asset を per-key で読むため、全 asset hydrate を伴わない形が必要。
+ */
+export async function hydratePendingBodiesForExport(container: Container): Promise<Container> {
+  if (!activeExportStore) return container;
+  const cid = container.meta.container_id;
+  const pendingLids = container.entries
+    .filter((e) => isBodyPendingGlobal(cid, e.lid))
+    .map((e) => e.lid);
+  if (pendingLids.length === 0) return container;
+  const bodies = await activeExportStore.loadBodiesFor(cid, pendingLids);
+  return {
+    ...container,
+    entries: container.entries.map((e) =>
+      bodies[e.lid] !== undefined ? { ...e, body: bodies[e.lid]! } : e,
+    ),
+  };
+}
+
+/**
  * #956: last-resort direct asset read via the registered store, bypassing
  * the working-set entirely. User gestures that must produce bytes on the
  * spot (open HTML app in new window / download) first try the working-set
@@ -957,18 +1008,7 @@ export async function hydrateForExport(container: Container): Promise<Container>
   const withAssets = await hydrateReferencedAssets(activeExportStore, container);
   // #940 段階4: 未 hydrate の本文(body working-set の pending)も export
   // 前に必ず復元する ── export 内容が lazy 化の影響を受けない barrier。
-  const cid = withAssets.meta.container_id;
-  const pendingLids = withAssets.entries
-    .filter((e) => isBodyPendingGlobal(cid, e.lid))
-    .map((e) => e.lid);
-  if (pendingLids.length === 0) return withAssets;
-  const bodies = await activeExportStore.loadBodiesFor(cid, pendingLids);
-  return {
-    ...withAssets,
-    entries: withAssets.entries.map((e) =>
-      bodies[e.lid] !== undefined ? { ...e, body: bodies[e.lid]! } : e,
-    ),
-  };
+  return hydratePendingBodiesForExport(withAssets);
 }
 
 // ── Availability probe ──────────────────────

@@ -4,6 +4,7 @@ import {
   serializePkcData,
   serializePkcDataParts,
   buildExportHtml,
+  buildExportBlob,
   generateExportFilename,
   exportContainerAsHtml,
 } from '@adapter/platform/exporter';
@@ -382,9 +383,9 @@ describe('exportContainerAsHtml', () => {
 
     expect(downloadSpy).toHaveBeenCalledTimes(1);
     const [content, filename] = downloadSpy.mock.calls[0]!;
-    // #960: downloadFn は parts(string[])を受け取る(単一巨大文字列を
-    // 作らないため)。結合結果が従来の HTML と等価。
-    const html = (content as string[]).join('');
+    // #960/#962: downloadFn は Blob を受け取る(単一巨大文字列も全量同時
+    // 保持もしない streaming 経路)。内容は従来の HTML と等価。
+    const html = await (content as Blob).text();
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('id="pkc-data"');
     expect(filename).toMatch(/\.html$/);
@@ -412,7 +413,7 @@ describe('exportContainerAsHtml', () => {
     await exportContainerAsHtml(c, { mode: 'light', downloadFn: downloadSpy });
 
     const [content] = downloadSpy.mock.calls[0]!;
-    const html = (content as string[]).join('');
+    const html = await (content as Blob).text();
     const match = html.match(/<script id="pkc-data" type="application\/json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(match![1]!);
     expect(data.export_meta.mode).toBe('light');
@@ -470,6 +471,30 @@ describe('serializePkcDataParts(#960: 巨大 asset の string 長上限対策)',
       data.export_meta.asset_encoding,
     );
     expect(restored).toEqual({ 'ast-x': btoa('X') });
+  });
+});
+
+describe('buildExportBlob(#962: streaming — 全量同時保持しない export)', () => {
+  it('foldBytes を極小にして畳み込みを跨いでも、内容は buildExportHtml と等価', async () => {
+    const c = createTestContainer({
+      assets: {
+        'ast-a': btoa('asset-bytes-A'.repeat(50)),
+        'ast-b': btoa('asset-bytes-B'.repeat(50)),
+        'ast-c': btoa('asset-bytes-C'.repeat(50)),
+      },
+    });
+    // fold 32B: head / 骨格 / 各 asset part が確実に複数 Blob chunk に割れる
+    const blob = await buildExportBlob(c, 'full', 'editable', { foldBytes: 32 });
+    const streamed = await blob.text();
+    const joined = await buildExportHtml(c, 'full', 'editable');
+    expect(streamed).toBe(joined);
+    expect(blob.size).toBe(joined.length);
+  });
+
+  it('light mode も Blob 経路で等価', async () => {
+    const c = createTestContainer({ assets: { 'ast-a': btoa('x') } });
+    const blob = await buildExportBlob(c, 'light', 'editable', { foldBytes: 16 });
+    expect(await blob.text()).toBe(await buildExportHtml(c, 'light', 'editable'));
   });
 });
 

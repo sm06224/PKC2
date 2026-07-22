@@ -151,9 +151,14 @@ async function readAllBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Ar
 
 /** Convert a Uint8Array to a base64 string. */
 function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]!);
+  // #962: 1 byte ずつの文字列連結は巨大 asset で膨大な中間 rope を作る。
+  // 0x8000 byte ごとの fromCharCode.apply でチャンク連結する(引数上限に
+  // かからない安全サイズ)。
+  const CHUNK = 0x8000;
+  const pieces: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+    pieces.push(String.fromCharCode.apply(null, slice as unknown as number[]));
   }
-  return btoa(binary);
+  return btoa(pieces.join(''));
 }
