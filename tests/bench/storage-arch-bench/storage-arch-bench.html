@@ -1,0 +1,90 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PKC2 storage architecture bench</title>
+<style>
+  body { font-family: system-ui; margin: 1.5rem; max-width: 980px; }
+  table { border-collapse: collapse; margin-top: 1rem; }
+  td, th { border: 1px solid #999; padding: 4px 10px; font-size: 13px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  #log { font-size: 12px; color: #555; white-space: pre-wrap; margin-top: 1rem; }
+  button { font-size: 15px; padding: 6px 14px; }
+</style>
+<h1>PKC2 storage architecture bench</h1>
+<p>
+  総量 <select id="size"><option value="100">100MB</option><option value="300" selected>300MB</option><option value="500">500MB</option></select>
+  <button id="run">計測開始</button>
+  <span id="status"></span>
+</p>
+<table id="result" hidden>
+  <thead><tr>
+    <th>構成</th><th>投入(全書込) ms</th><th>コールドスタート ms</th>
+    <th>1件読み(~2MB→ObjectURL) ms</th><th>10件連続読み ms</th>
+    <th>追記10件(1-5MB) ms</th><th>読後 JS heap MB</th><th>file opens/読1件</th>
+  </tr></thead>
+  <tbody></tbody>
+</table>
+<div id="log"></div>
+<script>
+  const logEl = document.getElementById('log');
+  const log = (m) => { logEl.textContent += m + '\n'; };
+  const tbody = document.querySelector('#result tbody');
+  window.__results = [];
+  let worker = null;
+
+  const WATCHDOG_MS = 420000; // 7 分 / 構成
+  function runOne(tag, totalMB) {
+    return new Promise((resolve) => {
+      const w = new Worker('./bench-worker.js', { type: 'module' });
+      let settled = false;
+      const finish = (row) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        w.terminate();
+        resolve(row);
+      };
+      const timer = setTimeout(
+        () => finish({ name: tag + '(クラッシュ/タイムアウト)', error: 'watchdog ' + WATCHDOG_MS + 'ms' }),
+        WATCHDOG_MS,
+      );
+      let row = null;
+      w.onmessage = (ev) => {
+        const m = ev.data;
+        if (m.type === 'log') { log(m.text); return; }
+        if (m.type === 'result') { row = m.row; return; }
+        if (m.type === 'done') finish(row ?? { name: tag, error: 'no result' });
+      };
+      w.onerror = (e) => finish({ name: tag + '(worker error)', error: String(e.message ?? e).slice(0, 200) });
+      w.postMessage({ cmd: 'run-one', tag, totalMB });
+    });
+  }
+
+  function addRow(row) {
+    window.__results.push(row);
+    const tr = document.createElement('tr');
+    const cells = row.error
+      ? [row.name + ' — ' + row.error, '—', '—', '—', '—', '—', '—', '—']
+      : [row.name, row.ingestMs, row.coldStartMs, row.read1Ms, row.read10Ms, row.append10Ms, row.heapMB, row.opensPerRead];
+    for (const v of cells) {
+      const td = document.createElement('td');
+      td.textContent = String(v ?? '—');
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('run').onclick = async () => {
+    tbody.innerHTML = '';
+    logEl.textContent = '';
+    document.getElementById('result').hidden = false;
+    window.__results = [];
+    window.__done = false;
+    const totalMB = Number(document.getElementById('size').value);
+    for (const tag of ['A', 'B', 'C', 'D', 'E']) {
+      document.getElementById('status').textContent = '計測中: ' + tag + '…';
+      addRow(await runOne(tag, totalMB));
+    }
+    window.__done = true;
+    document.getElementById('status').textContent = '完了';
+  };
+</script>

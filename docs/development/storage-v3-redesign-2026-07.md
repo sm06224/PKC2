@@ -169,7 +169,86 @@ visual parity test + 実データ規模の smoke(数百 MB seed)を DoD に含�
 4. **移行の自動バックアップゲート**(M1)は ZIP 強制で異論ないか
 
 ---
+
+## Appendix A — 実測(2026-07-22 追記、user 指示「ベンチも取らずに勝手しないで」への回答)
+
+計測環境: Chromium headless / NVMe。ハーネスは `tests/bench/storage-arch-bench/`
+(実機でも実行可)。**予算・単一 HTML は理想であって制約ではない**という前提で、
+候補は理想論でなく実測で判定した。
+
+### A.1 アーキテクチャ 5 構成(asset 100KB-5MB × 総量 100/300MB)
+
+300MB(114 assets)、単位 ms:
+
+| 構成 | 投入 | cold start | 1件読み(~2MB→ObjectURL) | 10件読み | 追記10件 |
+|---|---|---|---|---|---|
+| A 現行: 単一JSON+base64 | 8,984 | 3,276 | 39.8 | 440 | 5,057 |
+| B OPFS 個別ファイル | 2,023 | 12 | 1.0 | 9 | 182 |
+| C OPFS packfile+offset | 1,940 | 15 | 6.4 | 95 | 207 |
+| D SQLite WASM(OPFS SAHPool・BLOB) | 29,296 | 125 | 103.6 | 1,717 | 2,663 |
+| **E IDB + Blob(採用)** | **660** | **8** | **0.5** | **4** | **51** |
+
+- **E が全項目・全規模で最速**。100MB でも同順位(E: 284/8/0.5/5/57)
+- A は他構成と同一 worker で連続実行するとメモリ圧でクラッシュ(user 実環境の OOM 再現)
+- C(packfile、Gemini 提案)は「AV の per-file open 走査」対策としては有効な形だが、
+  E は per-file open 自体が無いため同懸念を構造的に回避する。B/C は FSA(実フォルダ)
+  同期バックアップ用の形式として意義が残る
+- ヒープ: 別計測(main thread)で base64 200MB 読出は **+293MB 常駐**、Blob は **±0**
+  (handle のみ、実 bytes は要求時)
+
+### A.2 SQL エンジン(構造データ)
+
+| | boot | 1万行 insert | select | blob 200MB 挿入 | 備考 |
+|---|---|---|---|---|---|
+| sql.js | 速 | 325ms | 84ms | WASM ヒープ +246MB | 永続化 = DB ファイル全 export(206MB/回) |
+| PGlite | 8.1s | 2,736ms | 84ms | 100MB で 25s / +213MB | bytea 20MB 単発読み 1.9s |
+| IDB(素) | — | 843ms(1tx 全量)/ **1ms(差分)** | 124ms(getAll) | — | 単一 record 読みなら 13ms |
+
+**bytes が WASM リニアメモリを通る構造は全 WASM エンジン共通の不利**(D の劣位と同根)。
+
+### A.3 zstd 圧縮の賞金(層別)
+
+| データ種別 | gzip6 | zstd3 | zstd19 |
+|---|---|---|---|
+| entries(markdown) | 6.4x | 15.0x | 30.9x |
+| revisions(snapshot 群を**一括**圧縮) | 7.6x | **587x** | 2,211x |
+| media(圧縮済みバイナリ近似) | 1.0x | 1.0x | 1.0x |
+
+- 履歴の巨大な賞金は**スナップショット間の冗長**由来 — 行単独圧縮では取れず、
+  グループ圧縮 or 辞書(sqlite-zstd の方式)が必要
+- → **P2 に「revision log の zstd グループ圧縮」(app 層 codec、zstd-wasm 単体)を追加**。
+  custom SQLite ビルドを待たずに取れる
+
+### A.4 FTS5(trigram、日本語 5,000 entries / 5MB)
+
+| クエリ | JS 線形スキャン | FTS5 trigram |
+|---|---|---|
+| レア語 | 0.8ms | 0.59ms |
+| 高頻度語(4,849 hit) | 0.3ms | 55.5ms(rank 込み) |
+
+現規模ではクエリ性能の優位なし。lazy bodies 化後も「検索時に bodies を一括読み
+(124ms/1 万件)→ スキャン」で成立する。
+
+### A.5 「PKC2 フレーバー SQLite」の位置づけ(user 提起)
+
+`SQLITE_EXTRA_INIT` 静的リンク(sqlite-zstd / sqlite-vec / FTS5 tokenizer を焼き込んだ
+専用 WASM ビルド)は正攻法として成立する。ただし採用は性能でなく**機能**が動機に
+なった時: ① sqlite-vec による意味検索の製品化 ② ランク/スニペット付き検索 UX
+③ テキスト実体 50MB+ 級への成長。それまでは**設計済み拡張点**として本 doc に保存し、
+bytes プレーンは常に E(IDB Blob)側に置く(A.2 の構造的理由)。
+
+### A.6 実測を受けた §3-§4 の修正
+
+- boot 形状: per-record 全面化を撤回し、**「entry meta は小さな単一レコード」**
+  (読み 13ms、遅いディスクでも 1 read)+ **本文 / revisions のみ per-record**
+  (差分書込 1ms・需要読み)のハイブリッドへ
+- Storage Buckets API(Chrome 122+)をメディア層の progressive enhancement として追加
+  (バケット分離 + persistent 指定 = ブラウザの自動削除からユーザーデータを保護)
+
+---
 *参照: [`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md)(方針正本)/
 [`opfs-storage-adapter-design-2026-06.md`](./opfs-storage-adapter-design-2026-06.md)(fs seam)/
 [`refinement-research-2026-07.md`](./refinement-research-2026-07.md)(I/O 棚卸し)/
+[`storage-backend-benchmark-2026-07.md`](./storage-backend-benchmark-2026-07.md)(#904 の backend ベンチ)/
+`tests/bench/storage-arch-bench/`(本 appendix のハーネス)/
 issues #956 #958 #960 #962 #964 #966(発端の障害群)*
