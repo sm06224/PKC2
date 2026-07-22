@@ -298,6 +298,49 @@ user 指示「**ディスク I/O に負荷をかけたくない。ゆるいス�
 - **eviction 保護**: `navigator.storage.persist()` 要求 + Storage Buckets の
   persistent 指定(§A.6)
 
+### A.9 syscall プロファイル: 頻度・タイミング・影響の分布(user 指示)
+
+user 指示「回数だけではなく、頻度とタイミングと影響の分布。結局そこ(syscall)が
+フック渋滞の原因になる」を受け、strace -f -ttt -T で **per-call タイムスタンプ +
+所要時間**を取り、worker のフェーズマーカーと突き合わせた(100MB、Chromium
+プロセスツリー全体、file 系 syscall。strace 下の wall は比較に使わない)。
+
+**フェーズ帰属(タイミング)— 特にユーザー体感の読みパス:**
+
+| 構成 | 読みフェーズ syscalls | 同 syscall 合計時間 | ingest syscalls | 追記 syscalls |
+|---|---|---|---|---|
+| A 単一JSON | 363 | 50ms | 5,511 | 1,229(**fdatasync max 651ms**) |
+| B 個別ファイル | 402 | 28ms | 3,618 | 3,880 |
+| C packfile | 224 | 63ms | **530** | **165** |
+| D SQLite WASM | **5,783** | 310ms | **45,457** | 11,685 |
+| E IDB+Blob | **97** | **7ms** | 15,979 | 3,537 |
+
+**頻度(100ms ビンのレート)**: D は中央値 692 回/100ms で**常時高頻度 chatter**
+(フック渋滞の最悪形)。A は中央値 35 だが p95 633 の**バースト型**。C は活動時間
+自体が最短(31 ビン)。
+
+**影響の分布(レイテンシ tail)**: 全構成で tail の主犯は **fdatasync**
+(p50 ~1.2ms)。max は A **651ms** / C 364ms / D 450ms / B 27ms / **E 7.4ms** —
+E(LevelDB WAL)は sync が均されて tail が桁で短い。A の 651ms は全量書き直しの
+flush で、UI ブロック級の spike。
+
+**フック渋滞の読み方**: AV/EDR の hook 単価 h は全 syscall に一律に乗るため、
+体感影響 ≈ フェーズ内 syscall 数 × h。読みパスで **D は E の ~60 倍**(5,783 vs
+97)、一括書きで **D は C の ~86 倍**(45,457 vs 530)。
+
+**結論(A.7 と合流)**: hook-heavy 環境の序列は C(総数最少・活動窓最短)と
+E(読みパス最少・tail 最短)が二強で、役割が違う —
+- **bytes プレーン = E(IDB Blob)**: ユーザー体感パス(読み)の syscall が桁で
+  少なく、tail も最短
+- **書き込み側の chatter は「セグメントログ」(= C のパック原理を IDB 内で適用)で
+  削る**: record 数減 = WAL 操作減 = syscall 減。A.7 の実書込 1/4.9 と同じ手が
+  syscall 数にも効く
+- D(SQLite WASM)は**全フェーズで syscall 数が桁違いに多く**、フック渋滞観点でも
+  最も不利(A.1 の速度訂正とは独立の劣位として記録)
+
+ハーネス: `run-syscall-bench.mjs`(回数)/ `run-syscall-profile.mjs`(頻度・
+フェーズ・分布)。ベンチ HTML は `?autorun=1&config=X&size=Y` で単一構成を外部駆動可。
+
 ---
 *参照: [`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md)(方針正本)/
 [`opfs-storage-adapter-design-2026-06.md`](./opfs-storage-adapter-design-2026-06.md)(fs seam)/

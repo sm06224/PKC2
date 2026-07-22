@@ -73,18 +73,31 @@
     tbody.appendChild(tr);
   }
 
-  document.getElementById('run').onclick = async () => {
+  async function runAll(tags, totalMB) {
     tbody.innerHTML = '';
     logEl.textContent = '';
     document.getElementById('result').hidden = false;
     window.__results = [];
     window.__done = false;
-    const totalMB = Number(document.getElementById('size').value);
-    for (const tag of ['A', 'B', 'C', 'D', 'E']) {
+    for (const tag of tags) {
       document.getElementById('status').textContent = '計測中: ' + tag + '…';
       addRow(await runOne(tag, totalMB));
     }
     window.__done = true;
     document.getElementById('status').textContent = '完了';
-  };
+  }
+
+  document.getElementById('run').onclick = () =>
+    runAll(['A', 'B', 'C', 'D', 'E'], Number(document.getElementById('size').value));
+
+  // 自動実行(syscall 計測などの外部駆動用): ?autorun=1&config=A&size=100
+  {
+    const params = new URLSearchParams(location.search);
+    if (params.get('autorun') === '1') {
+      const only = params.get('config');
+      const size = params.get('size') ?? '100';
+      document.getElementById('size').value = size;
+      runAll(only ? [only] : ['A', 'B', 'C', 'D', 'E'], Number(size));
+    }
+  }
 </script>

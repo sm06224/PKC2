@@ -44,6 +44,17 @@ vs パック + gzip ストリーミング圧縮。/proc/diskstats を使うた�
 node tests/bench/storage-arch-bench/io-bench.mjs
 ```
 
+**syscall 計測**(AV/EDR フック渋滞の予測指標。strace が必要、Linux 前提):
+
+```bash
+# 回数(strace -c 集計)
+CONFIGS=A,B,C,D,E TOTAL_MB=100 node tests/bench/storage-arch-bench/run-syscall-bench.mjs
+# 頻度・フェーズ帰属・レイテンシ分布(strace -ttt -T + worker フェーズマーカー)
+CONFIGS=A,B,C,D,E TOTAL_MB=100 node tests/bench/storage-arch-bench/run-syscall-profile.mjs
+```
+
+ベンチ HTML は `?autorun=1&config=X&size=Y` で単一構成を外部駆動できる。
+
 ## 計測結果(2026-07-22、Chromium headless / NVMe、実ディスク)
 
 `docs/development/storage-v3-redesign-2026-07.md` の Appendix A を参照。要約:
