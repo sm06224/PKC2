@@ -154,6 +154,17 @@ export interface ContainerStore {
   deleteAsset(cid: string, key: string): Promise<void>;
   listAssetKeys(cid: string): Promise<string[]>;
 
+  // ── P1 slice 1(#967 storage v3): Blob asset CRUD ──
+  // asset bytes を base64 文字列ではなく Blob(ヒープ外)で読み書きする
+  // 新契約。旧 base64 record との両読みを保証する:
+  //   - saveAssetBlob は Blob 対応 backend(IDB / memory)へは Blob を
+  //     そのまま、非対応 backend(FS 系)へは base64 へ変換して書く
+  //   - loadAssetBlob は Blob record / base64 record のどちらでも Blob を返す
+  //   - 既存 loadAsset は Blob record に当たったら base64 へ変換して返す
+  //     (旧呼び出し面の互換。後続 slice で呼び出し面を Blob へ移行)
+  saveAssetBlob(cid: string, key: string, data: Blob): Promise<void>;
+  loadAssetBlob(cid: string, key: string): Promise<Blob | null>;
+
   /**
    * Load the persisted asset-metadata index (段階4 #868) for `cid`, or
    * null when none has been written yet (legacy data → caller backfills).
@@ -231,6 +242,29 @@ type StoredContainerRecord = Container & {
   __pkc_split__?: SplitMarker;
   __pkc_layout__?: number;
 };
+
+// ── P1 slice 1(#967): base64 ⇄ Blob 変換 helper ──
+// チャンク処理で巨大 asset でも中間 rope / 引数上限を作らない。
+
+/** base64 文字列 → Blob(mime 不明時は octet-stream)。 */
+export function base64ToBlob(base64: string, mime = 'application/octet-stream'): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+/** Blob → base64 文字列(旧契約との互換境界でのみ使用)。 */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const CHUNK = 0x8000;
+  const pieces: string[] = [];
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+    pieces.push(String.fromCharCode.apply(null, slice as unknown as number[]));
+  }
+  return btoa(pieces.join(''));
+}
 
 function assetFullKey(cid: string, assetKey: string): string {
   return `${cid}:${assetKey}`;
@@ -576,6 +610,12 @@ export function createContainerStore(
         reassembled[assetKey] = value;
         // #938 R1: store から読めた = persist 済み。
         persisted.add(assetKey);
+      } else if (value instanceof Blob) {
+        // P1 slice 1(#967): Blob record との両読み。base64 の
+        // `container.assets` 契約が残る間の互換変換(後続 slice で
+        // 呼び出し面ごと Blob / ObjectURL へ移行し、この変換は消える)。
+        reassembled[assetKey] = await blobToBase64(value);
+        persisted.add(assetKey);
       }
     }
     return { ...container, assets: reassembled };
@@ -675,9 +715,42 @@ export function createContainerStore(
 
   async function loadAsset(cid: string, key: string): Promise<string | null> {
     const result = await assets.get(assetFullKey(cid, key));
-    if (typeof result !== 'string') return null;
-    persistedSetFor(cid).add(key); // #938 R1: 読めた = persist 済み
-    return result;
+    if (typeof result === 'string') {
+      persistedSetFor(cid).add(key); // #938 R1: 読めた = persist 済み
+      return result;
+    }
+    // P1 slice 1(#967): Blob record との両読み(旧呼び出し面の互換)。
+    if (result instanceof Blob) {
+      persistedSetFor(cid).add(key);
+      return blobToBase64(result);
+    }
+    return null;
+  }
+
+  // ── P1 slice 1(#967): Blob asset CRUD ──
+  const blobCapable = adapter.supportsBlobValues === true;
+
+  async function saveAssetBlob(cid: string, key: string, data: Blob): Promise<void> {
+    if (blobCapable) {
+      await assets.put(assetFullKey(cid, key), data);
+    } else {
+      // FS 系: 値は JSON 文字列契約なので base64 へ変換して書く
+      await assets.put(assetFullKey(cid, key), await blobToBase64(data));
+    }
+    persistedSetFor(cid).add(key); // #938 R1
+  }
+
+  async function loadAssetBlob(cid: string, key: string): Promise<Blob | null> {
+    const result = await assets.get(assetFullKey(cid, key));
+    if (result instanceof Blob) {
+      persistedSetFor(cid).add(key);
+      return result;
+    }
+    if (typeof result === 'string') {
+      persistedSetFor(cid).add(key);
+      return base64ToBlob(result);
+    }
+    return null;
   }
 
   async function deleteAsset(cid: string, key: string): Promise<void> {
@@ -819,6 +892,8 @@ export function createContainerStore(
     setActiveWorkspaceId,
     saveAsset,
     loadAsset,
+    saveAssetBlob,
+    loadAssetBlob,
     deleteAsset,
     listAssetKeys,
     loadAssetMeta,

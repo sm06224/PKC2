@@ -196,5 +196,8 @@ export function createIDBAdapter(): StorageAdapter {
         dbPromise = null;
       }
     },
+    // P1 slice 1(#967): IDB は structured clone で Blob をネイティブ格納
+    // できる(bytes は JS ヒープ外・ブラウザがディスクへ退避可能)。
+    supportsBlobValues: true,
   };
 }

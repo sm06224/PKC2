@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { createMemoryAdapter } from '@adapter/platform/storage/memory-adapter';
 import {
+  createContainerStore,
   createMemoryStore,
   hydrateAllAssets,
   hydrateReferencedAssets,
@@ -428,6 +430,57 @@ describe('hydrateForExport seam (段階3 #868)', () => {
     const hydrated = await hydrateForExport(partial);
     // The export now carries the referenced bytes — no silent loss.
     expect(hydrated.assets['ref-1']).toBe('FROM_STORE');
+  });
+});
+
+describe('P1 slice 1 (#967): Blob asset CRUD + base64 両読み', () => {
+  const BYTES = 'Blob-asset-bytes-123';
+  const B64 = btoa(BYTES);
+
+  it('saveAssetBlob → loadAssetBlob roundtrip(Blob 対応 backend)', async () => {
+    const store = createMemoryStore();
+    await store.saveAssetBlob('c1', 'k1', new Blob([BYTES], { type: 'text/plain' }));
+    const blob = await store.loadAssetBlob('c1', 'k1');
+    expect(blob).not.toBeNull();
+    expect(await blob!.text()).toBe(BYTES);
+  });
+
+  it('旧 base64 record を loadAssetBlob で読むと Blob として返る(両読み)', async () => {
+    const store = createMemoryStore();
+    await store.saveAsset('c1', 'k1', B64);
+    const blob = await store.loadAssetBlob('c1', 'k1');
+    expect(blob).not.toBeNull();
+    expect(await blob!.text()).toBe(BYTES);
+  });
+
+  it('Blob record を旧 loadAsset で読むと base64 として返る(旧呼び出し面の互換)', async () => {
+    const store = createMemoryStore();
+    await store.saveAssetBlob('c1', 'k1', new Blob([BYTES]));
+    expect(await store.loadAsset('c1', 'k1')).toBe(B64);
+  });
+
+  it('Blob record は load()(reassembleAssets)でも base64 として container.assets に載る', async () => {
+    const store = createMemoryStore();
+    await store.save(mockContainer('c1'));
+    await store.saveAssetBlob('c1', 'k1', new Blob([BYTES]));
+    const loaded = await store.load('c1');
+    expect(loaded!.assets['k1']).toBe(B64);
+  });
+
+  it('Blob 非対応 backend(FS 系)へは base64 変換して書かれ、roundtrip できる', async () => {
+    // fs-directory 相当: supportsBlobValues 未指定の adapter
+    const rawAdapter = createMemoryAdapter();
+    const adapter = { ...rawAdapter, supportsBlobValues: undefined } as unknown as
+      Parameters<typeof createContainerStore>[0];
+    const store = createContainerStore(adapter);
+    await store.saveAssetBlob('c1', 'k1', new Blob([BYTES]));
+    // 実体は base64 文字列で格納されている
+    const rawValue = await rawAdapter.bucket('assets').get('c1:k1');
+    expect(typeof rawValue).toBe('string');
+    expect(rawValue).toBe(B64);
+    // Blob でも base64 でも読み戻せる
+    expect(await (await store.loadAssetBlob('c1', 'k1'))!.text()).toBe(BYTES);
+    expect(await store.loadAsset('c1', 'k1')).toBe(B64);
   });
 });
 
