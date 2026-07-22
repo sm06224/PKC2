@@ -99,14 +99,21 @@ class FakeDir {
 interface ModeCase {
   name: string;
   makeAdapter: () => StorageAdapter;
+  /**
+   * FS 系 backend(slowPerRecordIO)は split 形式へ移行しない —
+   * 1 record = 1 ファイルで数千小ファイル化し boot / 初回保存が分単位に
+   * なる実機 regression のため、saveDiff は inline save へ fallback する。
+   */
+  expectSplit: boolean;
 }
 
 const MODES: ModeCase[] = [
-  { name: 'memory-adapter', makeAdapter: () => createMemoryAdapter() },
+  { name: 'memory-adapter', makeAdapter: () => createMemoryAdapter(), expectSplit: true },
   {
     name: 'fs-directory-adapter(FSA / OPFS 共通実装)',
     makeAdapter: () =>
       createFileSystemDirectoryAdapter(new FakeDir() as unknown as FsDirectoryHandle),
+    expectSplit: false,
   },
 ];
 
@@ -140,7 +147,7 @@ for (const mode of MODES) {
       expect(await splitKeyCount(adapter)).toBe(0); // read は形式を変えない
     });
 
-    it('既定 ON の自動保存で split へ移行し、load は完全等価', async () => {
+    it('既定 ON の自動保存で保存形式が期待どおりになり、load は完全等価', async () => {
       const adapter = mode.makeAdapter();
       const store = createContainerStore(adapter);
       await store.save(makeContainer()); // 既存 v1 データ
@@ -153,10 +160,16 @@ for (const mode of MODES) {
       await handle.flushPending();
       handle.dispose();
 
-      // split 形式になっている(core record に marker + per-entry record)
       const rec = await coreRecord(adapter, 'c-r6');
-      expect(rec?.['__pkc_split__']).toBeDefined();
-      expect(await splitKeyCount(adapter)).toBe(3);
+      if (mode.expectSplit) {
+        // split 形式になっている(core record に marker + per-entry record)
+        expect(rec?.['__pkc_split__']).toBeDefined();
+        expect(await splitKeyCount(adapter)).toBe(3);
+      } else {
+        // FS 系: inline のまま(数千小ファイル化の regression 防止)
+        expect(rec?.['__pkc_split__']).toBeUndefined();
+        expect(await splitKeyCount(adapter)).toBe(0);
+      }
 
       // load は編集を含めて完全に一致
       const loaded = await createContainerStore(adapter).load('c-r6');
@@ -174,9 +187,13 @@ for (const mode of MODES) {
       const adapter = mode.makeAdapter();
       const store = createContainerStore(adapter);
 
-      // 既定 ON で split 保存
+      // 既定 ON で保存(split 対応 backend のみ split 化される)
       await store.saveDiff(makeContainer(), null);
-      expect(await splitKeyCount(adapter)).toBeGreaterThan(0);
+      if (mode.expectSplit) {
+        expect(await splitKeyCount(adapter)).toBeGreaterThan(0);
+      } else {
+        expect(await splitKeyCount(adapter)).toBe(0);
+      }
 
       // OFF(オプトアウト)で自動保存 → inline へ書き戻し
       setContainerFlagSource({ 'persistence.differential_save': false });
@@ -208,3 +225,33 @@ for (const mode of MODES) {
     });
   });
 }
+
+describe('FS 系 backend の split fallback(実機 regression 修正)', () => {
+  it('修正前に split 化された folder は、次の saveDiff で inline へ自動復元される', async () => {
+    const adapter = createFileSystemDirectoryAdapter(new FakeDir() as unknown as FsDirectoryHandle);
+    // 修正前の build が書いた split 形式を直接再現
+    const c = makeContainer();
+    const bucket = adapter.bucket('containers');
+    for (const e of c.entries) await bucket.put(`__entry__:c-r6:${e.lid}`, e);
+    for (const r of c.revisions) await bucket.put(`__rev__:c-r6:${r.id}`, r);
+    await bucket.put('c-r6', {
+      ...c,
+      entries: [], revisions: [], assets: {},
+      __pkc_split__: { entryOrder: c.entries.map((e) => e.lid), revOrder: c.revisions.map((r) => r.id) },
+    });
+    await bucket.put('__default__', 'c-r6');
+    for (const [k, v] of Object.entries(c.assets)) await adapter.bucket('assets').put(`c-r6:${k}`, v);
+
+    // split のままでも読める(自動復元前の互換)
+    const store = createContainerStore(adapter);
+    expect(await store.load('c-r6')).toEqual(makeContainer());
+
+    // 次の差分保存で inline に収束し、split keys が掃除される
+    await store.saveDiff(makeContainer(), null);
+    const rec = (await bucket.get('c-r6')) as Record<string, unknown>;
+    expect(rec['__pkc_split__']).toBeUndefined();
+    expect(await bucket.getKeysByPrefix('__entry__:')).toHaveLength(0);
+    expect(await bucket.getKeysByPrefix('__rev__:')).toHaveLength(0);
+    expect(await createContainerStore(adapter).load('c-r6')).toEqual(makeContainer());
+  });
+});

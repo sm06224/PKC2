@@ -371,6 +371,16 @@ export function createContainerStore(
   }
 
   async function saveDiff(container: Container, previous: Container | null): Promise<void> {
+    // FS 系 backend(ローカルフォルダ / OPFS)では split 形式を使わない。
+    // 1 record = 1 ファイルで per-file コストが大きく、数千 entry の
+    // 全件書込みが分単位・以後の boot も数千ファイル open になり、
+    // R6(差分保存既定 ON)の実機で「初期化がとてつもなく遅い」を
+    // 引き起こした。inline save は split keys を掃除して収束するので、
+    // すでに split 化された folder も次の保存で単一ファイルへ自動復元。
+    if (adapter.slowPerRecordIO) {
+      await save(container);
+      return;
+    }
     const cid = container.meta.container_id;
     await putAssets(container);
 

@@ -222,5 +222,9 @@ export function createFileSystemDirectoryAdapter(root: FsDirectoryHandle): Stora
       // FS handles need no explicit close; drop cached subdir handles.
       dirCache.clear();
     },
+    // 1 record = 1 ファイル + createWritable() の atomic swap コスト。
+    // split 形式(数千小 record)はこの backend では病的に遅い —
+    // ContainerStore が inline 保存へ fallback する(storage-adapter.ts)。
+    slowPerRecordIO: true,
   };
 }

@@ -108,4 +108,15 @@ export interface StorageAdapter {
   bucket(name: BucketName): StorageBucket;
   /** Tear down the underlying connection / handles. */
   close(): void;
+  /**
+   * True when per-record I/O is expensive on this backend. FS 系
+   * (File System Access / OPFS)は 1 record = 1 ファイルで、
+   * `createWritable()` が atomic swap のためファイル毎に数十 ms かかる —
+   * 数千 record の一括書込みは分単位、boot の全 record 読出しも数千
+   * ファイル open になる。ContainerStore はこれを見て split 形式
+   * (差分保存の per-entry record)を避け、inline 単一 record 保存へ
+   * fallback する。未指定 / false = fine-grained record が安価(IDB /
+   * memory)。
+   */
+  readonly slowPerRecordIO?: boolean;
 }
