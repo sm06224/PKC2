@@ -1,0 +1,148 @@
+# Storage v3 アーキテクチャ(正本)— 分離・有界・集約・先読み(2026-07)
+
+> **Status**: 設計正本(user レビュー待ち → 承認後に実装正本)。
+> 実測・調査・訂正の全記録は
+> [`storage-v3-redesign-2026-07.md`](./storage-v3-redesign-2026-07.md)(研究ログ、
+> Appendix A.1-A.9)。本 doc はそこから確定した**最終アーキテクチャだけ**を記す。
+> 発端: 2026-07-22 の連続障害(#956/#958/#960/#962/#964/#966)と user 設計指示
+> (#967)。ハーネス: `tests/bench/storage-arch-bench/`(実機で再実行可)。
+
+---
+
+## 1. 向き合う課題(何が問題か)
+
+| # | 課題 | 現行での破綻(実測/実害) |
+|---|---|---|
+| C1 | **メモリが総量比例** — Container = 単一 JSON、asset = base64 ヒープ常駐 | 200MB 読出で +293MB 常駐。export で string 上限(#960)・OOM(#962)。ワークスペース破棄に至った |
+| C2 | **boot が総量比例** | 実ディスクで 300MB = cold 11 秒(A.1)。#958 |
+| C3 | **ディスク I/O 負荷** — 全量書き直し or per-record の書込増幅 | 全量: 追記 10 件に 6.6 秒 + 651ms の fsync spike。per-record: 論理 110MB に実書込 77.6MB(A.7) |
+| C4 | **syscall フック渋滞**(AV/EDR)— hook 単価 × syscall 数が体感を決める | 読みパス syscall: 構成間で 97〜5,783 回と 60 倍差(A.9) |
+| C5 | **FS 依存の構造破綻と、フォルダバックアップ要件の両立** | per-record ファイル化が #958 を起こした。一方で「ディレクトリごと FS にバックアップを任せたい」は正当な要件 |
+| C6 | **履歴の無限成長** — 編集ごとに全文スナップショット追記 | 最も静かに膨らむ領域。ただし冗長度が極端に高い(一括圧縮 587×、A.3) |
+| C7 | **高参照可能性データの即応性** — ランチャー登録 app、直近参照の asset/エントリ | 今日の「HTML が開かない・遅すぎる」(#956/#964)は、この層の設計不在が根因 |
+| C8 | **整合性・並行性** — durability relaxed 既定、多重タブ last-write-wins、eviction | A.8。多重タブ調停は設計に存在しなかった |
+| C9 | **移行の安全** — 移行・障害時にデータを人質に取らない | 今回、復旧手段が ZIP export しか無く、それも 2 度壊れていた |
+| C10 | **可搬性の維持** — 単一 HTML 埋め込みは配布・持ち運びの理想形として残す | 二層戦略(user 決定): ローカルは軽く、可搬形式は互換のまま |
+
+## 2. 設計原理(3 + 1)
+
+1. **分離** — ユーザー操作が踏む経路(作業系)から、ファイルシステムを構造的に
+   到達不能にする。FS は**一方向の出力先(sink)専用**。live な双方向依存を作らない
+2. **有界** — どの操作もメモリ・I/O・syscall が「触った分」に有界。総量に比例する
+   経路を残さない。ワークスペース分割で作業系そのものの規模も有界に保つ
+3. **集約** — 小さいものは束ねて書く。セグメントログ(チャンクパック +
+   ゆるいストリーミング圧縮)が正規の書き込み形
+4. **先読み(キャッシュ)** — 参照可能性の高いものは、要求される前に
+   「per-file 影響ゼロで返せる状態」にしておく
+
+## 3. 全体構成
+
+```
+┌─ L0 ホットキャッシュ(メモリ、有界)─────────────────────────┐
+│  ・全エントリ meta(タイトル/型/日付)= 常駐(数 MB)          │
+│  ・ObjectURL テーブル: pin 済み asset の URL(bytes はヒープ外)   │
+│  ・アクティブセグメント(書き込みバッファ、末尾 ~1MB)           │
+└──────────────┬───────────────────────────────┘
+               │ 需要読み / debounce 書き(すべて短 tx)
+┌─ L1 作業ストア(IDB、唯一の読み書き対象)─────────────────────┐
+│  meta         : 単一小レコード(cold 16ms、遅いディスクでも 1 read)   │
+│  bodies/revs  : セグメントログ(パック + gzip/zstd、実書込 1/4.9)     │
+│  assets       : Blob 値(読み 0.8ms・ヒープ 0・syscall 最少)        │
+│  Storage Buckets(persistent)+ navigator.storage.persist() で削除保護  │
+└──────────────┬───────────────────────────────┘
+               │ 一方向・非同期・封印済みのみ(temp→rename)
+┌─ L2 保管 sink(読み戻さない出力先)───────────────────────────┐
+│  ・ZIP バックアップ(.pkc2.zip、正本)                              │
+│  ・FSA フォルダミラー: 封印パック + manifest(少数・大・不変・追記)   │
+│  ・単一 HTML export(可搬・配布用、従来互換)                       │
+│  復元はすべて import 経路(これも一方向)                           │
+└──────────────────────────────────────────────┘
+```
+
+## 4. キャッシング設計(C7 の解、user 指示 2026-07-22)
+
+> 「ランチャー登録対象や、若く参照可能性の高いアセットやエントリは、
+> 高速性重視かつ per-file 影響の少ない状態がベスト」
+
+**pin セット(常時ウォーム)**:
+- launcher 登録 asset(`registered_as_app` / `startup` / PKC-Extension)と app icon
+- 直近 N 日に参照されたエントリの本文・asset(参照時刻は meta に記録済み)
+- 現在選択の依存 closure(既存 `getEntryAssetDependencies` を流用)
+
+**機構**:
+- boot 完了直後、pin セットを**非同期プリウォーム**: asset は Blob handle を取得して
+  `URL.createObjectURL` を先に作り、テーブルに保持。**bytes はブラウザ管理で
+  ヒープ外・URL 生成は handle 操作なので per-file I/O が発生しない**
+- 以後、launcher タイル click / 画像表示 / HTML app 起動は **ObjectURL 参照のみ
+  (syscall ゼロ・0ms 級)**。AV 環境でも hook を踏む回数が構造的にゼロ
+- 本文はデコード済み文字列を LRU 保持(直近参照ぶんだけ・件数上限)
+- **eviction**: ObjectURL は revoke で即解放。pin は件数上限 + LRU(bytes が
+  ヒープ外なので上限は緩くてよい)。launcher/startup は常時 pin
+- 書き込み側: アクティブセグメント(末尾 ~1MB)がメモリ上の書き込みキャッシュ。
+  debounce で封印 → L1 へ。クラッシュ時損失は従来の debounce 窓と同等
+
+これが #956/#964(HTML が開かない・遅い)の**恒久解**でもある: 4MB/8MB 閾値・
+miss 記録・3 段 fallback という止血群は、pin + ObjectURL 化の完成をもって撤去する
+(DoD)。
+
+## 5. 課題 ↔ 解決の対応
+
+| 課題 | 解決 | 根拠(研究ログ) |
+|---|---|---|
+| C1 メモリ総量比例 | asset = Blob + ObjectURL(ヒープ外)、meta のみ常駐、本文 LRU | A.1: Blob 読出ヒープ ±0 |
+| C2 boot 総量比例 | meta 単一小レコード 1 read + 残りは需要読み | A.1: cold 16ms、A.6 |
+| C3 ディスク I/O | セグメントログ(パック + ストリーミング圧縮)+ Blob 直書き(base64 変換消滅) | A.7: 実書込 1/4.9 |
+| C4 syscall 渋滞 | 読みパス = ObjectURL(ゼロ)/ IDB Blob(最少 97)。書きパス = セグメント集約で record 数削減 | A.9 |
+| C5 FS 両立 | **FS は sink 専用**(封印パック + manifest、少数・大・不変)。作業系は FS に到達不能。フォルダには常に完全な復元可能物が置かれ続ける | A.1/A.9 の C 構成 + user 決定 |
+| C6 履歴成長 | revision はセグメントログ + グループ圧縮(587×)+ 保持ポリシー。メモリ像から完全分離 | A.3/A.7 |
+| C7 即応性 | §4 キャッシング(pin + プリウォーム + ObjectURL) | A.9: 読みパス syscall ゼロ化 |
+| C8 整合性 | 要所 `durability:'strict'` / Web Locks writer リース / versionchange 対応 / export 断面バリア / persist() + Storage Buckets | A.8 |
+| C9 移行安全 | M1 = **移行直前に ZIP 自動バックアップを強制生成**(完了確認まで移行しない)、resumable chunk 移行、旧形式 read は import として恒久維持 | 今回の教訓 |
+| C10 可搬性 | 単一 HTML export / import は現行契約のまま(streaming Blob 実装済 #960/#962/#966)。L2 の一形式として位置づけ | 二層戦略 |
+
+**不採用の記録**(理由込み):
+- SQLite WASM(bytes が WASM ヒープ経由 + 読みパス syscall 60 倍。ただし
+  sqlite-vec 意味検索等「機能」動機が出た時の拡張点として保存 — 研究ログ A.5)
+- FSA を作業ストアにする「FSA 直モード」(per-file 経路が作業系に混入する。
+  sink 専用に限定 — user 裁定 2026-07-22)
+- 4MB/8MB 閾値(止血。§4 完成時に撤去 = DoD)
+
+## 6. データレイアウト
+
+**L1(IDB、DB version 3)**:
+
+```
+workspaces   ws_id → {name, containerIds, activeContainerId, …}
+containers   cid → ContainerMeta + EntryMeta[](単一小レコード。1 万件でも数 MB)
+segments     [cid, plane('body'|'rev'), seq] → Blob(gzip/zstd 圧縮済みパック)
+seg_index    [cid, plane] → {lid|rid → {seq, offset}}(小、メモリ常駐)
+assets       [cid, key] → Blob
+asset_meta   [cid, key] → {mime, size, hash, name, pinned?}
+```
+
+**L2(FSA フォルダミラー)**:
+
+```
+📁 backup/
+  manifest.json          ← 世代・checksum・パック一覧(これだけ上書き、temp→rename)
+  packs/pack-000123.pkc  ← 封印済み(不変・追記のみ増える)。中身 = セグメント+asset 群
+  ※ 少数・大・不変 — rsync / クラウド同期 / AV に優しい形だけを置く
+```
+
+## 7. 移行とフェーズ
+
+- 移行 M0-M3(並行実装 → **ZIP 強制バックアップゲート** → resumable chunk 移行 →
+  収束)は研究ログ §7 のとおり。versionchange の blocked 対応を M2 に含める
+- フェーズ再編(実施済み分を反映):
+  - ✅ P0: Backup ZIP 導線格上げ(#969)
+  - ✅ P1 slice 1: store の Blob 受け入れ + 両読み(#970)
+  - **P1 slice 2**: asset registry + ObjectURL 描画 + §4 キャッシュ(pin/プリウォーム)
+  - **P2**: meta 単一レコード + セグメントログ + 移行 M0-M3 + 閾値撤去(DoD)
+  - **P3**: ワークスペースのツリー第一級化 + L2 フォルダミラー
+- 各フェーズの DoD: visual parity test + 数百 MB 実データ seed の実機 smoke +
+  実ディスク/syscall ベンチの回帰(ハーネスは収録済み)
+
+---
+*関連: [`storage-v3-redesign-2026-07.md`](./storage-v3-redesign-2026-07.md)(研究ログ・全実測)/
+[`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md)(方針正本)/
+issue #967(トラッカー)*
