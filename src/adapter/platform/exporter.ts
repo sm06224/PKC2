@@ -297,8 +297,9 @@ const BLOB_FOLD_BYTES = 64 * 1024 * 1024;
  */
 const EXPORT_COMPRESS_MAX_BYTES = 8 * 1024 * 1024;
 
-/** entry 宣言サイズに EXPORT_COMPRESS_MAX_BYTES 超の attachment があるか。 */
-function containerHasLargeAsset(container: Container): boolean {
+/** entry 宣言サイズに EXPORT_COMPRESS_MAX_BYTES 超の attachment があるか。
+ * P0(#967)で UI(begin-export の ZIP 誘導 toast)からも参照される。 */
+export function containerHasLargeAsset(container: Container): boolean {
   for (const e of container.entries) {
     if (e.archetype !== 'attachment') continue;
     try {
