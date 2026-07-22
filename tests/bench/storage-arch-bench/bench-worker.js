@@ -4,6 +4,9 @@
 /* eslint-disable no-restricted-globals */
 
 const post = (m) => self.postMessage(m);
+// syscall プロファイル用フェーズマーカー(epoch ms — strace -ttt と同じ時計)
+const __marks = [];
+const mark = (name) => __marks.push({ name, t: Date.now() });
 const log = (text) => post({ type: 'log', text });
 const status = (text) => post({ type: 'status', text });
 const heapMB = () => {
@@ -93,6 +96,7 @@ async function benchSingleJson(sizes) {
   const dir = await opfsDir('bench-a');
   const meta = makeMetaJson(sizes.length);
   // 投入: base64 込み単一 JSON を 1 ファイルへ(chunk 書きで生成側の破綻は回避)
+  mark('ingest:start');
   let t0 = performance.now();
   {
     const fh = await dir.getFileHandle('all.json', { create: true });
@@ -109,10 +113,12 @@ async function benchSingleJson(sizes) {
     w('}}');
     sah.flush(); sah.close();
   }
+  mark('ingest:end');
   const ingestMs = Math.round(performance.now() - t0);
 
   // コールドスタート: 全読み + JSON.parse(この構成の宿命)
   gc();
+  mark('cold:start');
   t0 = performance.now();
   let doc;
   {
@@ -120,9 +126,11 @@ async function benchSingleJson(sizes) {
     const file = await fh.getFile();
     doc = JSON.parse(await file.text());
   }
+  mark('cold:end');
   const coldStartMs = Math.round(performance.now() - t0);
   const heapAfter = (gc(), heapMB());
 
+  mark('reads:start');
   const targets = pickReadTargets(sizes);
   const reads = [];
   for (const i of targets) {
@@ -132,6 +140,7 @@ async function benchSingleJson(sizes) {
   }
   t0 = performance.now();
   for (let j = 0; j < 10; j++) toObjectUrl(b64ToBlob(doc.assets['k' + (j % sizes.length)]));
+  mark('reads:end');
   const read10Ms = Math.round(performance.now() - t0);
 
   // 追記 10 件 = ドキュメント再構築 + 全書き直し(この構成の宿命)
@@ -154,6 +163,7 @@ async function benchSingleJson(sizes) {
     w('}}');
     sah.flush(); sah.close();
   }
+  mark('append:end');
   const append10Ms = Math.round(performance.now() - t0);
   doc = null;
   return { name: 'A 現行: 単一JSON+base64', ingestMs, coldStartMs, read1Ms: median(reads), read10Ms, append10Ms, heapMB: heapAfter, opensPerRead: 0 };
@@ -163,6 +173,7 @@ async function benchSingleJson(sizes) {
 async function benchLooseFiles(sizes) {
   const dir = await opfsDir('bench-b');
   const assetsDir = await dir.getDirectoryHandle('assets', { create: true });
+  mark('ingest:start');
   let t0 = performance.now();
   {
     const fh = await dir.getFileHandle('meta.json', { create: true });
@@ -176,14 +187,17 @@ async function benchLooseFiles(sizes) {
       s.flush(); s.close();
     }
   }
+  mark('ingest:end');
   const ingestMs = Math.round(performance.now() - t0);
 
   gc();
+  mark('cold:start');
   t0 = performance.now();
   {
     const fh = await dir.getFileHandle('meta.json');
     JSON.parse(await (await fh.getFile()).text());
   }
+  mark('cold:end');
   const coldStartMs = Math.round(performance.now() - t0);
   const heapAfter = (gc(), heapMB());
 
@@ -192,6 +206,7 @@ async function benchLooseFiles(sizes) {
     const blob = await f.getFile(); // File は Blob
     toObjectUrl(blob.slice());
   };
+  mark('reads:start');
   const targets = pickReadTargets(sizes);
   const reads = [];
   for (const i of targets) {
@@ -201,6 +216,7 @@ async function benchLooseFiles(sizes) {
   }
   t0 = performance.now();
   for (let j = 0; j < 10; j++) await readOne(j % sizes.length);
+  mark('reads:end');
   const read10Ms = Math.round(performance.now() - t0);
 
   t0 = performance.now();
@@ -210,6 +226,7 @@ async function benchLooseFiles(sizes) {
     s.write(makeBytes((1 + (j % 5)) * MB), { at: 0 });
     s.flush(); s.close();
   }
+  mark('append:end');
   const append10Ms = Math.round(performance.now() - t0);
   return { name: 'B OPFS 個別ファイル', ingestMs, coldStartMs, read1Ms: median(reads), read10Ms, append10Ms, heapMB: heapAfter, opensPerRead: 1 };
 }
@@ -217,6 +234,7 @@ async function benchLooseFiles(sizes) {
 // ── C: opfs-packfile(単一 pack + offset 範囲読み)────────
 async function benchPackfile(sizes) {
   const dir = await opfsDir('bench-c');
+  mark('ingest:start');
   const index = {};
   let t0 = performance.now();
   {
@@ -235,9 +253,11 @@ async function benchPackfile(sizes) {
     ms.write(new TextEncoder().encode(JSON.stringify({ ...makeMetaJson(sizes.length), index })), { at: 0 });
     ms.flush(); ms.close();
   }
+  mark('ingest:end');
   const ingestMs = Math.round(performance.now() - t0);
 
   gc();
+  mark('cold:start');
   t0 = performance.now();
   let meta;
   let sah;
@@ -247,6 +267,7 @@ async function benchPackfile(sizes) {
     const fh = await dir.getFileHandle('assets.pack');
     sah = await fh.createSyncAccessHandle(); // 常駐ハンドル(この構成の設計)
   }
+  mark('cold:end');
   const coldStartMs = Math.round(performance.now() - t0);
   const heapAfter = (gc(), heapMB());
 
@@ -256,6 +277,7 @@ async function benchPackfile(sizes) {
     sah.read(buf, { at: offset });
     toObjectUrl(new Blob([buf]));
   };
+  mark('reads:start');
   const targets = pickReadTargets(sizes);
   const reads = [];
   for (const i of targets) {
@@ -265,6 +287,7 @@ async function benchPackfile(sizes) {
   }
   t0 = performance.now();
   for (let j = 0; j < 10; j++) readOne('k' + (j % sizes.length));
+  mark('reads:end');
   const read10Ms = Math.round(performance.now() - t0);
 
   t0 = performance.now();
@@ -283,6 +306,7 @@ async function benchPackfile(sizes) {
     ms.write(new TextEncoder().encode(JSON.stringify(meta)), { at: 0 });
     ms.flush(); ms.close();
   }
+  mark('append:end');
   const append10Ms = Math.round(performance.now() - t0);
   sah.close();
   return { name: 'C OPFS packfile+offset', ingestMs, coldStartMs, read1Ms: median(reads), read10Ms, append10Ms, heapMB: heapAfter, opensPerRead: 0 };
@@ -301,6 +325,7 @@ async function benchSqliteOpfs(sizes) {
   let db = new pool.OpfsSAHPoolDb('/bench.db');
   db.exec('PRAGMA journal_mode=TRUNCATE;');
   db.exec('CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT); CREATE TABLE assets (k TEXT PRIMARY KEY, v BLOB);');
+  mark('ingest:start');
   let t0 = performance.now();
   db.exec('BEGIN');
   db.exec({ sql: 'INSERT INTO meta VALUES (?,?)', bind: ['meta', JSON.stringify(makeMetaJson(sizes.length))] });
@@ -308,10 +333,12 @@ async function benchSqliteOpfs(sizes) {
     db.exec({ sql: 'INSERT INTO assets VALUES (?,?)', bind: ['k' + i, makeBytes(sizes[i])] });
   }
   db.exec('COMMIT');
+  mark('ingest:end');
   const ingestMs = Math.round(performance.now() - t0);
   db.close();
 
   gc();
+  mark('cold:start');
   t0 = performance.now();
   db = new pool.OpfsSAHPoolDb('/bench.db');
   {
@@ -319,6 +346,7 @@ async function benchSqliteOpfs(sizes) {
     db.exec({ sql: 'SELECT v FROM meta WHERE k = ?', bind: ['meta'], resultRows: rows });
     JSON.parse(rows[0][0]);
   }
+  mark('cold:end');
   const coldStartMs = Math.round(performance.now() - t0);
   const heapAfter = (gc(), heapMB());
 
@@ -327,6 +355,7 @@ async function benchSqliteOpfs(sizes) {
     db.exec({ sql: 'SELECT v FROM assets WHERE k = ?', bind: [key], resultRows: rows });
     toObjectUrl(new Blob([rows[0][0]]));
   };
+  mark('reads:start');
   const targets = pickReadTargets(sizes);
   const reads = [];
   for (const i of targets) {
@@ -336,6 +365,7 @@ async function benchSqliteOpfs(sizes) {
   }
   t0 = performance.now();
   for (let j = 0; j < 10; j++) readOne('k' + (j % sizes.length));
+  mark('reads:end');
   const read10Ms = Math.round(performance.now() - t0);
 
   t0 = performance.now();
@@ -344,6 +374,7 @@ async function benchSqliteOpfs(sizes) {
     db.exec({ sql: 'INSERT INTO assets VALUES (?,?)', bind: ['new' + j, makeBytes((1 + (j % 5)) * MB)] });
   }
   db.exec('COMMIT');
+  mark('append:end');
   const append10Ms = Math.round(performance.now() - t0);
   db.close();
   await pool.removeVfs();
@@ -378,19 +409,23 @@ const idbGet = (db, store, key) => new Promise((res, rej) => {
 async function benchIdbBlob(sizes) {
   await new Promise((res) => { const rq = indexedDB.deleteDatabase('bench-e'); rq.onsuccess = rq.onerror = rq.onblocked = () => res(); });
   let db = await idbOpen('bench-e');
+  mark('ingest:start');
   let t0 = performance.now();
   await idbTx(db, 'meta', 'readwrite', (s) => s.put(JSON.stringify(makeMetaJson(sizes.length)), 'meta'));
   for (let i = 0; i < sizes.length; i++) {
     const blob = new Blob([makeBytes(sizes[i])]);
     await idbTx(db, 'assets', 'readwrite', (s) => s.put(blob, 'k' + i));
   }
+  mark('ingest:end');
   const ingestMs = Math.round(performance.now() - t0);
   db.close();
 
   gc();
+  mark('cold:start');
   t0 = performance.now();
   db = await idbOpen('bench-e');
   JSON.parse(await idbGet(db, 'meta', 'meta'));
+  mark('cold:end');
   const coldStartMs = Math.round(performance.now() - t0);
   const heapAfter = (gc(), heapMB());
 
@@ -398,6 +433,7 @@ async function benchIdbBlob(sizes) {
     const blob = await idbGet(db, 'assets', key);
     toObjectUrl(blob);
   };
+  mark('reads:start');
   const targets = pickReadTargets(sizes);
   const reads = [];
   for (const i of targets) {
@@ -407,12 +443,14 @@ async function benchIdbBlob(sizes) {
   }
   t0 = performance.now();
   for (let j = 0; j < 10; j++) await readOne('k' + (j % sizes.length));
+  mark('reads:end');
   const read10Ms = Math.round(performance.now() - t0);
 
   t0 = performance.now();
   for (let j = 0; j < 10; j++) {
     await idbTx(db, 'assets', 'readwrite', (s) => s.put(new Blob([makeBytes((1 + (j % 5)) * MB)]), 'new' + j));
   }
+  mark('append:end');
   const append10Ms = Math.round(performance.now() - t0);
   db.close();
   return { name: 'E IDB + Blob(v3 案)', ingestMs, coldStartMs, read1Ms: median(reads), read10Ms, append10Ms, heapMB: heapAfter, opensPerRead: 0 };
@@ -451,7 +489,9 @@ self.onmessage = async (ev) => {
   const { sizes, totalBytes } = makeWorkload(totalMB);
   log(`[${tag}] workload: ${sizes.length} assets / ${(totalBytes / 1048576).toFixed(0)}MB`);
   try {
+    __marks.length = 0;
     const row = await BENCHES[tag](sizes);
+    row.marks = [...__marks];
     post({ type: 'result', row });
   } catch (e) {
     post({ type: 'result', row: { name: tag + ' (failed)', error: String(e).slice(0, 200) } });
