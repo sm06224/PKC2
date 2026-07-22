@@ -285,9 +285,9 @@ describe('mountPersistence onError integration', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     vi.useFakeTimers();
-    // R6(2026-07-22)で differential_save が既定 ON。本 suite は
-    // `store.save` の失敗経路を pin するため明示 OFF で従来経路に固定
-    // (diff 経路の担保は differential-default-cross-mode suite)。
+    // differential_save は既定 OFF(#958 で撤回)だが、本 suite は
+    // `store.save` の失敗経路を pin するため既定値に依存せず明示 OFF で
+    // 固定(diff 経路の担保は differential-default-cross-mode suite)。
     setContainerFlagSource({ 'persistence.differential_save': false });
   });
 

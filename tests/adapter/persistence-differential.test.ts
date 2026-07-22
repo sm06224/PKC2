@@ -70,8 +70,8 @@ describe('persistence × differential_save flag', () => {
     expect(loaded!.entries.map((e) => e.lid)).toEqual(['e1', 'e2']);
   });
 
-  it('既定(R6 2026-07-22 で ON へ昇格): flag 未指定でも saveDiff 経路', async () => {
-    setContainerFlagSource({}); // 既定 = ON
+  it('既定(#958 で OFF へ撤回): flag 未指定なら inline save 経路', async () => {
+    setContainerFlagSource({}); // 既定 = OFF
     const store = createMemoryStore();
     const saveSpy = vi.spyOn(store, 'save');
     const diffSpy = vi.spyOn(store, 'saveDiff');
@@ -81,8 +81,8 @@ describe('persistence × differential_save flag', () => {
     dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: makeContainer() });
     await vi.advanceTimersByTimeAsync(100);
 
-    expect(diffSpy).toHaveBeenCalledTimes(1);
-    expect(saveSpy).not.toHaveBeenCalled();
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    expect(diffSpy).not.toHaveBeenCalled();
   });
 
   it('flag OFF(オプトアウト): 従来どおり save() を使い saveDiff は呼ばれない', async () => {

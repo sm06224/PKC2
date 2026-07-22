@@ -25,11 +25,11 @@ const mockContainer: Container = {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  // R6(2026-07-22)で differential_save が既定 ON になった。本 suite は
-  // inline save の配管(debounce / viewOnly gate / onError / flush)を
-  // `store.save` spy で pin するため、明示 OFF で従来経路に固定する。
-  // diff 経路は persistence-differential / differential-default-cross-mode
-  // の両 suite が担保する。
+  // differential_save は既定 OFF(#958 で R6 の既定 ON を撤回)だが、
+  // 本 suite は inline save の配管(debounce / viewOnly gate / onError /
+  // flush)を `store.save` spy で pin するため、既定値に依存せず明示 OFF
+  // で固定する。diff 経路は persistence-differential /
+  // differential-default-cross-mode の両 suite が担保する。
   setContainerFlagSource({ 'persistence.differential_save': false });
 });
 
