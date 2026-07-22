@@ -29,15 +29,27 @@ npx serve .           # または python3 -m http.server 8000
 `npm install @sqlite.org/sqlite-wasm` で `node_modules/` を用意する
 (無ければ D は「module load failed」として skip され、他は動く)。
 
-headless 自動実行(このリポジトリの playwright を利用):
+headless 自動実行(このリポジトリの playwright を利用。**persistent プロファイルで
+実ディスクを踏む** — ephemeral context は incognito 相当で storage がメモリバックに
+なり実 I/O を測れない、という計測バグを 2026-07-22 に修正済):
 
 ```bash
 TOTAL_MB=300 node tests/bench/storage-arch-bench/run-arch-bench.mjs
 ```
 
-## 計測結果(2026-07-22、Chromium headless / NVMe)
+テキスト/履歴プレーンの**実デバイス書込バイト**比較(per-record vs チャンクパック
+vs パック + gzip ストリーミング圧縮。/proc/diskstats を使うため Linux 前提):
 
-`docs/development/storage-v3-redesign-2026-07.md` の実測 appendix を参照。
-要約: **E(IDB + Blob)が全項目・全規模で最速**(300MB: 投入 0.66s / cold 8ms /
-1 件読み 0.5ms / 追記 10 件 51ms)。A(現行)は 300MB で cold 3.3s・追記 5.1s、
-他構成と同居するとメモリ圧で worker クラッシュも観測(user 実環境の OOM の再現)。
+```bash
+node tests/bench/storage-arch-bench/io-bench.mjs
+```
+
+## 計測結果(2026-07-22、Chromium headless / NVMe、実ディスク)
+
+`docs/development/storage-v3-redesign-2026-07.md` の Appendix A を参照。要約:
+
+- **E(IDB + Blob)が読み(0.8ms)と cold start(16ms)で最速**。投入・追記は
+  B/C/D と同水準(C packfile が一括書きで最速)
+- A(現行)は実ディスクで cold 11 秒/300MB・追記 6.6 秒
+- **セグメントログ(1MB パック + gzip ストリーミング圧縮)で実ディスク書込 1/4.9**
+  (io-bench、110MB revision ストリーム: 77.6MB → 15.8MB)

@@ -20,11 +20,15 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 
 const totalMB = Number(process.env.TOTAL_MB || 300);
-const browser = await chromium.launch({
+// incognito(ephemeral context)は storage がメモリバック — persistent
+// プロファイルで実ディスクを踏ませる(2026-07-22 計測バグ修正)
+const profDir = '/tmp/pw-arch-prof';
+fs.rmSync(profDir, { recursive: true, force: true });
+const browser = await chromium.launchPersistentContext(profDir, {
   executablePath: '/opt/pw-browsers/chromium',
   args: ['--enable-precise-memory-info', '--js-flags=--expose-gc'],
 });
-const page = await (await browser.newContext()).newPage();
+const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('[pageerror]', e.message.slice(0, 200)));
 await page.goto(`http://127.0.0.1:${port}/`);
 await page.selectOption('#size', String(totalMB));

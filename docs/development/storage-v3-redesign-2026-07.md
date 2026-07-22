@@ -176,25 +176,37 @@ visual parity test + 実データ規模の smoke(数百 MB seed)を DoD に含�
 (実機でも実行可)。**予算・単一 HTML は理想であって制約ではない**という前提で、
 候補は理想論でなく実測で判定した。
 
-### A.1 アーキテクチャ 5 構成(asset 100KB-5MB × 総量 100/300MB)
+### A.1 アーキテクチャ 5 構成(asset 100KB-5MB × 総量 300MB)
 
-300MB(114 assets)、単位 ms:
+> **計測バグの開示と訂正(2026-07-22)**: 当初の計測は Playwright の ephemeral
+> context(incognito 相当)で行われており、**storage がメモリバックで実ディスクを
+> 踏んでいなかった**(/proc/diskstats 検証で発覚)。CPU・コピーコストの相対比較と
+> しては有効だが、絶対値と一部の順位が変わるため、persistent プロファイル
+> (実ディスク)での再計測を正とする。両方を記録する。
+
+**実ディスク(persistent profile)、300MB(114 assets)、単位 ms:**
 
 | 構成 | 投入 | cold start | 1件読み(~2MB→ObjectURL) | 10件読み | 追記10件 |
 |---|---|---|---|---|---|
-| A 現行: 単一JSON+base64 | 8,984 | 3,276 | 39.8 | 440 | 5,057 |
-| B OPFS 個別ファイル | 2,023 | 12 | 1.0 | 9 | 182 |
-| C OPFS packfile+offset | 1,940 | 15 | 6.4 | 95 | 207 |
-| D SQLite WASM(OPFS SAHPool・BLOB) | 29,296 | 125 | 103.6 | 1,717 | 2,663 |
-| **E IDB + Blob(採用)** | **660** | **8** | **0.5** | **4** | **51** |
+| A 現行: 単一JSON+base64 | 11,644 | **11,076** | 152.5 | 1,202 | 6,618 |
+| B OPFS 個別ファイル | 2,026 | 20 | 1.3 | 13 | 167 |
+| C OPFS packfile+offset | **1,520** | 25 | 4.9 | 74 | **166** |
+| D SQLite WASM(OPFS SAHPool・BLOB) | 2,295 | 22 | 7.1 | 156 | 200 |
+| E IDB + Blob(採用) | 2,281 | **16** | **0.8** | **6** | 197 |
 
-- **E が全項目・全規模で最速**。100MB でも同順位(E: 284/8/0.5/5/57)
-- A は他構成と同一 worker で連続実行するとメモリ圧でクラッシュ(user 実環境の OOM 再現)
-- C(packfile、Gemini 提案)は「AV の per-file open 走査」対策としては有効な形だが、
-  E は per-file open 自体が無いため同懸念を構造的に回避する。B/C は FSA(実フォルダ)
-  同期バックアップ用の形式として意義が残る
+参考(incognito = メモリバック、CPU プレーンの比較): A 8,984/3,276/39.8/440/5,057、
+B 2,023/12/1.0/9/182、C 1,940/15/6.4/95/207、D 29,296/125/103.6/1,717/2,663、
+E 660/8/0.5/4/51。
+
+- **A(現行)は実ディスクでさらに悪化**(cold 11 秒/300MB)— 置換の緊急性を再確認
+- **E は読み最速(0.8ms / 6ms)+ cold 最速を維持**。ただし incognito 計測で見えた
+  「全項目圧勝」は訂正 — 実ディスクでは投入/追記は B/C と同水準
+- **D(SQLite WASM)の「壊滅的に遅い」は incognito アーティファクトであり撤回**。
+  実ディスクでは投入・追記とも実用水準。残る劣位は読み(E の ~9 倍)と、bytes が
+  WASM リニアメモリを経由するヒープ常駐(sql.js 計測で +246MB)
+- C(packfile、Gemini 提案)は**一括投入と追記で最速**。AV の per-file open 走査
+  対策としても有効な形。E は per-file open 自体が無く同懸念を構造的に回避
 - ヒープ: 別計測(main thread)で base64 200MB 読出は **+293MB 常駐**、Blob は **±0**
-  (handle のみ、実 bytes は要求時)
 
 ### A.2 SQL エンジン(構造データ)
 
@@ -244,6 +256,47 @@ bytes プレーンは常に E(IDB Blob)側に置く(A.2 の構造的理由)。
   (差分書込 1ms・需要読み)のハイブリッドへ
 - Storage Buckets API(Chrome 122+)をメディア層の progressive enhancement として追加
   (バケット分離 + persistent 指定 = ブラウザの自動削除からユーザーデータを保護)
+
+### A.7 実ディスク I/O: セグメントログ + ストリーミング圧縮(user 指示で必須化)
+
+user 指示「**ディスク I/O に負荷をかけたくない。ゆるいストリーミング圧縮とチャンク
+パックはスケールのために必須**」を受けた実測(revision snapshot 110.6MB を IDB へ、
+/proc/diskstats の実デバイス書込、persistent profile):
+
+| 方式 | wall | 保存後サイズ | **実ディスク書込** |
+|---|---|---|---|
+| P1 per-record(1 revision = 1 record = 1 tx) | 2.4s | 44.6MB | 77.6MB |
+| P2 チャンクパック(1MB セグメント) | 3.4s | 23.4MB | 24.6MB(1/3.2) |
+| **P3 パック + gzip ストリーミング圧縮** | 6.9s | 14.6MB | **15.8MB(1/4.9)** |
+
+- per-record は LevelDB の WAL+SST 二重書きで実書込が論理量の ~70% に達する。
+  **チャンクパックで 1/3、ゆるい圧縮を重ねて 1/5** — user の主張どおり
+- 圧縮 CPU は 2000 revision 一括でも 6.9s(実運用の編集ペースでは ~3.5ms/件)
+- → **§4 B3 を改訂: revision log と cold 本文は「セグメントログ」
+  (~1MB チャンクへのパック + CompressionStream によるストリーミング圧縮、将来
+  zstd-wasm へ差し替え可)で書く。これを v3 の必須構成要素とする。**
+  アクティブ(末尾)セグメントのみ debounce 書き足し — 遅延永続の「ゆるさ」は
+  末尾 1 セグメントに限定され、クラッシュ時損失は従来の debounce と同等
+- メディア(Blob)はパック対象外(圧縮 1.0×・コピー I/O が増えるだけ。A.3)
+
+### A.8 整合性と並行性(ACID / ロック特性、user 質問への回答)
+
+- **原子性・分離性**: IDB tx は同一 DB 内なら複数 store 横断で原子的。readwrite は
+  スコープ単位で直列化(dirty read なし)、readonly は並行。**ロックフリーではない**
+  が、IDB tx はイベントループでリクエストが尽きると自動 commit するため
+  「持ちっぱなしのロック」は構造的に作れない(per-op 短 tx 設計と整合)
+- **永続性は relaxed が既定**(Chrome M121+ の `durability: 'relaxed'`)。電源断で
+  直近 commit が消え得る(torn write は WAL が防ぐ)。→ **要所(移行完了・インポート
+  完了・明示保存)のみ `durability: 'strict'`** の二段構え
+- **多重タブの書き込み調停(設計の欠落を補充)**: IDB の直列化はアプリ層の
+  last-write-wins を防がない。→ **Web Locks API による writer リース**(アクティブ
+  タブが書込権を保持、他タブは読取 + BroadcastChannel で追従)を v3 に追加
+- **移行の versionchange**: DB version 2→3 open は旧接続が居る限り blocked。
+  `onversionchange` で旧接続を閉じる + blocked 時の user 案内を M2 に追加
+- **エクスポートの断面一貫性**: streaming export は複数 tx にまたがる。export 中は
+  保存を短時間バリアで待機させる
+- **eviction 保護**: `navigator.storage.persist()` 要求 + Storage Buckets の
+  persistent 指定(§A.6)
 
 ---
 *参照: [`v3-consolidation-and-direction-2026-06.md`](./v3-consolidation-and-direction-2026-06.md)(方針正本)/
