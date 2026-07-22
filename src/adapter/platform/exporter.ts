@@ -284,6 +284,32 @@ export async function buildExportHtmlParts(
 const BLOB_FOLD_BYTES = 64 * 1024 * 1024;
 
 /**
+ * #966: gzip 圧縮を適用してよい container の条件 — 全 attachment の宣言
+ * サイズがこの値以下であること。`compressToBase64` は 1 asset につき
+ * 「base64 原文 → バイナリ文字列 → バイト配列 → 圧縮結果 → 再 base64」
+ * の一時コピーを同時に持つため、数百 MB 級 asset では 1 件で GB 級の
+ * ピークになり OOM する。画面収録などの巨大 asset は既に圧縮済み形式
+ * (webm / mp4 等)で gzip の削減効果もほぼ無い。`asset_encoding` は
+ * artifact 全体で 1 つ(後方互換の import 契約)なので、巨大 asset を
+ * 1 つでも含む container は **全体を無圧縮 base64** で書き出す ── asset
+ * は store の文字列をそのまま part にでき、per-asset の追加コピーがゼロに
+ * なる。
+ */
+const EXPORT_COMPRESS_MAX_BYTES = 8 * 1024 * 1024;
+
+/** entry 宣言サイズに EXPORT_COMPRESS_MAX_BYTES 超の attachment があるか。 */
+function containerHasLargeAsset(container: Container): boolean {
+  for (const e of container.entries) {
+    if (e.archetype !== 'attachment') continue;
+    try {
+      const body = JSON.parse(e.body) as { size?: unknown };
+      if (typeof body.size === 'number' && body.size > EXPORT_COMPRESS_MAX_BYTES) return true;
+    } catch { /* 破損 body は無視(サイズ不明 = 小さい扱い) */ }
+  }
+  return false;
+}
+
+/**
  * #962: streaming Blob 版の export ビルダー(download 経路の正)。
  *
  * #960 の parts 化で「単一文字列の長さ上限」は越えたが、従来経路は
@@ -328,8 +354,11 @@ export async function buildExportBlob(
     // #940 段階4 の body barrier(asset には触れない版)。
     const withBodies = await hydratePendingBodiesForExport(container);
     const keys = collectExportAssetKeys(withBodies);
+    // #966: 巨大 asset を含む container は無圧縮(素通し)で書き出す。
     const encoding: 'base64' | 'gzip+base64' =
-      isCompressionSupported() && keys.length > 0 ? 'gzip+base64' : 'base64';
+      isCompressionSupported() && keys.length > 0 && !containerHasLargeAsset(withBodies)
+        ? 'gzip+base64'
+        : 'base64';
     exportMeta.asset_encoding = encoding;
     const skeleton = JSON.stringify(
       {
