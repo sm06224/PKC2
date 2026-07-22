@@ -407,6 +407,23 @@ export function isAttachmentLightSourceHint(): boolean {
   return lightSourceHint;
 }
 
+/**
+ * #964: 描画駆動の自動回復(noteAssetMiss → working-set hydrate)を許す
+ * asset サイズの上限。HTML app / URL タイル / 文書類は KB〜数 MB でこの
+ * 範囲に収まる。画面収録などの巨大 asset を描画のたびに working-set
+ * (予算 48MB)へ引き込むと、遅いストレージでは「数百 MB 読み → 予算
+ * 超過で追い出し → 再描画で再 miss → 再読み」のスラッシングになり、
+ * 直列キューを共有する全 asset 読みが道連れで待たされる。上限超の
+ * asset は描画では読み込まず、click 経路(open / download / preview)の
+ * on-demand 読みに任せる。
+ */
+export const AUTO_HYDRATE_MAX_BYTES = 4 * 1024 * 1024;
+
+/** 描画駆動の自動回復対象か(サイズ不明 = 0 は小さいとみなし対象)。 */
+export function isAutoHydrateSize(att: AttachmentBody): boolean {
+  return resolveDisplaySize(att) <= AUTO_HYDRATE_MAX_BYTES;
+}
+
 export const attachmentPresenter: DetailPresenter = {
   renderBody(entry: Entry, assets?: Record<string, string>): HTMLElement {
     const att = parseAttachmentBody(entry.body);
@@ -419,12 +436,15 @@ export const attachmentPresenter: DetailPresenter = {
     const hasAssetData = !!(att.asset_key && assets?.[att.asset_key]);
     const dataAvailable = !!(att.data || hasAssetData || att.asset_key);
     const dataStripped = !!att.asset_key && !att.data && !hasAssetData;
-    // #956: 非常駐(Light でない)は全 MIME で miss を記録する。従来は
+    // #956: 非常駐(Light でない)は miss を記録して自動回復する。従来は
     // 画像経路(resolveImageDataUrl)だけが記録しており、HTML/URL 添付は
     // 選択 closure の proactive preload に当たらない限り「Light export」
     // 表示に落ちたままだった(断続的にしか起きない user 報告の正体)。
+    // #964: ただし巨大 asset は描画では読み込まない(スラッシング防止、
+    // AUTO_HYDRATE_MAX_BYTES 参照)── click 経路の on-demand 読みに任せる。
     const pendingHydration = dataStripped && !lightSourceHint;
-    if (pendingHydration && att.asset_key) noteAssetMiss(att.asset_key);
+    const autoHydrate = pendingHydration && isAutoHydrateSize(att);
+    if (autoHydrate && att.asset_key) noteAssetMiss(att.asset_key);
     const trulyStripped = dataStripped && lightSourceHint;
 
     if (!hasFile) {
@@ -486,7 +506,7 @@ export const attachmentPresenter: DetailPresenter = {
       stripped.className = 'pkc-attachment-stripped';
       stripped.textContent = 'Data not included (Light export)';
       metaRow.appendChild(stripped);
-    } else if (pendingHydration) {
+    } else if (pendingHydration && autoHydrate) {
       // 非常駐なだけ:working-set の回復(上で記録した miss)で再 render
       // されると消える一時表示。Light export と誤認させない。
       const pending = document.createElement('span');
@@ -494,6 +514,13 @@ export const attachmentPresenter: DetailPresenter = {
       pending.setAttribute('data-pkc-region', 'attachment-loading');
       pending.textContent = '⏳ ファイル読み込み中…';
       metaRow.appendChild(pending);
+    } else if (pendingHydration) {
+      // #964: 巨大 asset は描画では読み込まない — 操作時読み込みの案内。
+      const deferred = document.createElement('span');
+      deferred.className = 'pkc-attachment-pending';
+      deferred.setAttribute('data-pkc-region', 'attachment-deferred');
+      deferred.textContent = '大きなファイル(開く / ダウンロード時に読み込み)';
+      metaRow.appendChild(deferred);
     }
     card.appendChild(metaRow);
 

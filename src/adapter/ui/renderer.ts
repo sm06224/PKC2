@@ -90,7 +90,7 @@ import { syncLinkMigrationDialogFromState } from './link-migration-dialog';
 import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
 import { parseTodoBody as parseTodoBodyRaw, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS, setAttachmentLightSourceHint, isAttachmentLightSourceHint } from './attachment-presenter';
+import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS, setAttachmentLightSourceHint, isAttachmentLightSourceHint, isAutoHydrateSize } from './attachment-presenter';
 import type { TodoBody } from '../../features/todo/todo-body';
 import type { AttachmentBody } from './attachment-presenter';
 
@@ -12231,14 +12231,20 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
 
   // #956: 非常駐なだけ(Light export でない)なら miss を記録して回復を
   // 促し、Download ボタンは残す(click 経路が on-demand hydrate する)。
+  // #964: 巨大 asset は描画では読み込まない(スラッシング防止)。
   const pendingHydration = !hasData && !!att.asset_key && !isAttachmentLightSourceHint();
-  if (pendingHydration) noteAssetMiss(att.asset_key!);
+  if (pendingHydration && isAutoHydrateSize(att)) noteAssetMiss(att.asset_key!);
   if (hasData || pendingHydration) {
-    if (pendingHydration) {
+    if (pendingHydration && isAutoHydrateSize(att)) {
       const pending = createElement('div', 'pkc-attachment-pending');
       pending.setAttribute('data-pkc-region', 'attachment-loading');
       pending.textContent = '⏳ ファイル読み込み中…';
       root.appendChild(pending);
+    } else if (pendingHydration) {
+      const deferred = createElement('div', 'pkc-attachment-pending');
+      deferred.setAttribute('data-pkc-region', 'attachment-deferred');
+      deferred.textContent = '大きなファイル(開く / ダウンロード時に読み込み)';
+      root.appendChild(deferred);
     }
     const dlBtn = createElement('button', 'pkc-btn');
     dlBtn.setAttribute('data-pkc-action', 'download-attachment');

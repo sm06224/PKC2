@@ -10599,10 +10599,14 @@ function resolveAttachmentData(
  */
 /**
  * #956: gesture 用の「必ず bytes を取りに行く」resolver。同期 resolve
- * (working-set 常駐 / legacy inline)→ on-demand hydrator → 登録済 store
- * からの direct read、の 3 段 fallback。working-set の refresh race や
+ * (working-set 常駐 / legacy inline)→ 登録済 store からの direct read →
+ * on-demand hydrator、の 3 段 fallback。working-set の refresh race や
  * budget eviction のタイミングに依存せず、store に bytes が実在する限り
  * user gesture(HTML app 起動 / Download)が失敗しない。
+ *
+ * #964: direct read を hydrator より**先**に試す。hydrator(working-set
+ * ensure)は直列キューで、巨大 asset のロード中は後続が数十秒〜分単位で
+ * 待たされる。direct read は単発の store get なので混雑と無関係に返る。
  */
 async function resolveAttachmentDataSturdy(
   lid: string,
@@ -10617,20 +10621,22 @@ async function resolveAttachmentDataSturdy(
   const att = parseAttachmentBody(entry.body);
   if (!att.asset_key) return null;
 
+  const cid = st.container?.meta.container_id;
+  const bytes = cid ? await loadAssetDirect(cid, att.asset_key) : null;
+  if (bytes != null) {
+    return { data: bytes, mime: att.mime, name: deriveDisplayFilename(att.name, att.mime) };
+  }
+
   if (assetHydrator) {
     try {
       await assetHydrator([att.asset_key]);
     } catch {
-      /* hydration failed — direct store read below is the last resort */
+      /* hydration failed — resolved stays null below */
     }
     resolved = resolveAttachmentData(lid, dispatcher);
     if (resolved) return resolved;
   }
-
-  const cid = st.container?.meta.container_id;
-  const bytes = cid ? await loadAssetDirect(cid, att.asset_key) : null;
-  if (bytes == null) return null;
-  return { data: bytes, mime: att.mime, name: deriveDisplayFilename(att.name, att.mime) };
+  return null;
 }
 
 async function openHtmlAttachmentWindow(
