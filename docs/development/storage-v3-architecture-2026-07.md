@@ -23,6 +23,7 @@
 | C8 | **整合性・並行性** — durability relaxed 既定、多重タブ last-write-wins、eviction | A.8。多重タブ調停は設計に存在しなかった |
 | C9 | **移行の安全** — 移行・障害時にデータを人質に取らない | 今回、復旧手段が ZIP export しか無く、それも 2 度壊れていた |
 | C10 | **可搬性の維持** — 単一 HTML 埋め込みは配布・持ち運びの理想形として残す | 二層戦略(user 決定): ローカルは軽く、可搬形式は互換のまま |
+| C11 | **ブラウザストレージが死んでいる環境**(user 要望 2026-07-22)—「localStorage やクッキーが必ず初期化されてしまう環境なので、依存しない仕組みが欲しい」。追加ヒアリング: 当該環境は localStorage どころか**ブラウザストレージそのものが死んでいる** | v3 の L1=IDB 前提が成立しない環境が実在。現行はブラウザ保存なしでは運用ループ(開く→作業→保存→復元)が完結しない。UI prefs の localStorage 直依存(9 系統)も同根 |
 
 ## 2. 設計原理(3 + 1)
 
@@ -85,6 +86,226 @@
 miss 記録・3 段 fallback という止血群は、pin + ObjectURL 化の完成をもって撤去する
 (DoD)。
 
+## 4.5 C11: ブラウザストレージが死んでいる環境 — ファイル完結モード(**設計 — user 裁定 2026-07-22 反映、実装は go 後**)
+
+> user 要望: 「一部のユーザーから、localStorage やクッキーといったストレージが
+> 必ず初期化されてしまう環境なので、そこに依存しない仕組みとして欲しい」
+> 追加ヒアリング(user): 当該環境では**ブラウザストレージそのものが死んでいる**
+> (localStorage だけでなく IndexedDB も使えない / 残らない)。
+
+### 課題の本質
+
+v3 は L1 = IndexedDB を作業ストアの前提にしているが、**その前提自体が成立しない
+環境が実在する**。「localStorage → IDB へ移す」類の対処は無意味。必要なのは、
+ブラウザ管理ストレージがゼロでも運用ループ(開く → 作業 → 保存 → 次回復元)が
+完結する**ファイル完結モード**を、v3 の一級市民として設計することである。
+(なお、クッキーは PKC2 では不使用 — 依存の実体は localStorage / IDB。)
+
+### 方針(user 裁定 2026-07-22)
+
+1. **全て自動にしない。** ストレージ不能を検知しても黙って切り替えず、
+   **明示的にフォールバックする旨を掲示**し、ユーザーが承認してから
+   ファイル完結モードに入る
+2. その掲示では、**新ストレージモードを旧ストレージモードと比較する図解つきの
+   丁寧な説明**を提示する(下記の図と同内容を in-app で)
+3. 掲示・説明には次を必ず記載する: **新旧ベンチ(体感がどう変わるか)**/
+   **可搬型の従来エクスポート形式(単一 HTML)と ZIP 形式の互換が保証される旨**/
+   **マイグレーションが提供される旨**
+
+### 図解: 新旧ストレージモードの比較
+
+**旧ストレージモード(現行 v2: ブラウザ保存が前提)**
+
+```
+┌─ ブラウザ管理ストレージ(消える環境がある)──────────────┐
+│  作業系(メモリ)                                              │
+│    ⇅ 自動保存 / 起動時読み込み                                  │
+│  IndexedDB: Container 全体 = 単一 JSON + base64                  │ ← ここが死ぬと
+│  localStorage: UI 設定                                          │    何も残らない
+└────────────────────────────────────┘
+      ↓ 手動操作時のみ
+   エクスポート(単一 HTML / ZIP)
+```
+
+**新ストレージモード A(v3 通常: ブラウザ保存が生きている環境)**
+
+```
+L0 メモリキャッシュ ⇄ L1 IndexedDB(meta 1 read + セグメントログ + Blob)
+                          ↓ 一方向・封印済みのみ
+                        L2 sink(ZIP / 単一 HTML / FSA フォルダミラー)
+```
+
+**新ストレージモード B(ファイル完結: ブラウザ保存が死んでいる環境への明示フォールバック)**
+
+```
+起動: ユーザーが明示的に開く(単一 HTML の埋め込みデータ / フォルダ / ZIP)
+        ↓ import(一方向)
+  作業系(メモリのみ — L1 は存在しない)
+        ↓ 自動保存(debounce、封印パック + manifest)   ↓ 明示保存
+  FSA フォルダ(推奨 sink)                  単一 HTML / ZIP(従来互換)
+```
+
+丁寧な説明のポイント(in-app 掲示にもこの構図を使う):
+
+- モード B は不採用にした「FSA 直モード」とは**別物**: 作業系に per-file I/O を
+  混ぜない。フォルダに置くのは封印パック + manifest(少数・大・不変・追記)のみで、
+  FS は引き続き**一方向 sink 専用**。構造原理(分離)はそのまま保たれる
+- ブラウザ仕様上、フォルダハンドルは IDB にしか永続できないため、IDB が死んで
+  いる環境では**セッション開始時にフォルダを選び直す 1 操作が必ず要る**。
+  起動直後の「前回のフォルダを開く」導線を最短 1 クリックにするのが UX の肝
+- 自動保存間隔 = クラッシュ時の損失窓。IDB バッファが無い分、フォルダ sink への
+  debounce 保存で窓を詰める(既定値は実装時に実測で決める)
+
+### 新旧ベンチ(実測・実ディスク・300MB。研究ログ A.1/A.7)
+
+| 指標 | 旧モード(現行: 単一JSON+base64) | 新モード A(IDB+Blob) | 新モード B 相当(packfile 形状) |
+|---|---|---|---|
+| 起動(cold) | 11,076ms | **16ms** | 25ms |
+| 1 件読み(~2MB) | 152.5ms | **0.8ms** | 4.9ms |
+| 追記 10 件 | 6,618ms | 197ms | **166ms** |
+| 実ディスク書込(110MB 履歴) | 全量書き直し型 | セグメントログで **1/4.9** | 同左(パック形式共通) |
+
+※ 新モード B の数値は OPFS packfile 構成(A.1 の C)による近似。**FSA ユーザー
+フォルダへの sink 書込は実装時に同ハーネスで追加実測する(DoD)**。in-app 掲示には
+この表の要約(「起動 11 秒 → 体感ゼロ」級の言い換え)を載せる。
+
+### 互換保証とマイグレーション(明記)
+
+- **可搬型の従来エクスポート形式(単一 HTML)と ZIP 形式は、互換を保証する。**
+  新旧どちらのモードでも入出力形式は同一で、既存のファイルはそのまま読める。
+  形式を変更する場合も旧形式 read は import として恒久維持する(§7 M0-M3 と同方針)
+- **マイグレーションを提供する**: 旧モード(IDB 内データ)→ モード B(フォルダ
+  sink)への移行導線を、M0-M3 と同じ安全装置(**移行直前の ZIP 強制バックアップ
+  ゲート**)つきで提供する。逆方向(ファイル → ブラウザ保存へ戻す)も通常の
+  import として常に可能
+- UI prefs は `__settings__` の uiPrefs バッグとしてデータに同乗させる(§4.6)。
+  ファイル完結モードでは prefs もファイルだけで往復する
+
+### フォールバック掲示(UX 仕様)
+
+- **検知**: boot 時に IDB / localStorage の生死を probe(実際の書込→読出で確認)
+- **掲示**: 明示ダイアログで「ブラウザ保存が利用できないため、ファイル保存
+  モードでの動作を提案する」旨を、上記図解・ベンチ要約・互換保証・
+  マイグレーション提供とともに丁寧に説明する。選択肢:
+  ① フォルダを選んでファイル完結モードで続行(推奨・自動保存あり)
+  ② 都度の明示保存(HTML / ZIP)だけで続行
+  ③ 閲覧のみ
+- **掲示なしの自動切替はしない**(user 裁定)。probe 誤検知に備え、ダイアログ
+  から通常モードの再試行も選べる
+
+### 検証計画
+
+- IDB / localStorage を実際に無効化したブラウザプロファイルでの実機 E2E
+  (開く → 編集 → 自動保存 → 再起動 → 復元の一周)
+- フォールバック掲示の visual parity test(明示ダイアログ・選択肢 3 系統)
+- FSA フォルダ sink の実ディスク書込ベンチ(既存ハーネス流用)
+
+## 4.6 C11 部品: UI prefs の container 同乗(設計 — §4.5 の前提部品)
+
+UI 設定(お知らせ既読 / 編集モード / ペイン / タブ等)が localStorage 直依存の
+ままでは、ファイル完結モードでも prefs だけが毎回消える。そこで prefs の正本を
+データ側に移す。単独の解ではなく、§4.5 モード B を成立させる前提部品。
+
+### 解決原理(「分離」の系)
+
+**prefs の正本を、データと同じ場所に置く。** container の `__settings__`
+payload に `uiPrefs` バッグ(`Record<string, string>`、有界・additive)を追加し、
+UI prefs は IDB / 単一 HTML export / Backup ZIP / FSA フォルダに**データと一緒に
+同乗**する。「データが生き残る限り prefs も生き残る」— localStorage も IDB も
+消える環境でも、L2 からの import が prefs ごと復元経路になる(C9 と共通)。
+
+### 棚卸しと分類(現行 localStorage 依存の全 key)
+
+| key | 用途 | 方針 |
+|---|---|---|
+| `pkc2.startup-notice.seen` / `.disabled` | お知らせ既読 / 抑止 | **同乗**(初期化環境で毎回再表示される、要望の直接原因級) |
+| `pkc2.editMode` | 編集モード(inline / window) | **同乗** |
+| `pkc2.panePrefs` | ペイン折り畳み | **同乗** |
+| `pkc2.folderPrefs` | フォルダ折り畳み(container 別 map) | **同乗** |
+| `pkc2.split-sync-enabled` | Split View ⇄ トグル | **同乗**(子 window の inline JS が直読み — 後述のミラーで無変更対応) |
+| `pkc2.filer.column-widths` | ファイラ列幅 | **同乗** |
+| `pkc2.tabStrip` | タブ復元(open/active/pinned) | **同乗** |
+| `pkc2.extensionBindings` | 拡張紐付け + 既定送り先 | **同乗**(standing opt-in 契約 #806 — 消えてはならない度が最も高い) |
+| `pkc2.imageOptimize.preference.*` | 画像最適化の記憶選択 | **同乗** |
+| `pkc2.debug` / `pkc2.debug-contents` / `pkc2.split-sync-debug` | デバッグ | **除外**(デバッグ設定を container に載せて他環境へ持ち出さない) |
+| `pkc2.storageBackend` | ストレージバックエンド選択 | **除外**(container を読む**前**に必要な bootstrap 設定は container に置けない。FSA 再接続バナーが代替導線) |
+| `pkc2.windowLayout` | 子 window geometry | **除外**(端末固有、multi-window spec §4.2 の明示判断を維持) |
+| `pkc2.last-known-version` | 更新検知(Last-Modified) | **除外**(配信 URL 固有。消えても更新 toast が 1 回出ないだけの無害値) |
+
+### 機構(facade 案)
+
+`src/adapter/platform/ui-prefs.ts`(新規)に一本化:
+
+- **読み**: バッグ優先 → localStorage fallback。fallback で読めた managed key は
+  その場でバッグへ採用(**lazy 移行** — 既存ユーザーは明示移行なしで載る)
+- **書き**: バッグ + localStorage の write-through。debounce(~800ms)で
+  `SET_UI_PREFS` を 1 dispatch → reducer が `__settings__` へ merge →
+  `SETTINGS_CHANGED` → 通常の persistence 経路(revision は作らない —
+  既存 settings と同じ扱い)
+- **localStorage は「セッション内ミラー」に格下げ**: boot
+  (SYS_INIT_COMPLETE dispatch **前** — 初回 render / タブ復元より先)に
+  バッグ → localStorage を seed。localStorage を直読みする既存 reader
+  (子 window の inline JS 等)は**無変更で正しく動く**。子 window の直書きは
+  `storage` event で親が回収してバッグへ
+- **未 init は完全 passthrough**(= 従来どおり localStorage のみ)。readonly
+  viewer は dispatch せずミラーのみ = 従来挙動。既存テストは無修正で通る想定
+- バッグは有界(key 数 / key・value 長の上限)、additive field なので
+  旧ビルドの parse は無視するだけ(データ互換は壊れない)
+
+### トレードオフ(レビュー観点)
+
+1. **export 物に UI prefs が同乗する**: 配布した HTML / ZIP に自分のタブ構成・
+   既読状態・列幅等が入る。本文情報は含まないが、「配布時に prefs を strip する
+   export オプション」を後続で足す余地あり
+2. **旧ビルドとの往復で uiPrefs が落ちる**: 旧ビルドで設定変更・保存すると
+   serialize が uiPrefs を知らないため落ちる(データは無傷、prefs が既定に
+   戻るだけ)
+3. **prefs が container 単位になる**: 複数 container を使う場合、prefs は
+   container ごと(同一ブラウザ内は localStorage ミラーが橋渡し)。folder-prefs
+   等「viewer-local を意図した過去判断」の一部変更になる — C11 要望を優先
+4. readonly viewer は構造上 container に書けないため従来どおり(localStorage
+   のみ、初期化環境では viewer の既読等は毎回リセット — 許容)
+
+### prefs のみのインポート / エクスポート導線(user 指示 2026-07-22)
+
+データ本体と独立に、**prefs 単体を持ち出し / 持ち込みできる導線**を設ける。
+
+- **形式**: 小さな JSON ファイル(`*.pkc2-prefs.json`)
+
+  ```json
+  {
+    "format": "pkc2-prefs",
+    "version": 1,
+    "exported_at": "…",
+    "settings": { /* SystemSettingsPayload 全体 = theme / display / locale / uiPrefs */ }
+  }
+  ```
+
+- **エクスポート**: ⚙ Settings に「設定のエクスポート」。現在の `__settings__`
+  payload(uiPrefs 含む)をそのままファイル保存。データ・本文・asset は
+  一切含まない(ファイル名と中身で明確に区別できるようにする)
+- **インポート**: ⚙ Settings に「設定のインポート」。validate(format /
+  version / per-field fallback — 既存 resolver を流用)→ 適用前に差分の確認
+  ダイアログ → 承認で現在の container の `__settings__` へ適用
+  (uiPrefs は key 単位 merge、theme / display / locale は上書き)。
+  通常の SET 系 dispatch 経由なので undo 相当(再インポート / 再設定)も自然に効く
+- **解決する場面**:
+  - トレードオフ 1 の補完: 配布物には prefs を載せたくない場合、
+    「strip して配布 + prefs は別ファイルで自分用に持つ」が成立する
+  - トレードオフ 3 の橋渡し: container 単位になった prefs を、別 container /
+    別マシンへ**データを渡さずに**移せる
+  - ファイル完結モード(§4.5): データファイルと並べて prefs ファイルを
+    置いておけば、環境が完全に初期化されても 2 ファイルで完全復元できる
+- readonly viewer でもエクスポートは可(読むだけ)。インポートは書ける
+  container がある時のみ
+
+### 検証計画
+
+facade / reducer 単体 + **「localStorage 全消去 → container のみから復元」の
+E2E** + prefs 単体の export → 初期化 → import round-trip + 全既存 suite の
+無修正 pass(passthrough 後方互換の証明)。実装 PR は STARTUP_NOTICES 掲載
+(user-facing 変更)。
+
 ## 5. 課題 ↔ 解決の対応
 
 | 課題 | 解決 | 根拠(研究ログ) |
@@ -99,6 +320,7 @@ miss 記録・3 段 fallback という止血群は、pin + ObjectURL 化の完�
 | C8 整合性 | 要所 `durability:'strict'` / Web Locks writer リース / versionchange 対応 / export 断面バリア / persist() + Storage Buckets | A.8 |
 | C9 移行安全 | M1 = **移行直前に ZIP 自動バックアップを強制生成**(完了確認まで移行しない)、resumable chunk 移行、旧形式 read は import として恒久維持 | 今回の教訓 |
 | C10 可搬性 | 単一 HTML export / import は現行契約のまま(streaming Blob 実装済 #960/#962/#966)。L2 の一形式として位置づけ | 二層戦略 |
+| C11 ブラウザストレージ死亡環境 | §4.5: ファイル完結モード(作業系 = メモリのみ、永続 = ファイル sink のみ)を**明示フォールバック掲示**つきで一級化。単一 HTML / ZIP は互換保証・マイグレーション提供。§4.6: UI prefs のデータ同乗(前提部品) | user 裁定 2026-07-22、**設計のみ・実装 go 待ち** |
 
 **不採用の記録**(理由込み):
 - SQLite WASM(bytes が WASM ヒープ経由 + 読みパス syscall 60 倍。ただし
