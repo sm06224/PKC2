@@ -2721,6 +2721,31 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       }
       return applySettingsUpdate(state, { ...cur, uiPrefs: nextPrefs });
     }
+    case 'IMPORT_SETTINGS': {
+      // C11 §4.6 — prefs 単体ファイルの適用。uiPrefs は key 単位 merge、
+      // theme / display / locale は上書き(doc の merge 規約)。
+      if (state.readonly) return blocked(state, action);
+      if (!state.container) return blocked(state, action);
+      const cur = currentSettings(state);
+      const imported = action.settings;
+      const mergedPrefs: Record<string, string> = { ...cur.uiPrefs };
+      for (const [k, v] of Object.entries(imported.uiPrefs)) {
+        if (!isValidUiPrefKey(k) || !isValidUiPrefValue(v)) continue;
+        mergedPrefs[k] = v;
+      }
+      const next: SystemSettingsPayload = {
+        ...imported,
+        uiPrefs: mergedPrefs,
+      };
+      if (JSON.stringify(next) === JSON.stringify(cur)) {
+        return { state, events: [] };
+      }
+      if (Object.keys(mergedPrefs).length > UI_PREFS_MAX_KEYS) {
+        console.warn('[PKC2] IMPORT_SETTINGS dropped: uiPrefs exceeds max keys');
+        return { state, events: [] };
+      }
+      return applySettingsUpdate(state, next);
+    }
     case 'SET_FLAG': {
       // Flags Protocol v1 — gated mutation of `__flags__` system entry.
       // I-FLAGS-7: side-effect-free configuration only; the action

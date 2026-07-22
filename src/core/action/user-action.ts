@@ -289,6 +289,14 @@ export type UserAction =
    */
   | { type: 'SET_UI_PREFS'; values: Record<string, string | null> }
   /**
+   * C11 §4.6 — prefs 単体ファイル(pkc2-prefs JSON)のインポート適用。
+   * `settings` は parsePrefsFile 済み(= resolver の per-field fallback を
+   * 通過した正規形)。merge 規約: uiPrefs は key 単位 merge、theme /
+   * display / locale は上書き。readonly / container 無しは blocked。
+   * emit は `SETTINGS_CHANGED`(通常の persistence 経路)。
+   */
+  | { type: 'IMPORT_SETTINGS'; settings: SystemSettingsPayload }
+  /**
    * Flags Protocol v1 — gated mutation of `__flags__` system entry.
    * `SET_FLAG` / `RESET_FLAG` write to the entry body; values resolve
    * back through `defineFlag` (range / enum gates). `RESET_ALL_FLAGS`

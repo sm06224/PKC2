@@ -2175,6 +2175,38 @@ function renderShellMenu(
   i18nNotice.appendChild(i18nText);
   card.appendChild(i18nNotice);
 
+  // Settings File — C11 §4.6: prefs 単体のエクスポート / インポート。
+  // データ・本文・asset は含まない小さな JSON(*.pkc2-prefs.json)。
+  // export は readonly でも可(読むだけ)、import は書き込み可能な
+  // container がある時のみ enabled。
+  const prefsFileSection = createElement('div', 'pkc-shell-menu-section');
+  prefsFileSection.setAttribute('data-pkc-region', 'shell-menu-prefs-file');
+  const prefsFileLabel = createElement('span', 'pkc-shell-menu-label');
+  prefsFileLabel.textContent = 'Settings File';
+  prefsFileSection.appendChild(prefsFileLabel);
+  const prefsFileButtons = createElement('div', 'pkc-shell-menu-theme-buttons');
+  const prefsExportBtn = createElement('button', 'pkc-btn-small');
+  prefsExportBtn.setAttribute('data-pkc-action', 'prefs-export');
+  prefsExportBtn.setAttribute(
+    'title',
+    '画面設定・UI 設定だけを小さなファイル(.pkc2-prefs.json)に書き出す（データ・本文・添付は含まれません）',
+  );
+  prefsExportBtn.textContent = '📤 設定エクスポート';
+  prefsFileButtons.appendChild(prefsExportBtn);
+  const prefsImportBtn = createElement('button', 'pkc-btn-small');
+  prefsImportBtn.setAttribute('data-pkc-action', 'prefs-import');
+  prefsImportBtn.setAttribute(
+    'title',
+    '設定ファイル(.pkc2-prefs.json)を読み込んで適用する（差分を確認してから適用。uiPrefs は追加・上書きのみ）',
+  );
+  prefsImportBtn.textContent = '📥 設定インポート';
+  if (state.readonly || !state.container) {
+    (prefsImportBtn as HTMLButtonElement).disabled = true;
+  }
+  prefsFileButtons.appendChild(prefsImportBtn);
+  prefsFileSection.appendChild(prefsFileButtons);
+  card.appendChild(prefsFileSection);
+
   // Shortcuts
   const shortcutSection = createElement('div', 'pkc-shell-menu-section');
   const shortcutBtn = createElement('button', 'pkc-btn-small');

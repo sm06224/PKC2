@@ -71,7 +71,14 @@ import { buildTextlogBundle, buildTextlogsContainerBundle } from '../platform/te
 import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bundle';
 import { buildFolderExportBundle } from '../platform/folder-export';
 import { setPaneCollapsed } from '../platform/pane-prefs';
-import { getUiPref, setUiPref } from '../platform/ui-prefs';
+import { getUiPref, setUiPref, initUiPrefs } from '../platform/ui-prefs';
+import {
+  parsePrefsFile,
+  serializePrefsFile,
+  summarizePrefsDiff,
+  PREFS_FILE_EXTENSION,
+} from '../../core/model/prefs-file';
+import { SETTINGS_DEFAULTS } from '../../core/model/system-settings-payload';
 import { getStorageBackendPref, setStorageBackendPref } from '../platform/storage-backend';
 import { flushActivePersistence } from '../platform/persistence';
 import { pickDirectory, verifyFsaPermission } from '../platform/storage/fsa-adapter';
@@ -4384,6 +4391,85 @@ export function bindActions(
         dispatcher.dispatch({ type: 'PURGE_ORPHAN_ASSETS' });
         break;
       }
+      case 'prefs-export': {
+        // C11 §4.6 — prefs 単体エクスポート。データ・本文・asset は
+        // 含まない小さな JSON。readonly viewer でも可(読むだけ)。
+        const st = dispatcher.getState();
+        const settings = st.settings ?? SETTINGS_DEFAULTS;
+        const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const blob = new Blob(
+          [serializePrefsFile(settings, new Date().toISOString())],
+          { type: 'application/json' },
+        );
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `settings-${stamp}${PREFS_FILE_EXTENSION}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast({ message: '設定をエクスポートしました(データは含まれません)', kind: 'info' });
+        break;
+      }
+      case 'prefs-import': {
+        // C11 §4.6 — prefs 単体インポート。validate → 差分確認 → 適用。
+        const st = dispatcher.getState();
+        if (st.readonly || !st.container) {
+          showToast({ message: '設定のインポートは書き込み可能なワークスペースでのみ使えます', kind: 'warn' });
+          break;
+        }
+        if (!prefsFileInput) {
+          prefsFileInput = document.createElement('input');
+          prefsFileInput.type = 'file';
+          prefsFileInput.accept = '.json,application/json';
+          prefsFileInput.style.display = 'none';
+          prefsFileInput.setAttribute('data-pkc-role', 'prefs-file-input');
+          document.body.appendChild(prefsFileInput);
+        }
+        const input = prefsFileInput;
+        const handleChange = (): void => {
+          input.removeEventListener('change', handleChange);
+          const file = input.files?.[0];
+          input.value = '';
+          if (!file) return;
+          void file.text().then((text) => {
+            const imported = parsePrefsFile(text);
+            if (!imported) {
+              showToast({ message: '設定ファイルとして読み取れませんでした(pkc2-prefs 形式ではありません)', kind: 'error' });
+              return;
+            }
+            const cur = dispatcher.getState().settings ?? SETTINGS_DEFAULTS;
+            const diff = summarizePrefsDiff(cur, imported);
+            const lines: string[] = [];
+            lines.push(
+              diff.settingsChanged.length > 0
+                ? `画面設定の変更: ${diff.settingsChanged.length} 項目(${diff.settingsChanged.slice(0, 5).join(', ')}${diff.settingsChanged.length > 5 ? ' …' : ''})`
+                : '画面設定の変更: なし',
+            );
+            lines.push(`UI 設定(uiPrefs): 追加 ${diff.prefsAdded} 件 / 変更 ${diff.prefsChanged} 件`);
+            if (diff.settingsChanged.length === 0 && diff.prefsAdded === 0 && diff.prefsChanged === 0) {
+              showToast({ message: '現在の設定との差分はありません', kind: 'info' });
+              return;
+            }
+            void showInlineConfirm({
+              title: '設定をインポートしますか？',
+              detail: `${lines.join('\n')}\n(uiPrefs は追加・上書きのみ。既存 key の削除はしません)`,
+              okLabel: '適用',
+              cancelLabel: 'キャンセル',
+            }).then((ok) => {
+              if (!ok) return;
+              dispatcher.dispatch({ type: 'IMPORT_SETTINGS', settings: imported });
+              // facade の cache / localStorage ミラーを新バッグで再 seed
+              initUiPrefs(dispatcher.getState().settings?.uiPrefs ?? {}, dispatcher);
+              showToast({ message: '設定をインポートしました', kind: 'info' });
+            });
+          });
+        };
+        input.addEventListener('change', handleChange);
+        input.click();
+        break;
+      }
       case 'show-shortcut-help': {
         // B1: state-driven. The overlay is mounted by the renderer
         // based on `state.shortcutHelpOpen`, so the subsequent
@@ -8498,6 +8584,9 @@ export function bindActions(
   // ── FI-05: Hidden file input for button-attach during editing ──
 
   let editingFileInput: HTMLInputElement | null = null;
+
+  // C11 §4.6: prefs 単体インポート(`prefs-import`)用の hidden file input。
+  let prefsFileInput: HTMLInputElement | null = null;
 
   // 2026-04-26 user audit: "iPadだとDnDできないから、必然的にFileから
   // 添付になるけど、複数添付できない". Mirror the DnD multi-file
