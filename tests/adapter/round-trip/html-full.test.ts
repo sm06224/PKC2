@@ -118,7 +118,11 @@ describe('Round-trip: HTML Full (mode=full, editable)', () => {
     let downloaded: { content: string; filename: string } | null = null;
     const result = await exportContainerAsHtml(source, {
       downloadFn: (content, filename) => {
-        downloaded = { content, filename };
+        // #960: downloadFn は parts(string[])を受け取る
+        downloaded = {
+          content: Array.isArray(content) ? content.join('') : (content as string),
+          filename,
+        };
       },
     });
 
