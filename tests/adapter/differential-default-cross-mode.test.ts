@@ -14,8 +14,11 @@ import type { Container } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 
 /**
- * R6(#938、user 判断 2026-07-22)── `persistence.differential_save`
- * 既定 ON 昇格の cross-mode 検証。
+ * `persistence.differential_save`(opt-in)の cross-mode 検証。
+ * R6(#938)で一度既定 ON に昇格したが、#958(遅いストレージ × 巨大
+ * container で分散読みが boot をボトルネック化)で既定 OFF へ撤回。
+ * 本 suite は flag ON(opt-in)時の split 機構と、OFF 復帰の双方向
+ * 安全性を pin する。
  *
  * 全 storage mode は同一の `createContainerStore(adapter)` を通る:
  *   - idb  → idb-adapter(contract は storage-adapter.test.ts が pin。
@@ -127,13 +130,15 @@ async function coreRecord(adapter: StorageAdapter, cid: string): Promise<Record<
 }
 
 beforeEach(() => {
-  setContainerFlagSource({});
+  // 既定 OFF(#958)のため、本 suite は opt-in(ON)を明示して split
+  // 機構を検証する。OFF 復帰の test は個別に上書きする。
+  setContainerFlagSource({ 'persistence.differential_save': true });
   return () => setContainerFlagSource({});
 });
 
 for (const mode of MODES) {
-  describe(`R6 差分保存既定 ON — ${mode.name}`, () => {
-    it('既存 v1(inline)データは既定 ON のまま無変換で読める', async () => {
+  describe(`差分保存 opt-in(ON)— ${mode.name}`, () => {
+    it('既存 v1(inline)データは flag ON でも無変換で読める', async () => {
       const adapter = mode.makeAdapter();
       // 旧ビルド相当: inline save で v1 データを作る
       const writer = createContainerStore(adapter);
@@ -147,12 +152,12 @@ for (const mode of MODES) {
       expect(await splitKeyCount(adapter)).toBe(0); // read は形式を変えない
     });
 
-    it('既定 ON の自動保存で保存形式が期待どおりになり、load は完全等価', async () => {
+    it('ON の自動保存で保存形式が期待どおりになり、load は完全等価', async () => {
       const adapter = mode.makeAdapter();
       const store = createContainerStore(adapter);
       await store.save(makeContainer()); // 既存 v1 データ
 
-      // persistence を既定 flag(= ON)で mount し、編集 → 自動保存
+      // persistence を flag ON(opt-in)で mount し、編集 → 自動保存
       const dispatcher = createDispatcher();
       const handle = mountPersistence(dispatcher, { store, debounceMs: 0, unloadTarget: null });
       dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: makeContainer() });
@@ -187,7 +192,7 @@ for (const mode of MODES) {
       const adapter = mode.makeAdapter();
       const store = createContainerStore(adapter);
 
-      // 既定 ON で保存(split 対応 backend のみ split 化される)
+      // ON で保存(split 対応 backend のみ split 化される)
       await store.saveDiff(makeContainer(), null);
       if (mode.expectSplit) {
         expect(await splitKeyCount(adapter)).toBeGreaterThan(0);

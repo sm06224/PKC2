@@ -94,24 +94,26 @@ const persistenceDebounceMs = defineFlag<number>('persistence.debounce_ms', 300,
  * O(n) → 変更分 O(1) になり、大規模 container(数千 entries)でも
  * 保存コストが一定になる。
  *
- * **2026-07-22 R6(#938)user 判断で既定 ON へ昇格**(オプトアウト)。
- * 全 storage mode(idb / fsa / opfs / memory)が同一の
- * `createContainerStore(adapter)` を通るため挙動は共通。移行は保存時に
- * 自動(v1 inline データはそのまま読め、次の保存で split 化)。
- *
- * 旧ビルド互換の注意(OFF に戻す理由になり得る唯一の点):split 形式で
- * 保存された storage を「この機能を知らない旧ビルド」で開くと entries が
- * 空に見える(データ自体は残っており、新ビルドで開き直せば戻る)。旧
- * ビルドへ戻す場合は、先に本 flag を OFF にして一度保存(編集)するか、
- * export してから戻すこと。OFF に戻すと次回の自動保存が inline 形式へ
- * 書き戻して split record を掃除する(双方向に安全 ──
+ * **既定 OFF(opt-in)**。2026-07-22 に R6(#938)で一度既定 ON に
+ * 昇格したが、同日の user 実機報告(#958)で撤回した:split 形式は
+ * 書込を O(1) にする代わりに **読出(boot)を「数千 record の分散読み」**
+ * にする。遅いストレージ × 巨大 container では record の散在
+ * (backing store 上のランダム読み・断片化)がボトルネックになり、
+ * 初期化が分単位に遅くなる。inline 単一 record は逐次読み 1 回で済む。
+ * 昇格条件だった「使用中ユーザーに影響が無いこと」が実機で破られた
+ * ため、既定は inline に戻す。ON にした環境も OFF 保存で inline へ
+ * 自動復元される(双方向に安全 ──
  * tests/adapter/differential-default-cross-mode.test.ts が全 adapter 系で
  * この往復を pin)。
+ *
+ * 旧ビルド互換の注意(ON にする場合):split 形式で保存された storage を
+ * 「この機能を知らない旧ビルド」で開くと entries が空に見える(データ
+ * 自体は残っており、新ビルドで開き直せば戻る)。
  */
-const differentialSaveEnabled = defineFlag<boolean>('persistence.differential_save', true, {
+const differentialSaveEnabled = defineFlag<boolean>('persistence.differential_save', false, {
   category: 'perf',
   description:
-    '差分保存(entry/revision 単位の split 形式、既定 ON)。編集ごとの書込みが container 全体 O(n) → 変更分 O(1)。旧ビルドで同じ storage を開く予定がある場合のみ OFF(OFF 保存で inline 形式へ戻る)',
+    '差分保存(entry/revision 単位の split 形式、既定 OFF)。書込は変更分 O(1) になるが、読出(起動)が数千 record の分散読みになり、遅いストレージ × 大きな container では起動が極端に遅くなる(#958)。書込頻度が課題で起動速度に余裕がある環境のみ ON 推奨',
   tier: 0,
 });
 

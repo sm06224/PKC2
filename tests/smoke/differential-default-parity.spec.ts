@@ -1,14 +1,19 @@
 /**
- * R6(#938)── `persistence.differential_save` 既定 ON の visual parity。
- * 実ブラウザ + 実 IndexedDB で: 既定 flag のまま entry 作成 → 実 IDB に
- * split 形式(`__pkc_split__` marker + `__entry__:` record)で保存されて
- * いること → reload 後にデータが完全に読めること(使用中ユーザーの
- * 実環境そのままの経路)を確認する。
+ * `persistence.differential_save` の既定値 parity。
+ *
+ * R6(#938)で一度既定 ON にしたが、#958(遅いストレージ × 巨大
+ * container で split 形式の分散読みが boot をボトルネック化)で
+ * **既定 OFF へ撤回**。本 spec は「既定のまま使う実ユーザーの経路」で:
+ *   1. entry 作成 → 実 IndexedDB に **inline 単一 record** で保存される
+ *      (split marker / `__entry__:` record が無い)こと
+ *   2. reload 後にデータが完全に読めること
+ * を実ブラウザで pin する。opt-in(ON)時の split 機構は
+ * tests/adapter/differential-default-cross-mode.test.ts が担う。
  */
 import { test, expect } from '@playwright/test';
 import { bootReady } from './_helpers/boot-ready';
 
-test('parity: 既定 ON で実 IDB に split 保存され、reload 後も完全に読める', async ({ page }) => {
+test('parity: 既定(OFF)で実 IDB に inline 保存され、reload 後も完全に読める', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 
@@ -31,9 +36,9 @@ test('parity: 既定 ON で実 IDB に split 保存され、reload 後も完全�
   // debounce(既定 300ms)を確実に越えて自動保存を待つ
   await page.waitForTimeout(1200);
 
-  // 実 IndexedDB を直接観測: core record に __pkc_split__、__entry__: record あり
+  // 実 IndexedDB を直接観測: split marker / __entry__: record が無い(inline)
   const storageShape = await page.evaluate(async () => {
-    return new Promise<{ split: boolean; entryRecords: number }>((res, rej) => {
+    return new Promise<{ split: boolean; entryRecords: number; cores: number }>((res, rej) => {
       const req = indexedDB.open('pkc2', 2);
       req.onerror = (): void => rej(req.error);
       req.onsuccess = (): void => {
@@ -54,17 +59,20 @@ test('parity: 既定 ON で実 IDB に split 保存され、reload 後も完全�
                 && '__pkc_split__' in (r.value as Record<string, unknown>),
             );
             const entryRecords = all.filter((r) => String(r.key).startsWith('__entry__:')).length;
-            res({ split, entryRecords });
+            const cores = all.filter((r) => typeof r.value === 'object' && r.value !== null
+              && 'meta' in (r.value as Record<string, unknown>)).length;
+            res({ split, entryRecords, cores });
           }
         };
         cur.onerror = (): void => rej(cur.error);
       };
     });
   });
-  expect(storageShape.split).toBe(true);
-  expect(storageShape.entryRecords).toBeGreaterThanOrEqual(2);
+  expect(storageShape.split).toBe(false);
+  expect(storageShape.entryRecords).toBe(0);
+  expect(storageShape.cores).toBeGreaterThanOrEqual(1);
 
-  // reload → split 形式から完全に復元される(使用中ユーザーの再訪経路)
+  // reload → inline 形式から完全に復元される(使用中ユーザーの再訪経路)
   await page.goto('/pkc2.html');
   await bootReady(page);
   const rows = page.locator('[data-pkc-region="entry-list"] li.pkc-entry-item');
