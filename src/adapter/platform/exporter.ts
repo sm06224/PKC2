@@ -26,9 +26,14 @@ import { SLOT } from '../../runtime/contract';
 import type { Container } from '../../core/model/container';
 import type { ExportMode, ExportMutability } from '../../core/action/user-action';
 import type { ReleaseMeta } from '../../runtime/release-meta';
-import { compressAssets } from './compression';
+import { compressAssets, compressToBase64, isCompressionSupported } from './compression';
 import { slugify, formatDateCompact } from './zip-package';
-import { hydrateForExport } from './idb-store';
+import {
+  hydrateForExport,
+  hydratePendingBodiesForExport,
+  collectExportAssetKeys,
+  loadExportAsset,
+} from './idb-store';
 
 /**
  * ExportResult: outcome of an export attempt.
@@ -179,11 +184,7 @@ export async function serializePkcData(
  *
  * Injects the given Container as pkc-data.
  */
-export async function buildExportHtmlParts(
-  container: Container,
-  mode: ExportMode = 'full',
-  mutability: ExportMutability = 'editable',
-): Promise<string[]> {
+function readHtmlEnvelope(container: Container): { head: string; tail: string } {
   // Read from live DOM
   const coreEl = document.getElementById(SLOT.CORE);
   const stylesEl = document.getElementById(SLOT.STYLES);
@@ -234,10 +235,6 @@ export async function buildExportHtmlParts(
   const timestamp = htmlEl.getAttribute('data-pkc-timestamp') ?? '';
   const kind = htmlEl.getAttribute('data-pkc-kind') ?? 'dev';
 
-  // Serialize container data (async: may compress assets)。#960: 巨大
-  // asset を単一文字列へ連結しないよう parts のまま HTML へ差し込む。
-  const dataParts = await serializePkcDataParts(container, mode, mutability);
-
   // Assemble HTML matching shell.html contract
   const head = `<!DOCTYPE html>
 <html lang="ja"
@@ -264,7 +261,111 @@ export async function buildExportHtmlParts(
   <script id="pkc-core">${code}</script>
 </body>
 </html>`;
+  return { head, tail };
+}
+
+export async function buildExportHtmlParts(
+  container: Container,
+  mode: ExportMode = 'full',
+  mutability: ExportMutability = 'editable',
+): Promise<string[]> {
+  const { head, tail } = readHtmlEnvelope(container);
+  // #960: 巨大 asset を単一文字列へ連結しないよう parts のまま HTML へ
+  // 差し込む。
+  const dataParts = await serializePkcDataParts(container, mode, mutability);
   return [head, ...dataParts, tail];
+}
+
+/**
+ * #962: chunk 折り畳みの閾値。この分量の文字列 part が貯まるたびに
+ * `new Blob(parts)` へ畳み、JS ヒープ上の文字列参照を手放す(ブラウザの
+ * Blob storage はメモリ圧下でディスクへ page out できる)。
+ */
+const BLOB_FOLD_BYTES = 64 * 1024 * 1024;
+
+/**
+ * #962: streaming Blob 版の export ビルダー(download 経路の正)。
+ *
+ * #960 の parts 化で「単一文字列の長さ上限」は越えたが、従来経路は
+ * (1) 全 asset を hydrate で 1 つの Record に格納 → (2) 圧縮版をもう
+ * 1 セット構築 → (3) Blob へコピー、と **データセット総量の数倍**を
+ * 同時にヒープへ載せるため、数 GB 級 container では OOM した(user 報告
+ * 「エクスポート中に OOM になります」)。本関数は asset を **1 件ずつ**
+ * 「store 読み → 圧縮 → part 追加」し、`foldBytes` ごとに Blob へ畳んで
+ * 文字列を解放する ── peak は「畳み閾値 + 最大 asset 1 件の作業量」に
+ * 有界で、総量に比例しない。
+ */
+export async function buildExportBlob(
+  container: Container,
+  mode: ExportMode = 'full',
+  mutability: ExportMutability = 'editable',
+  opts?: { foldBytes?: number },
+): Promise<Blob> {
+  const { head, tail } = readHtmlEnvelope(container);
+  const foldBytes = opts?.foldBytes ?? BLOB_FOLD_BYTES;
+  const chunks: BlobPart[] = [];
+  let cur: string[] = [];
+  let curBytes = 0;
+  const push = (s: string): void => {
+    cur.push(s);
+    curBytes += s.length;
+    if (curBytes >= foldBytes) {
+      chunks.push(new Blob(cur));
+      cur = [];
+      curBytes = 0;
+    }
+  };
+
+  push(head);
+  const exportMeta: ExportMeta = { mode, mutability };
+  if (mode === 'light') {
+    push(escapeScriptClose(JSON.stringify(
+      { container: { ...container, assets: {} }, export_meta: exportMeta },
+      null,
+      2,
+    )));
+  } else {
+    // #940 段階4 の body barrier(asset には触れない版)。
+    const withBodies = await hydratePendingBodiesForExport(container);
+    const keys = collectExportAssetKeys(withBodies);
+    const encoding: 'base64' | 'gzip+base64' =
+      isCompressionSupported() && keys.length > 0 ? 'gzip+base64' : 'base64';
+    exportMeta.asset_encoding = encoding;
+    const skeleton = JSON.stringify(
+      {
+        container: { ...withBodies, assets: ASSETS_SPLIT_TOKEN as unknown as Record<string, string> },
+        export_meta: exportMeta,
+      },
+      null,
+      2,
+    );
+    const token = `"${ASSETS_SPLIT_TOKEN}"`;
+    const splitAt = skeleton.indexOf(token);
+    if (splitAt < 0) {
+      // 起こり得ないが、防御的に従来経路(全 hydrate)へ fallback
+      for (const p of await serializePkcDataParts(container, mode, mutability)) push(p);
+    } else {
+      push(escapeScriptClose(skeleton.slice(0, splitAt)));
+      push('{');
+      let first = true;
+      for (const key of keys) {
+        // 1 件ずつ: resident 優先 → store 直読み。読めない key は従来
+        // どおり export に含めない(参照は broken のまま)。
+        const raw = await loadExportAsset(withBodies, key);
+        if (raw == null) continue;
+        const value = encoding === 'gzip+base64' ? await compressToBase64(raw) : raw;
+        push(`${first ? '' : ','}\n      ${JSON.stringify(key)}: "`);
+        push(value);
+        push('"');
+        first = false;
+      }
+      push(first ? '}' : '\n    }');
+      push(escapeScriptClose(skeleton.slice(splitAt + token.length)));
+    }
+  }
+  push(tail);
+  if (cur.length > 0) chunks.push(new Blob(cur));
+  return new Blob(chunks, { type: 'text/html;charset=utf-8' });
 }
 
 /**
@@ -300,26 +401,24 @@ export function generateExportFilename(container: Container, override?: string):
 export async function exportContainerAsHtml(
   container: Container,
   options?: ExportOptions & {
-    downloadFn?: (content: string | readonly string[], filename: string) => void;
+    downloadFn?: (content: Blob, filename: string) => void;
   },
 ): Promise<ExportResult> {
   try {
     const mode = options?.mode ?? 'full';
     const mutability = options?.mutability ?? 'editable';
-    // #960: 巨大 container で単一文字列(V8 の string 長上限 ~512MB)を
-    // 作らないよう、HTML を parts のまま Blob へ渡す。
-    const parts = await buildExportHtmlParts(container, mode, mutability);
+    // #960/#962: 単一文字列(V8 の string 長上限)も全量同時保持(OOM)も
+    // 避ける streaming Blob 経路。
+    const blob = await buildExportBlob(container, mode, mutability);
     const filename = generateExportFilename(container, options?.filename);
 
     const download = options?.downloadFn ?? triggerDownload;
-    download(parts, filename);
+    download(blob, filename);
 
-    let size = 0;
-    for (const p of parts) size += p.length;
     return {
       success: true,
       filename,
-      size,
+      size: blob.size,
     };
   } catch (e) {
     return {
@@ -333,12 +432,14 @@ export async function exportContainerAsHtml(
 
 // ── Internal helpers ────────────────────────
 
-function triggerDownload(content: string | readonly string[], filename: string): void {
-  // parts のまま Blob へ — Blob は JS 文字列長上限の外で結合される(#960)
-  const blob = new Blob(
-    Array.isArray(content) ? (content as string[]) : [content as string],
-    { type: 'text/html;charset=utf-8' },
-  );
+function triggerDownload(content: Blob | string | readonly string[], filename: string): void {
+  // parts / Blob のまま扱う — Blob は JS 文字列長上限の外で結合される(#960)
+  const blob = content instanceof Blob
+    ? content
+    : new Blob(
+      Array.isArray(content) ? (content as string[]) : [content as string],
+      { type: 'text/html;charset=utf-8' },
+    );
   const url = URL.createObjectURL(blob);
 
   const a = document.createElement('a');
