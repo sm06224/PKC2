@@ -23,6 +23,7 @@
 | C8 | **整合性・並行性** — durability relaxed 既定、多重タブ last-write-wins、eviction | A.8。多重タブ調停は設計に存在しなかった |
 | C9 | **移行の安全** — 移行・障害時にデータを人質に取らない | 今回、復旧手段が ZIP export しか無く、それも 2 度壊れていた |
 | C10 | **可搬性の維持** — 単一 HTML 埋め込みは配布・持ち運びの理想形として残す | 二層戦略(user 決定): ローカルは軽く、可搬形式は互換のまま |
+| C11 | **消えるブラウザストレージへの依存**(user 要望 2026-07-22)—「localStorage やクッキーが必ず初期化されてしまう環境なので、依存しない仕組みが欲しい」 | UI prefs 9 系統が localStorage 直依存。初期化環境では毎起動リセット: お知らせが毎回再表示、編集モード・ペイン・タブ・列幅が戻り、拡張紐付け(standing opt-in 契約)まで消える |
 
 ## 2. 設計原理(3 + 1)
 
@@ -85,6 +86,87 @@
 miss 記録・3 段 fallback という止血群は、pin + ObjectURL 化の完成をもって撤去する
 (DoD)。
 
+## 4.5 C11: UI prefs の container 同乗(**設計 — user 裁定待ち、実装は go 後**)
+
+> user 要望(2026-07-22): 「一部のユーザーから、localStorage やクッキーと
+> いったストレージが必ず初期化されてしまう環境なので、そこに依存しない
+> 仕組みとして欲しい要望が来ている」
+
+### 課題の正確な形
+
+- クッキーは PKC2 では**不使用**(棚卸しで確認済)。依存は localStorage のみ
+- 「必ず初期化される環境」の多く(企業ポリシー / 終了時サイトデータ削除)は
+  **IndexedDB も一緒に消す**。したがって「localStorage → IDB へ移す」だけでは
+  不十分で、**prefs の正本をブラウザ管理の揮発層の外に置く**必要がある
+- PKC2 でデータ自体が生き残る経路は既にある: 単一 HTML / Backup ZIP / FSA
+  フォルダ(= L2)。prefs だけがそこに乗っていないのが構造欠陥
+
+### 解決原理(「分離」の系)
+
+**prefs の正本を、データと同じ場所に置く。** container の `__settings__`
+payload に `uiPrefs` バッグ(`Record<string, string>`、有界・additive)を追加し、
+UI prefs は IDB / 単一 HTML export / Backup ZIP / FSA フォルダに**データと一緒に
+同乗**する。「データが生き残る限り prefs も生き残る」— localStorage も IDB も
+消える環境でも、L2 からの import が prefs ごと復元経路になる(C9 と共通)。
+
+### 棚卸しと分類(現行 localStorage 依存の全 key)
+
+| key | 用途 | 方針 |
+|---|---|---|
+| `pkc2.startup-notice.seen` / `.disabled` | お知らせ既読 / 抑止 | **同乗**(初期化環境で毎回再表示される、要望の直接原因級) |
+| `pkc2.editMode` | 編集モード(inline / window) | **同乗** |
+| `pkc2.panePrefs` | ペイン折り畳み | **同乗** |
+| `pkc2.folderPrefs` | フォルダ折り畳み(container 別 map) | **同乗** |
+| `pkc2.split-sync-enabled` | Split View ⇄ トグル | **同乗**(子 window の inline JS が直読み — 後述のミラーで無変更対応) |
+| `pkc2.filer.column-widths` | ファイラ列幅 | **同乗** |
+| `pkc2.tabStrip` | タブ復元(open/active/pinned) | **同乗** |
+| `pkc2.extensionBindings` | 拡張紐付け + 既定送り先 | **同乗**(standing opt-in 契約 #806 — 消えてはならない度が最も高い) |
+| `pkc2.imageOptimize.preference.*` | 画像最適化の記憶選択 | **同乗** |
+| `pkc2.debug` / `pkc2.debug-contents` / `pkc2.split-sync-debug` | デバッグ | **除外**(デバッグ設定を container に載せて他環境へ持ち出さない) |
+| `pkc2.storageBackend` | ストレージバックエンド選択 | **除外**(container を読む**前**に必要な bootstrap 設定は container に置けない。FSA 再接続バナーが代替導線) |
+| `pkc2.windowLayout` | 子 window geometry | **除外**(端末固有、multi-window spec §4.2 の明示判断を維持) |
+| `pkc2.last-known-version` | 更新検知(Last-Modified) | **除外**(配信 URL 固有。消えても更新 toast が 1 回出ないだけの無害値) |
+
+### 機構(facade 案)
+
+`src/adapter/platform/ui-prefs.ts`(新規)に一本化:
+
+- **読み**: バッグ優先 → localStorage fallback。fallback で読めた managed key は
+  その場でバッグへ採用(**lazy 移行** — 既存ユーザーは明示移行なしで載る)
+- **書き**: バッグ + localStorage の write-through。debounce(~800ms)で
+  `SET_UI_PREFS` を 1 dispatch → reducer が `__settings__` へ merge →
+  `SETTINGS_CHANGED` → 通常の persistence 経路(revision は作らない —
+  既存 settings と同じ扱い)
+- **localStorage は「セッション内ミラー」に格下げ**: boot
+  (SYS_INIT_COMPLETE dispatch **前** — 初回 render / タブ復元より先)に
+  バッグ → localStorage を seed。localStorage を直読みする既存 reader
+  (子 window の inline JS 等)は**無変更で正しく動く**。子 window の直書きは
+  `storage` event で親が回収してバッグへ
+- **未 init は完全 passthrough**(= 従来どおり localStorage のみ)。readonly
+  viewer は dispatch せずミラーのみ = 従来挙動。既存テストは無修正で通る想定
+- バッグは有界(key 数 / key・value 長の上限)、additive field なので
+  旧ビルドの parse は無視するだけ(データ互換は壊れない)
+
+### トレードオフ(レビュー観点)
+
+1. **export 物に UI prefs が同乗する**: 配布した HTML / ZIP に自分のタブ構成・
+   既読状態・列幅等が入る。本文情報は含まないが、「配布時に prefs を strip する
+   export オプション」を後続で足す余地あり
+2. **旧ビルドとの往復で uiPrefs が落ちる**: 旧ビルドで設定変更・保存すると
+   serialize が uiPrefs を知らないため落ちる(データは無傷、prefs が既定に
+   戻るだけ)
+3. **prefs が container 単位になる**: 複数 container を使う場合、prefs は
+   container ごと(同一ブラウザ内は localStorage ミラーが橋渡し)。folder-prefs
+   等「viewer-local を意図した過去判断」の一部変更になる — C11 要望を優先
+4. readonly viewer は構造上 container に書けないため従来どおり(localStorage
+   のみ、初期化環境では viewer の既読等は毎回リセット — 許容)
+
+### 検証計画
+
+facade / reducer 単体 + **「localStorage 全消去 → container のみから復元」の
+E2E** + 全既存 suite の無修正 pass(passthrough 後方互換の証明)。実装 PR は
+STARTUP_NOTICES 掲載(user-facing 変更)。
+
 ## 5. 課題 ↔ 解決の対応
 
 | 課題 | 解決 | 根拠(研究ログ) |
@@ -99,6 +181,7 @@ miss 記録・3 段 fallback という止血群は、pin + ObjectURL 化の完�
 | C8 整合性 | 要所 `durability:'strict'` / Web Locks writer リース / versionchange 対応 / export 断面バリア / persist() + Storage Buckets | A.8 |
 | C9 移行安全 | M1 = **移行直前に ZIP 自動バックアップを強制生成**(完了確認まで移行しない)、resumable chunk 移行、旧形式 read は import として恒久維持 | 今回の教訓 |
 | C10 可搬性 | 単一 HTML export / import は現行契約のまま(streaming Blob 実装済 #960/#962/#966)。L2 の一形式として位置づけ | 二層戦略 |
+| C11 揮発ストレージ依存 | §4.5: UI prefs の正本を `__settings__` の uiPrefs バッグへ(= データ側)。localStorage はセッション内ミラーに格下げ。復元経路 = C9/L2 と共通 | user 要望 2026-07-22、**設計のみ・裁定待ち** |
 
 **不採用の記録**(理由込み):
 - SQLite WASM(bytes が WASM ヒープ経由 + 読みパス syscall 60 倍。ただし
