@@ -186,6 +186,12 @@ export type SystemCommand =
    * しない — 通常モードへの復帰は reload(再 probe)経由。
    */
   | { type: 'SYS_ENTER_READONLY' }
+  /**
+   * storage v3 P1s2-a(#967): asset ObjectURL registry が新しい URL を
+   * 張った後の再 render トリガ。state は変更しない(identity refresh —
+   * 次の render で registry hit に切り替わる)。
+   */
+  | { type: 'SYS_ASSET_URLS_READY' }
   | { type: 'SYS_FINISH_EXPORT' }
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }
   | { type: 'SYS_IMPORT_PREVIEW'; preview: ImportPreviewRef }

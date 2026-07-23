@@ -743,6 +743,11 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
       events: [],
     };
   }
+  // P1s2-a(#967): ObjectURL registry の供給完了 → identity refresh で
+  // 再 render を促すだけ(state 無変更)。phase 非依存。
+  if (action.type === 'SYS_ASSET_URLS_READY') {
+    return { state: { ...state }, events: [] };
+  }
   // C11 §4.5 ④-1: フォールバック掲示の「閲覧のみ」。phase に依らず
   // readonly 化する(editing 中なら編集を破棄して ready へ戻す — 掲示は
   // boot 直後なので実際には ready で来る。防衛的に editing も畳む)。

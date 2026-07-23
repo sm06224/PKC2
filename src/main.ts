@@ -91,6 +91,7 @@ import {
   mountStorageFallbackNotice,
   isStorageFallbackForceRequested,
 } from './adapter/ui/storage-fallback-notice';
+import { mountAssetUrlRegistry } from './adapter/platform/asset-url-registry';
 import { readPkcData, chooseBootSource, finalizeChooserChoice } from './adapter/platform/pkc-data-source';
 import { showBootSourceChooser } from './adapter/ui/boot-source-chooser';
 import {
@@ -701,6 +702,11 @@ async function boot(): Promise<void> {
   // entry) hydrate the needed asset bytes inline rather than waiting for a
   // render-driven miss-recovery cycle.
   registerAssetHydrator((keys) => workingSet.ensure(keys));
+  // P1s2-a(#967): asset ObjectURL registry。render が registry を先に
+  // 引き、miss は render 後に IDB Blob 直読み(ヒープ ±0)で URL 化 →
+  // 再 render。URL が供給されるほど base64 が working-set から追い出せる
+  // ようになり、メモリの総量比例(C1)が解けていく。
+  mountAssetUrlRegistry(dispatcher, store);
   // #956: `?pkc-debug=assets` 診断 overlay(user 報告切り分け用)。
   // debug flag が無ければ完全 no-op。
   mountAssetDebugOverlay(dispatcher, store);
