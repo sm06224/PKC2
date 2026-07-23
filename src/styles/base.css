@@ -13316,6 +13316,70 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
   color: var(--c-muted);
 }
 
+/* ── C11 §4.5 ④-1: ブラウザ保存フォールバック掲示ダイアログ ── */
+.pkc-storage-fallback-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 21000; /* startup-notice より上、asset-debug と同格 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.pkc-storage-fallback-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 20px rgba(51, 255, 102, 0.1);
+  max-width: min(640px, calc(100vw - 32px));
+  max-height: min(85vh, 720px);
+  overflow-y: auto;
+  padding: var(--space-3);
+  font-family: var(--font-sans);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pkc-storage-fallback-heading {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--c-fg);
+}
+
+.pkc-storage-fallback-text {
+  font-size: var(--fs-sm);
+  color: var(--c-fg);
+  line-height: 1.6;
+}
+
+.pkc-storage-fallback-compat {
+  color: var(--c-muted);
+}
+
+.pkc-storage-fallback-diagram {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.pkc-storage-fallback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
 /* ── #956: ?pkc-debug=assets 診断 overlay ── */
 .pkc-asset-debug-overlay {
   position: fixed;
