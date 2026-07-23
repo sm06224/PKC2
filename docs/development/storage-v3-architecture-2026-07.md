@@ -374,7 +374,12 @@ asset_meta   [cid, key] → {mime, size, hash, name, pinned?}
     以降は P2 封印パックで刻む)
   - ✅ **P1 slice 2**: asset ObjectURL registry + 描画切替(#980)、pin セット +
     boot プリウォーム(#981)、4MB 閾値・deferred 撤去 = §4 DoD(P1s2-c)
-  - **P2**: meta 単一レコード + セグメントログ + 移行 M0-M3 + 閾値撤去(DoD)
+  - ✅ **P2**: meta 単一レコード(layout v3、#984)+ revisions セグメントログ
+    (layout 4、#985)+ bodies セグメントログ + 部分 hydrate 索引(layout 5、
+    #987)+ 移行仕上げ(M1 ZIP 強制ゲート = flag ON の瞬間に発動・失敗時は
+    自動 OFF、versionchange/blocked 対応)。有効化は
+    `persistence.lazy_entry_bodies`(既定 OFF — 既定 ON は user 判断待ち)。
+    8MB export 閾値は §4 の存置判断のとおり(セグメント export と同時に再考)
   - **P3**: ワークスペースのツリー第一級化 + L2 フォルダミラー
 - 各フェーズの DoD: visual parity test + 数百 MB 実データ seed の実機 smoke +
   実ディスク/syscall ベンチの回帰(ハーネスは収録済み)
