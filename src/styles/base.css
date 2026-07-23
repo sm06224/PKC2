@@ -6026,9 +6026,15 @@ mark.pkc-search-mark {
   .pkc-shell-menu-card {
     max-width: 640px;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* minmax(0, 1fr): plain `1fr` は min-content より縮まないため、
+     * 折り返せない行(select / 長ラベルのボタン行)があると列が
+     * カードの外へ吹き飛ぶ(Firefox で顕在化、Mac FF 崩れ報告)。 */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 1.5rem;
     row-gap: var(--space-2);
+  }
+  .pkc-shell-menu-card > * {
+    min-width: 0;
   }
   .pkc-shell-menu-heading,
   .pkc-shell-menu-close {
@@ -6064,11 +6070,22 @@ mark.pkc-search-mark {
 
 .pkc-shell-menu-theme-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2-5);
+  min-width: 0;
 }
 
 .pkc-shell-menu-theme-btn {
   flex: 1;
+}
+
+/* select は intrinsic 幅を持ち flex/grid 内でも自発的に縮まない。
+ * basis auto で自然幅を保ちつつ(basis 0 だと同居 input に潰される)、
+ * 行に収まらない時だけ縮み、列幅より長いラベルでもはみ出させない。 */
+.pkc-shell-menu-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .pkc-shell-menu-theme-btn[data-pkc-theme-active="true"],
@@ -6238,7 +6255,10 @@ mark.pkc-search-mark {
   border-radius: var(--radius);
   background: var(--c-surface);
   color: var(--c-fg);
-  flex: 1;
+  /* basis 12rem: 2 カラム grid の列内で select と同居できない幅なら
+   * (行が flex-wrap になったので)折り返して全幅を取る。placeholder
+   * 「Direct input (priority)」の見切れ防止。 */
+  flex: 1 1 12rem;
   min-width: 0;
 }
 .pkc-shell-menu-font-input::placeholder {
