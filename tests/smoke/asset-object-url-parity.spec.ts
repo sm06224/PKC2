@@ -57,7 +57,33 @@ test('parity: launcher icon が blob: URL(registry)で描画される', async ({
 
   await page.goto('/pkc2.html');
   await bootReady(page);
-  await page.waitForTimeout(800);
+  // 初回 boot の debounce 保存(CONTAINER_LOADED trigger)が commit する
+  // 前に seed すると、遅れて来た保存が __default__ を上書きして空 container
+  // で再 boot する flake になる。固定 wait ではなく「初回保存の commit」を
+  // 実測で待ってから seed する。
+  await expect.poll(
+    () =>
+      page.evaluate(
+        () =>
+          new Promise<boolean>((res) => {
+            const req = indexedDB.open('pkc2', 2);
+            req.onerror = (): void => res(false);
+            req.onsuccess = (): void => {
+              const db = req.result;
+              try {
+                const tx = db.transaction(['containers'], 'readonly');
+                const get = tx.objectStore('containers').get('__default__');
+                get.onsuccess = (): void => { db.close(); res(get.result != null); };
+                get.onerror = (): void => { db.close(); res(false); };
+              } catch {
+                db.close();
+                res(false);
+              }
+            };
+          }),
+      ),
+    { timeout: 15_000, intervals: [200, 500] },
+  ).toBe(true);
   await seed(page);
   await page.goto('/pkc2.html?app=launcher');
   await bootReady(page);

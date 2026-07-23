@@ -92,6 +92,7 @@ import {
   isStorageFallbackForceRequested,
 } from './adapter/ui/storage-fallback-notice';
 import { mountAssetUrlRegistry } from './adapter/platform/asset-url-registry';
+import { mountAssetPrewarm } from './adapter/platform/asset-prewarm';
 import { readPkcData, chooseBootSource, finalizeChooserChoice } from './adapter/platform/pkc-data-source';
 import { showBootSourceChooser } from './adapter/ui/boot-source-chooser';
 import {
@@ -707,6 +708,10 @@ async function boot(): Promise<void> {
   // 再 render。URL が供給されるほど base64 が working-set から追い出せる
   // ようになり、メモリの総量比例(C1)が解けていく。
   mountAssetUrlRegistry(dispatcher, store);
+  // P1s2-b(#967、doc §4): pin セット(launcher 登録 / 直近参照 / 選択
+  // closure)を boot 後の idle で registry へ先読み。以後の launcher icon
+  // 描画・タイル起動・画像表示は ObjectURL 参照のみ(per-file I/O ゼロ)。
+  mountAssetPrewarm(dispatcher, store);
   // #956: `?pkc-debug=assets` 診断 overlay(user 報告切り分け用)。
   // debug flag が無ければ完全 no-op。
   mountAssetDebugOverlay(dispatcher, store);

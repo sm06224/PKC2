@@ -43,6 +43,9 @@ const ABSENT_TTL_MS = 30_000;
 let urls = new Map<string, UrlEntry>();
 let wanted = new Map<string, string | undefined>(); // key → mime
 let absent = new Map<string, number>(); // key → recordedAt
+/** P1s2-b: LRU 追い出しから除外する key(launcher 登録 / 直近参照 /
+ * 選択 closure — §4 の pin セット)。 */
+let pinned = new Set<string>();
 let tick = 0;
 
 function revokeAll(): void {
@@ -54,6 +57,7 @@ function revokeAll(): void {
   urls = new Map();
   wanted = new Map();
   absent = new Map();
+  pinned = new Set();
 }
 
 /**
@@ -75,8 +79,11 @@ export function getAssetUrl(key: string, mime?: string): string | null {
 
 function evictOverCap(): void {
   if (urls.size <= MAX_URLS) return;
-  const sorted = [...urls.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-  const drop = urls.size - MAX_URLS;
+  // pinned は追い出さない(bytes はヒープ外なので cap 超過は許容し、
+  // 追い出しは unpinned の LRU からのみ)。
+  const evictable = [...urls.entries()].filter(([k]) => !pinned.has(k));
+  const sorted = evictable.sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+  const drop = Math.min(sorted.length, urls.size - MAX_URLS);
   for (let i = 0; i < drop; i++) {
     const [key, e] = sorted[i]!;
     try {
@@ -118,6 +125,45 @@ export async function drainWantedAssetUrls(
   }
   evictOverCap();
   return added;
+}
+
+/**
+ * P1s2-b: pin セットのプリウォーム。指定 key を store から Blob 直読みで
+ * URL 化し、LRU 追い出しから除外(pin)する。既に URL がある key は pin
+ * だけ付ける。並列は控えめ(逐次)— boot 直後の idle で走る前提で、
+ * 起動体感と競合しない。新規 URL を張れたら true。
+ */
+export async function prewarmAssetUrls(
+  store: AssetBlobSource,
+  containerId: string,
+  wants: ReadonlyArray<{ key: string; mime?: string }>,
+): Promise<boolean> {
+  let added = false;
+  for (const { key, mime } of wants) {
+    if (!key) continue;
+    pinned.add(key);
+    if (urls.has(key)) continue;
+    let blob: Blob | null = null;
+    try {
+      blob = await store.loadAssetBlob(containerId, key);
+    } catch {
+      blob = null;
+    }
+    if (!blob) {
+      absent.set(key, Date.now());
+      continue;
+    }
+    const typed = mime && blob.type !== mime ? new Blob([blob], { type: mime }) : blob;
+    urls.set(key, { url: URL.createObjectURL(typed), size: blob.size, lastUsed: ++tick });
+    added = true;
+  }
+  evictOverCap();
+  return added;
+}
+
+/** Test 用: pin 済み key 集合のスナップショット。 */
+export function __pinnedKeysForTest(): ReadonlySet<string> {
+  return new Set(pinned);
 }
 
 /**
