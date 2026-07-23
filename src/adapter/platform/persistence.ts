@@ -40,8 +40,12 @@ import { collectReferencedAssetKeys } from '../../features/asset/asset-scan';
  * + the `pagehide` handler below is the real hardening for that case.
  */
 
-/** Events that indicate a Container mutation requiring save. */
-const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
+/**
+ * Events that indicate a Container mutation requiring save.
+ * ④-2: folder-sink(C11 §4.5)も同じトリガ集合で debounce 書きする
+ * ため export(トリガの追加漏れを二重管理にしない)。
+ */
+export const SAVE_TRIGGERS: ReadonlySet<DomainEventType> = new Set([
   'ENTRY_CREATED',
   'ENTRY_UPDATED',
   'ENTRY_DELETED',

@@ -24,6 +24,7 @@ import { pickDirectory, verifyFsaPermission } from '../platform/storage/fsa-adap
 import { saveFsaHandle } from '../platform/storage/fsa-handle-store';
 import { setStorageBackendPref } from '../platform/storage-backend';
 import { probeIDBAvailability } from '../platform/idb-store';
+import { mountFolderSink, type SinkDirectoryHandle } from '../platform/folder-sink';
 
 const REGION = 'storage-fallback-notice';
 
@@ -146,13 +147,35 @@ export function showStorageFallbackNotice(
         globalThis.location?.reload?.();
       } catch {
         // IDB が完全に死んでいると handle を記憶できない(ブラウザ仕様上
-        // handle は IDB にしか永続できない)。現段階(④-1)では正直に伝えて
-        // 都度保存を案内する。フォルダへの自動保存(handle 記憶に依存しない
-        // セッション内 sink)は ④-2 で入る。
+        // handle は IDB にしか永続できない)。④-2: セッション内だけ
+        // メモリ上の handle でフォルダ sink を mount し、完全な復元可能物
+        // (Backup ZIP)を debounce で置き続ける。次回起動時はフォルダを
+        // 選び直す(その導線はこのダイアログ自身が再掲示される)。
+        const sink = mountFolderSink(
+          dispatcher,
+          handle as unknown as SinkDirectoryHandle,
+          {
+            onSaved: (info) => {
+              showToast({
+                message: `フォルダへ自動保存しました(${info.filename}、${Math.max(1, Math.round(info.size / 1024))} KB)`,
+                kind: 'info',
+              });
+            },
+            onError: () => {
+              showToast({
+                message: 'フォルダへの自動保存に失敗しました。💾 Backup ZIP / HTML 書き出しでの都度保存を検討してください',
+                kind: 'error',
+              });
+            },
+          },
+        );
+        close();
         showToast({
-          message: 'このブラウザではフォルダ接続を記憶できませんでした。現時点では 💾 Backup ZIP / HTML 書き出しでの都度保存をご利用ください(フォルダ自動保存は次の更新で対応します)',
-          kind: 'warn',
+          message: 'このセッションでは選んだフォルダへ自動保存します(常に完全なバックアップ ZIP を置き続けます)。ブラウザの仕様上、次回起動時はフォルダを選び直してください',
+          kind: 'info',
         });
+        // 選んだ瞬間に必ず 1 つ完全な復元可能物が置かれる状態にする
+        void sink.flushNow();
       }
     })();
   });
