@@ -358,6 +358,11 @@ asset_meta   [cid, key] → {mime, size, hash, name, pinned?}
 - フェーズ再編(実施済み分を反映):
   - ✅ P0: Backup ZIP 導線格上げ(#969)
   - ✅ P1 slice 1: store の Blob 受け入れ + 両読み(#970)
+  - ✅ C11 §4.6: uiPrefs の container 同乗(#975)+ prefs 単体入出力(#976)
+  - ✅ C11 §4.5: フォールバック掲示 + boot 資力化(#977)、フォルダ sink
+    自動保存(#978)、移行 ZIP ゲート + ストレージ全滅実機 E2E + sink
+    実ディスクベンチ(amp 0.34×、~3ms/MB — 全体書き出し形は数百 MB 級まで、
+    以降は P2 封印パックで刻む)
   - **P1 slice 2**: asset registry + ObjectURL 描画 + §4 キャッシュ(pin/プリウォーム)
   - **P2**: meta 単一レコード + セグメントログ + 移行 M0-M3 + 閾値撤去(DoD)
   - **P3**: ワークスペースのツリー第一級化 + L2 フォルダミラー

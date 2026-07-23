@@ -55,6 +55,13 @@ CONFIGS=A,B,C,D,E TOTAL_MB=100 node tests/bench/storage-arch-bench/run-syscall-p
 
 ベンチ HTML は `?autorun=1&config=X&size=Y` で単一構成を外部駆動できる。
 
+**フォルダ sink 書込ベンチ**(C11 ④-3 DoD。folder-sink.ts と同じ
+「単一 Blob → createWritable staging → close commit」形の実ディスクコスト):
+
+```bash
+SIZES_MB=50,100,300 ITER=3 node tests/bench/storage-arch-bench/sink-bench.mjs
+```
+
 ## 計測結果(2026-07-22、Chromium headless / NVMe、実ディスク)
 
 `docs/development/storage-v3-redesign-2026-07.md` の Appendix A を参照。要約:
@@ -64,3 +71,8 @@ CONFIGS=A,B,C,D,E TOTAL_MB=100 node tests/bench/storage-arch-bench/run-syscall-p
 - A(現行)は実ディスクで cold 11 秒/300MB・追記 6.6 秒
 - **セグメントログ(1MB パック + gzip ストリーミング圧縮)で実ディスク書込 1/4.9**
   (io-bench、110MB revision ストリーム: 77.6MB → 15.8MB)
+- **フォルダ sink(C11 ④)**: 同名 ZIP の全体上書き × 3 回で実書込は論理量の
+  **0.34×**(50/100/300MB とも) — staging swap の二重書きは起きず、むしろ
+  ページキャッシュが世代の重ね書きを吸収する。wall は ~3ms/MB
+  (300MB = 0.7〜2.0 秒、debounce の背後で走る)。全体書き出し形の許容量は
+  数百 MB 級までで、それ以上は P2 の封印パック分割で刻む(既定計画どおり)

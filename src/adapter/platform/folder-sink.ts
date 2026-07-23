@@ -42,6 +42,24 @@ export interface SinkDirectoryHandle {
   getFileHandle(name: string, options?: { create?: boolean }): Promise<SinkFileHandle>;
 }
 
+/**
+ * フォルダへ Blob を 1 ファイル書き込む(staging + close 反映 = 原子的)。
+ * sink 本体と移行ゲート(④-3: 移行直前の ZIP 強制バックアップ)で共用。
+ */
+export async function writeBlobToDirectory(
+  dir: SinkDirectoryHandle,
+  name: string,
+  blob: Blob,
+): Promise<void> {
+  const fh = await dir.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  try {
+    await w.write(blob);
+  } finally {
+    await w.close();
+  }
+}
+
 export interface FolderSinkOptions {
   debounceMs?: number;
   /** 書き込み成功のたびに呼ばれる(UI 側で表示に使う)。 */
@@ -95,15 +113,10 @@ export function mountFolderSink(
       if (!result.success || !blob) {
         throw new Error(result.success ? 'ZIP blob missing' : result.error ?? 'ZIP build failed');
       }
-      const fh = await dir.getFileHandle(FOLDER_SINK_FILENAME, { create: true });
-      const w = await fh.createWritable();
-      try {
-        await w.write(blob);
-      } finally {
-        // close() が staging → 実ファイルの commit。エラー時も必ず閉じる
-        // (OPFS/FSA はロック残留で以後書けなくなる)。
-        await w.close();
-      }
+      // close() が staging → 実ファイルの commit。エラー時も必ず閉じる
+      // (OPFS/FSA はロック残留で以後書けなくなる)— writeBlobToDirectory
+      // が finally で保証。
+      await writeBlobToDirectory(dir, FOLDER_SINK_FILENAME, blob);
       opts.onSaved?.({ filename: FOLDER_SINK_FILENAME, size: (blob as Blob).size, at: new Date() });
     } catch (e) {
       opts.onError?.(e);
