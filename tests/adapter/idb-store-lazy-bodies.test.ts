@@ -39,22 +39,26 @@ const v1Store = (adapter: StorageAdapter) =>
   createContainerStore(adapter, { lazyEntryBodies: () => false });
 
 describe('layout v2 書込(#940 案 A 段階1)', () => {
-  it('P2-1(v3): entry meta は core record に inline(body 空)、本文は __body__ record', async () => {
+  it('P2-3(v5): entry meta は core に inline、本文は body segment + 索引', async () => {
     const adapter = createMemoryAdapter();
     const store = v2Store(adapter);
     await store.saveDiff(makeContainer([entry('e1', 'One', 'BODY-1')]), null);
 
-    // v3 = meta 単一小レコード: per-entry record は書かれない
+    // v5 = meta 単一小レコード: per-entry / per-body record は書かれない
     expect(await rawKeys(adapter, '__entry__:cv2:')).toEqual([]);
+    expect(await rawKeys(adapter, '__body__:cv2:')).toEqual([]);
     const core = await rawGet(adapter, 'cv2') as {
       __pkc_layout__?: number;
+      __pkc_bodyseg__?: Record<string, number>;
       entries: { lid: string; title: string; body: string }[];
     };
-    expect(core.__pkc_layout__).toBe(4);
+    expect(core.__pkc_layout__).toBe(5);
     expect(core.entries).toHaveLength(1);
     expect(core.entries[0]!.title).toBe('One');
     expect(core.entries[0]!.body).toBe(''); // 本文は core に置かない
-    expect(await rawGet(adapter, '__body__:cv2:e1')).toBe('BODY-1');
+    expect(core.__pkc_bodyseg__).toEqual({ e1: 0 });
+    expect((await adapter.bucket('segments').getKeysByPrefix('cv2:body:')).length).toBe(1);
+    expect(await store.loadBodies('cv2')).toEqual({ e1: 'BODY-1' });
   });
 
   it('round-trip: load で本文込みの entries が順序どおり復元される', async () => {
@@ -65,30 +69,32 @@ describe('layout v2 書込(#940 案 A 段階1)', () => {
     expect(loaded!.entries.map((e) => [e.lid, e.body])).toEqual([['b', 'body-b'], ['a', 'body-a']]);
   });
 
-  it('差分: title だけの変更は core のみ書き、body record は書き直さない', async () => {
+  it('差分: title だけの変更は core のみ書き、body segment は書き直さない', async () => {
     const adapter = createMemoryAdapter();
     const store = v2Store(adapter);
     const c1 = makeContainer([entry('e1', 'One', 'BODY-1')]);
     await store.saveDiff(c1, null);
-    // body record を直接汚して「再書込されたか」を観測できるようにする
-    await adapter.bucket('containers').put('__body__:cv2:e1', 'SENTINEL');
+    // body segment を直接 SENTINEL 化して「再書込されたか」を観測する
+    const segBucket = adapter.bucket('segments');
+    const segKey = (await segBucket.getKeysByPrefix('cv2:body:'))[0]!;
+    await segBucket.put(segKey, 'SENTINEL-RAW');
     const c2 = makeContainer([{ ...c1.entries[0]!, title: 'Renamed' }]);
     await store.saveDiff(c2, c1);
-    expect(await rawGet(adapter, '__body__:cv2:e1')).toBe('SENTINEL'); // 触っていない
+    expect(await segBucket.get(segKey)).toBe('SENTINEL-RAW'); // 触っていない
     const core = await rawGet(adapter, 'cv2') as { entries: { title: string }[] };
     expect(core.entries[0]!.title).toBe('Renamed');
   });
 
-  it('差分: body 変更は body record も書く、entry 削除は両 record を消す', async () => {
+  it('差分: body 変更は segment へ追記・索引付け替え、entry 削除は索引から外れる', async () => {
     const adapter = createMemoryAdapter();
     const store = v2Store(adapter);
     const c1 = makeContainer([entry('e1', 'One', 'BODY-1'), entry('e2', 'Two', 'BODY-2')]);
     await store.saveDiff(c1, null);
     const c2 = makeContainer([{ ...c1.entries[0]!, body: 'BODY-1v2' }]); // e2 削除
     await store.saveDiff(c2, c1);
-    expect(await rawGet(adapter, '__body__:cv2:e1')).toBe('BODY-1v2');
-    expect(await rawGet(adapter, '__entry__:cv2:e2')).toBeUndefined();
-    expect(await rawGet(adapter, '__body__:cv2:e2')).toBeUndefined();
+    expect(await store.loadBodies('cv2')).toEqual({ e1: 'BODY-1v2' });
+    const core = await rawGet(adapter, 'cv2') as { __pkc_bodyseg__?: Record<string, number> };
+    expect(Object.keys(core.__pkc_bodyseg__ ?? {})).toEqual(['e1']);
     expect((await store.load('cv2'))!.entries.map((e) => e.lid)).toEqual(['e1']);
   });
 });
@@ -119,22 +125,24 @@ describe('layout 切替の収束(#940 案 A 段階1)', () => {
     expect((await v1Store(adapter).load('cv2'))!.entries[0]!.body).toBe('BODY-1');
   });
 
-  it('v1 split → flag ON の saveDiff は全件書込みで v4 へ移行する(__entry__ 掃除込み)', async () => {
+  it('v1 split → flag ON の saveDiff は全件書込みで v5 へ移行する(__entry__ 掃除込み)', async () => {
     const adapter = createMemoryAdapter();
     const c1 = makeContainer([entry('e1', 'One', 'BODY-1')]);
     await v1Store(adapter).saveDiff(c1, null);
     expect((await rawKeys(adapter, '__entry__:cv2:')).length).toBe(1); // v1 split の残骸元
-    await v2Store(adapter).saveDiff(c1, c1); // layout 不一致 → full write
-    expect(await rawGet(adapter, '__body__:cv2:e1')).toBe('BODY-1');
-    // v3: per-entry record は掃除され、meta は core に inline
+    const store5 = v2Store(adapter);
+    await store5.saveDiff(c1, c1); // layout 不一致 → full write
+    // v5: 本文は segments、per-entry / per-body record は掃除される
+    expect(await store5.loadBodies('cv2')).toEqual({ e1: 'BODY-1' });
+    expect(await rawKeys(adapter, '__body__:cv2:')).toEqual([]);
     expect(await rawKeys(adapter, '__entry__:cv2:')).toEqual([]);
     const core = await rawGet(adapter, 'cv2') as { __pkc_layout__?: number; entries: { body: string }[] };
-    expect(core.__pkc_layout__).toBe(4);
+    expect(core.__pkc_layout__).toBe(5);
     expect(core.entries[0]!.body).toBe('');
     expect((await v2Store(adapter).load('cv2'))!.entries[0]!.body).toBe('BODY-1');
   });
 
-  it('P2-1: 旧 v2 record(per-entry meta)は両読みでき、次の保存で v4 に収束する', async () => {
+  it('P2-1: 旧 v2 record(per-entry meta)は両読みでき、次の保存で v5 に収束する', async () => {
     const adapter = createMemoryAdapter();
     // 旧ビルドが書いた v2 形式を手組みで再現
     const bucket = adapter.bucket('containers');
@@ -160,7 +168,7 @@ describe('layout 切替の収束(#940 案 A 段階1)', () => {
     await store.saveDiff(loaded!, loaded!);
     expect(await rawKeys(adapter, '__entry__:cv2:')).toEqual([]);
     const core = await rawGet(adapter, 'cv2') as { __pkc_layout__?: number };
-    expect(core.__pkc_layout__).toBe(4);
+    expect(core.__pkc_layout__).toBe(5);
     expect((await store.load('cv2'))!.entries[0]!.body).toBe('BODY-1');
   });
 
@@ -230,5 +238,38 @@ describe('P2-2: revisions セグメントログ(layout 4)', () => {
     await store.saveDiff(c2, c1);
     const loaded = await store.load('cv2');
     expect(loaded!.revisions.map((r) => r.id)).toEqual(['r3']);
+  });
+});
+
+describe('P2-3: bodies セグメントログ(layout 5)固有契約', () => {
+  it('pending(未 hydrate)の本文は全件書込みでも storage の既存値が温存される', async () => {
+    const adapter = createMemoryAdapter();
+    const store = v2Store(adapter);
+    await store.saveDiff(makeContainer([entry('e1', 'One', 'REAL-BODY')]), null);
+    // 未 hydrate 状態(body='' + pending 判定 true)の store で全件書込み
+    const pendingStore = createContainerStore(adapter, {
+      lazyEntryBodies: () => true,
+      isBodyPending: () => true,
+    });
+    await pendingStore.saveDiff(makeContainer([entry('e1', 'One', '')]), null);
+    expect(await pendingStore.loadBodies('cv2')).toEqual({ e1: 'REAL-BODY' });
+  });
+
+  it('loadBodiesFor は必要な segment だけを読む(部分 hydrate)', async () => {
+    const adapter = createMemoryAdapter();
+    const store = v2Store(adapter);
+    // 大きい本文で複数 segment を作る
+    const big = 'x'.repeat(700 * 1024);
+    await store.saveDiff(makeContainer([entry('e1', 'A', big), entry('e2', 'B', big), entry('e3', 'C', 'small')]), null);
+    const segBucket = adapter.bucket('segments');
+    const segKeys = await segBucket.getKeysByPrefix('cv2:body:');
+    expect(segKeys.length).toBeGreaterThanOrEqual(2);
+    // e3 の segment 以外を SENTINEL で破壊 → e3 だけの部分読みは成功する
+    const core = await rawGet(adapter, 'cv2') as { __pkc_bodyseg__: Record<string, number> };
+    const e3seq = core.__pkc_bodyseg__['e3']!;
+    for (const k of segKeys) {
+      if (!k.endsWith(String(e3seq).padStart(6, '0'))) await segBucket.put(k, 'BROKEN');
+    }
+    expect(await store.loadBodiesFor('cv2', ['e3'])).toEqual({ e3: 'small' });
   });
 });

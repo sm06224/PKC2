@@ -241,6 +241,8 @@ interface SplitMarker {
 type StoredContainerRecord = Container & {
   __pkc_split__?: SplitMarker;
   __pkc_layout__?: number;
+  /** P2-3(layout 5): 本文の lid → segment seq 索引(部分 hydrate 用)。 */
+  __pkc_bodyseg__?: Record<string, number>;
 };
 
 // ── P1 slice 1(#967): base64 ⇄ Blob 変換 helper ──
@@ -278,6 +280,18 @@ function segRevPrefix(cid: string): string {
 }
 function segRevKey(cid: string, seq: number): string {
   return `${segRevPrefix(cid)}${String(seq).padStart(6, '0')}`;
+}
+
+// P2-3(#967): bodies プレーン。segment 値 = `Record<lid, body>` の
+// JSON(gzip)。索引(lid → seq)は core record の `__pkc_bodyseg__`。
+// **追記規約: 既存 lid は segment 間を移動しない**(active の in-place
+// 上書き or 新規 lid の追加のみ)— segment 書きと core(索引)書きは
+// 別 bucket で非原子のため、中断しても旧索引が指す位置に本文が残る。
+function segBodyPrefix(cid: string): string {
+  return `${cid}:body:`;
+}
+function segBodyKey(cid: string, seq: number): string {
+  return `${segBodyPrefix(cid)}${String(seq).padStart(6, '0')}`;
 }
 
 /** revisions を ~1MB(非圧縮 JSON)のチャンク列に詰める。 */
@@ -418,6 +432,153 @@ export function createContainerStore(
     await segments.applyBatch(ops);
   }
 
+  // ── P2-3(#967): bodies プレーン(layout 5)──
+
+  async function loadBodyPack(cid: string, seq: number): Promise<Record<string, string>> {
+    const json = await gunzipSegment(await segments.get(segBodyKey(cid, seq)));
+    if (!json) return {};
+    try {
+      const o = JSON.parse(json) as Record<string, string>;
+      return o && typeof o === 'object' ? o : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** 索引が指す segment 群から本文を読む(lids 指定で部分読み)。 */
+  async function loadBodySegmentsFor(
+    cid: string,
+    index: Record<string, number>,
+    lids?: readonly string[],
+  ): Promise<Record<string, string>> {
+    const wantedLids = lids ?? Object.keys(index);
+    const bySeq = new Map<number, string[]>();
+    for (const lid of wantedLids) {
+      const seq = index[lid];
+      if (typeof seq !== 'number') continue;
+      const list = bySeq.get(seq) ?? [];
+      list.push(lid);
+      bySeq.set(seq, list);
+    }
+    const out: Record<string, string> = {};
+    await Promise.all([...bySeq.entries()].map(async ([seq, seqLids]) => {
+      const pack = await loadBodyPack(cid, seq);
+      for (const lid of seqLids) {
+        const v = pack[lid];
+        if (typeof v === 'string') out[lid] = v;
+      }
+    }));
+    return out;
+  }
+
+  /** 全再構築: bodies を ~1MB パック列に詰め直し、索引を返す。 */
+  async function rebuildBodySegments(
+    cid: string,
+    bodies: Record<string, string>,
+  ): Promise<Record<string, number>> {
+    const index: Record<string, number> = {};
+    const ops: BatchOp[] = [];
+    let pack: Record<string, string> = {};
+    let packSize = 2;
+    let seq = 0;
+    const flush = async (): Promise<void> => {
+      if (Object.keys(pack).length === 0) return;
+      ops.push({ kind: 'put', key: segBodyKey(cid, seq), value: await gzipSegment(JSON.stringify(pack)) });
+      seq += 1;
+      pack = {};
+      packSize = 2;
+    };
+    for (const [lid, body] of Object.entries(bodies)) {
+      const s2 = lid.length + body.length + 8;
+      if (packSize > 2 && packSize + s2 > SEG_TARGET_BYTES) await flush();
+      pack[lid] = body;
+      packSize += s2;
+      index[lid] = seq;
+    }
+    await flush();
+    const live = new Set(ops.map((o) => o.key));
+    for (const k of await segments.getKeysByPrefix(segBodyPrefix(cid))) {
+      if (!live.has(k)) ops.push({ kind: 'delete', key: k });
+    }
+    await segments.applyBatch(ops);
+    return index;
+  }
+
+  /**
+   * 差分追記。**既存 lid は segment 間を移動しない**: active 内の lid は
+   * in-place 上書き、新規は active に収まる分だけ載せ、あふれた分は
+   * 新 segment へ。封印 segment は不変。deleted は索引から外すだけ
+   * (旧コピーは compaction まで残る)。新しい索引を返す。
+   */
+  async function appendBodySegments(
+    cid: string,
+    updates: Record<string, string>,
+    removedLids: readonly string[],
+    prevIndex: Record<string, number>,
+  ): Promise<Record<string, number>> {
+    const index: Record<string, number> = { ...prevIndex };
+    for (const lid of removedLids) delete index[lid];
+    const keys = [...(await segments.getKeysByPrefix(segBodyPrefix(cid)))].sort();
+    const activeSeq = keys.length > 0 ? keys.length - 1 : 0;
+    const active = keys.length > 0 ? await loadBodyPack(cid, activeSeq) : {};
+    let activeSize = 2;
+    for (const [lid, b] of Object.entries(active)) activeSize += lid.length + b.length + 8;
+    const overflow: Array<[string, string]> = [];
+    let activeChanged = false;
+    for (const [lid, body] of Object.entries(updates)) {
+      const s2 = lid.length + body.length + 8;
+      if (lid in active) {
+        activeSize += body.length - active[lid]!.length;
+        active[lid] = body;
+        index[lid] = activeSeq;
+        activeChanged = true;
+      } else if (index[lid] !== undefined && index[lid] !== activeSeq) {
+        // 封印 segment 内の既存 lid の更新: 移動させず新コピーを
+        // active / 新 segment 側に積み、索引を付け替える(旧コピーは
+        // ゴミとして残り compaction で回収)。
+        if (activeSize + s2 <= SEG_TARGET_BYTES) {
+          active[lid] = body;
+          activeSize += s2;
+          index[lid] = activeSeq;
+          activeChanged = true;
+        } else {
+          overflow.push([lid, body]);
+        }
+      } else if (activeSize + s2 <= SEG_TARGET_BYTES) {
+        active[lid] = body;
+        activeSize += s2;
+        index[lid] = activeSeq;
+        activeChanged = true;
+      } else {
+        overflow.push([lid, body]);
+      }
+    }
+    const ops: BatchOp[] = [];
+    if (activeChanged || keys.length === 0) {
+      ops.push({ kind: 'put', key: segBodyKey(cid, activeSeq), value: await gzipSegment(JSON.stringify(active)) });
+    }
+    let seq = activeSeq + 1;
+    let pack: Record<string, string> = {};
+    let packSize = 2;
+    for (const [lid, body] of overflow) {
+      const s2 = lid.length + body.length + 8;
+      if (packSize > 2 && packSize + s2 > SEG_TARGET_BYTES) {
+        ops.push({ kind: 'put', key: segBodyKey(cid, seq), value: await gzipSegment(JSON.stringify(pack)) });
+        seq += 1;
+        pack = {};
+        packSize = 2;
+      }
+      pack[lid] = body;
+      packSize += s2;
+      index[lid] = seq;
+    }
+    if (Object.keys(pack).length > 0) {
+      ops.push({ kind: 'put', key: segBodyKey(cid, seq), value: await gzipSegment(JSON.stringify(pack)) });
+    }
+    if (ops.length > 0) await segments.applyBatch(ops);
+    return index;
+  }
+
   async function loadRevSegments(cid: string): Promise<Revision[]> {
     const pairs = [...(await segments.getAllByPrefix(segRevPrefix(cid)))]
       .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
@@ -543,7 +704,8 @@ export function createContainerStore(
     // (小 record 1 get / 保存 ── 差分保存の節約に対して無視できる)。
     const rec = (await containers.get(cid)) as StoredContainerRecord | undefined;
     const isSplit = rec?.__pkc_split__ !== undefined;
-    const layout = rec?.__pkc_layout__ === 4 ? 4 : rec?.__pkc_layout__ === 3 ? 3 : rec?.__pkc_layout__ === 2 ? 2 : 1;
+    const l = rec?.__pkc_layout__;
+    const layout = l === 5 ? 5 : l === 4 ? 4 : l === 3 ? 3 : l === 2 ? 2 : 1;
     // #940 案 A 段階1: v2 = meta(body 空)+ __body__ record 分離。
     // P2-1(#967、storage v3): v3 = **meta 単一小レコード** — body なし
     // entries を core record に inline で持ち、per-entry record を廃止。
@@ -557,7 +719,9 @@ export function createContainerStore(
     // を作るため、必ず全件書込みで切り替える。
     const wantSplitBodies = lazyBodies();
     // P2-2: v4 = v3 + revisions を segments bucket の gzip パックへ。
-    const targetLayout = wantSplitBodies ? 4 : 1;
+    // P2-3: v5 = v4 + bodies も segments へ(__body__ per-record 廃止、
+    // 索引 __pkc_bodyseg__ で部分 hydrate を維持)。
+    const targetLayout = wantSplitBodies ? 5 : 1;
     const base = isSplit && layout === targetLayout
       && previous && previous.meta.container_id === cid ? previous : null;
 
@@ -570,29 +734,48 @@ export function createContainerStore(
         ops.push({ kind: 'put', key: splitEntryKey(cid, e.lid), value: e });
       }
     };
+    // P2-3: v5 の本文索引(core record に載せる)。
+    let bodySegIndex: Record<string, number> | undefined;
     if (base) {
       // 参照比較の差分:reducer は immutable update(未変更 entry /
       // revision はオブジェクト参照を保つ)なので、参照が変わったものが
       // 変更点。参照が全部変わる最悪ケースでも全件書込みに退化するだけ
       // (正しさは変わらない)。
       const prevEntries = new Map(base.entries.map((e) => [e.lid, e]));
+      const bodyUpdates: Record<string, string> = {};
       for (const e of container.entries) {
         const prev = prevEntries.get(e.lid);
         if (prev !== e) {
           entryPut(e);
-          // v2/v3: body は変わった時だけ書く(title 等 meta だけの変更で
-          // 本文を再書込しない)。新規 entry(prev 無し)は必ず書く。
+          // v5: body は変わった時だけ segment へ追記(title 等 meta だけの
+          // 変更で本文を再書込しない)。新規 entry(prev 無し)は必ず書く。
           // 段階3: 未 hydrate entry の '' を書かない(防御の二重化)。
           if (wantSplitBodies && (!prev || prev.body !== e.body)
               && !bodyPending(cid, e.lid)) {
-            ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
+            bodyUpdates[e.lid] = e.body;
           }
         }
         prevEntries.delete(e.lid);
       }
-      for (const lid of prevEntries.keys()) {
-        if (!wantSplitBodies) deletes.push({ kind: 'delete', key: splitEntryKey(cid, lid) });
-        if (wantSplitBodies) deletes.push({ kind: 'delete', key: bodyKey(cid, lid) });
+      const removedLids = [...prevEntries.keys()];
+      if (!wantSplitBodies) {
+        for (const lid of removedLids) deletes.push({ kind: 'delete', key: splitEntryKey(cid, lid) });
+      }
+      if (wantSplitBodies) {
+        const prevIndex = rec?.__pkc_bodyseg__ ?? {};
+        // compaction: ゴミ(索引が参照しない segment 過多)なら全再構築。
+        const segKeys = await segments.getKeysByPrefix(segBodyPrefix(cid));
+        const referenced = new Set(Object.values(prevIndex)).size;
+        if (segKeys.length > referenced * 2 + 4) {
+          const stored = await loadBodySegmentsFor(cid, prevIndex);
+          const bodies: Record<string, string> = {};
+          for (const e of container.entries) {
+            bodies[e.lid] = bodyPending(cid, e.lid) ? (stored[e.lid] ?? '') : e.body;
+          }
+          bodySegIndex = await rebuildBodySegments(cid, bodies);
+        } else {
+          bodySegIndex = await appendBodySegments(cid, bodyUpdates, removedLids, prevIndex);
+        }
       }
       if (wantSplitBodies) {
         // v4: revision は immutable snapshot — 追加は active segment へ
@@ -619,13 +802,24 @@ export function createContainerStore(
       // メモリ上で常に完全な集合なので diff-delete は安全(段階2 の
       // additive-only 制約は assets 固有)。layout 切替(v1↔v2)も必ず
       // この経路を通り、非対象 layout の残骸 key も併せて掃除される。
-      for (const e of container.entries) {
-        entryPut(e);
-        if (wantSplitBodies) {
-          // 段階3: 未 hydrate の entry は body を書かない(既存 record 温存)。
-          if (bodyPending(cid, e.lid)) continue;
-          ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
+      for (const e of container.entries) entryPut(e);
+      if (wantSplitBodies) {
+        // v5 全再構築。pending(未 hydrate)の本文は storage の既存値を
+        // 温存する — 旧 layout(v2/v3/v4 の __body__ record)からの移行も
+        // ここで読み取って引き継ぐ。
+        const stored: Record<string, string> = {};
+        if (layout === 5 && rec?.__pkc_bodyseg__) {
+          Object.assign(stored, await loadBodySegmentsFor(cid, rec.__pkc_bodyseg__));
+        } else {
+          for (const { key, value } of await containers.getAllByPrefix(bodyPrefix(cid))) {
+            if (typeof value === 'string') stored[key.slice(bodyPrefix(cid).length)] = value;
+          }
         }
+        const bodies: Record<string, string> = {};
+        for (const e of container.entries) {
+          bodies[e.lid] = bodyPending(cid, e.lid) ? (stored[e.lid] ?? '') : e.body;
+        }
+        bodySegIndex = await rebuildBodySegments(cid, bodies);
       }
       if (wantSplitBodies) {
         // v4: revisions は segments へ全再構築(__rev__ record は live に
@@ -635,12 +829,8 @@ export function createContainerStore(
         for (const r of container.revisions) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
       }
       const live = new Set(ops.map((o) => o.key));
-      // 段階3: pending entry の既存 body record は stale 扱いしない。
-      if (wantSplitBodies) {
-        for (const e of container.entries) {
-          if (bodyPending(cid, e.lid)) live.add(bodyKey(cid, e.lid));
-        }
-      }
+      // v5: 本文は segments 側に再構築済み — __body__ record は live に
+      // 載らないため下の掃除で全て消える(旧 layout からの自動移行)。
       for (const k of await containers.getKeysByPrefix(splitEntryPrefix(cid))) {
         if (!live.has(k)) deletes.push({ kind: 'delete', key: k });
       }
@@ -667,7 +857,7 @@ export function createContainerStore(
       revisions: [],
       assets: {},
       __pkc_split__: marker,
-      ...(wantSplitBodies ? { __pkc_layout__: 4 } : {}),
+      ...(wantSplitBodies ? { __pkc_layout__: 5, __pkc_bodyseg__: bodySegIndex ?? {} } : {}),
     };
     // 1 バッチ(IDB では単一 tx = 原子的)。順序は puts → core → deletes:
     // FS 系 backend の逐次 best-effort でどこで中断しても、次回の保存
@@ -698,22 +888,27 @@ export function createContainerStore(
     // P2-1(#967): v3 = entries が core record に inline(body なし)。
     // per-entry record を読まない — rev 1 range scan(+ 必要なら body
     // 1 range scan)だけで復元できる。
-    if (record.__pkc_layout__ === 3 || record.__pkc_layout__ === 4) {
+    if (record.__pkc_layout__ === 3 || record.__pkc_layout__ === 4 || record.__pkc_layout__ === 5) {
       const lay = record.__pkc_layout__;
       layoutState.set(cid, lay);
-      // v3: revisions は __rev__ record。v4: segments bucket の gzip パック。
-      const [revPairs3, bodyPairs3] = await Promise.all([
-        lay === 4
+      // v3: revisions は __rev__ record。v4/v5: segments の gzip パック。
+      // 本文は v3/v4 = __body__ record、v5 = segments(索引参照)。
+      const [revPairs3, bodyPairs3, segBodies] = await Promise.all([
+        lay >= 4
           ? Promise.resolve([] as Array<{ key: string; value: unknown }>)
           : containers.getAllByPrefix(splitRevPrefix(cid)),
-        opts2?.skipBodies
+        opts2?.skipBodies || lay === 5
           ? Promise.resolve([] as Array<{ key: string; value: unknown }>)
           : containers.getAllByPrefix(bodyPrefix(cid)),
+        !opts2?.skipBodies && lay === 5
+          ? loadBodySegmentsFor(cid, record.__pkc_bodyseg__ ?? {})
+          : Promise.resolve({} as Record<string, string>),
       ]);
       const bodyByLid3 = new Map<string, string>();
       for (const { key, value } of bodyPairs3) {
         if (typeof value === 'string') bodyByLid3.set(key.slice(bodyPrefix(cid).length), value);
       }
+      for (const [lid, body] of Object.entries(segBodies)) bodyByLid3.set(lid, body);
       const entries3 = opts2?.skipBodies
         ? record.entries
         : record.entries.map((e) => {
@@ -721,7 +916,7 @@ export function createContainerStore(
           return body === undefined || body === e.body ? e : { ...e, body };
         });
       const revById3 = new Map<string, Revision>();
-      if (lay === 4) {
+      if (lay >= 4) {
         for (const r of await loadRevSegments(cid)) revById3.set(r.id, r);
       } else {
         for (const { key, value } of revPairs3) {
@@ -737,7 +932,7 @@ export function createContainerStore(
         }
       }
       for (const r of revById3.values()) revisions3.push(r);
-      const { __pkc_split__: _m3, __pkc_layout__: _l3, ...rest3 } = record;
+      const { __pkc_split__: _m3, __pkc_layout__: _l3, __pkc_bodyseg__: _b3, ...rest3 } = record;
       return { ...rest3, entries: entries3, revisions: revisions3, assets: {} };
     }
     const isV2 = record.__pkc_layout__ === 2;
@@ -852,15 +1047,28 @@ export function createContainerStore(
     if (!record) return { container: null, bodiesDeferred: false };
     const rec = record as StoredContainerRecord;
     // v2 / v3 とも本文は `__body__:` 分離 — meta-first boot が成立する。
-    const bodiesSplit = rec.__pkc_layout__ === 2 || rec.__pkc_layout__ === 3 || rec.__pkc_layout__ === 4;
+    const bodiesSplit = rec.__pkc_layout__ !== undefined && rec.__pkc_layout__ >= 2;
     const assembled = await reassembleSplit(defaultId, rec, { skipBodies: true });
     return { container: { ...assembled, assets: {} }, bodiesDeferred: bodiesSplit };
+  }
+
+  // P2-3: v5 は本文が segments 側。core の索引を見て経路を選ぶ
+  // (旧 layout の __body__ record は従来経路 — 両読み)。
+  async function bodySegIndexOf(containerId: string): Promise<Record<string, number> | null> {
+    const rec = (await containers.get(containerId)) as StoredContainerRecord | undefined;
+    if (rec?.__pkc_layout__ === 5) return rec.__pkc_bodyseg__ ?? {};
+    return null;
   }
 
   async function loadBodiesFor(
     containerId: string,
     lids: readonly string[],
   ): Promise<Record<string, string>> {
+    const index = await bodySegIndexOf(containerId);
+    if (index) {
+      // 部分 hydrate: 必要な lid が入っている segment だけを読む
+      return loadBodySegmentsFor(containerId, index, lids);
+    }
     const out: Record<string, string> = {};
     await Promise.all(lids.map(async (lid) => {
       const v = await containers.get(bodyKey(containerId, lid));
@@ -870,6 +1078,8 @@ export function createContainerStore(
   }
 
   async function loadBodies(containerId: string): Promise<Record<string, string>> {
+    const index = await bodySegIndexOf(containerId);
+    if (index) return loadBodySegmentsFor(containerId, index);
     const pairs = await containers.getAllByPrefix(bodyPrefix(containerId));
     const out: Record<string, string> = {};
     for (const { key, value } of pairs) {
@@ -888,8 +1098,11 @@ export function createContainerStore(
       ...(await containers.getKeysByPrefix(splitRevPrefix(containerId))),
       ...(await containers.getKeysByPrefix(bodyPrefix(containerId))),
     ];
-    // P2-2: v4 の revision segments も一緒に消す
-    const segKeys = await segments.getKeysByPrefix(segRevPrefix(containerId));
+    // P2-2/P2-3: v4/v5 の revision / body segments も一緒に消す
+    const segKeys = [
+      ...(await segments.getKeysByPrefix(segRevPrefix(containerId))),
+      ...(await segments.getKeysByPrefix(segBodyPrefix(containerId))),
+    ];
     if (segKeys.length > 0) {
       await segments.applyBatch(segKeys.map((key) => ({ kind: 'delete', key })));
     }
