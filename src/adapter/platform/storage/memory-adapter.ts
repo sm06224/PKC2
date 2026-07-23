@@ -19,6 +19,7 @@ export function createMemoryAdapter(): StorageAdapter {
   const buckets = new Map<BucketName, Map<string, unknown>>([
     ['containers', new Map()],
     ['assets', new Map()],
+    ['segments', new Map()],
   ]);
 
   // P1 slice 1(#967): Blob は immutable なので参照共有で安全。Node の

@@ -98,11 +98,14 @@ export type BatchOp =
  * Bucket names are stable strings agreed across implementations:
  *   - 'containers' — Container records (without assets)
  *   - 'assets'     — Per-asset blobs, key = `${cid}:${assetKey}`
+ *   - 'segments'   — Segment-log packs (P2-2 #967), key =
+ *                    `${cid}:rev:${seq}`. Values are gzip Blob (or raw
+ *                    JSON string where CompressionStream is absent).
  *
  * Adding a new bucket requires changes in every adapter impl + a
  * data-migration plan for IDB (object-store creation in upgradeneeded).
  */
-export type BucketName = 'containers' | 'assets';
+export type BucketName = 'containers' | 'assets' | 'segments';
 
 export interface StorageAdapter {
   bucket(name: BucketName): StorageBucket;

@@ -22,11 +22,12 @@ import type {
  */
 
 const DB_NAME = 'pkc2';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const STORE_NAMES: Record<BucketName, string> = {
   containers: 'containers',
   assets: 'assets',
+  segments: 'segments',
 };
 
 function openDB(): Promise<IDBDatabase> {
@@ -81,6 +82,14 @@ function openDB(): Promise<IDBDatabase> {
             }
             cursor.continue();
           };
+        }
+      }
+
+      // v2 → v3(P2-2 #967): segment-log packs 用 store。データ移動は
+      // 無し(revisions の segment 化は idb-store の保存経路が行う)。
+      if (oldVersion < 3) {
+        if (!db.objectStoreNames.contains(STORE_NAMES.segments)) {
+          db.createObjectStore(STORE_NAMES.segments);
         }
       }
     };

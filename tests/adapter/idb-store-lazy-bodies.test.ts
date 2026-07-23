@@ -50,7 +50,7 @@ describe('layout v2 書込(#940 案 A 段階1)', () => {
       __pkc_layout__?: number;
       entries: { lid: string; title: string; body: string }[];
     };
-    expect(core.__pkc_layout__).toBe(3);
+    expect(core.__pkc_layout__).toBe(4);
     expect(core.entries).toHaveLength(1);
     expect(core.entries[0]!.title).toBe('One');
     expect(core.entries[0]!.body).toBe(''); // 本文は core に置かない
@@ -119,7 +119,7 @@ describe('layout 切替の収束(#940 案 A 段階1)', () => {
     expect((await v1Store(adapter).load('cv2'))!.entries[0]!.body).toBe('BODY-1');
   });
 
-  it('v1 split → flag ON の saveDiff は全件書込みで v3 へ移行する(__entry__ 掃除込み)', async () => {
+  it('v1 split → flag ON の saveDiff は全件書込みで v4 へ移行する(__entry__ 掃除込み)', async () => {
     const adapter = createMemoryAdapter();
     const c1 = makeContainer([entry('e1', 'One', 'BODY-1')]);
     await v1Store(adapter).saveDiff(c1, null);
@@ -129,12 +129,12 @@ describe('layout 切替の収束(#940 案 A 段階1)', () => {
     // v3: per-entry record は掃除され、meta は core に inline
     expect(await rawKeys(adapter, '__entry__:cv2:')).toEqual([]);
     const core = await rawGet(adapter, 'cv2') as { __pkc_layout__?: number; entries: { body: string }[] };
-    expect(core.__pkc_layout__).toBe(3);
+    expect(core.__pkc_layout__).toBe(4);
     expect(core.entries[0]!.body).toBe('');
     expect((await v2Store(adapter).load('cv2'))!.entries[0]!.body).toBe('BODY-1');
   });
 
-  it('P2-1: 旧 v2 record(per-entry meta)は両読みでき、次の保存で v3 に収束する', async () => {
+  it('P2-1: 旧 v2 record(per-entry meta)は両読みでき、次の保存で v4 に収束する', async () => {
     const adapter = createMemoryAdapter();
     // 旧ビルドが書いた v2 形式を手組みで再現
     const bucket = adapter.bucket('containers');
@@ -160,7 +160,7 @@ describe('layout 切替の収束(#940 案 A 段階1)', () => {
     await store.saveDiff(loaded!, loaded!);
     expect(await rawKeys(adapter, '__entry__:cv2:')).toEqual([]);
     const core = await rawGet(adapter, 'cv2') as { __pkc_layout__?: number };
-    expect(core.__pkc_layout__).toBe(3);
+    expect(core.__pkc_layout__).toBe(4);
     expect((await store.load('cv2'))!.entries[0]!.body).toBe('BODY-1');
   });
 
@@ -182,5 +182,53 @@ describe('layout 切替の収束(#940 案 A 段階1)', () => {
     await store.delete('cv2');
     expect(await rawKeys(adapter, '__body__:cv2:')).toEqual([]);
     expect(await rawKeys(adapter, '__entry__:cv2:')).toEqual([]);
+  });
+});
+
+describe('P2-2: revisions セグメントログ(layout 4)', () => {
+  const rev = (id: string, snap: string) =>
+    ({ id, entry_lid: 'e1', snapshot: snap, created_at: T }) as unknown as import('@core/model/container').Revision;
+
+  it('revisions は __rev__ ではなく segments に入り、round-trip で順序復元される', async () => {
+    const adapter = createMemoryAdapter();
+    const store = v2Store(adapter);
+    const c = { ...makeContainer([entry('e1', 'One', 'B')]), revisions: [rev('r1', 's1'), rev('r2', 's2')] };
+    await store.saveDiff(c, null);
+    expect(await rawKeys(adapter, '__rev__:cv2:')).toEqual([]);
+    expect((await adapter.bucket('segments').getKeysByPrefix('cv2:rev:')).length).toBeGreaterThan(0);
+    const loaded = await store.load('cv2');
+    expect(loaded!.revisions.map((r) => r.id)).toEqual(['r1', 'r2']);
+  });
+
+  it('差分追記は active segment だけを書き直す(封印分は不変)', async () => {
+    const adapter = createMemoryAdapter();
+    const store = v2Store(adapter);
+    // 大きい snapshot で複数 segment を作る(~0.6MB × 3 = seal 2 + active 1)
+    const big = 'x'.repeat(600 * 1024);
+    const c1 = { ...makeContainer([entry('e1', 'One', 'B')]), revisions: [rev('r1', big), rev('r2', big), rev('r3', big)] };
+    await store.saveDiff(c1, null);
+    const segBucket = adapter.bucket('segments');
+    const keysBefore = [...(await segBucket.getKeysByPrefix('cv2:rev:'))].sort();
+    expect(keysBefore.length).toBeGreaterThanOrEqual(2);
+    // 封印(先頭)segment を SENTINEL 化して「触られていない」ことを観測
+    const sealed = keysBefore[0]!;
+    const sealedValue = await segBucket.get(sealed);
+    const c2 = { ...c1, revisions: [...c1.revisions, rev('r4', 'small')] };
+    await store.saveDiff(c2, c1);
+    expect(await segBucket.get(sealed)).toBe(sealedValue); // 参照同一 = 再書込なし
+    const loaded = await store.load('cv2');
+    expect(loaded!.revisions.map((r) => r.id)).toEqual(['r1', 'r2', 'r3', 'r4']);
+  });
+
+  it('revision の削除(prune)は全再構築で stale segment も消える', async () => {
+    const adapter = createMemoryAdapter();
+    const store = v2Store(adapter);
+    const big = 'x'.repeat(600 * 1024);
+    const c1 = { ...makeContainer([entry('e1', 'One', 'B')]), revisions: [rev('r1', big), rev('r2', big), rev('r3', big)] };
+    await store.saveDiff(c1, null);
+    const c2 = { ...c1, revisions: [c1.revisions[2]!] }; // r1, r2 prune
+    await store.saveDiff(c2, c1);
+    const loaded = await store.load('cv2');
+    expect(loaded!.revisions.map((r) => r.id)).toEqual(['r3']);
   });
 });
