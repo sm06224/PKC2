@@ -65,7 +65,7 @@ PKC2 の内部設計や実装について知りたい開発者の方は、`docs/
 | 04 | エントリの種類 | text / textlog / todo / form / attachment / folder（TODO 埋め込み含む） |
 | 05 | 日常操作 | 作成・編集・削除・復元・タグ・関連付け・リビジョン・複数選択・DnD・コンテキストメニュー(表のコピー / エクスポート含む)・別ウィンドウ・TEXT↔TEXTLOG 変換・一括読み込み・WCAG 自動コントラスト補正・構成コマンド(AI 整理プラン)・HTML 貼付の Markdown 復元・録音 / 画面収録とマルチメディア埋め込み |
 | 06 | キーボードショートカット | 基本・編集・ペイン切替・サイドバー矢印移動・Calendar/Kanban 内移動 |
-| 07 | 保存と持ち出し | IndexedDB と Export の概要・ZIP import 警告・ストレージ 3 モードの使い分け(IndexedDB / OPFS / Local folder)・差分保存(opt-in) |
+| 07 | 保存と持ち出し | **保存の全体像の図解**(保存先 3 種 × 使えない環境のフォールバック × 保存形式)・Export の概要・ZIP import 警告・ストレージ 3 モードの使い分け(IndexedDB / OPFS / Local folder)・差分保存 / 高速起動形式(いずれも opt-in)・保存領域が使えない環境の案内ダイアログ・UI 設定の持ち出し(Settings File) |
 | 08 | 運用ガイド | Export / Import / Rehydrate の詳細と典型シナリオ |
 | 09 | トラブルシューティングと用語集 | 困ったときの対処と用語辞書 |
 | 10 | ファイラ / グラフ拡張 / インベントリ | filer view subset(explorer / contact-sheet / book-base / video-base / novel-base / inventory)+ **グラフ拡張**(別ウィンドウの PKC-Extension、4 view × 5 色分け軸 + ミニマップ + 双方向選択同期)+ frontmatter Properties + 画像 PiP プレビュー + bookmarklet 取込 + サイドバー filer モード |
