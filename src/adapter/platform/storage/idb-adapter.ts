@@ -94,7 +94,21 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
 
-    req.onsuccess = () => resolve(req.result);
+    // P2-4(#967、doc A.8): DB version 2→3 の open は旧接続を持つタブが
+    // いる限り blocked になる。旧タブ側は onversionchange で接続を閉じて
+    // 新タブの upgrade を通す(閉じた後の旧タブの保存は失敗し、既存の
+    // save-failure バナーが reload を促す)。blocked 側は warn を残す
+    // (open は旧タブの close 後に自動継続する)。
+    req.onblocked = () => {
+      console.warn('[PKC2] IndexedDB upgrade blocked — 他のタブを閉じるかリロードしてください');
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        try { db.close(); } catch { /* noop */ }
+      };
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
   });
 }
