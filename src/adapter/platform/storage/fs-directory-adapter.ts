@@ -54,6 +54,9 @@ export interface FsDirectoryHandle {
 const BUCKET_DIRS: Record<BucketName, string> = {
   containers: 'containers',
   assets: 'assets',
+  // P2-2(#967): FS 系は slowPerRecordIO で saveDiff を迂回するため
+  // segments は実質未使用だが、bucket contract の完全性のため用意する。
+  segments: 'segments',
 };
 
 /** `NotFoundError` is the FS-API signal for a missing file/dir. */

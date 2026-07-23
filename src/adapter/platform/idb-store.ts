@@ -266,6 +266,62 @@ export async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(pieces.join(''));
 }
 
+// ── P2-2(#967): revisions セグメントログ(layout 4)helpers ──
+// segments bucket: key = `${cid}:rev:${seq 6桁}`、値 = gzip Blob
+// (CompressionStream が無い環境では素の JSON 文字列 — 読みは両対応)。
+// パックは ~1MB(非圧縮)。末尾(active)だけ書き足し、封印分は不変。
+
+const SEG_TARGET_BYTES = 1024 * 1024;
+
+function segRevPrefix(cid: string): string {
+  return `${cid}:rev:`;
+}
+function segRevKey(cid: string, seq: number): string {
+  return `${segRevPrefix(cid)}${String(seq).padStart(6, '0')}`;
+}
+
+/** revisions を ~1MB(非圧縮 JSON)のチャンク列に詰める。 */
+export function chunkRevisionsForSegments(revs: readonly Revision[]): string[] {
+  const chunks: string[] = [];
+  let cur: Revision[] = [];
+  let curSize = 2;
+  for (const r of revs) {
+    const s = JSON.stringify(r).length;
+    if (cur.length > 0 && curSize + s > SEG_TARGET_BYTES) {
+      chunks.push(JSON.stringify(cur));
+      cur = [];
+      curSize = 2;
+    }
+    cur.push(r);
+    curSize += s + 1;
+  }
+  if (cur.length > 0) chunks.push(JSON.stringify(cur));
+  return chunks;
+}
+
+async function gzipSegment(json: string): Promise<Blob | string> {
+  if (typeof CompressionStream === 'undefined') return json;
+  try {
+    const stream = new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'));
+    return await new Response(stream).blob();
+  } catch {
+    return json;
+  }
+}
+
+async function gunzipSegment(value: unknown): Promise<string | null> {
+  if (typeof value === 'string') return value;
+  if (value instanceof Blob) {
+    try {
+      const stream = value.stream().pipeThrough(new DecompressionStream('gzip'));
+      return await new Response(stream).text();
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function assetFullKey(cid: string, assetKey: string): string {
   return `${cid}:${assetKey}`;
 }
@@ -318,6 +374,63 @@ export function createContainerStore(
 ): ContainerStore {
   const containers = adapter.bucket('containers');
   const assets = adapter.bucket('assets');
+  const segments = adapter.bucket('segments');
+
+  // P2-2(#967): revisions セグメントの再構築(全件)/ 末尾追記。
+  // segments は containers と別 bucket のため別 batch(非原子)だが、
+  // 正本は core record の marker.revOrder — 中断で余った stray rev は
+  // 読み側で末尾に付き、次回保存で収束する(v1 split と同じ設計)。
+  async function rebuildRevSegments(cid: string, revs: readonly Revision[]): Promise<void> {
+    const chunks = chunkRevisionsForSegments(revs);
+    const ops: BatchOp[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      ops.push({ kind: 'put', key: segRevKey(cid, i), value: await gzipSegment(chunks[i]!) });
+    }
+    const live = new Set(ops.map((o) => o.key));
+    for (const k of await segments.getKeysByPrefix(segRevPrefix(cid))) {
+      if (!live.has(k)) ops.push({ kind: 'delete', key: k });
+    }
+    await segments.applyBatch(ops);
+  }
+
+  async function appendRevSegments(cid: string, added: readonly Revision[]): Promise<void> {
+    const keys = [...(await segments.getKeysByPrefix(segRevPrefix(cid)))].sort();
+    let baseSeq = keys.length;
+    let tail: Revision[] = [];
+    if (keys.length > 0) {
+      // active(最終)segment を読み戻して合流 — 封印分は触らない
+      const lastKey = keys[keys.length - 1]!;
+      const json = await gunzipSegment(await segments.get(lastKey));
+      if (json) {
+        try {
+          tail = JSON.parse(json) as Revision[];
+          baseSeq = keys.length - 1;
+        } catch { /* 壊れた active は作り直し */ }
+      } else {
+        baseSeq = keys.length - 1;
+      }
+    }
+    const chunks = chunkRevisionsForSegments([...tail, ...added]);
+    const ops: BatchOp[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      ops.push({ kind: 'put', key: segRevKey(cid, baseSeq + i), value: await gzipSegment(chunks[i]!) });
+    }
+    await segments.applyBatch(ops);
+  }
+
+  async function loadRevSegments(cid: string): Promise<Revision[]> {
+    const pairs = [...(await segments.getAllByPrefix(segRevPrefix(cid)))]
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    const out: Revision[] = [];
+    for (const { value } of pairs) {
+      const json = await gunzipSegment(value);
+      if (!json) continue;
+      try {
+        out.push(...(JSON.parse(json) as Revision[]));
+      } catch { /* 壊れた segment は skip(revOrder に無い分は欠落) */ }
+    }
+    return out;
+  }
 
   // cid → storage 上の形式(true = split / false = inline)の
   // セッション内 memo。undefined の cid は初回アクセス時に record の
@@ -430,7 +543,7 @@ export function createContainerStore(
     // (小 record 1 get / 保存 ── 差分保存の節約に対して無視できる)。
     const rec = (await containers.get(cid)) as StoredContainerRecord | undefined;
     const isSplit = rec?.__pkc_split__ !== undefined;
-    const layout = rec?.__pkc_layout__ === 3 ? 3 : rec?.__pkc_layout__ === 2 ? 2 : 1;
+    const layout = rec?.__pkc_layout__ === 4 ? 4 : rec?.__pkc_layout__ === 3 ? 3 : rec?.__pkc_layout__ === 2 ? 2 : 1;
     // #940 案 A 段階1: v2 = meta(body 空)+ __body__ record 分離。
     // P2-1(#967、storage v3): v3 = **meta 単一小レコード** — body なし
     // entries を core record に inline で持ち、per-entry record を廃止。
@@ -443,7 +556,8 @@ export function createContainerStore(
     // ── layout をまたぐ差分は混在 state(body の無い meta が正に見える)
     // を作るため、必ず全件書込みで切り替える。
     const wantSplitBodies = lazyBodies();
-    const targetLayout = wantSplitBodies ? 3 : 1;
+    // P2-2: v4 = v3 + revisions を segments bucket の gzip パックへ。
+    const targetLayout = wantSplitBodies ? 4 : 1;
     const base = isSplit && layout === targetLayout
       && previous && previous.meta.container_id === cid ? previous : null;
 
@@ -480,12 +594,26 @@ export function createContainerStore(
         if (!wantSplitBodies) deletes.push({ kind: 'delete', key: splitEntryKey(cid, lid) });
         if (wantSplitBodies) deletes.push({ kind: 'delete', key: bodyKey(cid, lid) });
       }
-      const prevRevs = new Map(base.revisions.map((r) => [r.id, r]));
-      for (const r of container.revisions) {
-        if (prevRevs.get(r.id) !== r) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
-        prevRevs.delete(r.id);
+      if (wantSplitBodies) {
+        // v4: revision は immutable snapshot — 追加は active segment へ
+        // 追記、削除(prune)は全再構築。同 id の参照差し替えは snapshot
+        // 不変の前提で無視する。
+        const prevRevIds = new Set(base.revisions.map((r) => r.id));
+        const addedRevs: Revision[] = [];
+        for (const r of container.revisions) {
+          if (!prevRevIds.has(r.id)) addedRevs.push(r);
+          prevRevIds.delete(r.id);
+        }
+        if (prevRevIds.size > 0) await rebuildRevSegments(cid, container.revisions);
+        else if (addedRevs.length > 0) await appendRevSegments(cid, addedRevs);
+      } else {
+        const prevRevs = new Map(base.revisions.map((r) => [r.id, r]));
+        for (const r of container.revisions) {
+          if (prevRevs.get(r.id) !== r) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
+          prevRevs.delete(r.id);
+        }
+        for (const id of prevRevs.keys()) deletes.push({ kind: 'delete', key: splitRevKey(cid, id) });
       }
-      for (const id of prevRevs.keys()) deletes.push({ kind: 'delete', key: splitRevKey(cid, id) });
     } else {
       // 全件書込み + stale key 掃除。assets と違い entries / revisions は
       // メモリ上で常に完全な集合なので diff-delete は安全(段階2 の
@@ -499,7 +627,13 @@ export function createContainerStore(
           ops.push({ kind: 'put', key: bodyKey(cid, e.lid), value: e.body });
         }
       }
-      for (const r of container.revisions) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
+      if (wantSplitBodies) {
+        // v4: revisions は segments へ全再構築(__rev__ record は live に
+        // 載らないため下の stale 掃除で消える = v1/v3 からの自動移行)。
+        await rebuildRevSegments(cid, container.revisions);
+      } else {
+        for (const r of container.revisions) ops.push({ kind: 'put', key: splitRevKey(cid, r.id), value: r });
+      }
       const live = new Set(ops.map((o) => o.key));
       // 段階3: pending entry の既存 body record は stale 扱いしない。
       if (wantSplitBodies) {
@@ -533,7 +667,7 @@ export function createContainerStore(
       revisions: [],
       assets: {},
       __pkc_split__: marker,
-      ...(wantSplitBodies ? { __pkc_layout__: 3 } : {}),
+      ...(wantSplitBodies ? { __pkc_layout__: 4 } : {}),
     };
     // 1 バッチ(IDB では単一 tx = 原子的)。順序は puts → core → deletes:
     // FS 系 backend の逐次 best-effort でどこで中断しても、次回の保存
@@ -564,10 +698,14 @@ export function createContainerStore(
     // P2-1(#967): v3 = entries が core record に inline(body なし)。
     // per-entry record を読まない — rev 1 range scan(+ 必要なら body
     // 1 range scan)だけで復元できる。
-    if (record.__pkc_layout__ === 3) {
-      layoutState.set(cid, 3);
+    if (record.__pkc_layout__ === 3 || record.__pkc_layout__ === 4) {
+      const lay = record.__pkc_layout__;
+      layoutState.set(cid, lay);
+      // v3: revisions は __rev__ record。v4: segments bucket の gzip パック。
       const [revPairs3, bodyPairs3] = await Promise.all([
-        containers.getAllByPrefix(splitRevPrefix(cid)),
+        lay === 4
+          ? Promise.resolve([] as Array<{ key: string; value: unknown }>)
+          : containers.getAllByPrefix(splitRevPrefix(cid)),
         opts2?.skipBodies
           ? Promise.resolve([] as Array<{ key: string; value: unknown }>)
           : containers.getAllByPrefix(bodyPrefix(cid)),
@@ -583,8 +721,12 @@ export function createContainerStore(
           return body === undefined || body === e.body ? e : { ...e, body };
         });
       const revById3 = new Map<string, Revision>();
-      for (const { key, value } of revPairs3) {
-        revById3.set(key.slice(splitRevPrefix(cid).length), value as Revision);
+      if (lay === 4) {
+        for (const r of await loadRevSegments(cid)) revById3.set(r.id, r);
+      } else {
+        for (const { key, value } of revPairs3) {
+          revById3.set(key.slice(splitRevPrefix(cid).length), value as Revision);
+        }
       }
       const revisions3: Revision[] = [];
       for (const id of marker.revOrder) {
@@ -710,7 +852,7 @@ export function createContainerStore(
     if (!record) return { container: null, bodiesDeferred: false };
     const rec = record as StoredContainerRecord;
     // v2 / v3 とも本文は `__body__:` 分離 — meta-first boot が成立する。
-    const bodiesSplit = rec.__pkc_layout__ === 2 || rec.__pkc_layout__ === 3;
+    const bodiesSplit = rec.__pkc_layout__ === 2 || rec.__pkc_layout__ === 3 || rec.__pkc_layout__ === 4;
     const assembled = await reassembleSplit(defaultId, rec, { skipBodies: true });
     return { container: { ...assembled, assets: {} }, bodiesDeferred: bodiesSplit };
   }
@@ -746,6 +888,11 @@ export function createContainerStore(
       ...(await containers.getKeysByPrefix(splitRevPrefix(containerId))),
       ...(await containers.getKeysByPrefix(bodyPrefix(containerId))),
     ];
+    // P2-2: v4 の revision segments も一緒に消す
+    const segKeys = await segments.getKeysByPrefix(segRevPrefix(containerId));
+    if (segKeys.length > 0) {
+      await segments.applyBatch(segKeys.map((key) => ({ kind: 'delete', key })));
+    }
     await Promise.all([
       containers.applyBatch([
         { kind: 'delete', key: containerId },
@@ -849,7 +996,7 @@ export function createContainerStore(
   }
 
   async function clearAll(): Promise<void> {
-    await Promise.all([containers.clear(), assets.clear()]);
+    await Promise.all([containers.clear(), assets.clear(), segments.clear()]);
     persistedAssets.clear(); // #938 R1
   }
 
