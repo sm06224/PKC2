@@ -816,7 +816,11 @@ export function createContainerStore(
         key.startsWith(WORKSPACE_PREFIX) ||
         key.startsWith(ASSET_META_PREFIX) ||
         key.startsWith(SPLIT_ENTRY_PREFIX) ||
-        key.startsWith(SPLIT_REV_PREFIX)
+        key.startsWith(SPLIT_REV_PREFIX) ||
+        // layout v2 の body record。除外漏れだと一覧のたびに全 body 値を
+        // 読んでしまう(keys-only scan が避けたかった boot 相当コスト)。
+        // 一覧自体は meta チェックで壊れないが、性能退行になる。
+        key.startsWith(BODY_PREFIX)
       ) continue;
       const value = await containers.get(key);
       const meta = (value as { meta?: { container_id?: unknown; title?: unknown } } | null)?.meta;
