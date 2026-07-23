@@ -743,6 +743,21 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
       events: [],
     };
   }
+  // C11 §4.5 ④-1: フォールバック掲示の「閲覧のみ」。phase に依らず
+  // readonly 化する(editing 中なら編集を破棄して ready へ戻す — 掲示は
+  // boot 直後なので実際には ready で来る。防衛的に editing も畳む)。
+  if (action.type === 'SYS_ENTER_READONLY') {
+    if (state.readonly) return { state, events: [] };
+    return {
+      state: {
+        ...state,
+        readonly: true,
+        editingLid: null,
+        phase: state.phase === 'editing' ? 'ready' : state.phase,
+      },
+      events: [],
+    };
+  }
   // 段階3 (#868) lazy asset loading: swap container.assets for the
   // freshly-loaded working-set. Phase-independent (loads happen during
   // ready / editing / exporting alike) and purely a runtime view swap —

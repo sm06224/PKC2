@@ -179,6 +179,13 @@ export type SystemCommand =
    */
   | { type: 'SYS_BODIES_LOADED'; bodies: Record<string, string>; partial?: boolean }
   | { type: 'SYS_INIT_ERROR'; error: string }
+  /**
+   * C11 §4.5 ④-1: ブラウザ保存フォールバック掲示で「閲覧のみ」を選んだ
+   * 時の post-boot readonly 化。編集 UI を抑止する(SYS_INIT_COMPLETE の
+   * readonly と同じ扱いに切り替える)。逆方向(readonly 解除)は提供
+   * しない — 通常モードへの復帰は reload(再 probe)経由。
+   */
+  | { type: 'SYS_ENTER_READONLY' }
   | { type: 'SYS_FINISH_EXPORT' }
   | { type: 'SYS_IMPORT_COMPLETE'; container: Container; source: string }
   | { type: 'SYS_IMPORT_PREVIEW'; preview: ImportPreviewRef }

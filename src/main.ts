@@ -87,6 +87,10 @@ import {
 } from './adapter/platform/folder-prefs';
 import { loadEditMode } from './adapter/platform/edit-mode-prefs';
 import { initUiPrefs } from './adapter/platform/ui-prefs';
+import {
+  mountStorageFallbackNotice,
+  isStorageFallbackForceRequested,
+} from './adapter/ui/storage-fallback-notice';
 import { readPkcData, chooseBootSource, finalizeChooserChoice } from './adapter/platform/pkc-data-source';
 import { showBootSourceChooser } from './adapter/ui/boot-source-chooser';
 import {
@@ -746,13 +750,27 @@ async function boot(): Promise<void> {
   // Non-blocking: boot continues regardless, the banner just signals
   // that changes won't survive a reload.
   // See docs/development/idb-availability.md.
+  // C11 §4.5 ④-1: IDB 不能時は受動バナーではなく**明示フォールバック
+  // 掲示ダイアログ**を出す(自動切替はしない — user 裁定 2026-07-22)。
+  // embed 中は従来バナー(host 側がデータフローを管理する文脈のため)。
+  // `?pkc-storage-fallback-force=1` は probe 結果に依らず掲示する
+  // (parity spec / 実機デモ用の明示解除)。
   void probeIDBAvailability().then((status) => {
+    const forced = isStorageFallbackForceRequested();
+    if (status.available && !forced) return;
     if (!status.available) {
       console.warn(
         `[PKC2] IndexedDB unavailable — persistence disabled. Reason: ${status.reason ?? 'unknown'}`,
       );
-      showIdbWarningBanner({ reason: status.reason });
     }
+    if (detectEmbedContext().embedded) {
+      showIdbWarningBanner({ reason: status.reason });
+      return;
+    }
+    mountStorageFallbackNotice(dispatcher, {
+      reason: status.available ? undefined : status.reason,
+      force: forced,
+    });
   });
 
   // 6b. Storage capacity preflight — best-effort read of
@@ -1085,7 +1103,18 @@ async function boot(): Promise<void> {
     const pkcData = await readPkcData();
     endReadPkcData();
     const endLoadFromStore = profileStart('boot:loadFromStore');
-    const { container: idbContainer, bodiesDeferred } = await loadFromStore(store);
+    // C11 §4.5 ④-1: ブラウザ保存が死んでいる環境では store 読みが throw
+    // する。従来はここで boot 全体が SYS_INIT_ERROR に落ちてアプリが
+    // 使えなかった。ファイル完結モードの前提として、store 不能でも boot は
+    // 完走させる(pkc-data 埋め込み or 空 container で ready へ →
+    // フォールバック掲示ダイアログが 6a の probe 経由で出る)。
+    let idbContainer: Container | null = null;
+    let bodiesDeferred: boolean | undefined;
+    try {
+      ({ container: idbContainer, bodiesDeferred } = await loadFromStore(store));
+    } catch (storeErr) {
+      console.warn('[PKC2] store load failed — booting without browser storage:', storeErr);
+    }
     endLoadFromStore();
     let chosen = chooseBootSource(pkcData, idbContainer);
 
