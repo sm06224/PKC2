@@ -3,6 +3,7 @@ import type { DetailPresenter } from './detail-presenter';
 import { classifyFileSize, fileSizeWarningMessage, isFileTooLarge } from './guardrails';
 import { isExtensionBound } from '../platform/extension-bindings';
 import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
+import { getAssetUrl } from '../platform/asset-url-registry';
 
 /**
  * Attachment body schema (file-like archetype).
@@ -275,6 +276,14 @@ export function resolveImageDataUrl(
   assets?: Record<string, string>,
 ): string | null {
   if (!att.mime?.startsWith('image/')) return null;
+  // P1s2-a(#967): ObjectURL registry を先に引く。hit なら bytes は
+  // ヒープ外(Blob)のまま `blob:` URL で描画でき、base64 の常駐が
+  // 不要になる。miss は registry が wanted 記録 → render 後に Blob
+  // 直読みで供給されるので、下の base64 fallback は移行期の互換経路。
+  if (att.asset_key) {
+    const url = getAssetUrl(att.asset_key, att.mime);
+    if (url) return url;
+  }
   let base64: string | null = null;
   if (att.asset_key && assets?.[att.asset_key] != null) {
     base64 = assets[att.asset_key]!;

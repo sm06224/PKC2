@@ -20,6 +20,7 @@
 
 import type { Container } from '../../core/model/container';
 import { parseAttachmentBody, classifyPreviewType } from './attachment-presenter';
+import { getAssetUrl } from '../platform/asset-url-registry';
 
 /** base64 asset → blob URL(呼び出しごとに新規作成、revoke は caller 管理)。 */
 function createBlobUrl(data: string, mime: string): string {
@@ -47,7 +48,10 @@ export function buildInlineAssetIndex(
     } else if (att.data) {
       base64 = att.data;
     }
-    if (!base64 || !att.mime) continue;
+    if (!att.mime) continue;
+    // P1s2-a(#967): base64 が非常駐でも registry の ObjectURL で
+    // hydrate できるため、mime さえあれば index に載せる(base64 は
+    // 空文字のまま — hydrate 側が registry 優先で解決する)。
     map.set(att.asset_key, { mime: att.mime, base64 });
   }
   return map;
@@ -95,7 +99,13 @@ export function hydrateInlineAssetPreviews(
 
     const doc = chip.ownerDocument;
     try {
-      const blobUrl = createBlobUrl(base64, mime);
+      // P1s2-a(#967): registry の ObjectURL を優先(bytes ヒープ外・
+      // registry 所有 URL なので revoke しない = `data-pkc-blob-url` に
+      // 載せない)。miss 時は従来の per-render blob URL(revoke 対象)。
+      const regUrl = getAssetUrl(assetKey, mime);
+      if (!regUrl && !base64) continue; // registry が wanted 記録済み — 次 render で pop-in
+      const blobUrl = regUrl ?? createBlobUrl(base64, mime);
+      const ownUrl = regUrl === null;
       const wrapper = doc.createElement('div');
       wrapper.setAttribute('data-pkc-inline-preview', previewType);
       wrapper.className = 'pkc-inline-preview';
@@ -106,7 +116,7 @@ export function hydrateInlineAssetPreviews(
           obj.className = 'pkc-inline-pdf-preview';
           obj.type = 'application/pdf';
           obj.data = blobUrl;
-          obj.setAttribute('data-pkc-blob-url', blobUrl);
+          if (ownUrl) obj.setAttribute('data-pkc-blob-url', blobUrl);
           const fallback = doc.createElement('p');
           fallback.textContent = 'PDF preview not available in this browser.';
           obj.appendChild(fallback);
@@ -119,7 +129,7 @@ export function hydrateInlineAssetPreviews(
           audio.className = 'pkc-inline-audio-preview';
           audio.controls = true;
           audio.preload = 'none';
-          audio.setAttribute('data-pkc-blob-url', blobUrl);
+          if (ownUrl) audio.setAttribute('data-pkc-blob-url', blobUrl);
           const source = doc.createElement('source');
           source.src = blobUrl;
           source.type = mime;
@@ -133,7 +143,7 @@ export function hydrateInlineAssetPreviews(
           video.className = 'pkc-inline-video-preview';
           video.controls = true;
           video.preload = 'none';
-          video.setAttribute('data-pkc-blob-url', blobUrl);
+          if (ownUrl) video.setAttribute('data-pkc-blob-url', blobUrl);
           const source = doc.createElement('source');
           source.src = blobUrl;
           source.type = mime;

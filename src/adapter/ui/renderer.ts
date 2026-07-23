@@ -153,6 +153,7 @@ import type { EntryConflict, Resolution } from '../../core/model/merge-conflict'
 import { highlightMatchesIn } from './search-mark';
 import { loadPanePrefs } from '../platform/pane-prefs';
 import { getUiPref } from '../platform/ui-prefs';
+import { getAssetUrl } from '../platform/asset-url-registry';
 import { loadExtensionBindings, getDefaultTarget, matchKeyForEntry } from '../platform/extension-bindings';
 import { contrastRatio, wcagGrade, formatContrastRatio } from '../../features/color/wcag-contrast';
 import { setFormatContext, getFormatLocale } from './format-context';
@@ -7411,6 +7412,9 @@ export function pickImageAssetForEntry(
           if (/^https?:\/\//i.test(v) || v.startsWith('data:')) return v;
           if (v.startsWith('asset:')) {
             const k = v.slice(6);
+            // P1s2-a(#967): ObjectURL registry を先に引く(bytes ヒープ外)。
+            const regUrl = getAssetUrl(k);
+            if (regUrl) return regUrl;
             const b64 = assets[k];
             if (b64) {
               if (b64.startsWith('data:')) return b64;
@@ -7431,6 +7435,9 @@ export function pickImageAssetForEntry(
       const key = typeof parsed.asset_key === 'string' ? parsed.asset_key : null;
       const mime = typeof parsed.mime === 'string' ? parsed.mime : null;
       if (key && mime && mime.startsWith('image/')) {
+        // P1s2-a(#967): ObjectURL registry を先に引く(bytes ヒープ外)。
+        const regUrl = getAssetUrl(key, mime);
+        if (regUrl) return regUrl;
         const b64 = assets[key];
         if (b64) {
           // assets[K] may be raw base64 (new format) OR a full data
@@ -7798,6 +7805,10 @@ function renderLauncherView(state: AppState): HTMLElement {
   // 同 contract で data: URL を組み立てる。MIME が不明な image attachment は
   // image/* と仮定して `image/*` ではなく `image/png` を default 仮定する。
   const resolveAppIconDataUrl = (assetKey: string): string | null => {
+    // P1s2-a(#967): ObjectURL registry を先に引く(bytes ヒープ外・
+    // launcher icon は §4 の pin 対象なので registry hit が定常状態)。
+    const regUrl = getAssetUrl(assetKey);
+    if (regUrl) return regUrl;
     const base64 = assets[assetKey];
     if (!base64) {
       // 段階3 (#868): icon bytes may not be resident under lazy/shallow
