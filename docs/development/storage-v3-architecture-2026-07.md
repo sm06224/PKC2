@@ -82,9 +82,18 @@
 - 書き込み側: アクティブセグメント(末尾 ~1MB)がメモリ上の書き込みキャッシュ。
   debounce で封印 → L1 へ。クラッシュ時損失は従来の debounce 窓と同等
 
-これが #956/#964(HTML が開かない・遅い)の**恒久解**でもある: 4MB/8MB 閾値・
-miss 記録・3 段 fallback という止血群は、pin + ObjectURL 化の完成をもって撤去する
-(DoD)。
+これが #956/#964(HTML が開かない・遅い)の**恒久解**でもある。止血群の
+撤去状況(P1s2-c、2026-07-23):
+
+- ✅ **4MB 閾値(AUTO_HYDRATE_MAX_BYTES)と deferred 表示は撤去**。media 系
+  (image / pdf / video / audio)は registry の ObjectURL(Blob 直読み・
+  ヒープ ±0)でサイズ非依存に自動表示。base64 の描画駆動 hydrate が残るのは
+  bytes のテキスト展開が本質的に必要な HTML preview(srcdoc)/ TEXT 変換のみ
+- **8MB(EXPORT_COMPRESS_MAX_BYTES)は存置** — これは表示の止血ではなく
+  export 圧縮ポリシー(巨大 asset の per-asset 圧縮コピーによる OOM 回避)。
+  撤去は P2 のセグメントログ export と同時に判断
+- **3 段 fallback(resolveAttachmentDataSturdy)は存置** — download / HTML
+  起動の gesture は実 bytes が必要で、URL では代替できない経路
 
 ## 4.5 C11: ブラウザストレージが死んでいる環境 — ファイル完結モード(**設計 — user 裁定 2026-07-22 反映、実装は go 後**)
 
@@ -363,7 +372,8 @@ asset_meta   [cid, key] → {mime, size, hash, name, pinned?}
     自動保存(#978)、移行 ZIP ゲート + ストレージ全滅実機 E2E + sink
     実ディスクベンチ(amp 0.34×、~3ms/MB — 全体書き出し形は数百 MB 級まで、
     以降は P2 封印パックで刻む)
-  - **P1 slice 2**: asset registry + ObjectURL 描画 + §4 キャッシュ(pin/プリウォーム)
+  - ✅ **P1 slice 2**: asset ObjectURL registry + 描画切替(#980)、pin セット +
+    boot プリウォーム(#981)、4MB 閾値・deferred 撤去 = §4 DoD(P1s2-c)
   - **P2**: meta 単一レコード + セグメントログ + 移行 M0-M3 + 閾値撤去(DoD)
   - **P3**: ワークスペースのツリー第一級化 + L2 フォルダミラー
 - 各フェーズの DoD: visual parity test + 数百 MB 実データ seed の実機 smoke +
