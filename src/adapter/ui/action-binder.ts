@@ -72,6 +72,7 @@ import { buildTextBundle, buildTextsContainerBundle } from '../platform/text-bun
 import { buildFolderExportBundle } from '../platform/folder-export';
 import { setPaneCollapsed } from '../platform/pane-prefs';
 import { getUiPref, setUiPref, initUiPrefs } from '../platform/ui-prefs';
+import { getAssetUrl } from '../platform/asset-url-registry';
 import {
   parsePrefsFile,
   serializePrefsFile,
@@ -11096,17 +11097,27 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     if (!lid) continue;
 
     const map = ensureEntryByLid();
-    const resolved = resolveAttachmentData(lid, dispatcher, map ?? undefined);
+    // P1s2-c(#967): registry の ObjectURL を先に解決。base64 非常駐の
+    // media 系はこれで populate できる(サイズ非依存・ヒープ ±0)。
+    const entryForPreview = map?.get(lid);
+    const attForPreview = entryForPreview ? parseAttachmentBody(entryForPreview.body) : null;
+    const registryUrl = attForPreview?.asset_key
+      ? getAssetUrl(attForPreview.asset_key, attForPreview.mime)
+      : null;
+    const resolved = resolveAttachmentData(lid, dispatcher, map ?? undefined)
+      ?? (registryUrl && attForPreview
+        ? { data: '', mime: attForPreview.mime, name: attForPreview.name }
+        : null);
     if (!resolved) continue;
+    // HTML preview(srcdoc)は本文テキストが必要 — base64 未回復なら
+    // miss 経路の回復を待つ(placeholder のまま)。
+    if (classifyPreviewType(resolved.mime) === 'html' && !resolved.data) continue;
 
     // Read sandbox_allow from the entry body for HTML previews.
     // Fallback chain: per-entry override → container default → strict.
-    const entryForPreview = map?.get(lid);
-    const entryAllow = entryForPreview
-      ? parseAttachmentBody(entryForPreview.body).sandbox_allow
-      : undefined;
+    const entryAllow = attForPreview?.sandbox_allow;
     const sandboxAllow = entryAllow ?? containerSandboxDefault;
-    populatePreviewElement(el, resolved, 'pkc-attachment-preview-img', sandboxAllow);
+    populatePreviewElement(el, resolved, 'pkc-attachment-preview-img', sandboxAllow, registryUrl);
   }
 }
 
@@ -11212,6 +11223,9 @@ function populatePreviewElement(
   resolved: { data: string; mime: string; name: string },
   imgClass: string,
   sandboxAllow: string[] = [],
+  // P1s2-c(#967): registry の ObjectURL。あれば base64 デコードせず
+  // そのまま使う(registry 所有 URL なので revoke 対象に載せない)。
+  registryUrl: string | null = null,
 ): void {
   const previewType = classifyPreviewType(resolved.mime);
 
@@ -11224,21 +11238,21 @@ function populatePreviewElement(
     case 'image': {
       const img = document.createElement('img');
       img.className = imgClass;
-      img.src = `data:${resolved.mime};base64,${resolved.data}`;
+      img.src = registryUrl ?? `data:${resolved.mime};base64,${resolved.data}`;
       img.alt = resolved.name;
       el.appendChild(img);
       // Open image in new window via Blob URL (created on click, revoked after)
-      el.appendChild(createLazyOpenButton(resolved, '🖼 Open Image in New Window'));
+      el.appendChild(createLazyOpenButton(resolved, '🖼 Open Image in New Window', registryUrl));
       break;
     }
 
     case 'pdf': {
-      const blobUrl = createBlobUrl(resolved);
+      const blobUrl = registryUrl ?? createBlobUrl(resolved);
       const obj = document.createElement('object');
       obj.className = 'pkc-attachment-pdf-preview';
       obj.type = 'application/pdf';
       obj.data = blobUrl;
-      obj.setAttribute('data-pkc-blob-url', blobUrl);
+      if (!registryUrl) obj.setAttribute('data-pkc-blob-url', blobUrl);
       const fallback = document.createElement('p');
       fallback.textContent = 'PDF preview not available in this browser.';
       obj.appendChild(fallback);
@@ -11249,12 +11263,12 @@ function populatePreviewElement(
     }
 
     case 'video': {
-      const blobUrl = createBlobUrl(resolved);
+      const blobUrl = registryUrl ?? createBlobUrl(resolved);
       const video = document.createElement('video');
       video.className = 'pkc-attachment-video-preview';
       video.controls = true;
       video.preload = 'metadata';
-      video.setAttribute('data-pkc-blob-url', blobUrl);
+      if (!registryUrl) video.setAttribute('data-pkc-blob-url', blobUrl);
       const source = document.createElement('source');
       source.src = blobUrl;
       source.type = resolved.mime;
@@ -11266,12 +11280,12 @@ function populatePreviewElement(
     }
 
     case 'audio': {
-      const blobUrl = createBlobUrl(resolved);
+      const blobUrl = registryUrl ?? createBlobUrl(resolved);
       const audio = document.createElement('audio');
       audio.className = 'pkc-attachment-audio-preview';
       audio.controls = true;
       audio.preload = 'metadata';
-      audio.setAttribute('data-pkc-blob-url', blobUrl);
+      if (!registryUrl) audio.setAttribute('data-pkc-blob-url', blobUrl);
       const source = document.createElement('source');
       source.src = blobUrl;
       source.type = resolved.mime;
@@ -11360,12 +11374,22 @@ function createHtmlOpenButton(htmlString: string, name: string): HTMLElement {
  * Used for images (which use data URIs inline, not persistent Blob URLs).
  * The Blob URL is revoked shortly after opening to prevent leaks.
  */
-function createLazyOpenButton(resolved: { data: string; mime: string; name: string }, label: string): HTMLElement {
+function createLazyOpenButton(
+  resolved: { data: string; mime: string; name: string },
+  label: string,
+  registryUrl: string | null = null,
+): HTMLElement {
   const btn = document.createElement('button');
   btn.className = 'pkc-btn pkc-attachment-open-btn';
   btn.textContent = label;
   btn.setAttribute('title', `Open ${resolved.name} in a new browser window`);
   btn.addEventListener('click', () => {
+    // P1s2-c: registry URL があれば base64 デコード不要でそのまま開く
+    // (registry 所有 URL は revoke しない)。
+    if (registryUrl) {
+      window.open(registryUrl, '_blank', POPUP_WINDOW_FEATURES_NOOPENER);
+      return;
+    }
     const url = createBlobUrl(resolved);
     window.open(url, '_blank', POPUP_WINDOW_FEATURES_NOOPENER);
     setTimeout(() => URL.revokeObjectURL(url), 500);

@@ -252,21 +252,33 @@ describe('Attachment Presenter', () => {
       expect(el.querySelector('[data-pkc-action="open-html-attachment"]')).not.toBeNull();
     });
 
-    it('#964: 巨大 asset(> 4MB)は描画で miss を記録しない(スラッシング防止)', () => {
+    it('P1s2-c(#967): 巨大 media asset は base64 miss を記録せず registry 経由で表示する(deferred 撤去)', () => {
       const entry = makeLegacyEntry(
         '{"name":"rec.webm","mime":"video/webm","asset_key":"ast-big","size":300000000}',
       );
       const el = attachmentPresenter.renderBody(entry);
+      // base64 の working-set には引き込まない(スラッシング条件の根絶)
       expect(drainAssetMisses()).not.toContain('ast-big');
-      // ⏳(自動読み込み中)ではなく「操作時に読み込み」の案内が出る
-      expect(el.querySelector('[data-pkc-region="attachment-loading"]')).toBeNull();
-      const deferred = el.querySelector('[data-pkc-region="attachment-deferred"]');
-      expect(deferred).not.toBeNull();
+      // 「操作時に読み込み」の deferred 案内は撤去 — loading 表示に統一
+      // (registry の URL 供給で自動的に preview へ収束する)
+      expect(el.querySelector('[data-pkc-region="attachment-deferred"]')).toBeNull();
+      expect(el.querySelector('[data-pkc-region="attachment-loading"]')).not.toBeNull();
       // action row は出る(click 経路の on-demand 読みが担う)
       expect(el.querySelector('[data-pkc-action="download-attachment"]')).not.toBeNull();
     });
 
-    it('#964: 4MB 以下(またはサイズ不明)の asset は従来どおり自動回復対象', () => {
+    it('P1s2-c(#967): media 系はサイズに依らず registry の wanted に載る(サイズ閾値なし)', () => {
+      const entry = makeLegacyEntry(
+        '{"name":"rec.webm","mime":"video/webm","asset_key":"ast-big-2","size":300000000}',
+      );
+      attachmentPresenter.renderBody(entry);
+      // registry へ wanted が記録され、drain 側で URL 供給される契約
+      // (getAssetUrl の miss 記録は registry テストで検証済み — ここでは
+      //  base64 miss に落ちていないことを固定する)
+      expect(drainAssetMisses()).not.toContain('ast-big-2');
+    });
+
+    it('HTML / TEXT 変換系は従来どおり base64 自動回復対象(サイズ閾値なし)', () => {
       const entry = makeLegacyEntry(
         '{"name":"app.html","mime":"text/html","asset_key":"ast-small","size":200000}',
       );

@@ -417,20 +417,25 @@ export function isAttachmentLightSourceHint(): boolean {
 }
 
 /**
- * #964: 描画駆動の自動回復(noteAssetMiss → working-set hydrate)を許す
- * asset サイズの上限。HTML app / URL タイル / 文書類は KB〜数 MB でこの
- * 範囲に収まる。画面収録などの巨大 asset を描画のたびに working-set
- * (予算 48MB)へ引き込むと、遅いストレージでは「数百 MB 読み → 予算
- * 超過で追い出し → 再描画で再 miss → 再読み」のスラッシングになり、
- * 直列キューを共有する全 asset 読みが道連れで待たされる。上限超の
- * asset は描画では読み込まず、click 経路(open / download / preview)の
- * on-demand 読みに任せる。
+ * P1s2-c(#967、doc §4 DoD): #964 の 4MB 閾値(AUTO_HYDRATE_MAX_BYTES)は
+ * **撤去済み**。media 系(image / pdf / video / audio)の表示は ObjectURL
+ * registry(IDB Blob 直読み・ヒープ ±0)経由になり、サイズに依らず描画
+ * 駆動で自動表示される — base64 を working-set(予算 48MB)へ引き込む
+ * 必要がなくなったため、#964 のスラッシング条件そのものが消えた。
+ *
+ * base64 の描画駆動 hydrate(noteAssetMiss)が残るのは **bytes の
+ * テキスト展開が本質的に必要な経路のみ**: HTML preview(srcdoc)/
+ * TEXT 変換候補。これらは KB〜数 MB が実態で、上限は設けない。
  */
-export const AUTO_HYDRATE_MAX_BYTES = 4 * 1024 * 1024;
+function needsBase64ForRender(att: AttachmentBody): boolean {
+  const t = classifyPreviewType(att.mime);
+  return t === 'html' || isTextConvertibleAttachment(att);
+}
 
-/** 描画駆動の自動回復対象か(サイズ不明 = 0 は小さいとみなし対象)。 */
-export function isAutoHydrateSize(att: AttachmentBody): boolean {
-  return resolveDisplaySize(att) <= AUTO_HYDRATE_MAX_BYTES;
+/** 描画駆動で registry の ObjectURL 供給を要求できる media 系か。 */
+function isUrlRenderable(att: AttachmentBody): boolean {
+  const t = classifyPreviewType(att.mime);
+  return t === 'image' || t === 'pdf' || t === 'video' || t === 'audio';
 }
 
 export const attachmentPresenter: DetailPresenter = {
@@ -445,15 +450,17 @@ export const attachmentPresenter: DetailPresenter = {
     const hasAssetData = !!(att.asset_key && assets?.[att.asset_key]);
     const dataAvailable = !!(att.data || hasAssetData || att.asset_key);
     const dataStripped = !!att.asset_key && !att.data && !hasAssetData;
-    // #956: 非常駐(Light でない)は miss を記録して自動回復する。従来は
-    // 画像経路(resolveImageDataUrl)だけが記録しており、HTML/URL 添付は
-    // 選択 closure の proactive preload に当たらない限り「Light export」
-    // 表示に落ちたままだった(断続的にしか起きない user 報告の正体)。
-    // #964: ただし巨大 asset は描画では読み込まない(スラッシング防止、
-    // AUTO_HYDRATE_MAX_BYTES 参照)── click 経路の on-demand 読みに任せる。
+    // #956: 非常駐(Light でない)は自動回復する。P1s2-c(#967)で回復
+    // 経路を二本化: media 系は **registry の ObjectURL**(Blob 直読み・
+    // ヒープ ±0・サイズ非依存)、HTML / TEXT 変換系のみ従来の base64
+    // hydrate(noteAssetMiss)。#964 の 4MB 閾値と「大きなファイルは
+    // 操作時読み込み」の deferred 状態は撤去。
     const pendingHydration = dataStripped && !lightSourceHint;
-    const autoHydrate = pendingHydration && isAutoHydrateSize(att);
-    if (autoHydrate && att.asset_key) noteAssetMiss(att.asset_key);
+    const registryUrl = att.asset_key ? getAssetUrl(att.asset_key, att.mime) : null;
+    if (pendingHydration && att.asset_key && !registryUrl && needsBase64ForRender(att)) {
+      noteAssetMiss(att.asset_key);
+    }
+    // media 系の wanted 記録は上の getAssetUrl 呼び出し自体が行っている
     const trulyStripped = dataStripped && lightSourceHint;
 
     if (!hasFile) {
@@ -515,21 +522,16 @@ export const attachmentPresenter: DetailPresenter = {
       stripped.className = 'pkc-attachment-stripped';
       stripped.textContent = 'Data not included (Light export)';
       metaRow.appendChild(stripped);
-    } else if (pendingHydration && autoHydrate) {
-      // 非常駐なだけ:working-set の回復(上で記録した miss)で再 render
-      // されると消える一時表示。Light export と誤認させない。
+    } else if (pendingHydration && !registryUrl) {
+      // 非常駐なだけ:registry の URL 供給(media 系)or working-set の
+      // base64 回復(HTML / TEXT 系)で再 render されると消える一時表示。
+      // Light export と誤認させない。P1s2-c: サイズによる deferred 分岐は
+      // 撤去 — どのサイズでもこの loading 表示 → 自動表示に収束する。
       const pending = document.createElement('span');
       pending.className = 'pkc-attachment-pending';
       pending.setAttribute('data-pkc-region', 'attachment-loading');
       pending.textContent = '⏳ ファイル読み込み中…';
       metaRow.appendChild(pending);
-    } else if (pendingHydration) {
-      // #964: 巨大 asset は描画では読み込まない — 操作時読み込みの案内。
-      const deferred = document.createElement('span');
-      deferred.className = 'pkc-attachment-pending';
-      deferred.setAttribute('data-pkc-region', 'attachment-deferred');
-      deferred.textContent = '大きなファイル(開く / ダウンロード時に読み込み)';
-      metaRow.appendChild(deferred);
     }
     card.appendChild(metaRow);
 
@@ -717,7 +719,11 @@ export const attachmentPresenter: DetailPresenter = {
     root.appendChild(card);
 
     // Preview area (deferred — action-binder populates with actual data)
-    if (previewType !== 'none' && dataAvailable && !dataStripped) {
+    // P1s2-c: media 系は base64 非常駐でも registry URL があれば preview を
+    // 出せる(populate 側が registry 優先で解決する)。
+    const canPreview =
+      (dataAvailable && !dataStripped) || (registryUrl !== null && isUrlRenderable(att));
+    if (previewType !== 'none' && canPreview) {
       const previewContainer = document.createElement('div');
       previewContainer.className = 'pkc-attachment-preview';
       previewContainer.setAttribute('data-pkc-region', 'attachment-preview');

@@ -90,7 +90,7 @@ import { syncLinkMigrationDialogFromState } from './link-migration-dialog';
 import { syncDualEditConflictOverlay } from './dual-edit-conflict-overlay';
 import { syncTextlogPreviewModalFromState } from './textlog-preview-modal';
 import { parseTodoBody as parseTodoBodyRaw, formatTodoDate, isTodoPastDue } from './todo-presenter';
-import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS, setAttachmentLightSourceHint, isAttachmentLightSourceHint, isAutoHydrateSize } from './attachment-presenter';
+import { parseAttachmentBody as parseAttachmentBodyRaw, classifyPreviewType, isHtml, isSvg, SANDBOX_ATTRIBUTES, SANDBOX_DESCRIPTIONS, setAttachmentLightSourceHint, isAttachmentLightSourceHint } from './attachment-presenter';
 import type { TodoBody } from '../../features/todo/todo-body';
 import type { AttachmentBody } from './attachment-presenter';
 
@@ -12263,7 +12263,11 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
   const hasData = !!(att.data || (att.asset_key && container?.assets?.[att.asset_key]));
   const previewType = classifyPreviewType(att.mime);
 
-  if (previewType !== 'none' && hasData) {
+  // P1s2-c: media 系は base64 非常駐でも registry URL があれば preview 可
+  const hasRegistryUrl = !!att.asset_key && getAssetUrl(att.asset_key, att.mime) !== null;
+  const urlPreviewable =
+    previewType === 'image' || previewType === 'pdf' || previewType === 'video' || previewType === 'audio';
+  if (previewType !== 'none' && (hasData || (hasRegistryUrl && urlPreviewable))) {
     // Preview area: populated by action-binder based on MIME type
     const previewArea = createElement('div', 'pkc-detached-preview');
     previewArea.setAttribute('data-pkc-region', 'detached-attachment-preview');
@@ -12275,22 +12279,23 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
     root.appendChild(previewArea);
   }
 
-  // #956: 非常駐なだけ(Light export でない)なら miss を記録して回復を
-  // 促し、Download ボタンは残す(click 経路が on-demand hydrate する)。
-  // #964: 巨大 asset は描画では読み込まない(スラッシング防止)。
+  // #956: 非常駐なだけ(Light export でない)なら回復を促し、Download
+  // ボタンは残す(click 経路が on-demand hydrate する)。P1s2-c(#967):
+  // #964 の 4MB 閾値と deferred 分岐は撤去 — media 系は registry の
+  // ObjectURL(ヒープ ±0・サイズ非依存)、それ以外のみ base64 hydrate。
   const pendingHydration = !hasData && !!att.asset_key && !isAttachmentLightSourceHint();
-  if (pendingHydration && isAutoHydrateSize(att)) noteAssetMiss(att.asset_key!);
+  if (pendingHydration) {
+    const regUrl = getAssetUrl(att.asset_key!, att.mime);
+    const t = classifyPreviewType(att.mime);
+    const urlRenderable = t === 'image' || t === 'pdf' || t === 'video' || t === 'audio';
+    if (!regUrl && !urlRenderable) noteAssetMiss(att.asset_key!);
+  }
   if (hasData || pendingHydration) {
-    if (pendingHydration && isAutoHydrateSize(att)) {
+    if (pendingHydration) {
       const pending = createElement('div', 'pkc-attachment-pending');
       pending.setAttribute('data-pkc-region', 'attachment-loading');
       pending.textContent = '⏳ ファイル読み込み中…';
       root.appendChild(pending);
-    } else if (pendingHydration) {
-      const deferred = createElement('div', 'pkc-attachment-pending');
-      deferred.setAttribute('data-pkc-region', 'attachment-deferred');
-      deferred.textContent = '大きなファイル(開く / ダウンロード時に読み込み)';
-      root.appendChild(deferred);
     }
     const dlBtn = createElement('button', 'pkc-btn');
     dlBtn.setAttribute('data-pkc-action', 'download-attachment');
