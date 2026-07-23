@@ -134,9 +134,12 @@ describe('書込中断からの収束(#940 段階5)', () => {
         return {
           ...b,
           async applyBatch(ops: BatchOp[]) {
-            if (failOnce && ops.length > 2) {
+            // P2-3(layout 5)後の containers バッチは [core, __default__] の
+            // 2 ops(本文/履歴は segments 側)— 中断シミュレーションの
+            // 閾値を新レイアウトに合わせる(core だけ書けて default 前に
+            // 落ちる = 実際に起こりうる中断点)。
+            if (failOnce && ops.length >= 2) {
               failOnce = false;
-              // FS 系 backend の逐次書込を模す: 半分だけ適用して失敗
               await b.applyBatch(ops.slice(0, Math.floor(ops.length / 2)));
               throw new Error('simulated crash mid-batch');
             }
