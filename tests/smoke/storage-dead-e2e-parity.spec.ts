@@ -53,6 +53,25 @@ test('e2e: ストレージ全滅環境で boot → 掲示 → フォルダ sink 
   await expect(overlay).toHaveCount(0);
   await expect(page.locator('.pkc-toast').first()).toContainText('自動保存', { timeout: 10_000 });
 
+  // C11 ④-3 ゲート(2026-07-24): フォルダ選択の直後・切替の前に、移行前
+  // バックアップ ZIP が移行先フォルダへ置かれている(IDB 全滅分岐でも走る)。
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          try {
+            const root = await navigator.storage.getDirectory();
+            const dir = await root.getDirectoryHandle('sink-e2e');
+            const fh = await dir.getFileHandle('pkc2-pre-migration-backup.pkc2.zip');
+            return (await fh.getFile()).size;
+          } catch {
+            return -1;
+          }
+        }),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
+
   // 初回書き込み: OPFS の sink-e2e/ に完全な Backup ZIP が置かれる
   const readSinkFile = (): Promise<number> =>
     page.evaluate(async () => {
