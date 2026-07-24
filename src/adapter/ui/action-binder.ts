@@ -84,8 +84,8 @@ import { getStorageBackendPref, setStorageBackendPref } from '../platform/storag
 import { flushActivePersistence } from '../platform/persistence';
 import { pickDirectory, verifyFsaPermission } from '../platform/storage/fsa-adapter';
 import { saveFsaHandle } from '../platform/storage/fsa-handle-store';
-import { writeBlobToDirectory, type SinkDirectoryHandle } from '../platform/folder-sink';
-import { exportContainerAsZip } from '../platform/zip-package';
+import { type SinkDirectoryHandle } from '../platform/folder-sink';
+import { writePreMigrationBackupZip } from '../platform/pre-migration-backup';
 import { applyOnePaneCollapsedToDOM } from './pane-apply';
 import { detectEntryConflicts } from '../../features/import/conflict-detect';
 import { buildMixedContainerBundle } from '../platform/mixed-bundle';
@@ -4590,25 +4590,17 @@ export function bindActions(
           if (!(await verifyFsaPermission(handle, true))) return;
           // C11 ④-3(doc §4.5 / M1 ゲート): 移行直前に ZIP 強制バックアップを
           // **移行先フォルダへ**生成し、完了を確認するまで移行しない。
-          // 失敗したら切替自体を中止(データを人質に取らない)。
+          // 失敗したら切替自体を中止(データを人質に取らない)。実装は
+          // フォールバック掲示側と共有(pre-migration-backup.ts)。
           const st = dispatcher.getState();
           if (st.container) {
             try {
-              let backupBlob: Blob | null = null;
-              const result = await exportContainerAsZip(st.container, {
-                filename: 'pkc2-pre-migration-backup',
-                downloadFn: (b) => { backupBlob = b; },
-              });
-              if (!result.success || !backupBlob) {
-                throw new Error(result.success ? 'backup blob missing' : result.error ?? 'backup failed');
-              }
-              await writeBlobToDirectory(
+              const { filename } = await writePreMigrationBackupZip(
+                st.container,
                 handle as unknown as SinkDirectoryHandle,
-                result.filename,
-                backupBlob,
               );
               showToast({
-                message: `移行前バックアップを保存しました(${result.filename})`,
+                message: `移行前バックアップを保存しました(${filename})`,
                 kind: 'info',
               });
             } catch (gateErr) {

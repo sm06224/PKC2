@@ -25,6 +25,8 @@ import { saveFsaHandle } from '../platform/storage/fsa-handle-store';
 import { setStorageBackendPref } from '../platform/storage-backend';
 import { probeIDBAvailability } from '../platform/idb-store';
 import { mountFolderSink, type SinkDirectoryHandle } from '../platform/folder-sink';
+import { writePreMigrationBackupZip } from '../platform/pre-migration-backup';
+import { flushActivePersistence } from '../platform/persistence';
 
 const REGION = 'storage-fallback-notice';
 
@@ -140,10 +142,46 @@ export function showStorageFallbackNotice(
       const handle = await pickDirectory();
       if (!handle) return;
       if (!(await verifyFsaPermission(handle, true))) return;
+      // C11 ④-3 ゲート(2026-07-24 追加): この掲示は ready + container の
+      // 時にしか出ず、成功パスでは reload 後の boot が実 IDB データを
+      // フォルダへ移行する(Settings 側 pick-storage-folder と同じ移行)。
+      // よって同じ「移行前 ZIP 強制バックアップ」を移行先フォルダへ置き、
+      // 確認できるまで切り替えない。失敗時はダイアログを**閉じずに**中止
+      // (別フォルダの選び直し / 都度保存へ逃げられる — 詰み回避)。
+      // ※ IDB 全滅環境(下の catch 分岐)では直後に sink.flushNow() も
+      //    完全 ZIP を書くため一時的に 2 つ並ぶが、どちらも完全な復元可能物
+      //    であり無害(安全側の冗長)。
+      const st = dispatcher.getState();
+      if (st.container) {
+        try {
+          const { filename } = await writePreMigrationBackupZip(
+            st.container,
+            handle as unknown as SinkDirectoryHandle,
+          );
+          showToast({
+            message: `移行前バックアップを保存しました(${filename})`,
+            kind: 'info',
+          });
+        } catch (gateErr) {
+          showToast({
+            message:
+              `移行前バックアップの作成に失敗したため、フォルダ保存への切替を中止しました: ${String(gateErr)}。`
+              + '別のフォルダを選び直すか、💾 Backup ZIP での都度保存をご検討ください',
+            kind: 'error',
+          });
+          return;
+        }
+      }
       try {
         await saveFsaHandle(handle);
         setStorageBackendPref('fsa');
         close();
+        // reload 前に保留中の保存を flush(Settings 側と同じ取りこぼし防止)。
+        try {
+          await flushActivePersistence();
+        } catch {
+          /* best-effort */
+        }
         globalThis.location?.reload?.();
       } catch {
         // IDB が完全に死んでいると handle を記憶できない(ブラウザ仕様上
