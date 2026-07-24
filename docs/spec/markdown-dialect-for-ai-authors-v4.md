@@ -18,7 +18,8 @@
    - **formal 形**(機械 emit、`§1.2`)── `:::name{attrs}` block / `:role:[content]{attrs}` inline、round-trip 安全
    - **寛容 alias**(PR-2L、Postel's Law、`§1.3`)── AI hallucinate を実 render path で accept + console hint
    - **block 装飾箱 3 形**(v4 §12 新規、`§1.4`)── Tier 0 vocabulary / Tier 1 class chain / Tier 2 formal
-4. **inline HTML は禁止**(`html: false`、XSS 防止)。複雑 layout / SVG は `` ```html-render `` fence(iframe sandbox)。
+4. **inline HTML は禁止**(`html: false`、XSS 防止)。複雑 layout / SVG は `` ```html `` fence(iframe sandbox 描画)。
+   **レンダリング可能言語の fence 標準規約**(codeblock-render-standard-2026-07、2026-07-24):`html` / `mermaid` / `csv` / `tsv` / `psv` は **無印 = レンダリング + ソース切替トグル**(`-both` の省略形)/ `` -render `` = レンダリングのみ / `` -norender `` = コードのみ。旧 `` ```html-render `` は `html` + `-render` として同義に動き続ける(emit して良い)。**HTML をコード例として見せたい時は必ず `-norender` を付ける**(無印は描画される)。
 5. **未記載構文は使わない**。`§5` deny list 参照。
 6. **frontmatter は省略可**。AI が profile 切替 / 変数定義 / layout 指定する時だけ書く(`§2`)。
 7. **v4 で AI が知るべき変更点**:
@@ -221,7 +222,7 @@ PKC2 markdown 方言(`docs/spec/markdown-dialect-for-ai-authors-v4.md` §3 推�
 - `:::figure{#…}` + `:caption:[…]` で図表
 - `:::format{.cls #id}` で複段落 box くくり(v4 NEW)
 - inline 装飾(`**bold**` / `==hl==` / `:T:vocab:`)を混在
-- 必要なら `` ```html-render `` で複雑 layout
+- 必要なら `` ```html ``(または `` ```html-render `` = 切替なし固定)で複雑 layout。コード例として見せる HTML は `` ```html-norender ``
 
 避けるもの(deny list):
 - inline HTML(`<div>` 等)

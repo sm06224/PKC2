@@ -26,9 +26,8 @@ const BODY = [
 ].join('\n');
 
 async function bootWithMermaid(page: Page): Promise<void> {
-  // editor.mermaid_render_enabled は既定 OFF — URL flag で有効化
-  // (debug-via-url-flag-protocol の pkc-flag 経路)。
-  await page.goto('/pkc2.html?pkc-flag=editor.mermaid_render_enabled=1', { waitUntil: 'load' });
+  // mermaid render は常時有効(flag は codeblock-render-standard-2026-07 で撤去)。
+  await page.goto('/pkc2.html', { waitUntil: 'load' });
   const shell = page.locator('#pkc-root');
   await expect(shell).toHaveAttribute('data-pkc-phase', 'ready');
   await page

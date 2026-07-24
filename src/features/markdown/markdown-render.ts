@@ -144,41 +144,147 @@ const defaultFence = md.renderer.rules.fence ??
   function (tokens, idx, options, _env, self) {
     return self.renderToken(tokens, idx, options);
   };
+// ── コードブロック・レンダリング標準規約(codeblock-render-standard-2026-07、
+//    user 裁定 2026-07-24)──
+//    レンダラを持つ言語(registry)は fence suffix で表示を選ぶ:
+//      無印            = `-both` の省略形(レンダリング + ソース切替トグル)
+//      <lang>-render   = レンダリングのみ固定(旧 ` ```html-render ` は
+//                        この規則で自然に解釈される = 挙動不変)
+//      <lang>-norender = コードブロックのみ固定(render 経路に一切入らない)
+//    フラグ制御はしない(user 裁定)。トグルは CSS-only(checkbox + label の
+//    sibling combinator)── S2 Viewer popup / S4 entry-window は action-binder
+//    の無い独立 document のため、JS 配線ゼロで全 surface に効く方式を正とする。
+
+export type RenderableFenceLang = 'html' | 'mermaid' | 'csv' | 'tsv' | 'psv';
+export type RenderableFenceMode = 'both' | 'render' | 'norender';
+
+const RENDERABLE_FENCE_LANGS: ReadonlySet<string> = new Set([
+  'html', 'mermaid', 'csv', 'tsv', 'psv',
+]);
+
+export interface RenderableFence {
+  readonly lang: RenderableFenceLang;
+  readonly mode: RenderableFenceMode;
+  /** 先頭 token 以降のオプション文字列(csv 系の `noheader` 等)。 */
+  readonly rest: string;
+}
+
+/**
+ * fence info 文字列を標準規約の `{ lang, mode }` に分解する。registry 外の
+ * 言語(suffix があっても base がレンダラを持たない場合を含む)は null を
+ * 返し、caller は従来の code block 経路へ fall through する。
+ */
+export function parseRenderableFence(info: string | null | undefined): RenderableFence | null {
+  if (!info) return null;
+  const trimmed = info.trim();
+  if (!trimmed) return null;
+  const first = trimmed.split(/\s+/)[0]!;
+  const rest = trimmed.slice(first.length).trim();
+  const lower = first.toLowerCase();
+  let mode: RenderableFenceMode = 'both';
+  let base = lower;
+  if (lower.endsWith('-norender')) {
+    mode = 'norender';
+    base = lower.slice(0, -'-norender'.length);
+  } else if (lower.endsWith('-render')) {
+    mode = 'render';
+    base = lower.slice(0, -'-render'.length);
+  } else if (lower.endsWith('-both')) {
+    mode = 'both';
+    base = lower.slice(0, -'-both'.length);
+  }
+  if (!RENDERABLE_FENCE_LANGS.has(base)) return null;
+  return { lang: base as RenderableFenceLang, mode, rest };
+}
+
+/** norender / render-失敗 fallback 用のソース表示(base lang で highlight)。 */
+function renderFenceSourceHtml(content: string, lang: RenderableFenceLang): string {
+  return `<pre><code class="language-${lang}">${highlightCode(content, lang)}</code></pre>`;
+}
+
+/**
+ * mode = render / both の「レンダリング面」を言語別に生成する。
+ * csv 系は parse 失敗で null(caller がソース表示へ fall back)。
+ */
+function buildRenderableSlotHtml(
+  fence: RenderableFence,
+  content: string,
+  inlineRender: (text: string) => string,
+): string | null {
+  switch (fence.lang) {
+    case 'html':
+      // reform-2026-05 PR-2M:iframe sandbox 経由で HTML を直接 render。
+      // sandbox="allow-scripts" のみ(allow-same-origin 無し)で cross-origin 隔離。
+      return buildHtmlSandboxIframe(content);
+    case 'mermaid': {
+      // pgc-203 wave-α' polish #24:placeholder div のみ emit。実 SVG render は
+      // adapter 層の `hydrateMermaidPlaceholders` が lazy import('mermaid') で
+      // 行う(I4 invariant:features 層 pure を維持)。source は attribute に
+      // 保持(HTML entity escape 必須、md.utils.escapeHtml 使用)。
+      const escaped = md.utils.escapeHtml(content);
+      return `<div class="pkc-mermaid-placeholder" data-pkc-mermaid-src="${escaped}" data-pkc-md-block-kind="mermaid"><pre class="pkc-mermaid-source"><code class="language-mermaid">${escaped}</code></pre></div>`;
+    }
+    default: {
+      // csv / tsv / psv:suffix を剥がした info を渡す(`noheader` 等の
+      // オプションは rest 経由で温存)。
+      const info = fence.rest ? `${fence.lang} ${fence.rest}` : fence.lang;
+      return renderCsvFence(content, info, inlineRender);
+    }
+  }
+}
+
+/**
+ * 標準規約 wrapper(§2.3):copy ボタン + [both のみ] CSS-only トグル +
+ * レンダリング slot + 隠しソース。隠しソースは copy の供給源
+ * (action-binder の `:scope > pre` がこれを拾う)と -both のソース面を兼ねる。
+ * トグル状態は ephemeral(再 render で初期 = レンダリング側に戻る)。
+ */
+function buildRenderableBlockHtml(
+  fence: RenderableFence,
+  slotHtml: string,
+  content: string,
+  sourceLineAttrs: string,
+): string {
+  let toggleHtml = '';
+  if (fence.mode === 'both') {
+    const id = `pkc-rv-${Math.random().toString(36).slice(2, 10)}`;
+    toggleHtml =
+      `<input type="checkbox" id="${id}" class="pkc-render-toggle-input" aria-label="ソース / レンダリング切替">` +
+      `<label for="${id}" class="pkc-render-toggle" title="ソース / レンダリング切替">‹/›</label>`;
+  }
+  const sourceHtml = `<pre class="pkc-render-source"><code class="language-${fence.lang}">${highlightCode(content, fence.lang)}</code></pre>`;
+  return `<div class="pkc-md-block" data-pkc-md-block-kind="code" data-pkc-render-lang="${fence.lang}" data-pkc-render-mode="${fence.mode}"${sourceLineAttrs}>` +
+    `<button class="pkc-md-copy-btn" data-pkc-action="copy-md-block" data-pkc-copy-kind="code" type="button" aria-label="コピー" title="コピー">⧉</button>` +
+    toggleHtml +
+    `<div class="pkc-render-slot">${slotHtml}</div>` +
+    sourceHtml +
+    `</div>`;
+}
+
 md.renderer.rules.fence = function (tokens, idx, options, env, self) {
   const token = tokens[idx]!;
   // 領域 10-1 PR 2 hotfix: tagSourceLines puts data-pkc-source-line
-  // on the fence token, but renderCsvFence emits its own HTML and
-  // bypasses token.attrs entirely. Hoist the source-line attrs onto
+  // on the fence token, but custom fence renderers emit their own HTML
+  // and bypass token.attrs entirely. Hoist the source-line attrs onto
   // the wrapper div so the active-block lookup can find the fence.
   const sourceLineAttrs = collectSourceLineAttrs(token);
-  // reform-2026-05 Phase 2 PR-2M(2026-05-10):` ```html-render` fence は
-  // iframe sandbox 経由で HTML を直接 render。AI が複雑 layout(A4 2 段組
-  // レポート等)を HTML 生成で出した場合の seamless 埋め込み。
-  // sandbox="allow-scripts" のみ(allow-same-origin 無し)で cross-origin 隔離。
   const info = (token.info ?? '').trim();
-  if (/^html-render(\s|$)/.test(info)) {
-    return buildHtmlSandboxIframe(token.content, sourceLineAttrs);
+  const fence = parseRenderableFence(info);
+  if (fence) {
+    const content = token.content ?? '';
+    if (fence.mode === 'norender') {
+      return wrapWithCopyButton(renderFenceSourceHtml(content, fence.lang), 'code', sourceLineAttrs);
+    }
+    // Pass inline renderer so CSV cells can carry markdown inline markup
+    // (`**bold**` / `==highlight==` / `:text:attrs:` L-6 simple-inline 等)。
+    const inlineRender = (text: string): string => md.renderInline(text, env);
+    const slot = buildRenderableSlotHtml(fence, content, inlineRender);
+    if (slot !== null) {
+      return buildRenderableBlockHtml(fence, slot, content, sourceLineAttrs);
+    }
+    // csv 系 parse 失敗:従来どおり user のソースを可視で残す。
+    return wrapWithCopyButton(renderFenceSourceHtml(content, fence.lang), 'code', sourceLineAttrs);
   }
-  // pgc-203 wave-α' polish #24(built-in mermaid):` ```mermaid` fence を
-  // placeholder div として出す。実 SVG render は adapter 層の
-  // `hydrateMermaidPlaceholders` が **lazy import('mermaid')** で行う
-  // ── core / features 層が browser API(mermaid.js)に直接依存しないよう、
-  // ここでは text content を `data-pkc-mermaid-src` に保持する placeholder
-  // のみ emit(I4 invariant:features 層 pure を維持)。
-  if (/^mermaid(\s|$)/.test(info)) {
-    // source を attribute に保存(HTML entity escape 必須)。escapeHtml は
-    // 既に markdown-it に内蔵。
-    const src = (token.content ?? '');
-    // attribute encode(quotes / lt / gt / amp 等)── md.utils.escapeHtml 使用。
-    const escaped = md.utils.escapeHtml(src);
-    return `<div class="pkc-mermaid-placeholder" data-pkc-mermaid-src="${escaped}"${sourceLineAttrs} data-pkc-md-block-kind="mermaid"><pre class="pkc-mermaid-source"><code class="language-mermaid">${escaped}</code></pre></div>`;
-  }
-  // Pass inline renderer so CSV cells can carry markdown inline markup
-  // (`**bold**` / `==highlight==` / `:text:attrs:` L-6 simple-inline 等)。
-  // 2026-05-08 以前は plain-text escape しか効かず、user 報告で発覚。
-  const inlineRender = (text: string): string => md.renderInline(text, env);
-  const html = renderCsvFence(token.content, token.info, inlineRender);
-  if (html !== null) return wrapWithCopyButton(html, 'code', sourceLineAttrs);
   const fenceHtml = defaultFence(tokens, idx, options, env, self);
   return wrapWithCopyButton(fenceHtml, 'code', sourceLineAttrs);
 };

@@ -28,9 +28,9 @@ description: >
 
 ## mermaid 図解
 
-- md に ` ```mermaid ` fence で書ける。GitHub ではそのまま描画。アプリ内は flag
-  `editor.mermaid_render_enabled`(既定 OFF)を ON で SVG 描画、OFF ではコード表示
-- 図の直下に「GitHub では図として表示 / アプリ内は flag ON で描画」の注記を置く
+- md に ` ```mermaid ` fence で書ける。GitHub でもアプリ内でもそのまま SVG 描画
+  (常時有効、flag は codeblock-render-standard-2026-07 で撤去)。コード表示に
+  固定したい場合は ` ```mermaid-norender `、無印はソース切替トグルつき
 
 ## 更新手順
 

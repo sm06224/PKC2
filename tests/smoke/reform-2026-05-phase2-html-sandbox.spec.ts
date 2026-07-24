@@ -39,9 +39,10 @@ const FIXTURE = `# HTML sandbox demo
 </svg>
 \`\`\`
 
-通常の \`\`\`html(without -render)は code として render される:
+suffix \`-norender\` は code として render される(標準規約
+codeblock-render-standard-2026-07:無印 html は -both = レンダリングになった):
 
-\`\`\`html
+\`\`\`html-norender
 <h1>これは code block</h1>
 \`\`\`
 `;
@@ -90,7 +91,7 @@ test.describe('reform Phase 2 PR-2M:html-render fence iframe sandbox', () => {
       expect(referrerpolicy).toBe('no-referrer');
     }
 
-    // 通常の ```html(without -render)は iframe にならない
+    // ```html-norender は iframe にならず code のまま(標準規約)
     const codeBlocks = rendered.locator('pre code, code.language-html');
     expect(await codeBlocks.count()).toBeGreaterThanOrEqual(1);
 

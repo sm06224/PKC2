@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  *
  * pgc-203 wave-α' polish #24(built-in mermaid):adapter `mermaid-renderer.ts`
- * の hydrator 動作 ── flag OFF で no-op、placeholder 0 件で early return、
+ * の hydrator 動作 ── 常時有効(flag は 2026-07-24 撤去)、placeholder 0 件で early return、
  * placeholder 検出時に mermaid mock が呼ばれる、ownerDocument 経由で
  * cross-document compat、error path で `.pkc-mermaid-error` 表示。
  *
@@ -39,10 +39,10 @@ vi.mock('mermaid', () => {
   };
 });
 
-function setFlag(value: boolean): void {
+/** 旧 flag(2026-07-24 撤去)の URL 残骸を掃除して registry cache を reset。 */
+function clearUrlFlags(): void {
   const url = new URL(window.location.href);
   url.searchParams.delete('pkc-flag');
-  if (value) url.searchParams.set('pkc-flag', 'editor.mermaid_render_enabled=1');
   window.history.replaceState({}, '', url.toString());
   __resetUrlCache();
 }
@@ -68,27 +68,44 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
   });
 
   afterEach(() => {
-    setFlag(false);
+    clearUrlFlags();
     document.body.innerHTML = '';
     resetMermaidRendererState();
   });
 
-  it('case 1: flag OFF で no-op(placeholder のまま)', async () => {
-    setFlag(false);
+  it('case 1: フラグ制御なし ── flag 指定が無くても hydrate される(2026-07-24 撤去)', async () => {
+    clearUrlFlags();
     root.appendChild(makePlaceholder('flowchart TD\n  A --> B'));
     await hydrateMermaidPlaceholders(root);
-    expect(root.querySelector('.pkc-mermaid-placeholder')).not.toBeNull();
-    expect(root.querySelector('.pkc-mermaid-rendered')).toBeNull();
+    expect(root.querySelector('.pkc-mermaid-rendered')).not.toBeNull();
+    expect(root.querySelector('.pkc-mermaid-placeholder')).toBeNull();
   });
 
-  it('case 2: flag ON + placeholder 0 件で early return(throw しない)', async () => {
-    setFlag(true);
+  it('case 1b: -both wrapper に data-pkc-render-ready が立つ(hydrate までトグル非表示の根拠)', async () => {
+    const host = document.createElement('div');
+    host.setAttribute('data-pkc-render-mode', 'both');
+    host.appendChild(makePlaceholder('flowchart TD\n  A --> B'));
+    root.appendChild(host);
+    await hydrateMermaidPlaceholders(root);
+    expect(host.hasAttribute('data-pkc-render-ready')).toBe(true);
+    // cache hit 経路でも立つ(同 source を別 wrapper で再 hydrate)
+    const host2 = document.createElement('div');
+    host2.setAttribute('data-pkc-render-mode', 'both');
+    const ph2 = makePlaceholder('flowchart TD\n  A --> B');
+    host2.appendChild(ph2);
+    root.appendChild(host2);
+    await hydrateMermaidPlaceholders(root);
+    expect(host2.hasAttribute('data-pkc-render-ready')).toBe(true);
+  });
+
+  it('case 2: placeholder 0 件で early return(throw しない)', async () => {
+
     // placeholder 無し
     await expect(hydrateMermaidPlaceholders(root)).resolves.not.toThrow();
   });
 
   it('case 3: flag ON + placeholder 1 件で SVG 描画 + class 入替え', async () => {
-    setFlag(true);
+
     const src = 'flowchart TD\n  A --> B';
     root.appendChild(makePlaceholder(src));
     await hydrateMermaidPlaceholders(root);
@@ -103,7 +120,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
   });
 
   it('case 4: 複数 placeholder で全て render', async () => {
-    setFlag(true);
+
     root.appendChild(makePlaceholder('graph LR\n  X --> Y'));
     root.appendChild(makePlaceholder('sequenceDiagram\n  A->>B: msg'));
     root.appendChild(makePlaceholder('pie\n  "A": 50'));
@@ -113,7 +130,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
   });
 
   it('case 5: source 空 / whitespace のみは skip', async () => {
-    setFlag(true);
+
     root.appendChild(makePlaceholder(''));
     root.appendChild(makePlaceholder('   \n  '));
     root.appendChild(makePlaceholder('flowchart TD\n  A --> B'));
@@ -123,7 +140,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
   });
 
   it('case 6: render error 時は placeholder に error 表示 + data-pkc-mermaid-error attr', async () => {
-    setFlag(true);
+
     // dynamic import mock の error flag を立てる
     const m = await import('mermaid');
     (m.default as unknown as { __setRenderShouldThrow: (v: boolean) => void }).__setRenderShouldThrow(true);
@@ -140,7 +157,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
   });
 
   it('case 7: mermaid.initialize が theme="default" で呼ばれる(matchMedia 未対応 happy-dom default)', async () => {
-    setFlag(true);
+
     const m = await import('mermaid');
     (m.default as unknown as { __resetInitCalls: () => void }).__resetInitCalls();
     root.appendChild(makePlaceholder('flowchart TD\n  A --> B'));
@@ -155,7 +172,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
   });
 
   it('case 8: 同 root に対する 2 回目 hydration は idempotent(rendered は再変換しない)', async () => {
-    setFlag(true);
+
     root.appendChild(makePlaceholder('flowchart TD\n  A --> B'));
     await hydrateMermaidPlaceholders(root);
     expect(root.querySelectorAll('.pkc-mermaid-rendered').length).toBe(1);
@@ -170,7 +187,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
    * 同 source の placeholder が連続で立つ ── cache 無しでは mermaid.render が
    * 毎回呼ばれて CPU 負荷増幅。 */
   it('case 9: 同一 source の placeholder を異なる root に hydrate しても mermaid.render は 1 回だけ呼ばれる(cache hit)', async () => {
-    setFlag(true);
+
     const m = await import('mermaid');
     const ext = m.default as unknown as { __resetRenderCallCount: () => void; __renderCallCount: () => number };
     ext.__resetRenderCallCount();
@@ -193,7 +210,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
   });
 
   it('case 10: 異なる source は別 cache key で render される', async () => {
-    setFlag(true);
+
     const m = await import('mermaid');
     const ext = m.default as unknown as { __resetRenderCallCount: () => void; __renderCallCount: () => number };
     ext.__resetRenderCallCount();
@@ -218,7 +235,7 @@ describe('pgc-203 hydrateMermaidPlaceholders', () => {
   });
 
   it('case 11: resetMermaidRendererState で cache が clear される', async () => {
-    setFlag(true);
+
     const m = await import('mermaid');
     const ext = m.default as unknown as { __resetRenderCallCount: () => void; __renderCallCount: () => number };
     ext.__resetRenderCallCount();

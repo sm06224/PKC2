@@ -2935,6 +2935,87 @@ html[data-pkc-debug-hallucination] .pkc-md-rendered .pkc-align-hint {
     font-size: var(--fs-2xl);
   }
 }
+
+/* ── コードブロック・レンダリング標準規約(codeblock-render-standard-2026-07)
+   無印 = -both(レンダリング + ソース切替トグル)/ -render = 固定 /
+   -norender = code 固定。トグルは CSS-only(checkbox + sibling combinator)
+   ── S2 / S4 の独立 document でも JS 配線ゼロで動く。
+   本節を変更したら rendered-viewer.ts / entry-window.ts の inline mirror も
+   同時更新(3 surface 規約)。 */
+.pkc-render-source {
+  display: none;
+}
+.pkc-md-block > .pkc-render-toggle-input:checked ~ .pkc-render-slot {
+  display: none;
+}
+.pkc-md-block > .pkc-render-toggle-input:checked ~ .pkc-render-source {
+  display: block;
+}
+/* checkbox 本体は視覚的に隠す(キーボード操作は label 経由 + focus ring 下記) */
+.pkc-md-block > .pkc-render-toggle-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.pkc-md-block > .pkc-render-toggle {
+  position: absolute;
+  top: var(--space-2);
+  right: calc(var(--space-2) + 2.6em);
+  z-index: 2;
+  padding: var(--space-1-5) var(--space-2-5);
+  font-size: var(--fs-md);
+  line-height: 1;
+  background: var(--c-bg-elevated, rgba(20, 20, 30, 0.85));
+  color: var(--c-fg, #eaeaea);
+  border: 1px solid var(--c-border, rgba(255, 255, 255, 0.15));
+  border-radius: var(--radius, 4px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  user-select: none;
+}
+.pkc-md-block:hover > .pkc-render-toggle,
+.pkc-md-block:focus-within > .pkc-render-toggle,
+.pkc-md-block > .pkc-render-toggle-input:checked + .pkc-render-toggle {
+  opacity: 1;
+}
+.pkc-md-block > .pkc-render-toggle:hover {
+  background: var(--c-accent, #4aa3ff);
+  color: #fff;
+}
+.pkc-md-block > .pkc-render-toggle-input:focus-visible + .pkc-render-toggle {
+  opacity: 1;
+  outline: 2px solid var(--c-accent, #4aa3ff);
+  outline-offset: 1px;
+}
+/* ソース面表示中はトグルを「選択中」表示 */
+.pkc-md-block > .pkc-render-toggle-input:checked + .pkc-render-toggle {
+  background: var(--c-accent, #4aa3ff);
+  color: #fff;
+}
+/* mermaid は hydrate 完了(data-pkc-render-ready)までトグルを出さない
+   (ソース ⇄ ソースの無意味な一瞬を出さない。error 時も source のみ)。 */
+.pkc-md-block[data-pkc-render-lang="mermaid"]:not([data-pkc-render-ready]) > .pkc-render-toggle,
+.pkc-md-block[data-pkc-render-lang="mermaid"]:not([data-pkc-render-ready]) > .pkc-render-toggle-input {
+  display: none;
+}
+@media (pointer: coarse) {
+  .pkc-md-block > .pkc-render-toggle {
+    opacity: 0.85;
+    padding: var(--space-2-5) 0.55rem;
+    font-size: var(--fs-2xl);
+  }
+}
+@media print {
+  .pkc-md-block > .pkc-render-toggle,
+  .pkc-md-block > .pkc-render-toggle-input {
+    display: none !important;
+  }
+}
 .pkc-md-rendered h1, .pkc-md-rendered h2, .pkc-md-rendered h3,
 .pkc-md-rendered h4, .pkc-md-rendered h5, .pkc-md-rendered h6 {
   margin: 0.5em 0 0.25em;

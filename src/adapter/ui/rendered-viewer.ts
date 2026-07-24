@@ -612,6 +612,40 @@ export function buildRenderedViewerHtml(
       border-left: 3px solid #e53e3e;
       font-size: 0.85rem;
     }
+    /* コードブロック・レンダリング標準規約 mirror
+       (codeblock-render-standard-2026-07):CSS-only トグル。Viewer popup は
+       action-binder の無い独立 document だが checkbox + sibling combinator で
+       JS 配線ゼロのまま機能する。base.css 変更時は本 mirror も同時更新。 */
+    .pkc-render-source { display: none; }
+    .pkc-md-block > .pkc-render-toggle-input:checked ~ .pkc-render-slot { display: none; }
+    .pkc-md-block > .pkc-render-toggle-input:checked ~ .pkc-render-source { display: block; }
+    .pkc-md-block > .pkc-render-toggle-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .pkc-render-toggle {
+      display: inline-block;
+      padding: 0.15em 0.5em;
+      font-size: 0.85em;
+      border: 1px solid var(--pkc-popup-border);
+      border-radius: 4px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--pkc-popup-muted);
+      background: var(--pkc-popup-table-stripe);
+    }
+    .pkc-md-block > .pkc-render-toggle-input:checked + .pkc-render-toggle {
+      background: var(--pkc-popup-border);
+      color: var(--pkc-popup-fg);
+    }
+    .pkc-md-block[data-pkc-render-lang="mermaid"]:not([data-pkc-render-ready]) > .pkc-render-toggle,
+    .pkc-md-block[data-pkc-render-lang="mermaid"]:not([data-pkc-render-ready]) > .pkc-render-toggle-input {
+      display: none;
+    }
     /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
        hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため
        base.css pkc-transclusion 群を inline mirror)。 */
@@ -943,6 +977,8 @@ export function buildRenderedViewerHtml(
        * print output — just chrome on the page. Strip it. */
       .pkc-md-copy-btn,
       [data-pkc-action="copy-md-block"],
+      .pkc-render-toggle,
+      .pkc-render-toggle-input,
       .pkc-md-table-sort,
       .pkc-md-table-filter-toggle,
       .pkc-md-table-filter-row {

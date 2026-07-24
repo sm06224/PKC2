@@ -793,6 +793,14 @@ function f(): void {}
 
 詳細は別 spec(`docs/development/notation-redesign-2026-05/06-code-block-ecosystem.md`)。
 
+**fence suffix 標準規約(codeblock-render-standard-2026-07、2026-07-24 normative)**:
+実装済のレンダリング可能言語(`html` / `mermaid` / `csv` / `tsv` / `psv`)は
+**無印 = レンダリング + ソース切替トグル**(`-both` の省略形)/ `<lang>-render` =
+レンダリングのみ / `<lang>-norender` = コードのみ。旧 `html-render` は
+`html` + `-render` として自然に解釈される(後方互換)。オプション(`noheader` 等)は
+suffix の後ろに併記(例: `` ```csv-render noheader ``)。今後レンダラを追加する
+言語もこの 3 記法セットに従うこと。
+
 ### 7.2 figure / table block / equation / caption(§3.3.4 #46-#49)
 
 ```markdown
