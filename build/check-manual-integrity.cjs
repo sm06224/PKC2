@@ -118,6 +118,30 @@ if (leakedLinks.length > 0) {
   process.exit(1);
 }
 
+// 2026-07-24 addition(user 報告「画像が埋め込みできてない」): md 正本の
+// 相対画像パス `](images/NAME.png)` が transcode されず残ると、単一 HTML
+// では実体が解決できず壊れ画像になる(章 10 の M* 画像で実際に発生)。
+// `transcodeImageRefs` in build/manual-builder.ts が漏れなく変換したことを
+// 検査する。
+const IMAGE_PATH_RE = /\]\((?:\.\/)?images\/[^)]+\)/g;
+const leakedImages = [];
+for (const e of textBodies) {
+  const matches = e.body.match(IMAGE_PATH_RE);
+  if (matches && matches.length > 0) {
+    leakedImages.push({ lid: e.lid, samples: matches.slice(0, 3) });
+  }
+}
+if (leakedImages.length > 0) {
+  console.error('[manual-integrity] FAIL: untranscoded relative image refs survive in text entries:');
+  for (const { lid, samples } of leakedImages) {
+    console.error(`  - ${lid}: ${samples.join(' / ')}`);
+  }
+  console.error(
+    '[manual-integrity]        Update `transcodeImageRefs` in build/manual-builder.ts.',
+  );
+  process.exit(1);
+}
+
 const sizeKB = (Buffer.byteLength(html, 'utf8') / 1024).toFixed(1);
 console.log(
   `[manual-integrity] OK   PKC2-Extensions/pkc2-manual.html  ${sizeKB} KB  ` +

@@ -151,6 +151,16 @@ function main(): void {
     // docs/development/manual-build-integration-plan.md.
     body = transcodeManualLinks(body);
 
+    // Transcode relative image refs `](images/NAME.png)` to
+    // `](asset:NAME)`. The markdown 正本 uses GitHub-renderable
+    // relative paths (docs/manual/images/ に実体がある)ので、build 時に
+    // 単一 HTML 内で解決できる asset: scheme へ書き換える。これを
+    // しないと built manual では相対パスの実体が存在せず壊れ画像に
+    // なる(user 報告 2026-07-24「画像が埋め込みできてない」── 章 10 の
+    // M* 画像が該当)。逆に md 正本に `asset:` を書くと GitHub 側で
+    // 壊れるため、正本は images/ パスに統一し build で変換する。
+    body = transcodeImageRefs(body);
+
     const title = extractTitle(body) ?? stripMdExtension(file);
     const lid = `manual-text-${number}`;
     entries.push({
@@ -331,6 +341,17 @@ function transcodeManualLinks(body: string): string {
   // matched but not captured — we don't emit them.
   const RE = /\]\((?:\.{1,2}\/(?:manual\/)?|\/(?:docs\/)?manual\/)?(\d{2})_[^)#]+\.md(?:#[^)]*)?\)/g;
   return body.replace(RE, (_match, number) => `](entry:manual-text-${number})`);
+}
+
+/**
+ * Rewrite relative image references to the embedded-asset scheme:
+ * `](images/NAME.png)` / `](./images/NAME.png)` → `](asset:NAME)`.
+ * Asset keys are the PNG basenames (see step 3 in `main`), so the
+ * name maps 1:1. Non-image links, external URLs, and `asset:` refs
+ * already in scheme form are untouched.
+ */
+function transcodeImageRefs(body: string): string {
+  return body.replace(/\]\((?:\.\/)?images\/([^)\s]+?)\.png\)/g, '](asset:$1)');
 }
 
 function makeStructuralRelation(from: string, to: string, id: string): Relation {
