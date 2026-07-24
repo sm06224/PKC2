@@ -193,6 +193,26 @@ seed に入れる方が spec が自己完結する。
   Tier-A は critical path 10 spec の予算)。
 - **同時に 2 つの playwright 実行をしない** — port 4173 の serve を共有していて
   起動が race する。
+- **copy / 書き出し系は clipboard の中身まで assert する** —
+  `context.grantPermissions(['clipboard-read', 'clipboard-write'])` →
+  `navigator.clipboard.readText()`(text/plain)/ `clipboard.read()` +
+  `item.getType('text/html')`(rich)。DOM の存在 assert だけでは
+  「貼り付け先で壊れている」を見逃す(2026-07-24: csv copy が表 → 生 CSV に
+  劣化 + UI 装飾 `#` `↕⌕` 混入を、この方法で初めて検出)。
+- **別窓(popup / entry-window)は `context.waitForEvent('page')` で受けて
+  popup.mouse / popup.evaluate で操作**。注意: sidebar 右クリック →
+  `ctx-open-window` は**編集ウィンドウ**として開く(dblclick 相当)。初期の
+  可視 pane は `#body-preview` で、`#body-view` は隠れている — view 側を
+  検証するなら `#btn-cancel` click で view mode へ戻してから。
+- **DOM の実形状が分からない時の probe 手法**: 期待値に `'SHOW_ME'` 等を
+  入れた `toEqual` で fail させ、diff に実物(children の tag/class 列挙等)を
+  吐かせて観察する。`console.log` は test runner の出力で流れやすい。
+- **FSA / フォルダ系の E2E**: `showDirectoryPicker` を OPFS ディレクトリに
+  stub(`navigator.storage.getDirectory()` → `getDirectoryHandle(name,
+  {create:true})`)すると、書き込みは実 FSA 経路のまま headless で回せる。
+  OPFS は reload を跨いで永続するので、navigation 後の検証にも使える
+  (storage-dead E2E / fallback-gate parity の定型)。reload を挟む poll は
+  `.catch(() => -1)` で context 破棄を吸収して再 poll。
 
 ## 既存 spec を先に 1 つ読む
 

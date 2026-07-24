@@ -78,3 +78,16 @@ scope drift / 後方互換の破壊 / 大規模 refactor / 不可逆操作 / プ
 - GitHub の squash commit(committer noreply@github.com)は改変対象外。stop hook が
   Unverified を訴えても amend しない(branch ref の push 同期のみで対処)
 - 複数 PR を積まない(stack 事故の教訓)。1 PR ずつ着地させてから次を積む
+- **`npm test` は node_modules 不在でも exit 0 で「pass に見える」**
+  (`sh: vitest: not found` でもエラー扱いにならない)。fresh コンテナでは
+  最初に `ls node_modules/.bin/vitest` で実在を確認してから信じる。
+  「テスト全 pass」と報告する前に、実行数(Tests N passed)が出力に
+  あることを必ず見る(2026-07-24 に実際に踏んだ)
+- **squash merge の前に PR title / body を最新の実態へ更新する**。squash
+  commit title は merge 時の PR title 由来なので、レビュー中に仕様が変わった
+  まま merge すると main の履歴に古い説明が残る(#994 で title 更新 → merge
+  の順にした前例)
+- `git checkout -B <新branch> origin/main` は**未 commit の変更を持ち越す**。
+  「作業してから branch を切り直す」定型として使える(変更ファイルが両
+  branch で同内容なら衝突しない)。commit 前の `git branch --show-current`
+  確認とセットで
