@@ -9,6 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Internal reasoning MUST be in American English
 - Final output MUST be in Japanese
 
+## 会話・提示ルール(user 確立、2026-07。必ず遵守)
+
+- **AskUserQuestion ツールは使わない**。質問・確認は必ず会話文で行う(ツール UI はコンテキストが抜ける、user 明示指示)
+- **成果物は GitHub URL(rendered)で提示**。diff の貼り付けでは user に伝わらない
+- **doc-first**: 実装前に設計 doc → GitHub URL で提示 → user 裁定 → 実装。裁定前に実装を進めない
+- **意図を読む**: user の発言が事実と食い違っていても、関連する実態を探して会話で聞き返す(字義対応で突っ走らない)
+- 直近セッションの成果・残件・教訓は `docs/development/session-handoff-2026-07-24.md`
+
 ## 現在の運用方針(2026-06、最優先)
 
 > **プライム・ディレクティブ:機能を足さない。削る・選る・着陸させる。**
@@ -125,8 +133,8 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 3. **既存問題は別 hotfix PR**:wave に紛れ込ませず即剥がす
 4. **視覚機能 PR は visual parity test 最低 1 件**(上記 Testing 参照)
 5. **新 doc は同 commit で INDEX 登録**(`check:doc-orphans` CI)
-6. **user-facing 変更はお知らせに掲載**(2026-07-22 user 指示):UI・挙動・既定値が変わる PR は `src/adapter/ui/startup-notice.ts` の `STARTUP_NOTICES` 先頭 entry に 1 行追記(新リリース = 新 entry を先頭追加)。起動後カードとして user に届く
-7. **merge は通常時 Claude が実行**(user 委任、2026-06-07)。CI 全 green + audit 通過 + scope 自己監査クリアを確認したうえで squash merge する。ただし次のいずれかに該当する時は merge せず `AskUserQuestion` で user 判断を仰ぐ:scope drift / 後方互換の破壊 / 大規模 refactor / 不可逆操作 / プライム・ディレクティブ(機能を足さない)や frozen 方針への抵触。確認が取れない・CI が green でないものは merge しない
+6. **user-facing 変更はお知らせに掲載 + マニュアル反映**(2026-07-22 user 指示):UI・挙動・既定値が変わる PR は `src/adapter/ui/startup-notice.ts` の `STARTUP_NOTICES` 先頭 entry に 1 行追記(新リリース = 新 entry を先頭追加)。起動後カードとして user に届く。マニュアル更新は `.claude/skills/manual-maintenance/SKILL.md` の手順で(画像は `images/*.png` 相対パス、生成物も同 commit)
+7. **merge は通常時 Claude が実行**(user 委任、2026-06-07)。手順は `.claude/skills/merge-on-green/SKILL.md`(branch 作り直し → CI 監視 cron → squash merge → main 同期)。CI 全 green + audit 通過 + scope 自己監査クリアを確認したうえで squash merge する。ただし次のいずれかに該当する時は merge せず**会話で** user 判断を仰ぐ:scope drift / 後方互換の破壊 / 大規模 refactor / 不可逆操作 / プライム・ディレクティブ(機能を足さない)や frozen 方針への抵触。確認が取れない・CI が green でないものは merge しない
 
 PR の自己監査(scope drift / CI / unresolved / mergeable / 互換性 grep / bundle)は `docs/development/pr-review-checklist.md` を参照(必要時のみ、儀式化しない)。
 
@@ -137,6 +145,7 @@ markdown は 3 経路で独立 render:center pane(detail-presenter)/ Viewer popu
 ## 参照 doc(詳細方法論)
 
 - `docs/development/v3-consolidation-and-direction-2026-06.md` — **方針正本**
+- `docs/development/session-handoff-2026-07-24.md` — 直近セッションの成果・残件・教訓(storage v3 P0〜P2 完了時点)
 - `docs/development/archived/CLAUDE-md-2026-05-pre-slim.md` — スリム化前の全文(reform-2026-05 Phase 1–11 の wave 規律詳細)
 - `docs/development/visual-state-parity-testing.md` — parity test 方法論
 - `docs/development/pr-review-checklist.md` — PR 自己監査の正本
