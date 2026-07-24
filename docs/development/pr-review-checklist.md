@@ -65,6 +65,13 @@ PR の性質に応じて以下を grep 確認:
 - **Slice 5+ 系 PR**: `.pkc-card-placeholder` / `data-pkc-card-*` / `navigate-card-ref` 等の既存 contract が byte-for-byte 維持
 - **vocab cleanup 系 PR**: 取りこぼしがないか(grep で旧呼称が残っていないか)
 - **a11y 改善系 PR**: 主要 interactive 要素の `role` / `tabindex` / `aria-*` が壊れていないか
+- **DOM 形状を変えた PR**(wrapper 追加 / 要素の入れ子変更 / class・attr 構成変更):
+  その形状の**消費者**を grep して実測確認する —
+  `:scope >` 選択子・`querySelector` / `closest` で旧形状を前提にする箇所
+  (copy handler / minimap / split-sync / table-interactive / export /
+  hydrator)。テストが無い消費者は**静かに劣化**する(2026-07-24 の教訓:
+  #996 の slot 化で csv copy が表 → 生ソースに劣化、#997 で検出・修正。
+  検出できたのは clipboard の中身まで assert する parity test を書いたから)
 
 ### 2.7 Bundle / budget
 
