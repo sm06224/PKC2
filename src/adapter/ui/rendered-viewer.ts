@@ -572,6 +572,46 @@ export function buildRenderedViewerHtml(
       border-radius: 4px;
       background: #ffffff;
     }
+    /* Built-in mermaid placeholder + rendered + error(2026-07-24 gap fix):
+       base.css の .pkc-mermaid-* 群を Viewer popup にも mirror(S4
+       entry-window には mirror 済だった)。色は popup の --pkc-popup-*
+       変数で light / dark 追従。 */
+    .pkc-mermaid-placeholder {
+      display: block;
+      margin: 0.75em 0;
+      border: 1px dashed var(--pkc-popup-border);
+      border-radius: 4px;
+      padding: 0.25rem;
+      background: var(--pkc-popup-bg);
+    }
+    .pkc-mermaid-source {
+      margin: 0;
+      padding: 0.5rem;
+      background: var(--pkc-popup-table-stripe);
+      color: var(--pkc-popup-muted);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.8rem;
+      overflow-x: auto;
+    }
+    .pkc-mermaid-rendered {
+      display: block;
+      margin: 0.75em 0;
+      padding: 0.5rem;
+      text-align: center;
+      background: var(--pkc-popup-bg);
+    }
+    .pkc-mermaid-rendered svg {
+      max-width: 100%;
+      height: auto;
+    }
+    .pkc-mermaid-error {
+      margin: 0 0 0.25rem;
+      padding: 0.25rem 0.5rem;
+      background: rgba(229, 62, 62, 0.12);
+      color: var(--pkc-popup-fg);
+      border-left: 3px solid #e53e3e;
+      font-size: 0.85rem;
+    }
     /* Transclusion (![label](entry:LID) 経由の他 entry 埋め込み、2026-05-08
        hotfix:Viewer popup でも detail-presenter と同じ見た目で出すため
        base.css pkc-transclusion 群を inline mirror)。 */

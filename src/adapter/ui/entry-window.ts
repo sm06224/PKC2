@@ -4500,6 +4500,23 @@ function saveEntry() {
   document.getElementById('status').textContent = 'Saving...';
 }
 
+/* PR-2M html-render fence iframe の auto-resize(2026-07-24 gap fix)。
+   srcdoc 内 script は window.parent(= この view window)へ postMessage
+   するため、rendered-viewer.ts と同 protocol の listener を S4 にも張る。
+   従来は CSS mirror のみで iframe が height 0 のままだった。
+   注: 送信元は sandbox iframe(opaque origin)で opener bind の対象外。
+   型検査 + 高さ clamp(0..5000)+ id 逆引きのみで受ける(下の opener
+   bind listener とは独立)。 */
+window.addEventListener('message', function(ev) {
+  var d = ev.data;
+  if (!d || typeof d !== 'object') return;
+  if (d.type !== 'pkc-html-render-resize') return;
+  if (typeof d.id !== 'string' || typeof d.height !== 'number') return;
+  var h = Math.max(0, Math.min(5000, d.height));
+  var iframe = document.querySelector('iframe[data-pkc-html-render-id="' + (window.CSS && CSS.escape ? CSS.escape(d.id) : d.id) + '"]');
+  if (iframe) iframe.style.height = h + 'px';
+});
+
 window.addEventListener('message', function(e) {
   /* #795 Phase 1.5: bind inbound to the opener (host) Window identity.
      Unforgeable even under opaque origin; ignore any other source. */

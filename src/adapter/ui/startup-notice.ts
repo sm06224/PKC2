@@ -39,6 +39,15 @@ export interface StartupNotice {
  */
 export const STARTUP_NOTICES: readonly StartupNotice[] = [
   {
+    id: '2026-07-24-codeblock-render-wave',
+    date: '2026-07-24',
+    title: '2026-07-24 更新のお知らせ',
+    items: [
+      '不具合修正: エントリを別ウィンドウで開いたとき、```html-render の埋め込み表示が高さ 0 のまま見えない問題を修正しました',
+      '不具合修正: Viewer ポップアップの mermaid 図まわり(枠・ソース・エラー表示)のスタイルが本体画面と揃っていなかった問題を修正しました',
+    ],
+  },
+  {
     id: '2026-07-22-refinement-round',
     date: '2026-07-22',
     title: '2026-07 更新のお知らせ',
