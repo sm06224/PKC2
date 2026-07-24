@@ -3607,11 +3607,11 @@ export function bindActions(
         //   - rich target (Word, Slack, browser textbox) → rendered HTML
         const block = target.closest<HTMLElement>('.pkc-md-block');
         if (!block) break;
-        // Prefer the inner block element (skip the copy button itself).
-        const inner = block.querySelector<HTMLElement>(':scope > pre, :scope > table');
+        const inner = findMdBlockCopySource(block);
         if (!inner) break;
-        const plain = extractMdBlockPlainText(inner);
-        const html = htmlForRichCopy(inner.outerHTML);
+        const source = stripTableChromeForCopy(inner);
+        const plain = extractMdBlockPlainText(source);
+        const html = htmlForRichCopy(source.outerHTML);
         void copyMarkdownAndHtml(plain, html).then((ok) => {
           if (ok) {
             target.setAttribute('data-pkc-flash', 'true');
@@ -10551,6 +10551,50 @@ function escapeMarkdownLabel(label: string): string {
  *
  * Anything else: fall back to `textContent`.
  */
+/**
+ * `.pkc-md-block` の中から「今ユーザーに見えている面」= copy 元の要素を選ぶ。
+ *
+ * 標準規約(codeblock-render-standard-2026-07)で renderable fence は
+ * `.pkc-render-slot`(レンダリング面)+ 隠し `pre.pkc-render-source` の 2 面
+ * 構成になった。直下 `pre` / `table` 決め打ちのままだと csv 系の描画 table が
+ * slot の中に隠れて拾えず、隠しソースが選ばれてしまう(表 → 生 CSV への
+ * 劣化。#996 で入った回帰)。
+ *
+ * - ソース面表示中(トグル ON)→ 見えているソースをコピー
+ * - レンダリング面 → csv 系は slot 内の `table`(TSV + rich table を維持)。
+ *   html / mermaid は copy できる描画要素が無い(iframe / SVG)ので、選択子が
+ *   隠しソースに落ちてソースがコピーされる
+ */
+export function findMdBlockCopySource(block: HTMLElement): HTMLElement | null {
+  const toggle = block.querySelector<HTMLInputElement>(':scope > .pkc-render-toggle-input');
+  if (toggle?.checked) {
+    return block.querySelector<HTMLElement>(':scope > pre.pkc-render-source');
+  }
+  // 選択子リストは **document 順** で最初の一致を返す。slot は隠しソースより
+  // 前にあるので、csv 系では slot 内 table が優先される。
+  return block.querySelector<HTMLElement>(
+    ':scope > .pkc-render-slot > table, :scope > pre, :scope > table',
+  );
+}
+
+/**
+ * 表の copy から UI 装飾を落とす。`table-interactive.ts` が rendered table に
+ * 行番号列 `#` と並べ替え `↕` / 絞り込み `⌕` ボタン、絞り込み入力行を注入する
+ * ため、素直に textContent / outerHTML を取ると **貼り付け先に UI が混ざる**
+ * (Excel の見出しが `name↕⌕`、余分な `#` 列がつく)。表示中の DOM は壊さず、
+ * clone から装飾ノードだけ除いたものを copy 元として返す。
+ */
+const TABLE_CHROME_SELECTOR =
+  '.pkc-md-table-rownum, .pkc-md-table-filter-row, .pkc-md-table-sort, .pkc-md-table-filter-toggle';
+
+export function stripTableChromeForCopy(inner: HTMLElement): HTMLElement {
+  if (inner.tagName.toLowerCase() !== 'table') return inner;
+  if (!inner.querySelector(TABLE_CHROME_SELECTOR)) return inner;
+  const clone = inner.cloneNode(true) as HTMLElement;
+  for (const el of clone.querySelectorAll(TABLE_CHROME_SELECTOR)) el.remove();
+  return clone;
+}
+
 function extractMdBlockPlainText(inner: HTMLElement): string {
   const tag = inner.tagName.toLowerCase();
   if (tag === 'pre') {
