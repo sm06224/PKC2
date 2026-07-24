@@ -26,14 +26,6 @@ vi.mock('mermaid', () => ({
   },
 }));
 
-function setMermaidFlag(value: boolean): void {
-  const url = new URL(window.location.href);
-  url.searchParams.delete('pkc-flag');
-  if (value) url.searchParams.set('pkc-flag', 'editor.mermaid_render_enabled=1');
-  window.history.replaceState({}, '', url.toString());
-  __resetUrlCache();
-}
-
 function makeEntry(body: TextlogBody, lid = 'tl-mermaid'): Entry {
   return {
     lid,
@@ -70,14 +62,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setMermaidFlag(false);
   resetMermaidRendererState();
   document.body.innerHTML = '';
 });
 
 describe('TEXTLOG mermaid hydration(2026-07-08 regression)', () => {
-  it('flag ON:log 内の mermaid fence が SVG へ hydrate される', async () => {
-    setMermaidFlag(true);
+  it('log 内の mermaid fence が SVG へ hydrate される(常時有効、flag は 2026-07-24 撤去)', async () => {
     const el = textlogPresenter.renderBody(makeEntry(MERMAID_LOG));
     document.body.appendChild(el); // hydrator / observer は接続済み DOM 前提
     // renderMarkdown は placeholder を生成している
@@ -92,17 +82,27 @@ describe('TEXTLOG mermaid hydration(2026-07-08 regression)', () => {
     expect(el.querySelector('.pkc-mermaid-placeholder')).toBeNull();
   });
 
-  it('flag OFF(既定):placeholder のまま(意図的 no-op、ソース表示)', async () => {
-    setMermaidFlag(false);
-    const el = textlogPresenter.renderBody(makeEntry(MERMAID_LOG));
+  it('```mermaid-norender は placeholder を出さず code のまま(hydrator 不介入)', async () => {
+    const el = textlogPresenter.renderBody(
+      makeEntry({
+        entries: [
+          {
+            id: 'log-nr',
+            text: '```mermaid-norender\nflowchart TD\n  A --> B\n```\n',
+            createdAt: '2026-07-08T10:00:00Z',
+            flags: [],
+          },
+        ],
+      }),
+    );
     document.body.appendChild(el);
     await flushHydration();
-    expect(el.querySelector('.pkc-mermaid-placeholder')).not.toBeNull();
+    expect(el.querySelector('.pkc-mermaid-placeholder')).toBeNull();
     expect(el.querySelector('.pkc-mermaid-rendered')).toBeNull();
+    expect(el.querySelector('code.language-mermaid')).not.toBeNull();
   });
 
   it('mermaid を含まない log は影響なし(markdown は通常 render)', async () => {
-    setMermaidFlag(true);
     const el = textlogPresenter.renderBody(
       makeEntry({ entries: [{ id: 'l1', text: '# Heading only', createdAt: '2026-07-08T10:00:00Z', flags: [] }] }),
     );

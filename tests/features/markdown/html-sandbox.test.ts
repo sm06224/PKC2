@@ -134,10 +134,20 @@ describe('renderMarkdown integration — ```html-render fence(PR-2M)', () => {
     expect(html).toContain('<iframe');
   });
 
-  it('``` html(without -render)は通常 code block(誤発火防止)', () => {
+  it('``` html(無印)= -both の省略形:iframe + トグル(codeblock-render-standard-2026-07)', () => {
     const md = '```html\n<h1>x</h1>\n```';
     const html = renderMarkdown(md);
+    expect(html).toContain('<iframe');
+    expect(html).toContain('data-pkc-render-mode="both"');
+    expect(html).toContain('class="pkc-render-toggle-input"');
+    // 隠しソース(copy 供給源 + トグルのソース面)
+    expect(html).toContain('class="pkc-render-source"');
+  });
+
+  it('``` html-norender はコードブロック固定(render 経路に入らない)', () => {
+    const md = '```html-norender\n<h1>x</h1>\n```';
+    const html = renderMarkdown(md);
     expect(html).not.toContain('<iframe');
-    expect(html).toContain('<code');
+    expect(html).toContain('language-html');
   });
 });

@@ -129,8 +129,11 @@ describe('renderMarkdown (markdown-it)', () => {
 
   it('renders <br> inside a CSV-fence table cell', () => {
     const html = renderMarkdown('```csv\nA,B\nline1<br>line2,x\n```');
-    expect(html).toContain('line1<br>');
-    expect(html).not.toContain('&lt;br&gt;');
+    // レンダリング面(.pkc-render-slot)の table cell では実 <br>。隠しソース
+    // (.pkc-render-source)は原文どおり escape されるため slot に scope して assert。
+    const slot = html.match(/<div class="pkc-render-slot">([\s\S]*?)<pre class="pkc-render-source"/)?.[1] ?? '';
+    expect(slot).toContain('line1<br>');
+    expect(slot).not.toContain('&lt;br&gt;');
   });
 
   it('keeps the XSS posture: only bare <br> is allowed, other HTML stays escaped', () => {
@@ -598,8 +601,10 @@ describe('B-1 / S-16 — CSV / TSV fenced block → <table>', () => {
     expect(html).toContain('<th>qty</th>');
     expect(html).toContain('<td>apple</td>');
     expect(html).toContain('<td>banana</td>');
-    // Must NOT also wrap the source as a code block.
-    expect(html).not.toContain('class="language-csv"');
+    // 標準規約(codeblock-render-standard-2026-07):table は .pkc-render-slot、
+    // 隠しソース(.pkc-render-source)が copy 供給源 + トグルのソース面として同居。
+    expect(html).toContain('data-pkc-render-mode="both"');
+    expect(html).toContain('class="pkc-render-source"');
   });
 
   it('renders ```csv noheader without thead', () => {

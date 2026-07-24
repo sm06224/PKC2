@@ -2085,6 +2085,45 @@ body {
   font-size: var(--fs-sm);
 }
 
+/* ── コードブロック・レンダリング標準規約 mirror
+   (codeblock-render-standard-2026-07):CSS-only トグル。S4 は
+   action-binder の無い独立 document だが checkbox + sibling combinator で
+   JS 配線ゼロのまま機能する。base.css 変更時は本 mirror も同時更新。 */
+.pkc-render-source { display: none; }
+.pkc-md-block > .pkc-render-toggle-input:checked ~ .pkc-render-slot { display: none; }
+.pkc-md-block > .pkc-render-toggle-input:checked ~ .pkc-render-source { display: block; }
+.pkc-md-block > .pkc-render-toggle-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.pkc-render-toggle {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  font-size: 0.85em;
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--c-fg-dim);
+  background: var(--c-surface);
+}
+.pkc-md-block > .pkc-render-toggle-input:checked + .pkc-render-toggle {
+  background: var(--c-border);
+  color: var(--c-fg);
+}
+.pkc-md-block[data-pkc-render-lang="mermaid"]:not([data-pkc-render-ready]) > .pkc-render-toggle,
+.pkc-md-block[data-pkc-render-lang="mermaid"]:not([data-pkc-render-ready]) > .pkc-render-toggle-input {
+  display: none;
+}
+@media print {
+  .pkc-render-toggle,
+  .pkc-render-toggle-input { display: none !important; }
+}
+
 /* ── Task list polish: hanging indent + completed styling.
    Mirrors base.css .pkc-md-rendered task rules so the popped entry
    window renders task lists identically to the main pane. */

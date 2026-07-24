@@ -143,9 +143,9 @@ const textPresenter: DetailPresenter = {
         });
       }
       // pgc-203 wave-α' polish #24:built-in mermaid hydration(S1 center)。
-      // `editor.mermaid_render_enabled` flag OFF / placeholder 0 件で
-      // early return、lazy import('mermaid')。fire-and-forget(非同期、
-      // 戻り値 promise は無視 ── render 完了は次 frame 以降に visible に)。
+      // placeholder 0 件で early return、lazy import('mermaid')。
+      // fire-and-forget(非同期、戻り値 promise は無視 ── render 完了は
+      // 次 frame 以降に visible に)。常時有効(flag は 2026-07-24 撤去)。
       void hydrateMermaidPlaceholders(body);
       // 領域 6:top-level 見出しを native <details> で畳めるよう再構成。
       // 純 DOM 操作のため entries 有無に依らず無条件で適用する。

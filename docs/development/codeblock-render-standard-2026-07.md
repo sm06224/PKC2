@@ -1,6 +1,6 @@
 # コードブロック・レンダリング標準規約(無印 = トグル付き render / -render / -norender)— 設計
 
-**Status**: ✅ **裁定済み(2026-07-24)・実装着手可**
+**Status**: ✅ **裁定済み・実装済み(2026-07-24。PR-0 hotfix = #995、PR-A 本体は後続 PR)**
 **Date**: 2026-07-24(裁定反映 rev 2)
 **起源**: user 指示(2026-07-24)+ user 裁定(同日、rev 1 の §7 への回答)
 **関連**: html-render(reform-2026-05 PR-2M)/ mermaid(pgc-203 #24)/ csv fence / flag 撤去の前例 #919 / manual 12 章 §12.7.4

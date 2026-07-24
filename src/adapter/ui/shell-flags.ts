@@ -547,22 +547,10 @@ export const editorFormatShortcutsEnabled = defineFlag<boolean>(
   },
 );
 
-// Built-in Mermaid 描画(v3 統合 master G5 markdown 方言完結、user 直接
-// 指示 2026-05-24「ビルトインマーメイドに対応して」、pgc-203 wave-α'
-// polish #24)。ON で markdown fence ` ```mermaid ` を mermaid.js で
-// SVG render。lazy `import('mermaid')` で初回 detection 時のみ load(初期
-// bundle.js には mermaid 本体は入らず、separate chunk 経由)。
-// `prefers-color-scheme` を listen して theme 切替時に re-render。
-// 3 surface(S1 center / S2 Viewer popup / S4 entry-window)で hydrate。
-export const editorMermaidRenderEnabled = defineFlag<boolean>(
-  'editor.mermaid_render_enabled',
-  false,
-  {
-    category: 'editor',
-    description:
-      'markdown ```mermaid fence を built-in mermaid.js で SVG render(lazy import、theme aware、3 surface 統一)',
-  },
-);
+// Built-in Mermaid 描画は常時有効(`editor.mermaid_render_enabled` flag は
+// codeblock-render-standard-2026-07 の user 裁定 2026-07-24 で撤去。
+// render させたくない fence は ` ```mermaid-norender `)。旧 container の
+// `__flags__` に残る当該 key は registry 不在で単に無視される。
 
 // #903(2026-07-12 user 要望「ミニマップをサポートして欲しい」):center pane
 // rendered view の抽象化バーミニマップ(VSCode 風、DOM 縮小クローンではなく
