@@ -3,6 +3,7 @@ import type { DetailPresenter } from './detail-presenter';
 import { classifyFileSize, fileSizeWarningMessage, isFileTooLarge } from './guardrails';
 import { isExtensionBound } from '../platform/extension-bindings';
 import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
+import { isAssetConfirmedAbsent } from '../../features/asset/asset-absence';
 import { getAssetUrl } from '../platform/asset-url-registry';
 import { base64ToText } from '../../features/asset/text-codec';
 
@@ -503,7 +504,12 @@ export const attachmentPresenter: DetailPresenter = {
     // ヒープ ±0・サイズ非依存)、HTML / TEXT 変換系のみ従来の base64
     // hydrate(noteAssetMiss)。#964 の 4MB 閾値と「大きなファイルは
     // 操作時読み込み」の deferred 状態は撤去。
-    const pendingHydration = dataStripped && !lightSourceHint;
+    // A4(視覚監査 2026-07-25):「store にも実体が無い」を第 3 の状態として
+    // 分ける。従来は下の pendingHydration に落ちて **永久に「⏳ 読み込み中」**
+    // のままだった(失敗表示もタイムアウトも無い)。判定源は store が clean な
+    // null を返したという事実だけ ── 時間で諦めると誤検知する。
+    const assetMissing = dataStripped && !lightSourceHint && isAssetConfirmedAbsent(att.asset_key);
+    const pendingHydration = dataStripped && !lightSourceHint && !assetMissing;
     const registryUrl = att.asset_key ? getAssetUrl(att.asset_key, att.mime) : null;
     if (pendingHydration && att.asset_key && !registryUrl && needsBase64ForRender(att)) {
       noteAssetMiss(att.asset_key);
@@ -583,6 +589,19 @@ export const attachmentPresenter: DetailPresenter = {
       stripped.className = 'pkc-attachment-stripped';
       stripped.textContent = 'Data not included (Light export)';
       metaRow.appendChild(stripped);
+    } else if (assetMissing && !registryUrl) {
+      // A4:不在が確定した。⏳ のまま固まらせない。ただし **データ破損と
+      // 断定しない** ── Light export を Rehydrate した container では
+      // lightSource が落ちるので、事故と正常な由来の両方があり得る。
+      const missing = document.createElement('span');
+      missing.className = 'pkc-attachment-missing';
+      missing.setAttribute('data-pkc-region', 'attachment-missing');
+      missing.textContent = '⚠ ファイルの中身が見つかりません';
+      missing.title =
+        `保存領域に asset (${att.asset_key ?? '?'}) の実体がありません。`
+        + 'Light export から復元した / 元データが失われた 等が考えられます。'
+        + 'ダウンロードは保存領域を直接読むので、試す価値はあります。';
+      metaRow.appendChild(missing);
     } else if (pendingHydration && !registryUrl) {
       // 非常駐なだけ:registry の URL 供給(media 系)or working-set の
       // base64 回復(HTML / TEXT 系)で再 render されると消える一時表示。

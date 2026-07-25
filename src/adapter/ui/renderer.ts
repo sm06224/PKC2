@@ -124,6 +124,7 @@ import { pad2 } from '../../features/datetime/datetime-format';
 import { groupTodosByStatus, KANBAN_COLUMNS } from '../../features/kanban/kanban-data';
 import { collectOrphanAssetKeys } from '../../features/asset/asset-scan';
 import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
+import { isAssetConfirmedAbsent } from '../../features/asset/asset-absence';
 import { getResidentAssetMeta, getResidentAssetSizes } from '../platform/asset-meta-index';
 import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
 import type { StorageProfile } from '../../features/asset/storage-profile';
@@ -12333,15 +12334,29 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
   // ボタンは残す(click 経路が on-demand hydrate する)。P1s2-c(#967):
   // #964 の 4MB 閾値と deferred 分岐は撤去 — media 系は registry の
   // ObjectURL(ヒープ ±0・サイズ非依存)、それ以外のみ base64 hydrate。
-  const pendingHydration = !hasData && !!att.asset_key && !isAttachmentLightSourceHint();
+  // A4(視覚監査 2026-07-25):center pane と同じ第 3 状態(store にも実体が
+  // 無い)を分ける。ここも従来は永久に「⏳ 読み込み中」だった。
+  const assetMissing = !hasData && !!att.asset_key && !isAttachmentLightSourceHint()
+    && isAssetConfirmedAbsent(att.asset_key);
+  const pendingHydration = !hasData && !!att.asset_key && !isAttachmentLightSourceHint()
+    && !assetMissing;
   if (pendingHydration) {
     const regUrl = getAssetUrl(att.asset_key!, att.mime);
     const t = classifyPreviewType(att.mime);
     const urlRenderable = t === 'image' || t === 'pdf' || t === 'video' || t === 'audio';
     if (!regUrl && !urlRenderable) noteAssetMiss(att.asset_key!);
   }
-  if (hasData || pendingHydration) {
-    if (pendingHydration) {
+  // assetMissing でも `Light export` 側の else 節に落とさない(誤表示になる)。
+  if (hasData || pendingHydration || assetMissing) {
+    if (assetMissing) {
+      const missing = createElement('div', 'pkc-attachment-missing');
+      missing.setAttribute('data-pkc-region', 'attachment-missing');
+      missing.textContent = '⚠ ファイルの中身が見つかりません';
+      missing.title =
+        `保存領域に asset (${att.asset_key ?? '?'}) の実体がありません。`
+        + 'ダウンロードは保存領域を直接読むので、試す価値はあります。';
+      root.appendChild(missing);
+    } else if (pendingHydration) {
       const pending = createElement('div', 'pkc-attachment-pending');
       pending.setAttribute('data-pkc-region', 'attachment-loading');
       pending.textContent = '⏳ ファイル読み込み中…';

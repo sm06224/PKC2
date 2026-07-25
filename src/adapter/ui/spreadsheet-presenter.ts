@@ -19,6 +19,8 @@ import type { Entry } from '@core/model/record';
 import type { DetailPresenter } from './detail-presenter';
 import {
   parseSpreadsheetBody,
+  parseSpreadsheetBodyResult,
+  type SpreadsheetParseError,
   serializeSpreadsheetBody,
   parseTsvToBody,
   serializeBodyToTsv,
@@ -85,6 +87,52 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * A5(視覚監査 2026-07-25):body を読み取れなかったことを画面に出す banner。
+ *
+ * 従来は parse 失敗も空 body も同じ「空グリッド」に見えていた。見分けが
+ * つかないまま 1 セル編集して保存すると、元 body(復旧できたかもしれない
+ * データ)が空シートで上書きされる。
+ *
+ * 編集画面では「作り直す」を添える ── 元 raw を温存する挙動だけを入れると
+ * 「入力しても保存されない」という別のバグ報告になるため、明示的に捨てる
+ * 導線は必ずセットで置く。
+ */
+function buildParseWarning(
+  doc: Document,
+  error: SpreadsheetParseError,
+  editable: boolean,
+): HTMLElement {
+  const reason: Record<SpreadsheetParseError, string> = {
+    'invalid-json': 'JSON として読めません',
+    'not-object': 'シートの形式(オブジェクト)ではありません',
+    'rows-not-array': '行データ(rows)が配列ではありません',
+  };
+  const warn = doc.createElement('div');
+  warn.className = 'pkc-spreadsheet-parse-warning';
+  warn.setAttribute('data-pkc-region', 'spreadsheet-parse-warning');
+  warn.setAttribute('data-pkc-parse-error', error);
+
+  const msg = doc.createElement('span');
+  msg.className = 'pkc-spreadsheet-parse-warning-text';
+  msg.textContent = editable
+    ? `⚠ このシートの内容を読み取れませんでした(${reason[error]})。空のシートではありません — `
+      + '元のデータは保持されるので、そのまま保存しても失われません。'
+    : `⚠ このシートの内容を読み取れませんでした(${reason[error]})。空のシートではありません。`;
+  warn.appendChild(msg);
+
+  if (editable) {
+    const discard = doc.createElement('button');
+    discard.type = 'button';
+    discard.className = 'pkc-btn pkc-btn-small pkc-spreadsheet-parse-discard';
+    discard.setAttribute('data-pkc-action', 'spreadsheet-discard-broken-body');
+    discard.textContent = '空のシートで作り直す';
+    discard.title = '読み取れなかった元データを破棄して、新しい空のシートにします(履歴には残ります)';
+    warn.appendChild(discard);
+  }
+  return warn;
 }
 
 /** 空 body にも default grid を出すための seed。view / edit 共通。 */
@@ -1770,10 +1818,16 @@ export const spreadsheetPresenter: DetailPresenter = {
     viewToolbar.appendChild(mkVB('💾 CSV', 'spreadsheet-export-csv', 'CSV ファイルとしてダウンロード(見たまま)'));
     viewToolbar.appendChild(mkVB('💾 XLSX', 'spreadsheet-export-xlsx', 'Excel xlsx としてダウンロード(chart 含む、Office Open XML)'));
     wrapper.appendChild(viewToolbar);
-    const body = parseSpreadsheetBody(entry.body);
+    // A5(視覚監査 2026-07-25):parse 失敗を「空シート」と区別する。
+    // 従来はどちらも同じ空グリッドに見えていた。
+    const parseRes = parseSpreadsheetBodyResult(entry.body);
+    const body = parseRes.body;
     // body state を view にも書いておく(view toolbar の export action が
     // readBodyState で読めるように、edit と同じ contract)。
     writeBodyState(wrapper, body);
+    if (parseRes.error !== null) {
+      wrapper.appendChild(buildParseWarning(document, parseRes.error, false));
+    }
     wrapper.appendChild(buildTableElement(document, body));
     if (body.charts && body.charts.length > 0) {
       const area = document.createElement('div');
@@ -1808,9 +1862,17 @@ export const spreadsheetPresenter: DetailPresenter = {
     wrapper.setAttribute('data-pkc-spreadsheet-lid', entry.lid);
 
     // initial body
-    const parsed = parseSpreadsheetBody(entry.body);
+    // A5:parse 失敗時は **元 raw を wrapper に退避**して collectBody が
+    // 空 seed で上書きしないようにする(#935 の attachment-original-body と
+    // 同じ流儀)。空 body(= 正常)では属性も banner も付かない。
+    const parseRes = parseSpreadsheetBodyResult(entry.body);
+    const parsed = parseRes.body;
     const body = parsed.rows.length === 0 ? seedBodyIfEmpty(parsed) : parsed;
     writeBodyState(wrapper, body);
+    if (parseRes.error !== null) {
+      wrapper.setAttribute('data-pkc-spreadsheet-parse-error', parseRes.error);
+      wrapper.setAttribute('data-pkc-spreadsheet-original-body', entry.body);
+    }
 
     // toolbar
     const toolbar = document.createElement('div');
@@ -1835,6 +1897,27 @@ export const spreadsheetPresenter: DetailPresenter = {
     toolbar.appendChild(mkBtn('❓ 関数', 'spreadsheet-show-formula-help', '対応関数の一覧 / 使い方を表示'));
     toolbar.appendChild(mkBtn('TSV ⇄ Grid', 'spreadsheet-toggle-tsv', 'TSV 編集モードと Grid 編集モードを切替'));
     wrapper.appendChild(toolbar);
+
+    // A5:読み取れなかったことを toolbar の直後に出す(grid より前に置いて
+    // 見落とさないようにする)。「作り直す」で明示的に破棄できる。
+    if (parseRes.error !== null) {
+      const warn = buildParseWarning(document, parseRes.error, true);
+      wrapper.appendChild(warn);
+      warn.addEventListener('click', (e: MouseEvent) => {
+        const t = e.target;
+        if (!(t instanceof HTMLElement)) return;
+        if (t.getAttribute('data-pkc-action') !== 'spreadsheet-discard-broken-body') return;
+        // 明示的な破棄 ── 以降 collectBody は grid 由来の新 body を返す。
+        wrapper.setAttribute('data-pkc-spreadsheet-recover', 'discard');
+        warn.setAttribute('data-pkc-discarded', 'true');
+        const msg = warn.querySelector<HTMLElement>('.pkc-spreadsheet-parse-warning-text');
+        if (msg) {
+          msg.textContent = '⚠ 元のデータを破棄して作り直します(保存すると確定 — '
+            + '直前の内容は履歴から戻せます)。';
+        }
+        t.remove();
+      });
+    }
 
     // grid table
     const gridTable = buildGridTable(document, body);
@@ -1862,6 +1945,17 @@ export const spreadsheetPresenter: DetailPresenter = {
 
   collectBody(root: HTMLElement): string {
     const wrapper = root.closest<HTMLElement>('.pkc-spreadsheet-editor') ?? root;
+    // A5(視覚監査 2026-07-25):読み取れなかった body は、user が明示的に
+    // 「作り直す」を選んでいない限り **元 raw をそのまま返す**(実質 no-op 保存)。
+    // これが無いと、壊れた body の entry を開いて 1 セル触って保存しただけで
+    // 20x12 の空グリッドが元データを上書きする。
+    const originalBody = wrapper.getAttribute('data-pkc-spreadsheet-original-body');
+    if (
+      originalBody !== null
+      && wrapper.getAttribute('data-pkc-spreadsheet-recover') !== 'discard'
+    ) {
+      return originalBody;
+    }
     if (wrapper.getAttribute('data-pkc-spreadsheet-mode') === 'grid') {
       const table = wrapper.querySelector<HTMLTableElement>('table.pkc-spreadsheet-grid');
       if (table) {
@@ -1871,7 +1965,13 @@ export const spreadsheetPresenter: DetailPresenter = {
       }
     }
     const ta = root.querySelector<HTMLTextAreaElement>('textarea[data-pkc-field="body"]');
-    if (!ta) return serializeSpreadsheetBody({ rows: [] });
+    if (!ta) {
+      // A5:grid も textarea も無い = editor DOM が差し替わっている。
+      // ここで空 body を返すと COMMIT_EDIT が元データを空で上書きする。
+      const fallback = wrapper.getAttribute('data-pkc-spreadsheet-original-body');
+      if (fallback !== null) return fallback;
+      return serializeSpreadsheetBody({ rows: [] });
+    }
     // TSV mode:JSON か TSV か判定
     const v = ta.value;
     if (v.trim().startsWith('{')) {

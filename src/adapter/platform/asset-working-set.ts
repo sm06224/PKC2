@@ -3,6 +3,12 @@ import type { ContainerStore } from './idb-store';
 import type { DomainEvent } from '../../core/action/domain-event';
 import { getEntryAssetDependencies } from '../../features/asset/asset-scan';
 import { drainAssetMisses } from '../../features/asset/asset-miss-recorder';
+import {
+  markAssetAbsent,
+  markAssetPresent,
+  assetAbsenceRevision,
+  resetAssetAbsence,
+} from '../../features/asset/asset-absence';
 
 /**
  * Working-set lazy asset loading (段階3, #868 / memory-reduction #7).
@@ -82,6 +88,8 @@ export function mountWorkingSet(
   // race on the cache or dispatch a torn working-set.
   let running: Promise<void> = Promise.resolve();
   let disposed = false;
+  // A4:absence 確定を 1 回だけ publish に反映させるための版数。
+  let lastPublishedAbsenceRevision = assetAbsenceRevision();
 
   function currentCid(): string | null {
     return dispatcher.getState().container?.meta.container_id ?? null;
@@ -108,12 +116,25 @@ export function mountWorkingSet(
         continue;
       }
       if (absent.has(key)) continue;
-      const data = await store.loadAsset(cid, key);
+      // A4(視覚監査 2026-07-25):throw は「不在の確定」ではない。
+      // 一時的な I/O 障害を bytes 欠落と誤認すると、Light export の説明が
+      // 消えて user を不安にさせる。clean な null のときだけ absence を記録する。
+      let data: string | null;
+      try {
+        data = await store.loadAsset(cid, key);
+      } catch (err) {
+        if (disposed) return;
+        console.warn('[PKC2] asset load failed (retryable):', key, err);
+        continue;
+      }
       if (disposed) return;
       if (typeof data === 'string') {
         cache.set(key, data);
+        markAssetPresent(key);
       } else {
         absent.add(key);
+        // 「store にも実体が無い」を render 経路から読める形で記録する。
+        markAssetAbsent(key);
       }
     }
 
@@ -165,7 +186,13 @@ export function mountWorkingSet(
         }
       }
     }
-    if (identical) return;
+    // A4:bytes が 1 つも増えていなくても **absence が確定した回は publish
+    // する**。そうしないと再 render 自体が起きず、「⏳ 読み込み中」が画面に
+    // 残り続ける(このバグの本体)。revision で 1 回だけに絞るのでループ
+    // しない ── 次の回は revision が動かず従来どおり早期 return する。
+    const absenceRev = assetAbsenceRevision();
+    if (identical && absenceRev === lastPublishedAbsenceRevision) return;
+    lastPublishedAbsenceRevision = absenceRev;
     dispatcher.dispatch({
       type: 'SET_WORKING_SET_ASSETS',
       assets: Object.fromEntries(cache),
@@ -216,6 +243,10 @@ export function mountWorkingSet(
     ) {
       cache.clear();
       absent.clear();
+      // A4:container が入れ替わったら不在判定も捨てる。残すと新しい
+      // データに古い嘘(「見つかりません」)が付いたままになる。
+      resetAssetAbsence();
+      lastPublishedAbsenceRevision = assetAbsenceRevision();
     }
     if (PRELOAD_EVENTS.has(event.type)) void ensure(selectionDeps());
   });
