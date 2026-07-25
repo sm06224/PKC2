@@ -120,6 +120,27 @@ const ITEMS: Item[] = [
       + '同じ行の「✎ 編集」「TEXT に変換」と混在していた。修正後は 名前を変更 / ダウンロード / '
       + 'プレビュー不可 に統一（Copy link はマニュアルに章見出しごとある定着語なので据え置き）。',
   },
+  {
+    file: '10-spreadsheet-cells',
+    label: 'B3\n長文セル',
+    minChange: 0.005,
+    description:
+      'スプレッドシートの長文セル。修正前は固定幅 96px の中で pre-wrap だったため'
+      + '日本語が 5〜6 文字ごとに折り返し、行高が数十倍に伸びていた'
+      + '（text-overflow: ellipsis は指定済みだったが nowrap でないと発火しない）。'
+      + '修正後は Excel と同じ 1 行クリップ + 「…」省略。全文は tooltip、'
+      + '編集中はクリックしたセルだけ開く。印刷・HTML 書き出しでは折り返しに戻す。',
+  },
+  {
+    file: '11-text-attachment-preview',
+    label: 'B4\nテキスト添付',
+    minChange: 0.005,
+    description:
+      'text 系添付（.json / .txt / .log など）。修正前は「✎ 編集」はできるのに'
+      + '「プレビューできません」と表示される不整合だった（#1005 で編集を入れた時点で'
+      + '整合が崩れていた）。修正後は編集導線と同じ述語で判定し、iframe ではなく'
+      + '<pre> で中身を表示する。子ウィンドウ（entry-window）でも同じ。',
+  },
 ];
 
 test('report: 視覚監査 before/after の比較 HTML を生成', async ({ page }) => {
