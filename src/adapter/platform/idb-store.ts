@@ -9,12 +9,20 @@ import { defineFlag } from '../flags';
 import { isBodyPendingGlobal } from './body-working-set';
 
 /**
- * #940 案 A 段階1(2026-07-20 user go「実装を続行しよう」): storage layout v2。
- * ON にすると差分保存(saveDiff)が entry を meta(body 空)と本文
- * (`__body__` record)に分離して書く。読み込みは段階1 では全 body を
- * 復元する(挙動不変)── boot の meta-first 化は段階2、body working-set は
- * 段階3。旧ビルド互換の注意は差分保存と同一(unaware ビルドで storage を
- * 直接開くと本文が空に見える。OFF 保存で v1 へ書き戻る)。
+ * #940 案 A(2026-07-20 user go「実装を続行しよう」): 本文・履歴を container
+ * record から追い出す storage layout。段階1 の layout v2(`__body__` per-record)
+ * から段階2〜4 で進み、**現在 ON が書くのは layout 5**(meta 単一 record +
+ * revisions / bodies を `segments` bucket の gzip パックへ集約。#983–#988)。
+ *
+ * ⚠ **単独では何も起きない**。この flag を読むのは `saveDiff()` の中の
+ * `wantSplitBodies` 1 箇所だけで(下記 `lazyBodies`)、`persistence.ts` は
+ * `differential_save` が OFF なら `save()`(inline)しか呼ばない。差分保存は
+ * 既定 OFF(#958 で ON から撤回)なので、**lazy だけ ON にしても layout は 1 の
+ * まま**。実測と既定 ON 可否の判断は
+ * `docs/development/lazy-entry-bodies-diagnosis-2026-07-25.md`(結論: 既定 OFF 据え置き)。
+ *
+ * 旧ビルド互換の注意は差分保存と同一(unaware ビルドで storage を直接開くと
+ * 本文が空に見える。OFF 保存で layout 1 へ書き戻る)。
  */
 export const lazyEntryBodiesEnabled = defineFlag<boolean>(
   'persistence.lazy_entry_bodies',
@@ -22,7 +30,7 @@ export const lazyEntryBodiesEnabled = defineFlag<boolean>(
   {
     category: 'perf',
     description:
-      '案 A 段階1: entry 本文を別 record に分離する storage layout v2(差分保存 ON が前提)。留意: ON 保存した storage は旧ビルドから本文が見えない(OFF 保存で復帰)',
+      '案 A: 本文・履歴を segments へ分割圧縮する高速起動 layout(現行 ON = layout 5)。⚠ differential_save も同時に ON でないと無効(単独では layout 1 のまま)。留意: ON 保存した storage は旧ビルドから本文が見えない(OFF 保存で復帰)',
     tier: 0,
   },
 );
