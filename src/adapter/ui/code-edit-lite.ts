@@ -172,7 +172,10 @@ export function mountCodeEditLite(
       row.textContent = err.line !== null ? `行 ${err.line}: ${err.message}` : err.message;
       errorsBox.appendChild(row);
     }
-    errorsBox.style.display = errors.length ? '' : 'none';
+    // ⚠ inline を '' にすると CSS 既定 `.pkc-code-edit-errors { display: none }`
+    // が勝ってエラー行が DOM にあるのに不可視になる(2026-07-25 に視覚デモで
+    // 発見)。表示時は明示的に 'block' を入れて CSS 既定を上書きする。
+    errorsBox.style.display = errors.length ? 'block' : 'none';
   };
   const runValidate = (): void => {
     const errors = host.validate?.(ta.value) ?? [];

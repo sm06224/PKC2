@@ -3489,12 +3489,25 @@ mark.pkc-search-mark {
   font-size: var(--fs-sm);
   color: var(--c-fg-dim);
 }
+/* dialog 内は flex column で「エディタは伸縮 / エラー行は常時可視」を保証。
+   背の高い textarea がエラー行を画面外へ押し出さないよう、textarea 側に
+   max-height を与え、errors box を flex-shrink させない。 */
 .pkc-flags-json-card .pkc-code-edit {
   min-height: 0;
   flex: 1;
+  overflow: hidden;
+}
+.pkc-flags-json-card .pkc-code-edit-surface {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 .pkc-flags-json-card .pkc-code-edit-input {
-  min-height: 40vh;
+  min-height: 30vh;
+  max-height: 55vh;
+}
+.pkc-flags-json-card .pkc-code-edit-errors {
+  flex-shrink: 0;
 }
 
 /* ── Non-image asset chips ──

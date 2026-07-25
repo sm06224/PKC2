@@ -63,13 +63,15 @@ const TIER_A_SPECS = [
 const tier = process.env.SMOKE_TIER ?? 'all';
 const testMatch = tier === 'a'
   ? TIER_A_SPECS.map((s) => `**/${s}`)
-  : /^(?!.*\/_archive\/).*\.spec\.ts$/;
+  // `_archive/`(diagnostic)と `_demo/`(user 提示スクショ用、別 config で実行)を除外。
+  : /^(?!.*\/(?:_archive|_demo)\/).*\.spec\.ts$/;
 
 export default defineConfig({
   testDir: __dirname,
   testMatch,
-  // `_archive/` 配下の spec は production smoke から exclude(diagnostic / debug 用)
-  testIgnore: ['**/_archive/**'],
+  // `_archive/`(diagnostic / debug)と `_demo/`(視覚デモ、playwright.demo.config で
+  // 実行)は production smoke から exclude。
+  testIgnore: ['**/_archive/**', '**/_demo/**'],
   // PR-W19:各 spec は独立 browser context で実行
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
