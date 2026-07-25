@@ -55,10 +55,19 @@ describe('validate 契約', () => {
 
   it('エラー時: 行付きで表示され、保存が disabled になる', () => {
     const { handle } = mount({ value: 'ax', validate: failOnX });
-    const errors = handle.root.querySelector('[data-pkc-region="code-edit-errors"]')!;
+    const errors = handle.root.querySelector<HTMLElement>('[data-pkc-region="code-edit-errors"]')!;
     expect(errors.textContent).toContain('行 2: x は禁止');
+    // 2026-07-25 回帰 pin: inline display を '' にすると CSS 既定 display:none が
+    // 勝ってエラーが不可視になる。errors ありのとき inline は 'block' であること。
+    expect(errors.style.display).toBe('block');
     const commit = handle.root.querySelector<HTMLButtonElement>('[data-pkc-action="code-edit-commit"]')!;
     expect(commit.disabled).toBe(true);
+  });
+
+  it('エラーなしのとき errors box は display:none', () => {
+    const { handle } = mount({ value: 'ok', validate: failOnX });
+    const errors = handle.root.querySelector<HTMLElement>('[data-pkc-region="code-edit-errors"]')!;
+    expect(errors.style.display).toBe('none');
   });
 
   it('修正で解除される(input → revalidate)', () => {
