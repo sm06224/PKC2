@@ -39,6 +39,14 @@ export interface StartupNotice {
  */
 export const STARTUP_NOTICES: readonly StartupNotice[] = [
   {
+    id: '2026-07-25-code-edit-lite-wave',
+    date: '2026-07-25',
+    title: '2026-07-25 更新のお知らせ',
+    items: [
+      '改善: コードブロックのシンタックスハイライトが xml / svg に対応しました(```xml / ```svg)',
+    ],
+  },
+  {
     id: '2026-07-24-codeblock-render-wave',
     date: '2026-07-24',
     title: '2026-07-24 更新のお知らせ',

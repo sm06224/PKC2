@@ -68,6 +68,10 @@ const ALIASES: Readonly<Record<string, string>> = {
   yml: 'yaml',
   ps1: 'powershell',
   pwsh: 'powershell',
+  // CodeEditLite(code-edit-lite-design-2026-07):xml / svg は html rule で
+  // 十分に読める(タグ / 属性 / 文字列 / コメント / entity が共通)。
+  xml: 'html',
+  svg: 'html',
 };
 
 /**

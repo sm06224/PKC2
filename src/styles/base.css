@@ -3339,6 +3339,107 @@ mark.pkc-search-mark {
 .pkc-md-rendered pre code .pkc-tok-del { color: var(--c-tok-del); }
 .pkc-md-rendered pre code .pkc-tok-hunk { color: var(--c-tok-hunk); font-weight: 600; }
 
+/* ── CodeEditLite(code-edit-lite-design-2026-07 §2)──
+   textarea(文字 transparent + caret のみ)+ 背面 highlight overlay。
+   font / padding / line-height / tab-size を両面で厳密一致させること
+   (ズレ = 編集不能級の事故)。現状のホストは S1 のみ。popup 系ホストを
+   作る時は inline mirror を忘れない(3 surface 規約)。 */
+.pkc-code-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pkc-code-edit-surface {
+  position: relative;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+}
+.pkc-code-edit-highlight,
+.pkc-code-edit-input {
+  margin: 0;
+  padding: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
+  box-sizing: border-box;
+}
+.pkc-code-edit-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+}
+.pkc-code-edit-highlight code {
+  font: inherit;
+  white-space: inherit;
+  display: block;
+  background: transparent;
+  padding: 0;
+}
+/* overlay の token 色(.pkc-md-rendered スコープ外なので並記) */
+.pkc-code-edit-highlight code .pkc-tok-comment { color: var(--c-tok-comment); font-style: italic; }
+.pkc-code-edit-highlight code .pkc-tok-string { color: var(--c-tok-string); }
+.pkc-code-edit-highlight code .pkc-tok-keyword { color: var(--c-tok-keyword); font-weight: 600; }
+.pkc-code-edit-highlight code .pkc-tok-number { color: var(--c-tok-number); }
+.pkc-code-edit-highlight code .pkc-tok-builtin { color: var(--c-tok-builtin); }
+.pkc-code-edit-highlight code .pkc-tok-variable { color: var(--c-tok-variable); }
+.pkc-code-edit-highlight code .pkc-tok-type { color: var(--c-tok-type); }
+.pkc-code-edit-highlight code .pkc-tok-attr { color: var(--c-tok-attr); }
+.pkc-code-edit-highlight code .pkc-tok-punct { color: var(--c-text-dim); }
+.pkc-code-edit-highlight code .pkc-tok-tag { color: var(--c-tok-tag); }
+.pkc-code-edit-highlight code .pkc-tok-meta { color: var(--c-tok-meta); }
+.pkc-code-edit-input {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 10em;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--c-fg);
+  border: 0;
+  outline: none;
+  resize: vertical;
+  overflow: auto;
+}
+.pkc-code-edit-input:focus-visible {
+  outline: 2px solid var(--c-accent, #4aa3ff);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+.pkc-code-edit-errors {
+  display: none;
+  max-height: 8em;
+  overflow-y: auto;
+}
+.pkc-code-edit-error {
+  margin: 0 0 var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(229, 62, 62, 0.12);
+  color: var(--c-fg);
+  border-left: 3px solid #e53e3e;
+  font-size: var(--fs-sm);
+}
+.pkc-code-edit-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.pkc-code-edit-actions-spacer { flex: 1; }
+.pkc-code-edit-wrap-tag-name {
+  width: 7em;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-1-5);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+  color: var(--c-fg);
+}
+
 /* ── Non-image asset chips ──
    Rendered by the asset resolver when the markdown source contains a
    `[label](asset:key)` reference to a PDF / audio / video / archive /
