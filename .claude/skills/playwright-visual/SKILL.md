@@ -187,6 +187,32 @@ unit(textContent を見る)も parity(エラー box の可視性を見ていな�
 - 見つけた可視性バグは **unit に computed/inline display の assert を足して**
   回帰 pin する(textContent だけの assert は不十分)
 
+## demo は「空振り」に気づけない(必ず重複検出する)
+
+demo モードには pass/fail が無いので、**操作が効かなくても「撮れた」ように
+見える**。2026-07-25 の全画面監査では 30 枚中 **4 枚が boot 直後と完全同一
+md5** だった(tree 展開 / 深い階層の breadcrumb / command palette / tab 切替
+── いずれも操作が届いておらず、boot 画面をもう一度撮っていただけ)。
+**枚数を成果と誤認しない**。
+
+撮影 spec には必ず次の 2 つを入れる:
+
+1. **撮る前に画面の観測点で assert**(`visual-state-parity-testing` skill の
+   規律を demo にも適用)。「palette が開いた」なら
+   `[data-pkc-region="command-palette"]` の可視を待ってから撮る。
+   click の成否ではなく **画面が変わったこと** を待つ
+2. **撮った後に重複検出**。同一 sweep 内で md5 が衝突したら fail させる:
+
+   ```bash
+   md5sum test-results/audit/*.png | sort | awk '{print $1}' | uniq -d
+   # 出力があれば「操作が効いていないショット」がある
+   ```
+
+popup(Viewer / entry-window)は**独立 document なので `page` 直の click が
+届かない**。`context.waitForEvent('page')` で popup を掴んでから
+`popup.screenshot()` する。掴まずに `locator.click()` を待つと timeout で
+落ちる(同監査で 7 sweep 中 1 件がこれで fail)。
+
 ## 完了チェック
 
 - [ ] `eval "$(node scripts/resolve-pw-chromium.cjs --export)"` を実行してから走らせた
@@ -195,3 +221,5 @@ unit(textContent を見る)も parity(エラー box の可視性を見ていな�
 - [ ] demo で異常系(エラー / 空 / 警告)も撮った
 - [ ] verify: elementFromPoint + 実 OS event + 画面観測点の assert がある
 - [ ] 見つけた可視性バグは unit に display assert で回帰 pin した
+- [ ] demo: 撮る前に画面観測点で assert、撮った後に md5 重複検出をかけた
+- [ ] popup を撮るときは `context.waitForEvent('page')` で掴んでから撮った
