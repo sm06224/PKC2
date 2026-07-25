@@ -57,7 +57,11 @@ function itemsForRegion(region: ContextMenuRegion): RegionContextMenuItem[] {
         { label: '📋 新規 TEXTLOG エントリ', commandId: 'entry.create.textlog' },
         { label: '☑ 新規 TODO エントリ', commandId: 'entry.create.todo' },
         { label: 'sep', commandId: '', separator: true },
-        { label: '📊 グラフビュー', commandId: 'view.graph' },
+        // 「📊 グラフビュー」(view.graph)は削除済 ── graph view 自体が
+        // 廃止されているのに menu 項目だけ残っており、押しても
+        // `executeCommand` が silent no-op を返すだけだった(視覚監査
+        // 2026-07-25 で発覚)。dead command は
+        // tests/adapter/command-id-integrity.test.ts が構造的に禁止する。
         { label: '📁 ファイラービュー', commandId: 'view.filer' },
         { label: '📅 カレンダービュー', commandId: 'view.calendar' },
         { label: 'sep', commandId: '', separator: true },

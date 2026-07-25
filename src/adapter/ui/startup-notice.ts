@@ -39,6 +39,16 @@ export interface StartupNotice {
  */
 export const STARTUP_NOTICES: readonly StartupNotice[] = [
   {
+    id: '2026-07-25-visual-audit-fixes',
+    date: '2026-07-25',
+    title: '表示品質の修正のお知らせ',
+    items: [
+      '不具合修正: About ページの「折りたたみブロック」が折りたためず、記法(:::details …)がそのまま文字として見えていた問題を修正しました',
+      '不具合修正: タイトルが空のエントリで、ファイラーやパンくずに内部 ID(lid)がそのまま表示されていた問題を修正しました(「(untitled)」表示に統一)',
+      '整理: 右クリックメニューの「📊 グラフビュー」と Alt+5 を削除しました(グラフビューは廃止済みで、押しても何も起きない項目が残っていました)。Alt+6 のランチャーは変わりません',
+    ],
+  },
+  {
     id: '2026-07-25-code-edit-lite-wave',
     date: '2026-07-25',
     title: '2026-07-25 更新のお知らせ',

@@ -27,8 +27,24 @@ import type { AboutPayload } from '../../core/model/about-payload';
  *   - footnote `[^1]`
  *   - table
  *   - `# heading`(toc 連動)
- *   - `:::details summary="…"` 折りたたみ
+ *   - `:::details{summary="…"}` 折りたたみ
  *   - markdown standard list / bold / italic / code
+ *
+ * ⚠ **block directive の attr は必ず brace 形 `:::name{k="v"}` で書くこと**。
+ * `parseBlockDirectiveOpen`(features/markdown/block-directive-attrs.ts)の
+ * 受理形は `^:::name(\{…\})?\s*$` のみで、空白区切りの `:::name k="v"` は
+ * 方言として認識されず **本文にそのまま literal 表示**される。実際 2026-07-25
+ * の視覚監査まで `:::details summary="…"`(brace なし)のまま出荷されており、
+ * 空コンテナ初回起動の About で `:::details summary=…` と `:::` が見えていた。
+ * showcase に dialect を足すときは
+ * `tests/adapter/about-pkc-markdown-showcase.test.ts` の「視覚監査 pin」群
+ * (render 後の DOM を assert し、`:::` の literal 漏れも検出する)が守る ──
+ * markdown 文字列の存在チェックだけでは同じ壊れを再び見逃す。
+ *
+ * ⚠ **`{{vars.x}}` を「記法の説明」として書くときは `\{{vars.x}}` と escape する**。
+ * vars 展開は inline code span の中でも効くため(markdown-render.ts:1160 の
+ * 明示的な trade-off)、escape しないと About 自身に「未定義変数」の赤い
+ * 警告マーカーが出る。これも 2026-07-25 の視覚監査まで出荷されていた。
  */
 const SHOWCASE_MARKDOWN = `# About PKC2 — Powered by PKC-Markdown
 
@@ -63,7 +79,7 @@ tip / important / warning / caution / danger)を書けます。
 | Footnote | ✓ | 自動採番 |
 | TOC | ✓ | h1〜h3 から自動生成 |
 
-:::details summary="折りたたみ block も使えます"
+:::details{summary="折りたたみ block も使えます"}
 \`:::details\` で native \`<details>\` element を生成、summary attr で
 タイトルを明示。本文には markdown を完全に書けるので、よくある FAQ や
 「詳細は別途…」 系の長い文章に便利。
@@ -71,8 +87,8 @@ tip / important / warning / caution / danger)を書けます。
 
 ## Releases
 
-最近の release 情報は下の "Releases" section に build 時 \`docs/release/
-CHANGELOG_v*.md\` を parse した結果が出ます。
+最近の release 情報は下の "Releases" section に build 時
+\`docs/release/CHANGELOG_v*.md\` を parse した結果が出ます。
 
 :::section{role=note}
 **現 release**: \`v{{vars.version}}\` ({{vars.recent_release_count}} 件の最近
@@ -81,7 +97,7 @@ release を About に内包 / build commit \`{{vars.commit}}\`)。
 **{{vars.dev_dependency_count}} 件**の dev dependency を含む。
 :::
 
-> このパラグラフは [[em:vars 展開]] のデモです。\`{{vars.x}}\` 構文で
+> このパラグラフは [[em:vars 展開]] のデモです。\`\\{{vars.x}}\` 構文で
 > About payload(version / commit / 件数等)を markdown 本文へ動的に
 > 埋め込めるため、user direction「最近の変更が反映されていない」
 > (2026-05-23、U-19)に応えて release 情報をここで自動表示します。

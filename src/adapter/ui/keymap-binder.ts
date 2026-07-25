@@ -130,7 +130,11 @@ export function registerBuiltinKeymaps(): void {
   registerKeyBinding('Alt+2', 'view.calendar');
   registerKeyBinding('Alt+3', 'view.kanban');
   registerKeyBinding('Alt+4', 'view.filer');
-  registerKeyBinding('Alt+5', 'view.graph');
+  // `Alt+5` = `view.graph` は削除済(視覚監査 2026-07-25)── graph view は
+  // 廃止されているのに binding だけ残り、押しても無反応だった。
+  // **`Alt+6` は launcher のまま詰めない**:番号を繰り上げると既に Alt+6 を
+  // 使っている user の操作を壊す。一度も動いたことのない Alt+5 を空けておく
+  // ほうが安全(不変条件 5「後方互換」)。
   registerKeyBinding('Alt+6', 'view.launcher');
   registerKeyBinding('F12', 'app.flags');
   registerKeyBinding('Ctrl+K Ctrl+S', 'app.shortcuts');

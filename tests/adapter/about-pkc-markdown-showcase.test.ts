@@ -5,11 +5,19 @@
  * showcase section。「Aboutはかなり味気ない / もっと PKC-Markdown を
  * ドッグフーディング」(user direction)対応の dogfooding section。
  *
- * Tier 0 flag `shell.about_pkc_markdown_showcase_enabled`:
- *   OFF(default):従来 About view(version / license / dependencies 等)
+ * Tier 0 flag `shell.about_pkc_markdown_showcase_enabled`(**既定 ON**):
+ *   OFF:従来 About view(version / license / dependencies 等)
  *   ON:About view の頭に PKC-Markdown showcase が prepend、:::section /
  *      ==mark== / ..em-dot.. / footnote / table 等の dialect 機能を
  *      実際に render して可視化
+ *
+ * ⚠ **dialect ごとの個別 assert だけでは足りない**(2026-07-25 視覚監査の教訓)。
+ * `:::details` は本 test が個別 assert を持っていなかったため、記法ミス
+ * (brace なし `:::details summary="…"`)で **本文に literal 表示されたまま
+ * 出荷**され、空コンテナ初回起動の About でそれが見えていた。個別 assert は
+ * 「足した dialect の数だけ」しか守れないので、下の「literal 漏れ」test で
+ * **未知の記法ミスも捕まる**ようにしてある。showcase に dialect を足すときは
+ * 個別 assert も足すこと。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -171,5 +179,69 @@ describe('pgc-113 About PKC-Markdown showcase(dogfooding)', () => {
     expect(text).not.toContain('{{vars.version}}');
     expect(text).not.toContain('{{vars.commit}}');
     expect(text).not.toContain('{{vars.dependency_count}}');
+  });
+
+  // ── 視覚監査 2026-07-25 の回帰 pin ──────────────────────────────
+  // 「markdown 文字列に書いてある」ではなく「**render 後の DOM に出ている**」
+  // を assert する。前者だけだと記法ミスを素通りする(実際した)。
+
+  it('視覚監査 pin:flag ON で :::details が <details>/<summary> に render される', () => {
+    setFlag(true);
+    boot();
+    const details = showcase()?.querySelector('details.pkc-details');
+    expect(details, ':::details が方言として発火していない(記法は brace 形 `:::details{summary="…"}`)').not.toBeNull();
+    const summary = details?.querySelector('summary.pkc-details-summary');
+    expect(summary).not.toBeNull();
+    expect(summary?.textContent).toContain('折りたたみ');
+  });
+
+  it('視覚監査 pin:block directive の marker が本文に literal 漏れしない', () => {
+    setFlag(true);
+    boot();
+    const el = showcase();
+    expect(el).not.toBeNull();
+    // `<code>` 内の `:::section` 等は「記法そのものの説明」なので正当。
+    // それを除いた本文テキストに `:::` が残っていたら方言が発火していない。
+    const clone = el!.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('code, pre').forEach((n) => n.remove());
+    const text = clone.textContent ?? '';
+    const leaked = text.match(/:::\S*/g);
+    expect(
+      leaked,
+      `block directive が literal 表示されている: ${JSON.stringify(leaked)}。` +
+        'attr は brace 形 `:::name{k="v"}` で書くこと(空白区切りは非対応)',
+    ).toBeNull();
+  });
+
+  it('視覚監査 pin:About 自身に「未定義変数」警告マーカーが出ない', () => {
+    setFlag(true);
+    boot();
+    // vars 展開は inline code span の中でも効く(markdown-render.ts の明示的な
+    // trade-off)。記法の説明として `{{vars.x}}` を書くときは `\{{vars.x}}` と
+    // escape しないと、About 自身に赤い「未定義変数」マーカーが出る。
+    const undef = showcase()?.querySelectorAll('.pkc-variable-undefined');
+    expect(
+      undef?.length ?? 0,
+      'showcase に未定義変数マーカーが出ている(記法説明の {{vars.x}} は `\\{{vars.x}}` と escape すること)',
+    ).toBe(0);
+  });
+
+  it('視覚監査 pin:showcase が謳う dialect が全て DOM に出ている', () => {
+    setFlag(true);
+    boot();
+    const el = showcase();
+    expect(el).not.toBeNull();
+    const present: Record<string, boolean> = {
+      'section callout': el!.querySelector('[class*="pkc-section-"]') !== null,
+      mark: el!.querySelector('mark') !== null,
+      'em-dot': el!.querySelector('em.pkc-em-dot') !== null,
+      ruby: el!.querySelector('ruby') !== null,
+      table: el!.querySelector('table') !== null,
+      details: el!.querySelector('details') !== null,
+      heading: el!.querySelector('h1') !== null && el!.querySelector('h2') !== null,
+      blockquote: el!.querySelector('blockquote') !== null,
+    };
+    const missing = Object.entries(present).filter(([, ok]) => !ok).map(([k]) => k);
+    expect(missing, `showcase で render されていない dialect: ${missing.join(', ')}`).toEqual([]);
   });
 });

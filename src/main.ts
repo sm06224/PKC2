@@ -540,16 +540,16 @@ async function boot(): Promise<void> {
   // 3. Action binder: DOM events → UserAction
   bindActions(root, dispatcher);
 
-  // 3-CP. Command Palette POC(vscode-grade-overhaul-2026-05 MASTER.md §4.1、
-  // pgc-80):Tier 0 flag `shell.command_palette_enabled` で gate(default
-  // OFF)、`Ctrl+Shift+P` / `F1` で起動。bootstrap として PKC2 の基本 command
-  // を `registerBuiltinCommands(dispatcher)` で登録。
+  // 3-CP. Command Palette(vscode-grade-overhaul-2026-05 MASTER.md §4.1、
+  // pgc-80):Tier 0 flag `shell.command_palette_enabled` で gate(**既定 ON**、
+  // shell-flags.ts)、`Ctrl+Shift+P` / `F1` で起動。bootstrap として PKC2 の
+  // 基本 command を `registerBuiltinCommands(dispatcher)` で登録。
   registerBuiltinCommands(dispatcher);
 
   // 3-KM. Keymap registry(MASTER.md §4.6、pgc-82):Tier 0 flag
-  // `shell.keymap_registry_enabled` で gate(default OFF)、Alt+1〜6 で view
-  // 切替 / F12 で Flags Inspector / Ctrl+K Ctrl+S で shortcuts 一覧 等の
-  // fresh chord を登録。既存 shortcut は不変。
+  // `shell.keymap_registry_enabled` で gate(**既定 ON**、#789)、Alt+1〜4 /
+  // Alt+6 で view 切替(Alt+5 は graph 廃止に伴い欠番)/ F12 で Flags
+  // Inspector / Ctrl+K Ctrl+S で shortcuts 一覧 等の chord を登録。
   registerBuiltinKeymaps();
 
   // 3-TS-R. pgc-86 restore(MASTER.md §4.3):本処理は **wireTabStrip より

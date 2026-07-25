@@ -251,11 +251,11 @@ describe('pgc-182 tab navigation keyboard(Ctrl+PageDown/Up / Alt+W / Ctrl+Shift+
     document.body.removeChild(ta);
   });
 
-  it('case 14: registerBuiltinKeymaps の合計件数が 27(23 + 4 new)', () => {
+  it('case 14: registerBuiltinKeymaps の合計件数が 21', () => {
     resetKeymapRegistry();
     registerBuiltinKeymaps();
     const bs = getKeyBindings();
-    expect(bs.length).toBe(22); // inspector chord 4 件撤去(#790)
+    expect(bs.length).toBe(21); // inspector chord 4 件撤去(#790)+ Alt+5=view.graph 撤去(視覚監査 2026-07-25)
     const ids = bs.map((b) => b.commandId);
     expect(ids).toContain('tab.next');
     expect(ids).toContain('tab.previous');

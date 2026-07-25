@@ -2342,7 +2342,7 @@ function renderShellMenu(
       extSection.appendChild(extLabel);
 
       const titleOf = (lid: string): string =>
-        state.container?.entries.find((e) => e.lid === lid)?.title || lid;
+        state.container?.entries.find((e) => e.lid === lid)?.title || '(untitled)';
 
       for (const extLid of extBindings.bound) {
         const row = createElement('div', 'pkc-shell-menu-ext-row');
@@ -2941,7 +2941,9 @@ function renderShortcutHelp(): HTMLElement {
     // #938 R10: keymap registry(既定 ON)の view / tab / history chord を
     // help に掲載(refinement-research §5「発見可能性」)。
     { key: '', desc: '', group: 'Views & Tabs' },
-    { key: 'Alt+1 〜 Alt+6', desc: 'Switch view (Detail / Calendar / Kanban / Filer / Graph / Launcher)' },
+    // `Alt+5` は欠番 ── graph view 廃止に伴い削除(視覚監査 2026-07-25)。
+    // Alt+6 は繰り上げない(既に動いていたキーを変えない)。
+    { key: 'Alt+1 〜 Alt+4 / Alt+6', desc: 'Switch view (Detail / Calendar / Kanban / Filer / Launcher)' },
     { key: 'Alt+← / Alt+→', desc: 'History back / forward' },
     { key: 'Ctrl+PageDown / PageUp', desc: 'Next / previous tab (Tabs ON 時)' },
     { key: 'Alt+W', desc: 'Close active tab (Tabs ON 時)' },
@@ -4331,7 +4333,7 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   // pgc-46:検索中は scope 名でなく「検索結果」であることを示す。
   label.textContent = filtering
     ? '🔍 検索結果'
-    : scope ? (scope.title || scope.lid) : 'Root';
+    : scope ? (scope.title || '(untitled)') : 'Root';
   header.appendChild(label);
   // Phase γ-A1:現スコープの(絞り込み後の)item 数を表示。
   const count = createElement('span', 'pkc-sidebar-filer-count');
@@ -4424,7 +4426,12 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
       'data-pkc-drop-target',
       nav.parentIsRootSentinel ? 'root' : 'true',
     );
-    li.textContent = `📁 ..  (${nav.parent.title || nav.parent.lid})`;
+    // 空タイトルは `(untitled)` を使うが、ここは元から括弧で包む表記なので
+    // そのまま入れると `((untitled))` と二重括弧になる。fallback 側だけ
+    // 括弧を持たせない。
+    li.textContent = nav.parent.title
+      ? `📁 ..  (${nav.parent.title})`
+      : '📁 ..  (untitled)';
     list.appendChild(li);
   }
   for (const child of matched) {
@@ -4447,7 +4454,7 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
     if (state.multiSelectedLids.includes(child.lid)) {
       li.setAttribute('data-pkc-multi-selected', 'true');
     }
-    li.textContent = `${archetypeIcon(child.archetype)} ${child.title || child.lid}`;
+    li.textContent = `${archetypeIcon(child.archetype)} ${child.title || '(untitled)'}`;
     list.appendChild(li);
   }
   sidebar.appendChild(list);
@@ -6436,6 +6443,10 @@ function renderFilerView(state: AppState): HTMLElement {
       if (sub) queue.push(...sub);
     }
     visibleChildren = allEntries.filter(
+      // ここは **表示ではなく検索の haystack** なので lid fallback のままで
+      // 正しい(lid で引けるのは意図した挙動)。表示側の `title || lid` は
+      // 内部 ID が画面に漏れるため 2026-07-25 に全部 `(untitled)` へ統一済 ──
+      // 同じ形をしていても混同しないこと。
       (e) => reachable.has(e.lid) && (e.title || e.lid).toLowerCase().includes(searchQuery),
     );
   } else {
@@ -6728,9 +6739,9 @@ function renderFilerHeader(state: AppState, scope: Entry | null, profile: FilerP
     // ancestors are nearest-first; reverse to get root-to-current order.
     for (const aLid of ancestors.slice().reverse()) {
       const a = entryByLid.get(aLid);
-      if (a) trail.push({ label: a.title || a.lid, lid: a.lid });
+      if (a) trail.push({ label: a.title || '(untitled)', lid: a.lid });
     }
-    trail.push({ label: scope.title || scope.lid, lid: scope.lid, isCurrent: true });
+    trail.push({ label: scope.title || '(untitled)', lid: scope.lid, isCurrent: true });
   }
   // PR-Δ25 (2026-05-07、user 報告「深い folder 階層で path が表示
   // しきれない」):trail.length > 5 のとき middle 部を「⋯」で集約し、
@@ -6911,7 +6922,7 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
   const sortBy = sortState.sortBy ?? null;
   const sortDir = sortState.sortDir ?? 'asc';
   const colValue = (e: Entry, key: string): string => {
-    if (key === 'name') return e.title || e.lid;
+    if (key === 'name') return e.title || '(untitled)';
     if (key === 'archetype') return e.archetype;
     if (key === 'created_at') return e.created_at;
     if (key === 'updated_at') return e.updated_at;
@@ -7045,7 +7056,7 @@ function renderFilerExplorerTable(state: AppState, children: readonly Entry[]): 
     icon.textContent = archetypeIcon(child.archetype);
     nameTd.appendChild(icon);
     const titleSpan = createElement('span', 'pkc-filer-row-title');
-    const fullTitle = child.title || child.lid;
+    const fullTitle = child.title || '(untitled)';
     // PR-SSS (2026-05-07、修正指示7 #3):中間省略 + tooltip。長文件名
     // (>40 char)で頭尾だけ残して中間を ellipsis 化、末尾 8 char で
     // date / 拡張子 / suffix を保持。`title` 属性に full text を載せ
@@ -7197,7 +7208,7 @@ function renderFilerContactSheet(
     if (dataUrl) {
       const img = document.createElement('img');
       img.src = dataUrl;
-      img.alt = child.title || child.lid;
+      img.alt = child.title || '(untitled)';
       img.loading = 'lazy';
       thumb.appendChild(img);
     } else {
@@ -7206,7 +7217,7 @@ function renderFilerContactSheet(
     }
     // Caption は thumb の右下に overlay(2026-05-06 user direction G12)。
     const caption = createElement('div', 'pkc-filer-card-caption');
-    caption.textContent = child.title || child.lid;
+    caption.textContent = child.title || '(untitled)';
     thumb.appendChild(caption);
     card.appendChild(thumb);
 
@@ -7271,7 +7282,7 @@ function renderFilerCardGrid(
     if (dataUrl) {
       const img = document.createElement('img');
       img.src = dataUrl;
-      img.alt = child.title || child.lid;
+      img.alt = child.title || '(untitled)';
       img.loading = 'lazy';
       thumb.appendChild(img);
     } else {
@@ -7281,7 +7292,7 @@ function renderFilerCardGrid(
     card.appendChild(thumb);
 
     const titleEl = createElement('div', 'pkc-filer-card-title');
-    titleEl.textContent = child.title || child.lid;
+    titleEl.textContent = child.title || '(untitled)';
     card.appendChild(titleEl);
 
     if (matches) {
@@ -7565,7 +7576,7 @@ function renderFilerInventory(state: AppState, children: readonly Entry[]): HTML
 
   // Helpers to read column value from entry+meta.
   const readCol = (row: { entry: Entry; meta: Record<string, unknown> }, key: string): string => {
-    if (key === '__name') return row.entry.title || row.entry.lid;
+    if (key === '__name') return row.entry.title || '(untitled)';
     if (key === '__archetype') return row.entry.archetype;
     if (key === '__tags') return (row.entry.tags ?? []).join(', ');
     const v = row.meta[key];
@@ -11000,7 +11011,7 @@ function renderPendingOffers(
   const folders: { lid: string; label: string }[] = container
     ? container.entries
         .filter((e) => e.archetype === 'folder')
-        .map((e) => ({ lid: e.lid, label: e.title || e.lid }))
+        .map((e) => ({ lid: e.lid, label: e.title || '(untitled)' }))
         .sort((a, b) => a.label.localeCompare(b.label))
     : [];
 
