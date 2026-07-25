@@ -155,6 +155,13 @@ await bootReady(page);
 
 asset を使わないなら transaction は `['containers']` のみで良い。
 
+**asset の seed key は storage v3 で `${container_id}:${asset_key}`(per-record)**。
+`assets` objectStore に生 key(`k1`)で put すると `store.loadAsset(cid, 'k1')` は
+`cid:k1` を探して見つけられず、lazy 添付が永久に非常駐 =「読み込み中」で
+弾かれ続ける(2026-07-25 に添付編集 parity で踏んだ)。seed では必ず
+`tx.objectStore('assets').put(base64, \`${cid}:${key}\`)` とする。古い spec に
+生 key の残骸があるので流用時は注意。
+
 ### C. flag seed(既定 OFF の機能・モード切替が要る時)
 
 flag は container の `__flags__` システム entry から読まれる。seed の entries に

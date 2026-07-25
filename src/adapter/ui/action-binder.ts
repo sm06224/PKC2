@@ -25,6 +25,7 @@ import {
   isTextConvertibleAttachment, decodeAttachmentText,
 } from './attachment-presenter';
 import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
+import { textToBase64, utf8ByteLength } from '../../features/asset/text-codec';
 import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
@@ -57,6 +58,7 @@ import { showToast } from './toast';
 import { showInlinePrompt, showInlineConfirm, showInlineForm } from './inline-dialog';
 import { openFlagsJsonEditor } from './flags-json-editor';
 import { openCodeBlockEditor } from './code-block-editor';
+import { openAttachmentTextEditor } from './attachment-text-editor';
 import {
   prepareOptimizedIntake,
   deriveDisplayFilename,
@@ -3266,17 +3268,14 @@ export function bindActions(
             (values['title'] ?? '').trim() || url.replace(/^https?:\/\//, '').slice(0, 40);
           const html = buildUrlRedirectHtml({ url, title: tileTitle });
           if (!html) return;
-          const bytes = new TextEncoder().encode(html);
-          let bin = '';
-          for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
-          const base64 = btoa(bin);
+          const base64 = textToBase64(html);
           const assetKey = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           const name = urlTileFilename(tileTitle);
           dispatcher.dispatch({
             type: 'PASTE_ATTACHMENT',
             name,
             mime: 'text/html',
-            size: bytes.length,
+            size: utf8ByteLength(html),
             assetKey,
             assetData: base64,
             contextLid: state.selectedLid ?? '',
@@ -4094,6 +4093,13 @@ export function bindActions(
             return true;
           },
         );
+        break;
+      }
+      case 'edit-attachment-text': {
+        // code-edit-lite-design-2026-07 §5: テキスト添付のその場編集。
+        if (!lid) break;
+        if (dispatcher.getState().readonly) break;
+        openAttachmentTextEditor(dispatcher, lid);
         break;
       }
       case 'rename-attachment': {
@@ -10729,6 +10735,15 @@ export function registerAssetHydrator(
   fn: ((keys: readonly string[]) => Promise<void>) | null,
 ): void {
   assetHydrator = fn;
+}
+
+/**
+ * asset key を単発で resident 化する(登録済みなら working-set.ensure を await)。
+ * user gesture(添付編集を開く等)が「初回クリックで結果を出す」ために、
+ * render cycle を待たず bytes をロードする。未登録(test 等)では no-op。
+ */
+export async function ensureAssetResident(key: string): Promise<void> {
+  if (key && assetHydrator) await assetHydrator([key]);
 }
 
 /**
