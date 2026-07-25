@@ -124,7 +124,9 @@ async function seed(page: Page): Promise<void> {
       revisions: [], assets: { k1: btoa('<h1>x</h1>') },
     };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      // version は指定しない(既存バージョンで開く)。storage v3 で
+      // DB_VERSION が 3 になり、`open('pkc2', 2)` 直書きは VersionError。
+      const req = indexedDB.open('pkc2');
       req.onerror = (): void => rej(req.error);
       req.onsuccess = (): void => {
         const db = req.result;
