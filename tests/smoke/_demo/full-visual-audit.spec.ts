@@ -201,22 +201,26 @@ test('audit: 深い階層 + 大量エントリ', async ({ page }) => {
   const g = new ShotGuard(SHOT, page);
   await bootWithFixture(page, { 'sidebar.mode': 'tree' });
 
-  // ⚠ 一括 forEach(click) は不可 ── 1 クリックごとに再 render が走り、
-  //    NodeList の残りが detach された古い element になるため 1 個しか効かない
-  //    (これが初回監査で 30-tree-expanded が boot と同一だった原因)。
-  //    毎回 DOM を引き直して先頭の未展開 toggle を押す。
-  for (let i = 0; i < 40; i++) {
-    const toggle = page.locator('[data-pkc-action="toggle-folder"][aria-expanded="false"]').first();
-    if ((await toggle.count()) === 0) break;
-    await toggle.click();
-    await page.waitForTimeout(120);
-  }
-  await g.shot('30-tree-expanded');
+  // ⚠ folder は既定で展開済(`▼`)なので「全部開く」は no-op = boot と同じ絵に
+  //    なる。実際に状態が変わる操作(先頭 folder を畳む)を撮る。
+  //    action 名は `toggle-folder-collapse`(`toggle-folder` は存在しない ──
+  //    初回監査はこの selector 誤りで 1 度も押せていなかった)。
+  const firstToggle = page.locator(
+    '[data-pkc-region="entry-list"] [data-pkc-action="toggle-folder-collapse"]',
+  ).first();
+  await mustClick(firstToggle, '先頭 folder の折りたたみトグル');
+  await page.waitForTimeout(400);
+  await g.shot('30-tree-folder-collapsed');
+  await mustClick(firstToggle, '先頭 folder の展開トグル');
+  await page.waitForTimeout(400);
 
-  // 深い階層の葉。tree の depth 打ち切りが可視化されていれば
-  // 「…」行から辿れる。辿れなければ throw = 退行検出。
-  await selectEntry(page, 'deep-leaf');
-  await g.shot('31-deep-leaf-breadcrumb');
+  // ⚠ cap(既定 maxDepth=4)を超えた葉は **ツリーに出ない**。これは user 裁定
+  //    「上限は据え置き、打ち切りを可視化する」どおりの仕様で、B1 で入れた
+  //    「…N」marker がその行き止まりを説明する。marker の存在を確認してから撮る。
+  const truncMarker = page.locator('[data-pkc-region="entry-list"] [data-pkc-tree-truncated]').first();
+  await mustSee(truncMarker, '階層打ち切りの「…N」marker');
+  await selectEntry(page, 'deep-4');
+  await g.shot('31-deep-truncation-marker');
 
   await selectEntry(page, 'att-longname');
   await g.shot('32-attachment-long-filename');
@@ -299,7 +303,7 @@ test('audit: モーダル・オーバーレイ', async ({ page }) => {
   await mustClick(
     page.locator('[data-pkc-action="open-flags-inspector"]'),
     'Flags Inspector を開く',
-    { expectAfter: page.locator('[data-pkc-region="flags-inspector"], .pkc-flags-inspector') },
+    { expectAfter: page.locator('[data-pkc-region="flags-inspector-overlay"]') },
   );
   await page.waitForTimeout(500);
   await g.shot('61-flags-inspector');
@@ -307,7 +311,7 @@ test('audit: モーダル・オーバーレイ', async ({ page }) => {
   await mustClick(
     page.locator('[data-pkc-action="open-flags-json-editor"]'),
     'Flags JSON エディタを開く',
-    { expectAfter: page.locator('.pkc-code-edit-overlay, [data-pkc-region="code-edit"]') },
+    { expectAfter: page.locator('[data-pkc-region="code-edit-lite"]') },
   );
   await page.waitForTimeout(400);
   await g.shot('62-flags-json-editor');
@@ -384,6 +388,13 @@ test('audit: flag 分岐(activity bar / meta pane タブ / folder=filer)', async
     await g.shot(`81-activity-${tab}`);
   }
 
+  // ⚠ activity tab を巡ったあとは explorer に戻さないとサイドバーに
+  //    entry 行が無い(空振りではなく仕様)。
+  await mustClick(
+    page.locator('[data-pkc-action="select-activity-tab"][data-pkc-activity-tab="explorer"]'),
+    'アクティビティタブ explorer に戻る',
+  );
+  await page.waitForTimeout(400);
   await selectEntry(page, 'hub');
   for (const mode of ['properties', 'references', 'all']) {
     await mustClick(

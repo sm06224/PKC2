@@ -336,11 +336,14 @@ const SORT_KEY_OPTIONS: readonly { key: SortKey; label: string }[] = [
 ] as const;
 
 /** Relation kind options with display labels. */
+// B2(視覚監査 2026-07-25):**label だけ**日本語化する。`kind` は
+// data-pkc-* / option value / 保存される relation.kind に直結する機能契約
+// なので絶対に触らない。
 const RELATION_KIND_OPTIONS: readonly { kind: RelationKind; label: string }[] = [
-  { kind: 'structural', label: 'Structural' },
-  { kind: 'categorical', label: 'Categorical' },
-  { kind: 'semantic', label: 'Semantic' },
-  { kind: 'temporal', label: 'Temporal' },
+  { kind: 'structural', label: '配置(structural)' },
+  { kind: 'categorical', label: '分類(categorical)' },
+  { kind: 'semantic', label: '意味(semantic)' },
+  { kind: 'temporal', label: '時系列(temporal)' },
 ] as const;
 
 /**

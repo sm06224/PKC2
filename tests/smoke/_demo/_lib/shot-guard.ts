@@ -33,9 +33,18 @@ export interface ShotRecord {
  * `allowDuplicate` は「同じ画面をわざと 2 回撮る」正当な用途のための逃げ道。
  * 使うときは理由をコメントに書くこと。
  */
+/**
+ * **run 全体で共有する** ハッシュ台帳。test ごとに持つと「test A の boot 画面と
+ * test B の『展開後』が同一」という種類の空振りを取り逃がす(実際 2026-07-25 の
+ * 再監査で `30-tree-expanded` が `01-boot-tree` と一致していたのを、test 内
+ * スコープでは検出できなかった)。意図的に同じ画面を撮るときは
+ * `allowDuplicate: true` を明示する。
+ */
+const seenAcrossRun = new Map<string, string>(); // sha -> name
+
 export class ShotGuard {
   private readonly shots: ShotRecord[] = [];
-  private readonly seen = new Map<string, string>(); // sha -> name
+  private readonly seen = seenAcrossRun;
 
   constructor(
     private readonly dir: string,
