@@ -493,7 +493,7 @@ function linkToRuns(link: AstLink, ctx: ExportContext, base: InlineStyle): RunOr
     const lid = extractEntryLidFromHref(link.href);
     if (lid) {
       const entry = ctx.entriesByLid.get(lid);
-      if (entry) targetTitle = entry.title || entry.lid;
+      if (entry) targetTitle = entry.title || '(untitled)';
     }
     ctx.internalLinks.push({ num, label: labelText, href: link.href, targetTitle });
     return [

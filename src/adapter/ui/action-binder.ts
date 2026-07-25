@@ -1093,7 +1093,7 @@ export function bindActions(
     for (const ent of available) {
       const opt = document.createElement('option');
       opt.value = ent.lid;
-      const title = ent.title || `(${ent.lid})`;
+      const title = ent.title || '(untitled)';
       // move-target は depth 字下げ(全角スペース、最大 6 段)で階層を可視化。
       const indent = ent.indent ? '　'.repeat(Math.min(ent.indent, 6)) : '';
       const display = indent + title;
@@ -1693,8 +1693,8 @@ export function bindActions(
         break;
       }
       case 'switch-view-tab': {
-        // pgc-87(MASTER.md §4.3):view tab(workspace-level の calendar /
-        // kanban / filer / graph / launcher)click → SET_VIEW_MODE を
+        // pgc-87(MASTER.md §4.3):view tab(workspace-level の detail /
+        // calendar / kanban / filer / launcher)click → SET_VIEW_MODE を
         // dispatch。tab-strip side の active 化は wireTabStrip の onState
         // が listen して syncActiveViewTab で行う。
         const mode = target.getAttribute('data-pkc-view-mode');
@@ -4737,11 +4737,14 @@ export function bindActions(
         break;
       }
       case 'set-view-mode': {
+        // AppState.viewMode の全値を並べる(launcher が抜けていた ──
+        // dispatch 自体は通っていたが型が実態と乖離していた)。
         const mode = target.getAttribute('data-pkc-view-mode') as
           | 'detail'
           | 'calendar'
           | 'kanban'
-          | 'filer';
+          | 'filer'
+          | 'launcher';
         if (mode) dispatcher.dispatch({ type: 'SET_VIEW_MODE', mode });
         break;
       }

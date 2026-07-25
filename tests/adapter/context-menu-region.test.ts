@@ -69,9 +69,11 @@ describe('renderRegionContextMenu', () => {
     const ids = [...menu.querySelectorAll('[data-pkc-cmd-id]')]
       .map((b) => b.getAttribute('data-pkc-cmd-id'));
     expect(ids).toContain('entry.create.text');
-    expect(ids).toContain('view.graph');
     expect(ids).toContain('view.filer');
     expect(ids).toContain('view.calendar');
+    // `view.graph` は削除済(視覚監査 2026-07-25)── command が register
+    // されておらず、押しても silent no-op になる dead 項目だった。
+    expect(ids).not.toContain('view.graph');
   });
   it('sidebar region has create archetypes', () => {
     const menu = renderRegionContextMenu('sidebar', 0, 0);
@@ -91,18 +93,20 @@ describe('renderRegionContextMenu', () => {
     expect(ids).toContain('shell.toggle-sidebar');
   });
   it('clicking item executes command and removes menu', () => {
+    // ⚠ **menu に実在する commandId を使うこと**。以前この test は
+    //    `view.graph` を test 側で register して click していたため、
+    //    「product では未登録 = 押しても無反応」という事実を隠していた
+    //    (視覚監査 2026-07-25 で発覚)。参照整合性そのものは
+    //    tests/adapter/command-id-integrity.test.ts が守る。
     let called = 0;
     registerCommand(
-      { id: 'view.detail', titleJa: '詳細', titleEn: 'Detail', category: 'View' },
-      () => { /* noop */ },
-    );
-    registerCommand(
-      { id: 'view.graph', titleJa: 'グラフ', titleEn: 'Graph', category: 'View' },
+      { id: 'view.filer', titleJa: 'ファイラー', titleEn: 'Filer', category: 'View' },
       () => { called++; },
     );
     const menu = renderRegionContextMenu('center', 0, 0);
     document.body.appendChild(menu);
-    const btn = menu.querySelector<HTMLElement>('[data-pkc-cmd-id="view.graph"]');
+    const btn = menu.querySelector<HTMLElement>('[data-pkc-cmd-id="view.filer"]');
+    expect(btn, 'view.filer 項目が menu に無い').not.toBeNull();
     btn?.click();
     expect(called).toBe(1);
     expect(document.body.contains(menu)).toBe(false);

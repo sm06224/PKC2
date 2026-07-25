@@ -156,12 +156,15 @@ describe('handleKeymapKeydown', () => {
 });
 
 describe('registerBuiltinKeymaps', () => {
-  it('registers Alt+1..6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F + Alt+Shift+1..6 + Ctrl+\\ + Alt+ArrowLeft/Right + tab nav(pgc-182)', () => {
+  it('registers Alt+1..4/6 + F12 + Ctrl+K Ctrl+S + Alt+Shift+F + Alt+Shift+1..6 + Ctrl+\\ + Alt+ArrowLeft/Right + tab nav(pgc-182)', () => {
     resetKeymapRegistry();
     registerBuiltinKeymaps();
     const bs = getKeyBindings();
-    // 6 + 1 + 1 + 1 + 6 + 1 + 2 + 4(pgc-182 tab nav)。inspector chord は #790 で撤去。
-    expect(bs.length).toBe(22);
+    // 5 + 1 + 1 + 1 + 6 + 1 + 2 + 4(pgc-182 tab nav)。inspector chord は #790 で撤去、
+    // `Alt+5`(view.graph)は視覚監査 2026-07-25 で撤去(command 未登録の dead key)。
+    expect(bs.length).toBe(21);
+    // Alt+5 は空けたまま(Alt+6 = launcher を繰り上げると既存 user の操作が壊れる)。
+    expect(bs.map((b) => b.commandId)).not.toContain('view.graph');
     const ids = bs.map((b) => b.commandId).sort();
     expect(ids).toContain('view.detail');
     expect(ids).toContain('app.flags');

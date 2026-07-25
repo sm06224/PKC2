@@ -297,7 +297,7 @@ function linkToRuns(
     const lid = extractEntryLidFromHref(href);
     if (lid) {
       const entry = ctx.entriesByLid.get(lid);
-      if (entry) targetTitle = entry.title || entry.lid;
+      if (entry) targetTitle = entry.title || '(untitled)';
     }
     ctx.internalLinks.push({ num, label: labelText, href, targetTitle });
     return [

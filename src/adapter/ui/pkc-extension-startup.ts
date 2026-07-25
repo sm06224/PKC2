@@ -105,7 +105,7 @@ function showAutostartRetryPrompt(
 
   for (const b of blocked) {
     const btn = document.createElement('button');
-    btn.textContent = `🕸 ${b.title || b.lid} を開く`;
+    btn.textContent = `🕸 ${b.title || '(untitled)'} を開く`;
     btn.setAttribute('data-pkc-lid', b.lid);
     btn.style.cssText = 'display:block;margin-top:4px;cursor:pointer;';
     btn.addEventListener('click', () => {

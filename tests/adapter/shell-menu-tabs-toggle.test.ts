@@ -122,13 +122,16 @@ describe('shell menu Tabs トグル(#938 R10)', () => {
 });
 
 describe('shortcut help の Views & Tabs 群(#938 R10)', () => {
-  it('Alt+1〜6 / tab chord が help に掲載される', () => {
+  it('Alt+1〜4/6 / tab chord が help に掲載される', () => {
     const d = boot();
     d.dispatch({ type: 'OPEN_SHORTCUT_HELP' });
     const help = root.querySelector('[data-pkc-region="shortcut-help"]')!;
     expect(help).not.toBeNull();
     expect(help.textContent).toContain('Views & Tabs');
-    expect(help.textContent).toContain('Alt+1 〜 Alt+6');
+    // Alt+5(graph)は廃止済で欠番。help は実際に動くキーだけを案内する
+    // (視覚監査 2026-07-25 ── 動かないキーの案内は user への誤情報)。
+    expect(help.textContent).toContain('Alt+1 〜 Alt+4 / Alt+6');
+    expect(help.textContent).not.toContain('Graph');
     expect(help.textContent).toContain('Ctrl+Shift+T');
   });
 });
