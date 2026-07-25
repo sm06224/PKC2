@@ -314,7 +314,7 @@ describe('Attachment Presenter', () => {
       const el = attachmentPresenter.renderBody(makeLegacyEntry());
       const btn = el.querySelector('[data-pkc-action="download-attachment"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Download');
+      expect(btn!.textContent).toBe('ダウンロード');
     });
 
     it('exposes a "🌐 Open in New Window" button at action-row level for HTML attachments', () => {
@@ -377,7 +377,7 @@ describe('Attachment Presenter', () => {
       const el = attachmentPresenter.renderBody(entry, assets);
       const btn = el.querySelector('[data-pkc-action="download-attachment"]');
       expect(btn).not.toBeNull();
-      expect(btn!.textContent).toBe('Download');
+      expect(btn!.textContent).toBe('ダウンロード');
     });
 
     it('does not show stripped notice when data exists in container.assets', () => {
@@ -432,49 +432,49 @@ describe('Attachment Presenter', () => {
       const el = attachmentPresenter.renderBody(entry);
       const badge = el.querySelector('[data-pkc-region="preview-mode"]');
       expect(badge).not.toBeNull();
-      expect(badge!.textContent).toBe('Inline');
+      expect(badge!.textContent).toBe('インライン');
     });
 
     it('shows Sandbox badge for HTML types', () => {
       const entry = makeLegacyEntry('{"name":"page.html","mime":"text/html","data":"PCFET0NUWVBF","size":100}');
       const el = attachmentPresenter.renderBody(entry);
       const badge = el.querySelector('[data-pkc-region="preview-mode"]');
-      expect(badge!.textContent).toBe('Sandbox');
+      expect(badge!.textContent).toBe('サンドボックス');
     });
 
     it('shows PDF Viewer badge for PDF', () => {
       const entry = makeLegacyEntry('{"name":"doc.pdf","mime":"application/pdf","data":"JVBER","size":100}');
       const el = attachmentPresenter.renderBody(entry);
       const badge = el.querySelector('[data-pkc-region="preview-mode"]');
-      expect(badge!.textContent).toBe('PDF Viewer');
+      expect(badge!.textContent).toBe('PDF ビューア');
     });
 
     it('shows Video badge for video types', () => {
       const entry = makeLegacyEntry('{"name":"clip.mp4","mime":"video/mp4","data":"AAAA","size":100}');
       const el = attachmentPresenter.renderBody(entry);
       const badge = el.querySelector('[data-pkc-region="preview-mode"]');
-      expect(badge!.textContent).toBe('Video');
+      expect(badge!.textContent).toBe('動画');
     });
 
     it('shows Audio badge for audio types', () => {
       const entry = makeLegacyEntry('{"name":"song.mp3","mime":"audio/mpeg","data":"AAAA","size":100}');
       const el = attachmentPresenter.renderBody(entry);
       const badge = el.querySelector('[data-pkc-region="preview-mode"]');
-      expect(badge!.textContent).toBe('Audio');
+      expect(badge!.textContent).toBe('音声');
     });
 
     it('shows No Preview badge for unsupported types', () => {
       const entry = makeLegacyEntry('{"name":"data.bin","mime":"application/octet-stream","data":"AAAA","size":100}');
       const el = attachmentPresenter.renderBody(entry);
       const badge = el.querySelector('[data-pkc-region="preview-mode"]');
-      expect(badge!.textContent).toBe('No Preview');
+      expect(badge!.textContent).toBe('プレビュー不可');
     });
 
     it('shows Sandbox badge for SVG', () => {
       const entry = makeLegacyEntry('{"name":"icon.svg","mime":"image/svg+xml","data":"PHN2Zz4=","size":100}');
       const el = attachmentPresenter.renderBody(entry);
       const badge = el.querySelector('[data-pkc-region="preview-mode"]');
-      expect(badge!.textContent).toBe('Sandbox');
+      expect(badge!.textContent).toBe('サンドボックス');
     });
   });
 
@@ -486,8 +486,8 @@ describe('Attachment Presenter', () => {
       const el = attachmentPresenter.renderBody(entry);
       const msg = el.querySelector('[data-pkc-region="no-preview"]');
       expect(msg).not.toBeNull();
-      expect(msg!.textContent).toContain('Preview is not available');
-      expect(msg!.textContent).toContain('Download');
+      expect(msg!.textContent).toContain('このファイル形式はプレビューできません');
+      expect(msg!.textContent).toContain('ダウンロード');
     });
 
     it('does not show fallback for previewable types', () => {
@@ -753,12 +753,12 @@ describe('MIME type classification', () => {
 
   describe('previewModeLabel', () => {
     it('returns correct labels for all types', () => {
-      expect(previewModeLabel('image')).toBe('Inline');
-      expect(previewModeLabel('pdf')).toBe('PDF Viewer');
-      expect(previewModeLabel('video')).toBe('Video');
-      expect(previewModeLabel('audio')).toBe('Audio');
-      expect(previewModeLabel('html')).toBe('Sandbox');
-      expect(previewModeLabel('none')).toBe('No Preview');
+      expect(previewModeLabel('image')).toBe('インライン');
+      expect(previewModeLabel('pdf')).toBe('PDF ビューア');
+      expect(previewModeLabel('video')).toBe('動画');
+      expect(previewModeLabel('audio')).toBe('音声');
+      expect(previewModeLabel('html')).toBe('サンドボックス');
+      expect(previewModeLabel('none')).toBe('プレビュー不可');
     });
   });
 

@@ -3162,7 +3162,7 @@ function renderWorkspaceSwitcher(
     renameBtn.setAttribute('data-pkc-action', 'rename-workspace');
     renameBtn.setAttribute('data-pkc-wid', w.id);
     renameBtn.setAttribute('data-pkc-wname', w.name);
-    renameBtn.textContent = 'Rename';
+    renameBtn.textContent = '名前を変更';
     row.appendChild(renameBtn);
 
     list.appendChild(row);
@@ -4019,7 +4019,7 @@ function renderRecentEntriesPane(
   const summary = document.createElement('summary');
   summary.className = 'pkc-recent-summary';
   summary.setAttribute('data-pkc-action', 'toggle-recent-pane');
-  summary.textContent = `Recent (${rows.length})`;
+  summary.textContent = `最近 (${rows.length})`;
   pane.appendChild(summary);
 
   const list = createElement('ul', 'pkc-recent-list');
@@ -4166,7 +4166,7 @@ function renderAdvancedFiltersPanel(
   const summary = document.createElement('summary');
   summary.className = 'pkc-advanced-filters-summary';
   summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
-  summary.textContent = '⚙ Filters';
+  summary.textContent = '⚙ 絞り込み';
   details.appendChild(summary);
 
   if (colorStrip) {
@@ -4506,7 +4506,7 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
 
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
-    searchInput.placeholder = 'Search entries…';
+    searchInput.placeholder = '🔍 全エントリを検索';
     searchInput.value = state.searchQuery;
     searchInput.setAttribute('data-pkc-field', 'search');
     searchInput.className = 'pkc-search-input';
@@ -4608,7 +4608,7 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     const summary = document.createElement('summary');
     summary.className = 'pkc-advanced-filters-summary';
     summary.setAttribute('data-pkc-action', 'toggle-advanced-filters');
-    summary.textContent = '⚙ Filters';
+    summary.textContent = '⚙ 絞り込み';
     details.appendChild(summary);
 
     if (colorStrip) {
@@ -4925,8 +4925,8 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
         typeof window.matchMedia === 'function' &&
         window.matchMedia('(pointer: coarse) and (max-width: 640px)').matches;
       empty.innerHTML = isPhone
-        ? 'No entries yet.<br>右上の <strong>✏ Compose</strong> をタップして最初のエントリを作成、<br>または <strong>☰ Menu</strong> から他のアーキタイプを選択。'
-        : 'No entries yet.<br>Use the <strong>+ buttons</strong> above to create one,<br>or <strong>drop a file</strong> into the center pane.';
+        ? 'まだエントリがありません。<br>右上の <strong>✏ Compose</strong> をタップして最初のエントリを作成、<br>または <strong>☰ Menu</strong> から他のアーキタイプを選択。'
+        : 'まだエントリがありません。<br>上部の <strong>+ ボタン</strong> で作成するか、<br>中央ペインに <strong>ファイルをドロップ</strong> してください。';
     } else {
       empty.textContent = 'No entries in this container.';
     }
@@ -4938,7 +4938,7 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   if (entries.length === 0) {
     const empty = createElement('div', 'pkc-empty pkc-guidance');
     empty.setAttribute('data-pkc-region', 'empty-guidance');
-    empty.textContent = 'No matching entries. Try adjusting your search or filters.';
+    empty.textContent = '絞り込み条件に一致なし。検索条件を見直してください。';
     sidebar.appendChild(empty);
     sidebar.appendChild(renderSidebarDropZone(state));
     return sidebar;
@@ -5062,7 +5062,7 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
   if (state.phase === 'ready' && !state.readonly) {
     const rootDrop = createElement('div', 'pkc-root-drop-zone');
     rootDrop.setAttribute('data-pkc-drop-target', 'root');
-    rootDrop.textContent = '↑ Drop here for root level';
+    rootDrop.textContent = '↑ ここにドロップでルートへ';
     sidebar.appendChild(rootDrop);
   }
 
@@ -5071,10 +5071,10 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     const hints = createElement('div', 'pkc-interaction-hints');
     hints.setAttribute('data-pkc-region', 'interaction-hints');
     hints.innerHTML = [
-      '<span>Drag to move</span>',
-      '<span>Double-click to open</span>',
-      '<span>Right-click for menu</span>',
-      '<span>Ctrl+click to multi-select</span>',
+      '<span>ドラッグで移動</span>',
+      '<span>ダブルクリックで別窓</span>',
+      '<span>右クリックでメニュー</span>',
+      '<span>Ctrl+クリックで複数選択</span>',
     ].join(' · ');
     sidebar.appendChild(hints);
   }
@@ -5377,7 +5377,7 @@ function renderSidebarDropZone(state: AppState): HTMLElement {
   }
 
   const label = createElement('span', 'pkc-drop-zone-label');
-  label.textContent = '📎 Drop files here';
+  label.textContent = '📎 ここにファイルをドロップ';
   zone.appendChild(label);
 
   return zone;
@@ -8848,7 +8848,7 @@ function renderMetaPaneModeBar(mode: string): HTMLElement {
   bar.setAttribute('data-pkc-region', 'meta-pane-mode-bar');
   for (const m of [
     { v: 'all', label: 'すべて' },
-    { v: 'properties', label: 'Properties' },
+    { v: 'properties', label: 'プロパティ' },
     { v: 'references', label: '関連' },
   ]) {
     const btn = createElement('button', 'pkc-meta-pane-mode-btn');
@@ -8971,7 +8971,7 @@ function renderMetaPaneImpl(
   entryTagSection.setAttribute('data-pkc-lid', entry.lid);
 
   const entryTagHeading = createElement('span', 'pkc-entry-tags-label');
-  entryTagHeading.textContent = 'Tags';
+  entryTagHeading.textContent = 'タグ';
   entryTagSection.appendChild(entryTagHeading);
 
   const entryTags = entry.tags ?? [];
@@ -9050,7 +9050,7 @@ function renderMetaPaneImpl(
   tagSection.setAttribute('data-pkc-region', 'tags');
 
   const tagHeading = createElement('span', 'pkc-tags-label');
-  tagHeading.textContent = 'Categorical';
+  tagHeading.textContent = '分類';
   tagSection.appendChild(tagHeading);
 
   for (const tag of tags) {
@@ -9128,7 +9128,7 @@ function renderMetaPaneImpl(
     moveSection.setAttribute('data-pkc-lid', entry.lid);
 
     const moveLabel = createElement('span', 'pkc-move-label');
-    moveLabel.textContent = 'Folder';
+    moveLabel.textContent = 'フォルダ';
     moveSection.appendChild(moveLabel);
 
     const currentParent = getStructuralParent(container.relations, container.entries, entry.lid);
@@ -9552,8 +9552,8 @@ function renderMetaPaneImpl(
 
   const relSection = createElement('div', 'pkc-relations');
   relSection.setAttribute('data-pkc-region', 'relations');
-  relSection.appendChild(renderRelationGroup('Outgoing relations', 'outgoing', outbound, canEdit));
-  relSection.appendChild(renderRelationGroup('Backlinks', 'backlinks', inbound, canEdit));
+  relSection.appendChild(renderRelationGroup('関連', 'outgoing', outbound, canEdit));
+  relSection.appendChild(renderRelationGroup('被参照', 'backlinks', inbound, canEdit));
   endProfRelations();
 
   // PR-δ: reuse LinkIndex computed at `renderShell` level (spec §5.7)
@@ -9570,7 +9570,7 @@ function renderMetaPaneImpl(
   referencesSection.setAttribute('data-pkc-region', 'references');
 
   const referencesHeading = createElement('div', 'pkc-references-heading');
-  referencesHeading.textContent = 'References';
+  referencesHeading.textContent = '参照と関連';
   referencesSection.appendChild(referencesHeading);
 
   // References summary row (v2, 2026-04-20). Lightweight count line
@@ -9708,9 +9708,9 @@ function renderReferencesSummary(
     target: string;
     broken?: boolean;
   }[] = [
-    { key: 'relations',     label: 'Relations',     count: relationsCount,     target: 'relations' },
-    { key: 'markdown-refs', label: 'Markdown refs', count: markdownRefsCount,  target: 'link-index' },
-    { key: 'broken',        label: 'Broken',        count: brokenCount,        target: 'link-index-broken', broken: true },
+    { key: 'relations',     label: '関連',       count: relationsCount,     target: 'relations' },
+    { key: 'markdown-refs', label: '本文リンク', count: markdownRefsCount,  target: 'link-index' },
+    { key: 'broken',        label: '欠損',       count: brokenCount,        target: 'link-index-broken', broken: true },
   ];
 
   items.forEach((item, i) => {
@@ -9766,13 +9766,13 @@ function renderLinkIndexSections(
   }
 
   wrap.appendChild(
-    renderLinkRefsSection('Outgoing links', 'link-index-outgoing', outgoing, titleByLid, 'target'),
+    renderLinkRefsSection('本文リンク', 'link-index-outgoing', outgoing, titleByLid, 'target'),
   );
   wrap.appendChild(
-    renderLinkRefsSection('Backlinks', 'link-index-backlinks', backlinks, titleByLid, 'source'),
+    renderLinkRefsSection('被参照', 'link-index-backlinks', backlinks, titleByLid, 'source'),
   );
   wrap.appendChild(
-    renderLinkRefsSection('Broken links', 'link-index-broken', brokenForEntry, titleByLid, 'target'),
+    renderLinkRefsSection('欠損リンク', 'link-index-broken', brokenForEntry, titleByLid, 'target'),
   );
 
   return wrap;
@@ -9807,10 +9807,10 @@ function renderLinkRefsSection(
     const empty = createElement('div', 'pkc-link-index-empty');
     empty.textContent =
       regionId === 'link-index-outgoing'
-        ? 'No outgoing links.'
+        ? '本文リンクはありません。'
         : regionId === 'link-index-backlinks'
-        ? 'No backlinks.'
-        : 'No broken links.';
+        ? '被参照はありません。'
+        : '欠損リンクはありません。';
     section.appendChild(empty);
     return section;
   }
@@ -9911,7 +9911,7 @@ function renderFrontmatterSection(
   section.setAttribute('data-pkc-region', 'frontmatter');
 
   const heading = createElement('div', 'pkc-frontmatter-heading');
-  heading.textContent = 'Properties';
+  heading.textContent = 'プロパティ';
   section.appendChild(heading);
 
   // Phase γ-B1:parseFrontmatter の warnings(size cap 超過等)を可視化。
@@ -10105,7 +10105,8 @@ function renderTocSection(entry: Entry): HTMLElement | null {
   section.setAttribute('data-pkc-toc-archetype', entry.archetype);
 
   const label = createElement('span', 'pkc-toc-label');
-  label.textContent = 'Contents';
+  // 本文の見出し一覧(フォルダの中身ではない)
+  label.textContent = '目次';
   section.appendChild(label);
 
   const list = createElement('ul', 'pkc-toc-list');
@@ -10159,7 +10160,7 @@ function renderRelationGroup(
 
   if (relations.length === 0) {
     const empty = createElement('div', 'pkc-relation-empty');
-    empty.textContent = direction === 'backlinks' ? 'No backlinks.' : 'No outgoing relations.';
+    empty.textContent = direction === 'backlinks' ? '被参照はありません。' : '関連はありません。';
     group.appendChild(empty);
     return group;
   }
@@ -10380,7 +10381,7 @@ function renderRelationCreateForm(fromLid: string, entries: readonly Entry[]): H
   form.setAttribute('data-pkc-from', fromLid);
 
   const heading = createElement('div', 'pkc-relation-create-heading');
-  heading.textContent = 'Add Relation';
+  heading.textContent = '関連を追加';
   form.appendChild(heading);
 
   const row = createElement('div', 'pkc-relation-create-row');
@@ -11308,7 +11309,7 @@ function renderFolderContents(folder: Entry, container: Container): HTMLElement 
   section.setAttribute('data-pkc-region', 'folder-contents');
 
   const heading = createElement('div', 'pkc-folder-contents-heading');
-  heading.textContent = 'Contents';
+  heading.textContent = 'フォルダの内容';
   section.appendChild(heading);
 
   // pgc-233:旧 path は `container.entries.find` を per-child child 数回呼んで
@@ -12177,7 +12178,7 @@ function renderDropZone(state: AppState, large: boolean): HTMLElement {
     zone.appendChild(icon);
 
     const label = createElement('div', 'pkc-drop-zone-label');
-    label.textContent = 'Drop a file here to attach';
+    label.textContent = 'ここにファイルをドロップして添付';
     zone.appendChild(label);
 
     if (contextFolder) {
@@ -12189,12 +12190,12 @@ function renderDropZone(state: AppState, large: boolean): HTMLElement {
     // Also show the "or create" hint
     const hint = createElement('div', 'pkc-drop-zone-hint');
     hint.textContent = state.container?.entries?.length
-      ? 'or select an entry from the sidebar'
-      : 'or use the + buttons above to create an entry';
+      ? 'またはサイドバーからエントリを選択'
+      : 'または上部の + ボタンでエントリを作成';
     zone.appendChild(hint);
   } else {
     const label = createElement('span', 'pkc-drop-zone-label');
-    label.textContent = '📎 Drop file to attach';
+    label.textContent = '📎 ファイルをドロップして添付';
     zone.appendChild(label);
 
     if (contextFolder) {
@@ -12365,8 +12366,8 @@ function renderDetachedAttachment(entry: Entry, container: Container | null): HT
     const dlBtn = createElement('button', 'pkc-btn');
     dlBtn.setAttribute('data-pkc-action', 'download-attachment');
     dlBtn.setAttribute('data-pkc-lid', entry.lid);
-    dlBtn.setAttribute('title', `Download ${displayName}`);
-    dlBtn.textContent = `📥 Download ${displayName}`;
+    dlBtn.setAttribute('title', `${displayName} をダウンロード`);
+    dlBtn.textContent = `📥 ダウンロード ${displayName}`;
     root.appendChild(dlBtn);
   } else {
     const stripped = createElement('div', 'pkc-attachment-stripped');

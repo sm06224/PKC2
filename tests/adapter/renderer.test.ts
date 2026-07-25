@@ -189,8 +189,8 @@ describe('Renderer', () => {
     // Drop zone replaces the old placeholder when editable
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
     expect(dropZone).not.toBeNull();
-    expect(root.textContent).toContain('Drop a file');
-    expect(root.textContent).toContain('create an entry');
+    expect(root.textContent).toContain('ファイルをドロップ');
+    expect(root.textContent).toContain('エントリを作成');
   });
 
   it('shows inline export buttons (Export + Light) in ready phase', () => {
@@ -1623,7 +1623,7 @@ describe('Renderer', () => {
     };
     render(state, root);
 
-    expect(root.textContent).toContain('No matching entries');
+    expect(root.textContent).toContain('一致なし');
     expect(root.querySelectorAll('[data-pkc-action="select-entry"]')).toHaveLength(0);
   });
 
@@ -1846,7 +1846,7 @@ describe('Renderer', () => {
     const outgoing = relRegion!.querySelector('[data-pkc-relation-direction="outgoing"]');
     expect(outgoing).not.toBeNull();
     expect(outgoing!.querySelector('.pkc-relation-heading')!.textContent).toBe(
-      'Outgoing relations (1)',
+      '関連 (1)',
     );
   });
 
@@ -1883,7 +1883,7 @@ describe('Renderer', () => {
 
     const backlinks = root.querySelector('[data-pkc-relation-direction="backlinks"]');
     expect(backlinks).not.toBeNull();
-    expect(backlinks!.querySelector('.pkc-relation-heading')!.textContent).toBe('Backlinks (1)');
+    expect(backlinks!.querySelector('.pkc-relation-heading')!.textContent).toBe('被参照 (1)');
     const peer = backlinks!.querySelector('[data-pkc-action="select-entry"]');
     expect(peer).not.toBeNull();
     expect(peer!.getAttribute('data-pkc-lid')).toBe('e1');
@@ -1922,17 +1922,17 @@ describe('Renderer', () => {
     const outgoing = relRegion!.querySelector('[data-pkc-relation-direction="outgoing"]');
     expect(outgoing).not.toBeNull();
     expect(outgoing!.querySelector('.pkc-relation-heading')!.textContent).toBe(
-      'Outgoing relations (0)',
+      '関連 (0)',
     );
     expect(outgoing!.querySelector('.pkc-relation-empty')!.textContent).toBe(
-      'No outgoing relations.',
+      '関連はありません。',
     );
     expect(outgoing!.querySelector('.pkc-relation-list')).toBeNull();
 
     const backlinks = relRegion!.querySelector('[data-pkc-relation-direction="backlinks"]');
     expect(backlinks).not.toBeNull();
-    expect(backlinks!.querySelector('.pkc-relation-heading')!.textContent).toBe('Backlinks (0)');
-    expect(backlinks!.querySelector('.pkc-relation-empty')!.textContent).toBe('No backlinks.');
+    expect(backlinks!.querySelector('.pkc-relation-heading')!.textContent).toBe('被参照 (0)');
+    expect(backlinks!.querySelector('.pkc-relation-empty')!.textContent).toBe('被参照はありません。');
     expect(backlinks!.querySelector('.pkc-relation-list')).toBeNull();
   });
 
@@ -1967,7 +1967,7 @@ describe('Renderer', () => {
     expect(references.length).toBe(1);
     const heading = references[0]!.querySelector('.pkc-references-heading');
     expect(heading).not.toBeNull();
-    expect(heading!.textContent).toBe('References');
+    expect(heading!.textContent).toBe('参照と関連');
   });
 
   it('References umbrella contains both relations and link-index sub-panels', () => {
@@ -2014,8 +2014,8 @@ describe('Renderer', () => {
     expect(linkIndexBacklinksHeading).not.toBeNull();
     // v1 keeps both "Backlinks (N)" sub-headings — umbrella only adds
     // a containing region, it does not merge the sub-concepts.
-    expect(relationsBacklinks!.textContent).toMatch(/^Backlinks \(/);
-    expect(linkIndexBacklinksHeading!.textContent).toMatch(/^Backlinks \(/);
+    expect(relationsBacklinks!.textContent).toMatch(/^被参照 \(/);
+    expect(linkIndexBacklinksHeading!.textContent).toMatch(/^被参照 \(/);
   });
 
   // ── References summary row v2 ──
@@ -2033,9 +2033,9 @@ describe('Renderer', () => {
     const relItem = summary!.querySelector('[data-pkc-summary-key="relations"]');
     const mdItem = summary!.querySelector('[data-pkc-summary-key="markdown-refs"]');
     const brItem = summary!.querySelector('[data-pkc-summary-key="broken"]');
-    expect(relItem!.textContent).toBe('Relations: 0');
-    expect(mdItem!.textContent).toBe('Markdown refs: 0');
-    expect(brItem!.textContent).toBe('Broken: 0');
+    expect(relItem!.textContent).toBe('関連: 0');
+    expect(mdItem!.textContent).toBe('本文リンク: 0');
+    expect(brItem!.textContent).toBe('欠損: 0');
   });
 
   it('References summary row appears inside the umbrella and before sub-panels', () => {
@@ -2085,7 +2085,7 @@ describe('Renderer', () => {
 
     const relItem = root.querySelector('[data-pkc-summary-key="relations"]');
     // 2 outgoing (e1→e2, e1→e3) + 1 inbound (e3→e1) = 3
-    expect(relItem!.textContent).toBe('Relations: 3');
+    expect(relItem!.textContent).toBe('関連: 3');
   });
 
   it('References summary row counts markdown refs (outgoing + backlinks) and broken separately', () => {
@@ -2107,9 +2107,9 @@ describe('Renderer', () => {
     // e1 outgoing: [[entry:e2]] (resolved) + [[entry:missing]] (broken) = 2
     // e1 backlinks: from e2 = 1
     // total markdown refs = 3
-    expect(mdItem!.textContent).toBe('Markdown refs: 3');
+    expect(mdItem!.textContent).toBe('本文リンク: 3');
     // broken = 1 (missing target in e1's outgoing)
-    expect(brItem!.textContent).toBe('Broken: 1');
+    expect(brItem!.textContent).toBe('欠損: 1');
     expect(brItem!.getAttribute('data-pkc-broken')).toBe('true');
   });
 
@@ -2121,7 +2121,7 @@ describe('Renderer', () => {
     render(state, root);
 
     const brItem = root.querySelector('[data-pkc-summary-key="broken"]');
-    expect(brItem!.textContent).toBe('Broken: 0');
+    expect(brItem!.textContent).toBe('欠損: 0');
     // No marker when count is 0 (keeps it visually neutral).
     expect(brItem!.getAttribute('data-pkc-broken')).toBeNull();
   });
@@ -2169,7 +2169,7 @@ describe('Renderer', () => {
 
     const rel = root.querySelector<HTMLButtonElement>('[data-pkc-summary-key="relations"]');
     expect(rel!.disabled).toBe(false);
-    expect(rel!.textContent).toBe('Relations: 0');
+    expect(rel!.textContent).toBe('関連: 0');
     expect(rel!.hasAttribute('data-pkc-action')).toBe(true);
   });
 
@@ -3597,7 +3597,7 @@ describe('Renderer', () => {
     expect(entryTagRegion!.getAttribute('data-pkc-lid')).toBe('e1');
     const label = entryTagRegion!.querySelector('.pkc-entry-tags-label');
     expect(label).not.toBeNull();
-    expect(label!.textContent).toBe('Tags');
+    expect(label!.textContent).toBe('タグ');
   });
 
   it('Slice F: renders one chip per entry.tags value with the raw text', () => {
@@ -3655,7 +3655,7 @@ describe('Renderer', () => {
     const tagRegion = root.querySelector('[data-pkc-region="tags"]');
     expect(tagRegion).not.toBeNull(); // region name kept stable for selectors
     const label = tagRegion!.querySelector('.pkc-tags-label');
-    expect(label!.textContent).toBe('Categorical');
+    expect(label!.textContent).toBe('分類');
   });
 
   it('Slice F: the new Tag section precedes the Categorical section in DOM order', () => {
@@ -4743,7 +4743,7 @@ describe('DnD + Context Menu Foundation', () => {
     render(state, root);
     const rootDrop = root.querySelector('[data-pkc-drop-target="root"]');
     expect(rootDrop).not.toBeNull();
-    expect(rootDrop!.textContent).toContain('root');
+    expect(rootDrop!.textContent).toContain('ルート');
   });
 
   it('root drop zone is NOT rendered in readonly mode', () => {
@@ -5012,7 +5012,7 @@ describe('Detached View Foundation', () => {
     // Should have download button
     const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
     expect(dlBtn).not.toBeNull();
-    expect(dlBtn!.textContent).toContain('Download');
+    expect(dlBtn!.textContent).toContain('ダウンロード');
     expect(dlBtn!.textContent).toContain('photo.png');
   });
 
@@ -5100,7 +5100,7 @@ describe('Persistent Drop Zone', () => {
     const dropZone = root.querySelector('[data-pkc-region="file-drop-zone"]');
     expect(dropZone).not.toBeNull();
     expect(dropZone!.classList.contains('pkc-drop-zone-large')).toBe(true);
-    expect(dropZone!.textContent).toContain('Drop a file');
+    expect(dropZone!.textContent).toContain('ファイルをドロップ');
   });
 
   it('no drop zone in readonly mode', () => {
@@ -5617,8 +5617,8 @@ describe('Interaction Consistency & Guidance Layer', () => {
     render(state, root);
     const guidance = root.querySelector('[data-pkc-region="empty-guidance"]');
     expect(guidance).not.toBeNull();
-    expect(guidance!.textContent).toContain('No entries yet');
-    expect(guidance!.textContent).toContain('buttons');
+    expect(guidance!.textContent).toContain('まだエントリがありません');
+    expect(guidance!.textContent).toContain('ボタン');
   });
 
   it('empty state in readonly mode shows appropriate message', () => {
@@ -5642,16 +5642,16 @@ describe('Interaction Consistency & Guidance Layer', () => {
     render(state, root);
     const empty = root.querySelector('.pkc-empty');
     expect(empty).not.toBeNull();
-    expect(empty!.textContent).toContain('adjusting');
+    expect(empty!.textContent).toContain('検索条件を見直して');
   });
 
   it('interaction hints are shown in sidebar when entries exist', () => {
     render(readyState, root);
     const hints = root.querySelector('[data-pkc-region="interaction-hints"]');
     expect(hints).not.toBeNull();
-    expect(hints!.textContent).toContain('Drag');
-    expect(hints!.textContent).toContain('Double-click');
-    expect(hints!.textContent).toContain('Right-click');
+    expect(hints!.textContent).toContain('ドラッグ');
+    expect(hints!.textContent).toContain('ダブルクリック');
+    expect(hints!.textContent).toContain('右クリック');
   });
 
   it('interaction hints are NOT shown when no entries', () => {
@@ -7774,7 +7774,7 @@ describe('Critical UX Regression Recovery (Issue #69)', () => {
       const panel = renderDetachedPanel(entry, attachmentContainer);
       const dlBtn = panel.querySelector('[data-pkc-action="download-attachment"]');
       expect(dlBtn).not.toBeNull();
-      expect(dlBtn!.textContent).toContain('Download');
+      expect(dlBtn!.textContent).toContain('ダウンロード');
     });
 
     it('detached panel hides download when data stripped', () => {
@@ -9777,7 +9777,7 @@ describe('Recent Entries Pane v1', () => {
     expect(items).toHaveLength(10);
 
     const summary = root.querySelector('[data-pkc-region="recent-entries"] summary');
-    expect(summary?.textContent).toBe('Recent (10)');
+    expect(summary?.textContent).toBe('最近 (10)');
   });
 
   it('marks the selected lid in the pane with data-pkc-selected', () => {
