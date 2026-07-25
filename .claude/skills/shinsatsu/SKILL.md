@@ -1,5 +1,5 @@
 ---
-name: sensory-behavior
+name: shinsatsu
 description: >
   視聴覚 + 官能の動的動作テスト(可搬ハーネス版)。マウス・クリック・スクロール・
   キーボードを人間のように動かしてページに触り、目(スクショ画素差分・
@@ -13,7 +13,7 @@ description: >
   「音のテスト」「官能テスト」「このスキルを○○リポジトリにも」という文脈で必ず使う。
 ---
 
-# sensory-behavior — 人間のように触り、画面と音で確かめる(可搬版)
+# 診察(shinsatsu)— 視診・聴診・触診(可搬ハーネス版)
 
 マウスは曲線を描いて動き、クリックには間があり、キーには緩急がある。
 そうやって**人間のようにページに触り**、結果を**目と耳の両方**で確かめる。
@@ -47,8 +47,8 @@ PKC2 の視覚機能 PR の parity 義務は従来どおり Playwright 側で果
 
 ```bash
 npm run build                                        # src を変えたら必ず(dist を配る)
-node .claude/skills/sensory-behavior/run.js          # 全スペック
-node .claude/skills/sensory-behavior/run.js boot     # 名前で絞る
+node .claude/skills/shinsatsu/run.js          # 全スペック
+node .claude/skills/shinsatsu/run.js boot     # 名前で絞る
 ```
 
 - **リポジトリのルートから実行**(カレントディレクトリを静的サーバで配り、
@@ -139,7 +139,7 @@ dead mute 検出など)。
 
 ## 他リポジトリへの展開
 
-1. `.claude/skills/sensory-behavior/` を**ディレクトリごとコピー**(自己完結)
+1. `.claude/skills/shinsatsu/` を**ディレクトリごとコピー**(自己完結)
 2. `specs/` を対象アプリ向けに書き直す
 3. 配信ルート = cwd。ビルドが要るなら先にビルド。独自 dev サーバがあるなら
    `run.js` の `serveStatic(ROOT)` をその origin に差し替え

@@ -57,7 +57,7 @@ export function buildReport({ results, meta = {} }) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>視聴覚動作テスト — 報告</title>
+<title>カルテ — 診察の記録</title>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -94,11 +94,11 @@ export function buildReport({ results, meta = {} }) {
 </style>
 </head>
 <body>
-<h1>視聴覚動作テスト<span class="sub">人間のように触り、画面と音で確かめる</span></h1>
+<h1>カルテ<span class="sub">視診・聴診・触診 — 人間のように触り、画面と音で確かめた記録</span></h1>
 <p class="summary">${results.length} 本のうち <b class="ok">${results.length - fails} PASS</b> / <b class="ng">${fails} FAIL</b>
 ${meta.browser ? ` · ${esc(meta.browser)}` : ''}${meta.startedAt ? ` · ${esc(meta.startedAt)}` : ''}</p>
 ${sections}
-<footer>依存ゼロの CDP ハーネス(tests/visual)による自動報告。画像はこのファイルに埋め込み済み — この 1 枚だけで証跡が完結する。</footer>
+<footer>診察スキル(.claude/skills/shinsatsu)が書いたカルテ。画像はこのファイルに埋め込み済み — この 1 枚だけで証跡が完結する。</footer>
 </body>
 </html>`;
 }

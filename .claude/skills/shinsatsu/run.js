@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // 動的視覚動作テスト — runner(.claude スキル同梱・依存パッケージゼロ)
 //
-//   node .claude/skills/sensory-behavior/run.js            全スペック
-//   node .claude/skills/sensory-behavior/run.js han nami   名前で絞る
+//   node .claude/skills/shinsatsu/run.js            全スペック
+//   node .claude/skills/shinsatsu/run.js han nami   名前で絞る
 //
 // リポジトリのルート(= カレントディレクトリ)を静的サーバで配り、
 // マウス・キーボード・ホイールを人間のように動かしてページに触り、

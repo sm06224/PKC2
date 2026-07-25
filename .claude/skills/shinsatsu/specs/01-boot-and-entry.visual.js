@@ -32,7 +32,7 @@ export default {
     await t.human.click('[data-pkc-field="title"]', { clickCount: 3 });
     await t.human.type('官能 Probe');
     await t.human.click('[data-pkc-field="body"]');
-    await t.human.type('sensory-behavior skill probe\n');
+    await t.human.type('shinsatsu skill probe\n');
 
     // 確定 → ready へ戻り、書いたタイトルが画面に見えている
     await t.human.click('[data-pkc-action="commit-edit"]');
