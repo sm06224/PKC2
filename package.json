@@ -39,6 +39,7 @@
     "test:watch": "vitest",
     "test:smoke": "playwright test --config=tests/smoke/playwright.config.ts",
     "test:demo": "eval \"$(node scripts/resolve-pw-chromium.cjs --export)\"; playwright test --config=tests/smoke/playwright.demo.config.ts",
+    "visual": "npm run build && npm run test:demo",
     "bench:fixtures": "tsx build/scripts/generate-bench-container.ts --entries=100 --textlogs=2 --assets=5 --output=bench-fixtures/c-100.json && tsx build/scripts/generate-bench-container.ts --entries=500 --textlogs=10 --assets=25 --output=bench-fixtures/c-500.json && tsx build/scripts/generate-bench-container.ts --entries=1000 --textlogs=20 --assets=50 --output=bench-fixtures/c-1000.json && tsx build/scripts/generate-bench-container.ts --entries=5000 --textlogs=100 --assets=250 --output=bench-fixtures/c-5000.json",
     "bench:run": "playwright test --config=tests/bench/playwright.config.ts",
     "bench:summarise": "tsx build/scripts/bench-summarise.ts",
