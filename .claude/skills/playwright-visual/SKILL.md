@@ -107,6 +107,31 @@ test('demo: <feature> の実操作', async ({ page }) => {
   `display: "render"`、崩れ無しを確認した画像だけ
 - diff や DOM ではなく**画像で**見せる(CLAUDE.md 会話ルール)
 
+### 画像比較レポート(baseline / candidate / diff の表)
+
+「比較基準 / 比較対象 / 比較結果(画像 diff)/ 説明 / 判定」の表を base64
+埋め込みの**自己完結 HTML** で出す再利用ヘルパがある
+(`tests/smoke/_demo/_lib/visual-report.ts`)。参考 spec =
+`visual-regression-report.spec.ts`(Full HD)。
+
+- **画像 diff はブラウザ内 canvas の absdiff**(`diffImagesInBrowser`)。
+  差分ピクセルを赤ハイライトし mismatch 率を返す。**node 側に PNG デコード
+  依存を持ち込まない**(pixelmatch/pngjs 不要)ので Playwright の
+  バージョンズレに影響されない。OpenCV の `absdiff` + threshold 相当
+- `writeVisualReport(rows, outPath, {title, viewport})` が
+  `baseline | candidate | diff | 説明 | 判定` の HTML 表を書き出す。
+  `tolerance`(mismatch 率の上限)を超えたら FAIL
+- **サイズ感**: 画像は**関心領域を crop**(`locator.screenshot`)すれば
+  Full HD viewport でも 1 行 3 枚で十数〜数十 KB。2 行で ~220KB。
+  ページ全面(1920×1080)を撮ると 1 枚 0.3〜1MB になるので、行数が多い時は
+  crop / 縮小 / baseline・candidate だけ JPEG 化 でサイズを抑える
+- **共有**: 自己完結 HTML なので SendUserFile(`display: "render"` で
+  サイドパネルに開く)でそのまま渡せる。URL で渡したいなら Artifact 化も可
+  (base64 data URI は CSP 内で動く)。数 MB 級は SendUserFile が確実
+- **使いどころ**: 「変更前 vs 変更後」を見せる / 意図しない差分の検出 /
+  再現性の確認。baseline を golden として commit すれば継続的な regression 表に
+  なる(現状のデモは baseline を毎回生成する self-contained 版)
+
 ## B. verify モード(Claude が確かめる)
 
 `visual-parity` skill の手順で `*-parity.spec.ts` を書く。要点だけ再掲:
