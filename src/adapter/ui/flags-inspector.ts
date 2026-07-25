@@ -466,6 +466,16 @@ export function renderFlagsInspector(): HTMLElement {
   }
   toolbar.appendChild(saveUrl);
 
+  // code-edit-lite-design-2026-07 §3: VSCode settings.json 相当の JSON 一括編集。
+  // click は action-binder 経由で flags-json-editor.ts の overlay を開く
+  // (renderer 配下に mount しないので再 render で編集が破棄されない)。
+  const jsonBtn = createElement('button', 'pkc-btn-small');
+  jsonBtn.setAttribute('type', 'button');
+  jsonBtn.setAttribute('data-pkc-action', 'open-flags-json-editor');
+  jsonBtn.setAttribute('title', 'flags を JSON(settings.json 相当)で一括編集');
+  jsonBtn.textContent = '{} JSON';
+  toolbar.appendChild(jsonBtn);
+
   panel.appendChild(toolbar);
 
   // Body — categories with flag rows + (at the end) the Build

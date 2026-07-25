@@ -55,6 +55,7 @@ import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
 import { showInlinePrompt, showInlineConfirm, showInlineForm } from './inline-dialog';
+import { openFlagsJsonEditor } from './flags-json-editor';
 import {
   prepareOptimizedIntake,
   deriveDisplayFilename,
@@ -4508,6 +4509,11 @@ export function bindActions(
         const key = target.getAttribute('data-pkc-key');
         if (!key) break;
         dispatcher.dispatch({ type: 'RESET_FLAG', key });
+        break;
+      }
+      case 'open-flags-json-editor': {
+        // code-edit-lite-design-2026-07 §3: flags の JSON 一括編集 overlay。
+        openFlagsJsonEditor(dispatcher);
         break;
       }
       case 'set-bool-flag': {

@@ -3439,6 +3439,50 @@ mark.pkc-search-mark {
   background: var(--c-bg);
   color: var(--c-fg);
 }
+.pkc-code-edit-error--warning {
+  background: rgba(214, 158, 46, 0.12);
+  border-left-color: #d69e2e;
+}
+
+/* ── flags JSON 一括編集ダイアログ(code-edit-lite-design-2026-07 §3)── */
+.pkc-flags-json-overlay {
+  position: fixed;
+  inset: 0;
+  /* Flags Inspector overlay(21000)から開くダイアログなので、その上 */
+  z-index: 22000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.pkc-flags-json-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(720px, 92vw);
+  max-height: 85vh;
+  padding: var(--space-4);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.pkc-flags-json-heading {
+  font-weight: 700;
+  font-size: var(--fs-lg);
+}
+.pkc-flags-json-hint {
+  font-size: var(--fs-sm);
+  color: var(--c-fg-dim);
+}
+.pkc-flags-json-card .pkc-code-edit {
+  min-height: 0;
+  flex: 1;
+}
+.pkc-flags-json-card .pkc-code-edit-input {
+  min-height: 40vh;
+}
 
 /* ── Non-image asset chips ──
    Rendered by the asset resolver when the markdown source contains a

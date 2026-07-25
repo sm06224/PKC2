@@ -43,6 +43,7 @@ export const STARTUP_NOTICES: readonly StartupNotice[] = [
     date: '2026-07-25',
     title: '2026-07-25 更新のお知らせ',
     items: [
+      '新機能: Flags Inspector に「{} JSON」一括編集を追加しました。VSCode の settings.json のように、変更済みの flag をハイライト・補完つきの JSON でまとめて編集できます(誤りは行番号つきで表示、適用は差分だけ・再読み込み不要)',
       '改善: コードブロックのシンタックスハイライトが xml / svg に対応しました(```xml / ```svg)',
     ],
   },

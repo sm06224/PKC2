@@ -31,6 +31,8 @@ export interface CodeEditError {
   /** 1-origin 行番号。行が特定できないエラーは null。 */
   readonly line: number | null;
   readonly message: string;
+  /** error(既定)= 保存不可 / warning = 表示のみで保存可。 */
+  readonly severity?: 'error' | 'warning';
 }
 
 export interface CodeEditHost {
@@ -161,8 +163,12 @@ export function mountCodeEditLite(
   const renderErrors = (errors: CodeEditError[]): void => {
     errorsBox.textContent = '';
     for (const err of errors) {
-      const row = el('div', 'pkc-code-edit-error');
-      row.setAttribute('role', 'alert');
+      const warning = err.severity === 'warning';
+      const row = el(
+        'div',
+        warning ? 'pkc-code-edit-error pkc-code-edit-error--warning' : 'pkc-code-edit-error',
+      );
+      row.setAttribute('role', warning ? 'status' : 'alert');
       row.textContent = err.line !== null ? `行 ${err.line}: ${err.message}` : err.message;
       errorsBox.appendChild(row);
     }
@@ -171,7 +177,8 @@ export function mountCodeEditLite(
   const runValidate = (): void => {
     const errors = host.validate?.(ta.value) ?? [];
     renderErrors(errors);
-    commitBtn.disabled = errors.length > 0;
+    // warning は表示のみ(保存可)。error が 1 件でもあれば保存不可。
+    commitBtn.disabled = errors.some((e) => (e.severity ?? 'error') === 'error');
   };
   const applyWrap = (): void => {
     const patch = wrapSelectionWithTagPatch(
