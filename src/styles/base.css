@@ -5247,6 +5247,17 @@ mark.pkc-search-mark {
   color: var(--c-muted);
   font-family: var(--font-mono);
 }
+/* 視覚監査 2026-07-25 A4:保存領域にも実体が無いことが確定した添付。
+   `.pkc-attachment-pending`(⏳、無装飾)と視覚的に区別する。Light export
+   (.pkc-attachment-stripped)と同じ warn 系トークンだが、事故の可能性が
+   あるぶん一段強くする。 */
+.pkc-attachment-missing {
+  font-size: var(--fs-sm);
+  color: var(--c-warn);
+  font-weight: 600;
+  cursor: help;
+}
+
 .pkc-attachment-stripped {
   font-size: var(--fs-sm);
   color: var(--c-warn);
@@ -5529,6 +5540,32 @@ mark.pkc-search-mark {
   background: rgba(255,170,34,0.1);
   color: var(--c-warn);
   border: 1px solid rgba(255,170,34,0.3);
+}
+
+/* 視覚監査 2026-07-25 A5:spreadsheet の body を読み取れなかったことを
+   閲覧・編集の両方で明示する。従来は parse 失敗も空 body も同じ空グリッド
+   に見え、そのまま保存すると元データを空で上書きしていた。
+   guardrail-soft と同じ warn 系トークンで house 一貫。 */
+.pkc-spreadsheet-parse-warning {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  margin: var(--space-1-5) 0;
+  padding: var(--space-1-5) var(--space-2-5);
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  background: rgba(255,170,34,0.1);
+  color: var(--c-warn);
+  border: 1px solid rgba(255,170,34,0.3);
+}
+.pkc-spreadsheet-parse-warning-text {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+.pkc-spreadsheet-parse-warning[data-pkc-discarded="true"] {
+  background: rgba(255,80,80,0.1);
+  border-color: rgba(255,80,80,0.35);
 }
 
 .pkc-guardrail-heavy {

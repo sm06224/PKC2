@@ -130,7 +130,54 @@ export const DEFAULT_NEW_SPREADSHEET_BODY: SpreadsheetBody = {
 };
 
 /**
+ * parse 失敗の種別(視覚監査 2026-07-25 A5)。
+ * `null` = 正常。**空 body は正常**(意図的に空のシート)。
+ */
+export type SpreadsheetParseError = 'invalid-json' | 'not-object' | 'rows-not-array';
+
+export interface SpreadsheetParseResult {
+  /** 常に描画可能な body。従来の寛容 fallback と完全に同一の値。 */
+  body: SpreadsheetBody;
+  /** parse 失敗の種別。null なら正常。 */
+  error: SpreadsheetParseError | null;
+}
+
+/**
+ * 失敗種別つきの parse(視覚監査 2026-07-25 A5)。
+ *
+ * 従来の `parseSpreadsheetBody` は「空文字」「不正 JSON」「object でない」
+ * 「rows が配列でない」の 4 つを全部 `{ rows: [] }` に潰していたため、
+ * 呼び出し側が **「意図的に空のシート」と「読めない body」を区別できなかった**。
+ * 画面上は同じ空グリッドに見え、そのまま 1 セル編集して保存すると
+ * 元 body が空シートで上書きされる(= 復旧可能だったかもしれないデータの破壊)。
+ *
+ * 戻り値の型は変えず **additive な sibling** として失敗情報を提供する ──
+ * `SpreadsheetBody` 自体に `parseError?` を生やすと、既存 test の
+ * `toEqual({ rows: [] })` が落ちるうえ、`readBodyFromGrid` の prev spread と
+ * `serializeSpreadsheetBody` を経由して **保存 JSON にエラー情報が混入する**。
+ */
+export function parseSpreadsheetBodyResult(body: string): SpreadsheetParseResult {
+  if (!body || body.trim() === '') return { body: { rows: [] }, error: null };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return { body: { rows: [] }, error: 'invalid-json' };
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { body: { rows: [] }, error: 'not-object' };
+  }
+  if (!Array.isArray((parsed as { rows?: unknown }).rows)) {
+    return { body: { rows: [] }, error: 'rows-not-array' };
+  }
+  return { body: parseSpreadsheetBody(body), error: null };
+}
+
+/**
  * body 文字列を SpreadsheetBody に parse する。寛容な parse。
+ *
+ * 失敗を区別したい呼び出し側は `parseSpreadsheetBodyResult` を使うこと
+ * (本関数の戻り値だけでは「空シート」と「読めない body」が区別できない)。
  */
 export function parseSpreadsheetBody(body: string): SpreadsheetBody {
   if (!body || body.trim() === '') return { rows: [] };

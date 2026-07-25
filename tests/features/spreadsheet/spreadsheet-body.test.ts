@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseSpreadsheetBody,
+  parseSpreadsheetBodyResult,
   serializeSpreadsheetBody,
   parseTsvToBody,
   serializeBodyToTsv,
@@ -135,5 +136,46 @@ describe('getColumnCount / getRowCount', () => {
 describe('EMPTY_SPREADSHEET_BODY', () => {
   it('case 1: rows: []', () => {
     expect(EMPTY_SPREADSHEET_BODY).toEqual({ rows: [] });
+  });
+});
+
+describe('parseSpreadsheetBodyResult(視覚監査 2026-07-25 A5)', () => {
+  // 従来の parseSpreadsheetBody は 4 つの失敗モードを全部 `{ rows: [] }` に
+  // 潰していたため、呼び出し側が「空シート」と「読めない body」を区別できず、
+  // 保存時に元データを空で上書きしていた。
+
+  it('空 body は正常(error: null)── 意図的に空のシートを壊れ扱いしない', () => {
+    expect(parseSpreadsheetBodyResult('')).toEqual({ body: { rows: [] }, error: null });
+    expect(parseSpreadsheetBodyResult('   ')).toEqual({ body: { rows: [] }, error: null });
+  });
+
+  it('JSON として読めない → invalid-json', () => {
+    expect(parseSpreadsheetBodyResult('not json').error).toBe('invalid-json');
+    expect(parseSpreadsheetBodyResult('{rows:}').error).toBe('invalid-json');
+  });
+
+  it('object でない JSON → not-object', () => {
+    expect(parseSpreadsheetBodyResult('42').error).toBe('not-object');
+    expect(parseSpreadsheetBodyResult('"str"').error).toBe('not-object');
+    expect(parseSpreadsheetBodyResult('null').error).toBe('not-object');
+  });
+
+  it('rows が配列でない → rows-not-array', () => {
+    expect(parseSpreadsheetBodyResult('{"rows":"oops"}').error).toBe('rows-not-array');
+    expect(parseSpreadsheetBodyResult('{"rows":42}').error).toBe('rows-not-array');
+    expect(parseSpreadsheetBodyResult('{"cells":{"A1":"x"}}').error).toBe('rows-not-array');
+  });
+
+  it('正常 body は error: null で従来と同じ値を返す(寛容 parse は不変)', () => {
+    const src = '{"rows":[["a","b"],["c"]],"noHeader":true}';
+    const res = parseSpreadsheetBodyResult(src);
+    expect(res.error).toBeNull();
+    expect(res.body).toEqual(parseSpreadsheetBody(src));
+  });
+
+  it('失敗時の body は従来の fallback と完全に同一(描画は壊さない)', () => {
+    for (const bad of ['not json', '42', '{"rows":"oops"}']) {
+      expect(parseSpreadsheetBodyResult(bad).body).toEqual(parseSpreadsheetBody(bad));
+    }
   });
 });
