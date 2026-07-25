@@ -655,6 +655,32 @@ export function createContainerStore(
     for (const k of written) persisted.add(k);
   }
 
+  /**
+   * layout 5 → 従来形式へ収束したあとの segments 回収(2026-07-25)。
+   *
+   * 従来は `save()` / `saveDiff()` の掃除がどちらも `containers` bucket の
+   * prefix しか見ておらず、本文・履歴の実体である gzip Blob が
+   * **コンテナ削除まで回収されなかった**(診察 doc §6)。正しさは壊れない
+   * (layout 1 の load は segments を見ない)が、「OFF 保存で従来形式へ
+   * 自動復元される(双方向に安全)」と謳う以上、片道分のゴミが残るのは穴。
+   *
+   * ⚠ 呼ぶのは **core record を書いた後** に限る。segments は収束が完了する
+   *   まで本文の唯一の実体なので、先に消すと「本文が空で焼き付いた」ときの
+   *   復旧手段が消える。加えて、pending(未 hydrate)な本文が 1 つでも
+   *   あれば **消さない** — その container は本文を実体で持っていないので、
+   *   書き戻した core record 自体が空である可能性がある。
+   */
+  async function dropSegments(cid: string, container: Container): Promise<void> {
+    if (container.entries.some((e) => bodyPending(cid, e.lid))) return;
+    const keys = [
+      ...(await segments.getKeysByPrefix(segRevPrefix(cid))),
+      ...(await segments.getKeysByPrefix(segBodyPrefix(cid))),
+    ];
+    if (keys.length > 0) {
+      await segments.applyBatch(keys.map((key) => ({ kind: 'delete' as const, key })));
+    }
+  }
+
   async function save(container: Container): Promise<void> {
     const cid = container.meta.container_id;
     await putAssets(container);
@@ -681,6 +707,9 @@ export function createContainerStore(
       if (stale.length > 0) {
         await containers.applyBatch(stale.map((key) => ({ kind: 'delete' as const, key })));
       }
+      // layout 5 から戻ってきた場合、本文・履歴の実体は segments 側に残る。
+      // inline record が正になった **後** なので、ここで回収してよい。
+      await dropSegments(cid, container);
       splitState.set(cid, false);
       layoutState.set(cid, 1);
     }
@@ -876,6 +905,10 @@ export function createContainerStore(
       { kind: 'put', key: DEFAULT_KEY, value: cid },
       ...deletes,
     ]);
+    // targetLayout 1 へ収束したときは segments が不要になる。containers の
+    // batch が commit した **後** に回収する(segments は別 bucket = 別 tx なので、
+    // 同じ batch に混ぜられない。先に消すと本文の唯一の実体を失う)。
+    if (!wantSplitBodies) await dropSegments(cid, container);
     splitState.set(cid, true);
     layoutState.set(cid, targetLayout);
   }
