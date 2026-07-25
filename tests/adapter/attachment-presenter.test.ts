@@ -411,9 +411,36 @@ describe('Attachment Presenter', () => {
     });
 
     it('does not show image preview for non-image types', () => {
-      const el = attachmentPresenter.renderBody(makeLegacyEntry());
+      // ⚠ text/plain は B4(視覚監査 2026-07-25)で **text プレビュー対象**に
+      //    なったので、ここでは本当にプレビューできない mime を使う。
+      const el = attachmentPresenter.renderBody(
+        makeLegacyEntry(`{"name":"archive.zip","mime":"application/zip","data":"${HELLO_B64}"}`),
+      );
       const preview = el.querySelector('[data-pkc-region="attachment-preview"]');
       expect(preview).toBeNull();
+    });
+
+    it('B4: text 系はプレビュー枠が出る(編集できるものは閲覧もできる)', () => {
+      // #1005 で「✎ 編集」を入れた時点で「編集できるが閲覧できない」という
+      // ちぐはぐが生まれていた。user 裁定 2026-07-25 で整合を回復した。
+      const el = attachmentPresenter.renderBody(makeLegacyEntry());
+      const preview = el.querySelector('[data-pkc-region="attachment-preview"]');
+      expect(preview, 'text/plain にプレビュー枠が出ていない').not.toBeNull();
+      expect(preview?.getAttribute('data-pkc-preview-type')).toBe('text');
+      // 「プレビューできません」の但し書きは出ない
+      expect(el.querySelector('[data-pkc-region="no-preview"]')).toBeNull();
+    });
+
+    it('B4: 拡張子でしか text と分からない添付も同じ述語で拾う', () => {
+      // application/octet-stream の .log ── mime だけ見る classifyPreviewType では
+      // 'none' だが、編集導線(isEditableTextAttachment)は拾っている。
+      const el = attachmentPresenter.renderBody(
+        makeLegacyEntry(`{"name":"server.log","mime":"application/octet-stream","data":"${HELLO_B64}"}`),
+      );
+      expect(
+        el.querySelector('[data-pkc-region="attachment-preview"]')?.getAttribute('data-pkc-preview-type'),
+        '編集できるのにプレビューできない状態が残っている',
+      ).toBe('text');
     });
 
     it('does not show image preview when data is stripped', () => {
@@ -747,7 +774,16 @@ describe('MIME type classification', () => {
     });
     it('returns none for unknown types', () => {
       expect(classifyPreviewType('application/octet-stream')).toBe('none');
-      expect(classifyPreviewType('text/plain')).toBe('none');
+      expect(classifyPreviewType('application/zip')).toBe('none');
+    });
+    it('B4: text 系 mime は text(編集できるものは閲覧もできる)', () => {
+      expect(classifyPreviewType('text/plain')).toBe('text');
+      expect(classifyPreviewType('text/csv')).toBe('text');
+      expect(classifyPreviewType('application/json')).toBe('text');
+      expect(classifyPreviewType('application/x-yaml')).toBe('text');
+      // SVG / HTML は「描画したい」ものなので sandbox iframe のまま
+      expect(classifyPreviewType('text/html')).toBe('html');
+      expect(classifyPreviewType('image/svg+xml')).toBe('html');
     });
   });
 
@@ -758,6 +794,7 @@ describe('MIME type classification', () => {
       expect(previewModeLabel('video')).toBe('動画');
       expect(previewModeLabel('audio')).toBe('音声');
       expect(previewModeLabel('html')).toBe('サンドボックス');
+      expect(previewModeLabel('text')).toBe('テキスト');
       expect(previewModeLabel('none')).toBe('プレビュー不可');
     });
   });

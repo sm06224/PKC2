@@ -25,7 +25,7 @@ import {
   isTextConvertibleAttachment, decodeAttachmentText,
 } from './attachment-presenter';
 import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
-import { textToBase64, utf8ByteLength } from '../../features/asset/text-codec';
+import { textToBase64, base64ToText, utf8ByteLength } from '../../features/asset/text-codec';
 import { isFileTooLarge, fileSizeWarningMessage, attachmentWarnHeavyBytes } from './guardrails';
 import { fileToBase64, yieldToEventLoop } from './file-to-base64';
 import { tryHandleEditorKey } from './editor-key-helpers';
@@ -11159,7 +11159,9 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
   };
   for (const el of previews) {
     // Skip if already populated (has child elements beyond placeholder)
-    if (el.querySelector('img, video, audio, iframe, object')) continue;
+    // B4:text preview は `<pre>` なので、この skip list に入れないと
+    //     render のたびに再構築される(実害は小さいが無駄な再デコード)。
+    if (el.querySelector('img, video, audio, iframe, object, pre')) continue;
 
     const lid = el.getAttribute('data-pkc-lid');
     if (!lid) continue;
@@ -11179,7 +11181,10 @@ export function populateAttachmentPreviews(root: HTMLElement, dispatcher: Dispat
     if (!resolved) continue;
     // HTML preview(srcdoc)は本文テキストが必要 — base64 未回復なら
     // miss 経路の回復を待つ(placeholder のまま)。
-    if (classifyPreviewType(resolved.mime) === 'html' && !resolved.data) continue;
+    // HTML / TEXT preview は本文テキストが必要 — base64 未回復なら
+    // miss 経路の回復を待つ(placeholder のまま)。
+    const wantsText = (el.getAttribute('data-pkc-preview-type') ?? classifyPreviewType(resolved.mime));
+    if ((wantsText === 'html' || wantsText === 'text') && !resolved.data) continue;
 
     // Read sandbox_allow from the entry body for HTML previews.
     // Fallback chain: per-entry override → container default → strict.
@@ -11295,7 +11300,12 @@ function populatePreviewElement(
   // そのまま使う(registry 所有 URL なので revoke 対象に載せない)。
   registryUrl: string | null = null,
 ): void {
-  const previewType = classifyPreviewType(resolved.mime);
+  // B4:presenter が **body 込み**(拡張子も見て)決めた種別を尊重する。
+  // ここで mime だけ再判定すると、`application/octet-stream` の .log などが
+  // presenter 側は 'text' なのに描画側は 'none' になり、preview 枠だけ空で残る。
+  const declared = el.getAttribute('data-pkc-preview-type');
+  const previewType = (declared as ReturnType<typeof classifyPreviewType> | null)
+    ?? classifyPreviewType(resolved.mime);
 
   // Revoke any previous Blob URL before replacing content
   const oldBlobUrl = el.querySelector<HTMLElement>('[data-pkc-blob-url]')?.getAttribute('data-pkc-blob-url');
@@ -11359,6 +11369,42 @@ function populatePreviewElement(
       source.type = resolved.mime;
       audio.appendChild(source);
       el.appendChild(audio);
+      break;
+    }
+
+    case 'text': {
+      // B4(視覚監査 2026-07-25、user 裁定):text 系添付のプレビュー。
+      // **iframe ではなく <pre>**。textContent で入れるので HTML として
+      // 解釈されず、sandbox 属性の設計を持ち込まずに済む(XSS 面で最も安全)。
+      const pre = document.createElement('pre');
+      pre.className = 'pkc-attachment-text-preview';
+      pre.setAttribute('data-pkc-region', 'attachment-text-preview');
+      // `base64ToText` は復号できないとき **throw ではなく null** を返す。
+      const text = base64ToText(resolved.data);
+      if (text === null) {
+        // そもそも text ではなかった。プレビューを出さないほうが
+        // 「壊れた文字列を見せる」より正直。
+        const err = document.createElement('div');
+        err.className = 'pkc-attachment-no-preview';
+        err.textContent = 'このファイルはテキストとして読み取れませんでした。';
+        el.appendChild(err);
+        break;
+      }
+      // 巨大な .log / .json を丸ごと流すと描画が固まるので頭だけ出す。
+      // 続きは「✎ 編集」/ ダウンロードで見られるので情報は失われない。
+      const LIMIT = 200_000; // 文字数
+      const truncated = text.length > LIMIT;
+      pre.textContent = truncated ? text.slice(0, LIMIT) : text;
+      el.appendChild(pre);
+      if (truncated) {
+        const note = document.createElement('div');
+        note.className = 'pkc-attachment-text-preview-note';
+        note.setAttribute('data-pkc-region', 'attachment-text-truncated');
+        note.textContent =
+          `先頭 ${LIMIT.toLocaleString()} 文字だけ表示しています`
+          + `(全体 ${text.length.toLocaleString()} 文字)。続きは「✎ 編集」かダウンロードで。`;
+        el.appendChild(note);
+      }
       break;
     }
 

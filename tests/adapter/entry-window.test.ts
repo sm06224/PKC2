@@ -505,10 +505,30 @@ describe('Entry Window', () => {
         attachmentData: 'YmluYXJ5',
       });
       expect(html).toContain('data-pkc-ew-preview-type="none"');
-      expect(html).toContain('No inline preview for this file type.');
+      // B2 で日本語化、B4 で text 系はプレビュー対象になった(.bin は対象外)。
+      expect(html).toContain('このファイル形式はプレビューできません。');
       expect(html).toContain('data-pkc-ew-action="download-attachment"');
       // No "open" button for unknown types
       expect(html).not.toContain('data-pkc-ew-action="open-attachment"');
+    });
+
+    it('B4: text 系添付は子ウィンドウでもプレビューされる(S1 と揃える)', async () => {
+      // 「編集できるが閲覧できない」不整合は S4 でも起きていた。
+      const txt = JSON.stringify({ name: 'notes.txt', mime: 'text/plain', size: 11, asset_key: 'a1' });
+      const html = await openAndCapture(false, { archetype: 'attachment', body: txt }, false, {
+        attachmentData: 'aGVsbG8gd29ybGQ=',
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="text"');
+      expect(html).toContain('data-pkc-ew-slot="text"');
+      expect(html).not.toContain('このファイル形式はプレビューできません。');
+    });
+
+    it('B4: 拡張子でしか text と分からない添付も子ウィンドウで拾う', async () => {
+      const log = JSON.stringify({ name: 'server.log', mime: 'application/octet-stream', size: 11, asset_key: 'a1' });
+      const html = await openAndCapture(false, { archetype: 'attachment', body: log }, false, {
+        attachmentData: 'aGVsbG8gd29ybGQ=',
+      });
+      expect(html).toContain('data-pkc-ew-preview-type="text"');
     });
 
     it('Light mode with no data shows explicit reason, no preview, no action row', async () => {

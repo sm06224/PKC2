@@ -5251,6 +5251,26 @@ mark.pkc-search-mark {
    `.pkc-attachment-pending`(⏳、無装飾)と視覚的に区別する。Light export
    (.pkc-attachment-stripped)と同じ warn 系トークンだが、事故の可能性が
    あるぶん一段強くする。 */
+/* 視覚監査 2026-07-25 B4:text 系添付のプレビュー。iframe ではなく pre なので
+   sandbox 設計を持ち込まない。高さは頭打ちにしてカード全体が縦に伸びないように。 */
+.pkc-attachment-text-preview {
+  margin: 0;
+  padding: var(--space-2);
+  max-height: 24rem;
+  overflow: auto;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  white-space: pre;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+}
+.pkc-attachment-text-preview-note {
+  margin-top: var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--c-muted);
+}
+
 .pkc-attachment-missing {
   font-size: var(--fs-sm);
   color: var(--c-warn);
@@ -13001,23 +13021,46 @@ button[data-pkc-action="toggle-graph-region-select-mode"][data-pkc-active="true"
 .pkc-spreadsheet td, .pkc-spreadsheet th {
   overflow: hidden;
   text-overflow: ellipsis;
-  /* white-space は cell content によって pre-wrap or nowrap、grid 編集中は
-   * cell の内容が見えるよう pre-wrap、view mode は cell に rich content 含む
-   * 場合があるため pre-wrap 既定。 */
 }
+/* 視覚監査 2026-07-25 B3(user 裁定):**セルは 1 行 + 溢れは「…」で省略**。
+   従来は `white-space: pre-wrap` だったため、`table-layout: fixed` の固定幅
+   (既定 96px)の中で長文が **1 文字ずつ折り返し**、行高が数十倍に爆発していた
+   (日本語のように単語境界が無いテキストで顕著)。`text-overflow: ellipsis` は
+   上で指定済みだったが、`pre-wrap` では効かない ── ellipsis は
+   `nowrap` / `pre` のときだけ発火する。
+   Excel / Sheets も既定は 1 行クリップなので house としても自然。
+   全文へは:閲覧 = title tooltip、編集 = セルを click(下の :focus 規則)。 */
 .pkc-spreadsheet thead th {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   padding: 0.25rem 0.55rem;
   font-weight: 600;
   text-align: left;
-  white-space: pre-wrap;
+  white-space: nowrap;
 }
 .pkc-spreadsheet tbody td {
   border: 1px solid var(--c-border);
   padding: 0.2rem 0.55rem;
-  white-space: pre-wrap;
+  white-space: nowrap;
   vertical-align: top;
+}
+/* B3:編集 grid の見出し行セルは buildGridTable が `isHeaderRow ? 'th' : 'td'` で
+   作るため **tbody 内の th**。`thead th` にも `tbody td` にもマッチしないので、
+   ここを書かないと **編集モードの 1 行目だけ折り返しと行高爆発が残る**。
+   行番号 th(.pkc-spreadsheet-rowhead)にも当たるが nowrap は無害。 */
+.pkc-spreadsheet tbody th {
+  white-space: nowrap;
+}
+/* B3:**印刷 / HTML 書き出しでは折り返しに戻す**。画面では「1 行 + 省略、全文は
+   tooltip / クリック」で足りるが、紙や配布 HTML には tooltip もクリックも無い
+   ── nowrap のまま焼き込むと全文へ到達する手段が消える。 */
+@media print {
+  .pkc-spreadsheet thead th,
+  .pkc-spreadsheet tbody th,
+  .pkc-spreadsheet tbody td {
+    white-space: pre-wrap;
+    overflow: visible;
+  }
 }
 .pkc-spreadsheet tbody tr:nth-child(even) td {
   background: rgba(127, 127, 127, 0.04);
@@ -13075,6 +13118,12 @@ table.pkc-spreadsheet-grid th[contenteditable]:focus,
 table.pkc-spreadsheet-grid td[contenteditable]:focus {
   background: rgba(80, 144, 220, 0.12);
   box-shadow: inset 0 0 0 2px var(--c-accent, #4d8be0);
+  /* B3:**クリックしたセルだけ**は全文を出す(user 裁定「セルをクリックすれば
+     全文が見える」)。編集中に「…」で切れていると打ち直せないため、
+     focus 中だけ折り返しに戻す。1 セルしか focus できないので行高の爆発は起きない。 */
+  white-space: pre-wrap;
+  overflow: visible;
+  word-break: break-word;
 }
 /* Grid mode と TSV mode の表示切替(data-pkc-spreadsheet-mode 属性で gate) */
 .pkc-spreadsheet-editor[data-pkc-spreadsheet-mode="grid"] textarea.pkc-spreadsheet-tsv {
@@ -13280,6 +13329,13 @@ table.pkc-spreadsheet-grid td[contenteditable]:focus {
 .pkc-spreadsheet-embed {
   max-height: 360px;
   overflow: auto;
+}
+/* B3:`renderSpreadsheetEmbedBody` が返す wrapper。列幅の合計で table 幅が
+   確定するようになったので、はみ出しを受け止める container が要る
+   (これが無いと埋め込み先のレイアウトごと横に伸びる)。 */
+.pkc-spreadsheet-embed-body {
+  overflow-x: auto;
+  max-width: 100%;
 }
 .pkc-spreadsheet-embed .pkc-spreadsheet {
   font-size: 0.82rem;
