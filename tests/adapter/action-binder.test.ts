@@ -577,7 +577,7 @@ describe('attachment download button', () => {
 
     const downloadBtn = root.querySelector('[data-pkc-action="download-attachment"]');
     expect(downloadBtn).not.toBeNull();
-    expect(downloadBtn!.textContent).toBe('Download');
+    expect(downloadBtn!.textContent).toBe('ダウンロード');
   });
 });
 

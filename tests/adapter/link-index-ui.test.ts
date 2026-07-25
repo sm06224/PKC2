@@ -152,13 +152,13 @@ describe('C-3 UI: meta pane link-index sections', () => {
     const backlinks = root.querySelector('[data-pkc-region="link-index-backlinks"]');
     const broken = root.querySelector('[data-pkc-region="link-index-broken"]');
     expect(outgoing?.querySelector('.pkc-link-index-empty')?.textContent).toBe(
-      'No outgoing links.',
+      '本文リンクはありません。',
     );
     expect(backlinks?.querySelector('.pkc-link-index-empty')?.textContent).toBe(
-      'No backlinks.',
+      '被参照はありません。',
     );
     expect(broken?.querySelector('.pkc-link-index-empty')?.textContent).toBe(
-      'No broken links.',
+      '欠損リンクはありません。',
     );
   });
 

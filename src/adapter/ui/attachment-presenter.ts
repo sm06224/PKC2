@@ -434,12 +434,14 @@ export function classifyPreviewType(mime: string): 'image' | 'pdf' | 'video' | '
  */
 export function previewModeLabel(type: ReturnType<typeof classifyPreviewType>): string {
   switch (type) {
-    case 'image': return 'Inline';
-    case 'pdf': return 'PDF Viewer';
-    case 'video': return 'Video';
-    case 'audio': return 'Audio';
-    case 'html': return 'Sandbox';
-    case 'none': return 'No Preview';
+    // B2(視覚監査 2026-07-25):6 値まとめて日本語へ。1 つでも英語を残すと
+    // 同じバッジがファイル種別で日英入れ替わって見える。
+    case 'image': return 'インライン';
+    case 'pdf': return 'PDF ビューア';
+    case 'video': return '動画';
+    case 'audio': return '音声';
+    case 'html': return 'サンドボックス';
+    case 'none': return 'プレビュー不可';
   }
 }
 
@@ -545,7 +547,7 @@ export const attachmentPresenter: DetailPresenter = {
     renameBtn.className = 'pkc-btn pkc-btn-small pkc-attachment-rename-btn';
     renameBtn.setAttribute('data-pkc-action', 'rename-attachment');
     renameBtn.setAttribute('data-pkc-lid', entry.lid);
-    renameBtn.textContent = 'Rename';
+    renameBtn.textContent = '名前を変更';
     renameBtn.setAttribute('title', 'Rename this file');
     nameRow.appendChild(renameBtn);
     // code-edit-lite-design-2026-07 §5: テキスト系添付は ✎ でその場編集。
@@ -635,7 +637,7 @@ export const attachmentPresenter: DetailPresenter = {
       downloadBtn.className = 'pkc-btn pkc-attachment-download';
       downloadBtn.setAttribute('data-pkc-action', 'download-attachment');
       downloadBtn.setAttribute('data-pkc-lid', entry.lid);
-      downloadBtn.textContent = 'Download';
+      downloadBtn.textContent = 'ダウンロード';
       actionRow.appendChild(downloadBtn);
 
       // Copy permalink — cross-container shareable pkc:// URL for
@@ -821,7 +823,7 @@ export const attachmentPresenter: DetailPresenter = {
       const noPreview = document.createElement('div');
       noPreview.className = 'pkc-attachment-no-preview';
       noPreview.setAttribute('data-pkc-region', 'no-preview');
-      noPreview.textContent = 'Preview is not available for this file type — use Download to save the file.';
+      noPreview.textContent = 'このファイル形式はプレビューできません。ダウンロードして保存してください。';
       root.appendChild(noPreview);
     }
 

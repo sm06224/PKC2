@@ -82,7 +82,7 @@ describe('pgc-112 meta pane References clarify(Backlinks 重複視覚解消)', (
     boot();
     const h = relationHeading();
     expect(h).not.toBeNull();
-    expect(h?.textContent).toMatch(/^Backlinks \(\d+\)$/);
+    expect(h?.textContent).toMatch(/^被参照 \(\d+\)$/);
     expect(h?.getAttribute('title')).toBeNull();
   });
 
@@ -91,7 +91,7 @@ describe('pgc-112 meta pane References clarify(Backlinks 重複視覚解消)', (
     boot();
     const h = linkIndexBacklinksHeading();
     expect(h).not.toBeNull();
-    expect(h?.textContent).toMatch(/^Backlinks \(\d+\)$/);
+    expect(h?.textContent).toMatch(/^被参照 \(\d+\)$/);
     expect(h?.getAttribute('title')).toBeNull();
   });
 
@@ -99,7 +99,7 @@ describe('pgc-112 meta pane References clarify(Backlinks 重複視覚解消)', (
     setFlag(true);
     boot();
     const h = relationHeading();
-    expect(h?.textContent).toMatch(/^Backlinks \(\d+\) — relation$/);
+    expect(h?.textContent).toMatch(/^被参照 \(\d+\) — relation$/);
     expect(h?.getAttribute('title')).toContain('First-class relations');
   });
 
@@ -107,7 +107,7 @@ describe('pgc-112 meta pane References clarify(Backlinks 重複視覚解消)', (
     setFlag(true);
     boot();
     const h = linkIndexBacklinksHeading();
-    expect(h?.textContent).toMatch(/^Backlinks \(\d+\) — markdown$/);
+    expect(h?.textContent).toMatch(/^被参照 \(\d+\) — markdown$/);
     expect(h?.getAttribute('title')).toContain('Markdown');
   });
 
@@ -124,15 +124,15 @@ describe('pgc-112 meta pane References clarify(Backlinks 重複視覚解消)', (
     setFlag(true);
     boot();
     const outRel = root.querySelector('[data-pkc-relation-direction="outgoing"] .pkc-relation-heading');
-    expect(outRel?.textContent).toMatch(/^Outgoing relations \(\d+\) — relation$/);
+    expect(outRel?.textContent).toMatch(/^関連 \(\d+\) — relation$/);
     const outLink = root.querySelector('[data-pkc-region="link-index-outgoing"] .pkc-link-index-heading');
-    expect(outLink?.textContent).toMatch(/^Outgoing links \(\d+\) — markdown$/);
+    expect(outLink?.textContent).toMatch(/^本文リンク \(\d+\) — markdown$/);
   });
 
   it('flag ON:Broken links も markdown 接尾辞', () => {
     setFlag(true);
     boot();
     const broken = root.querySelector('[data-pkc-region="link-index-broken"] .pkc-link-index-heading');
-    expect(broken?.textContent).toMatch(/^Broken links \(\d+\) — markdown$/);
+    expect(broken?.textContent).toMatch(/^欠損リンク \(\d+\) — markdown$/);
   });
 });

@@ -121,7 +121,7 @@ describe('filer Recent Entries Pane の描画 (pgc-50)', () => {
   it('summary は Recent (件数) を表示する', () => {
     setup(makeContainer(3));
     const summary = recentPane()!.querySelector('summary')!;
-    expect(summary.textContent).toContain('Recent (3)');
+    expect(summary.textContent).toContain('最近 (3)');
   });
 
   it('entry を updated_at desc で並べる(最新が先頭)', () => {

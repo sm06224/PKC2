@@ -221,7 +221,7 @@ describe('Color tag filter strip', () => {
     const disclosure = root.querySelector('[data-pkc-region="advanced-filters"]');
     expect(disclosure).not.toBeNull();
     const summary = disclosure!.querySelector('summary');
-    expect(summary?.textContent).toBe('⚙ Filters');
+    expect(summary?.textContent).toBe('⚙ 絞り込み');
   });
 
   it('strip is hidden when the container has no user entries', () => {
