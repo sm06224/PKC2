@@ -698,6 +698,22 @@ html, body {
 .pkc-header-path-segment {
   white-space: nowrap;
 }
+/* 視覚監査 2026-07-25 A6:長大タイトルでパンくずが横スクロール頼みに
+   なるのを防ぐ。省略されていることが画面から分からず、幅の狭い環境では
+   スクロールバーも出ないので「見えていない」ことに気づけなかった。
+   filer breadcrumb(下の .pkc-filer-breadcrumb-seg、PR-Δ25 2026-05-07)と
+   同じ max-width + ellipsis で house 一貫にする。
+   `overflow: hidden` は ellipsis の前提であると同時に、flex item の
+   automatic minimum size を 0 にする(css-flexbox-1 §4.5)ため、幅が
+   14rem 未満の時は segment 側が縮んで収まる ── max-width だけでは
+   テキストが box の外へ描画され続けて横スクロールが消えない。
+   root / truncated / sep は短いので対象外。 */
+.pkc-header-path-current,
+.pkc-header-path-segment {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .pkc-header-path-current {
   font-weight: 600;
   color: var(--c-accent);
@@ -5096,13 +5112,24 @@ mark.pkc-search-mark {
 }
 
 /* ── Sidebar tree folder indicator ── */
-.pkc-folder-count {
+.pkc-folder-count,
+/* 視覚監査 2026-07-25 B1:階層の表示上限で子を出せなかった行の「…N」。
+   新しい UI 部品を増やさず、既存の件数表示と同じ字送り・同じ控えめさに
+   揃える(breadcrumb の `…` 打ち切り表示と同じ規約)。 */
+.pkc-tree-truncated {
   font-size: var(--fs-2xs);
   color: var(--c-muted);
   white-space: nowrap;
 }
 
-[data-pkc-selected="true"] .pkc-folder-count {
+.pkc-tree-truncated {
+  margin-left: 0.25rem;
+  opacity: 0.75;
+  cursor: help;
+}
+
+[data-pkc-selected="true"] .pkc-folder-count,
+[data-pkc-selected="true"] .pkc-tree-truncated {
   color: rgba(255,255,255,0.7);
 }
 

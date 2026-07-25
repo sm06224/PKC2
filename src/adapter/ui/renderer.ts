@@ -1790,6 +1790,10 @@ function renderHeaderPathTrail(state: AppState): HTMLElement | null {
   // 現在 entry(非 clickable — 既にそこに居る)。
   appendSep();
   const current = createElement('span', 'pkc-header-path-current');
+  // A6:CSS 側で ellipsis 省略するので、祖先 segment(上で title 付与済)と
+  // 同じく全文を tooltip で確認できるようにする。current だけ title が
+  // 欠けているのは非対称だった。
+  current.setAttribute('title', entry.title || '(untitled)');
   current.textContent = entry.title || '(untitled)';
   nav.appendChild(current);
 
@@ -5419,6 +5423,13 @@ interface TreeRowMemoEntry {
   depth: number;
   collapsed: boolean;
   childCount: number;
+  /**
+   * B1(視覚監査 2026-07-25):階層 cap の打ち切り件数も行の見た目
+   * (子件数の表示 + 「…N」marker)を決めるので memo key に含める。
+   * ここを足し忘れると型 error も test failure も出ないまま古い行 DOM が
+   * 再利用され、「機能は直ったのに画面が変わらない」事故になる。
+   */
+  truncatedChildCount: number;
   hasMoveButtons: boolean;
   /**
    * γ-A3 の「別ウィンドウで編集中」marker(markChildWindowItems)は行
@@ -5472,6 +5483,7 @@ function renderTreeNode(
     && memo.depth === node.depth
     && memo.collapsed === isCollapsed
     && memo.childCount === node.children.length
+    && memo.truncatedChildCount === (node.truncatedChildCount ?? 0)
     && memo.hasMoveButtons === hasMoveButtons
     && memo.inWindow === inWindow
   ) {
@@ -5483,6 +5495,7 @@ function renderTreeNode(
       depth: node.depth,
       collapsed: isCollapsed,
       childCount: node.children.length,
+      truncatedChildCount: node.truncatedChildCount ?? 0,
       hasMoveButtons,
       inWindow,
     });
@@ -5513,6 +5526,9 @@ function buildTreeRow(
   // All tree items are draggable
   li.setAttribute('draggable', 'true');
   li.setAttribute('data-pkc-draggable', 'true');
+  // B1:階層 cap で打ち切られた直下の子の件数(件数表示と「…N」marker の
+  // 両方で使うので 1 回だけ解決する)。
+  const truncated = node.truncatedChildCount ?? 0;
   if (node.entry.archetype === 'folder') {
     li.setAttribute('data-pkc-folder', 'true');
     li.setAttribute('data-pkc-drop-target', 'true');
@@ -5537,9 +5553,32 @@ function buildTreeRow(
     }
 
     // Show child count for folders
+    // B1(視覚監査 2026-07-25):描画された子ではなく **実在する直下の子**
+    // を出す。階層 cap で打ち切られた分を足さないと、深さ上限に達した
+    // folder が `(0)` と嘘をつく。cap に当たらない行では truncated===0 な
+    // ので表示は従来どおり。
     const childCount = createElement('span', 'pkc-folder-count');
-    childCount.textContent = `(${node.children.length})`;
+    childCount.textContent = `(${node.children.length + truncated})`;
     li.appendChild(childCount);
+  }
+
+  // B1:階層 cap で子を出せなかった行に「…N」を出す。新しい UI 部品では
+  // なく、breadcrumb の打ち切り表示(`pkc-header-path-truncated` の `…` +
+  // title tooltip)と同じ規約を tree 行の枠内で再利用する。
+  // folder 以外も structural 親になり得るので archetype 分岐の **外**。
+  // `data-pkc-action` は付けない ── click は外側の
+  // `<li data-pkc-action="select-entry">` に bubble して既存の選択挙動の
+  // まま(folder ならダブルクリックで filer へ入れる既存導線も生きる)。
+  if (truncated > 0) {
+    const trunc = createElement('span', 'pkc-tree-truncated');
+    trunc.setAttribute('data-pkc-tree-truncated', String(truncated));
+    trunc.setAttribute(
+      'title',
+      `階層の表示上限のため、この直下の ${truncated} 件はツリーに出ていません`
+        + '(ファイラー・検索からは辿れます)',
+    );
+    trunc.textContent = `…${truncated}`;
+    li.appendChild(trunc);
   }
   return li;
 }
