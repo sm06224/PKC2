@@ -97,6 +97,28 @@ src/adapter/platform/persistence.ts:117   differential_save の既定 = false(#9
 
 つまり **「危ないから OFF」ではなく「効くと言える証拠がまだ無いから OFF」**。
 
+### ⚠ 本測定の限界(2026-07-25 追記・自己訂正)
+
+**この測定は boot(読み)しか見ていない。** segments が本来狙っているのは
+**書込ディスク I/O** で、そちらには実測がある ── しかも user 指示由来である。
+`storage-v3-redesign-2026-07.md` §A.7:
+
+> user 指示「**ディスク I/O に負荷をかけたくない。ゆるいストリーミング圧縮と
+> チャンクパックはスケールのために必須**」
+
+| 方式 | wall | 保存後サイズ | 実ディスク書込 |
+|---|---|---|---|
+| per-record(1 revision = 1 record) | 2.4s | 44.6MB | 77.6MB |
+| チャンクパック(1MB セグメント) | 3.4s | 23.4MB | 24.6MB(**1/3.2**) |
+| **パック + gzip ストリーミング圧縮** | 6.9s | 14.6MB | **15.8MB(1/4.9)** |
+
+同 doc :276-278 は「**これを v3 の必須構成要素とする**」と確定させている。
+
+したがって「効果の証拠が無い」は **boot について**しか言えない。
+**書込 I/O については 1/4.9 という実測があり、それこそが user の要求した軸だった。**
+本 doc の §2 は「この flag を既定 ON にすると boot が速くなるか」への答えであって、
+「segments に意味があるか」への答えではない。両者を混同してはならない。
+
 ## 3. 「パフォーマンステストやったっけ?」への答え ── やっていない
 
 - `tests/bench/` 配下に `lazy_entry_bodies` / `lazyEntryBodies` を触るベンチは **1 件も無い**
@@ -109,6 +131,9 @@ src/adapter/platform/persistence.ts:117   differential_save の既定 = false(#9
 
 数字自体は正しい計測だが、**別の質問に対する答え**である。この flag の既定 ON 可否は
 その表からは導けない。
+
+ただし §2 の追記のとおり、**segments そのものには書込 I/O の実測(1/4.9)がある**。
+「この flag のベンチが無い」ことと「segments に根拠が無い」ことは別である。
 
 ## 4. 既定 ON にすると安全ゲートが外れる(設計上の副作用)
 
@@ -126,8 +151,27 @@ src/adapter/ui/migration-gate.ts:45-53
 お知らせにも「切替を ON にすると切替前に完全なバックアップ ZIP を自動生成する」と
 掲示済み(`startup-notice.ts:99`)。既定 ON はこの掲示と実挙動を食い違わせる。
 
-既定 ON をやるなら、ゲートを「エッジ検出」から「**実 storage layout と目標 layout の
-不一致検出**」へ作り直すのが先。これは別 issue。
+### 🔴 さらに悪い ── ゲートは **今日すでに素通りできる**(2026-07-25 追記)
+
+既定 ON にするまでもない。`FLAGS_CHANGED` を emit するのは
+`SET_FLAG` / `RESET_FLAG` / `RESET_ALL_FLAGS`(= **Flags Inspector の編集**)だけ
+(`app-state.ts:2783 / 2794 / 2803`)。一方:
+
+- URL の `?pkc-flag=persistence.lazy_entry_bodies=1`
+- container の `__flags__` entry にすでに入っている値
+
+はどちらも `primeFlagsFromContainer()` → `setContainerFlagSource()` を**直接**叩き、
+コード自身が「**No reducer dispatch required.**」と明記している(`main.ts:1317-1327`)。
+
+⇒ **この 2 経路では移行前バックアップ ZIP が一度も生成されないまま layout 5 へ移行する。**
+
+しかも `docs/development/debug-via-url-flag-protocol.md` は user に URL flag を
+使わせる導線であり、**本 doc の測定に使った診察スペック自身がこの経路を通っていた**。
+つまり掲示済みの安全策には、既定 ON とは無関係に、今日から開いている穴がある。
+
+ゲートは「flag のエッジ検出」ではなく「**実 storage layout と目標 layout の
+不一致検出**」で作り直す必要がある(この形なら URL / prime / 既定 ON の 3 経路すべてを
+同じ 1 箇所で捕まえられる)。**既定 ON 可否と切り離した hotfix 対象**。
 
 ## 5. マニュアルの記述が実態と食い違っている(本 PR で修正)
 
@@ -160,11 +204,13 @@ src/adapter/platform/idb-store.ts:665-675
   ];
 ```
 
-`segments` bucket の掃除はここに無い。segments の削除は
-`del()`(コンテナごと削除、`idb-store.ts:1101-1107`)と、
-layout 5 の再構築パス(`writeBodySegments` 内 `idb-store.ts:500-503`)にしか無い。
-よって **v5 で保存 → flag を OFF に戻す → inline に収束、の経路で segments の
-gzip Blob が回収されずに残る**。
+`segments` bucket の掃除はここに無い。**`saveDiff()` 側の掃除
+(`idb-store.ts:840-850`)も同じく `containers` bucket の prefix しか見ていない**ので、
+差分保存 ON のまま lazy だけ OFF に戻した経路でも同じことが起きる。
+segments の削除は `del()`(コンテナごと削除、`idb-store.ts:1109-1116`)と、
+layout 5 の再構築パス(`rebuildBodySegments` 内 `idb-store.ts:500-503`)にしか無い。
+よって **v5 で保存 → OFF に戻す → 収束、の経路で segments の
+gzip Blob が回収されずに残る**(本文・履歴の実体サイズ相当)。
 
 - 正しさは壊れない(layout 1 の load は segments を参照しない)
 - しかし容量は食い続け、そのコンテナを削除するまで回収されない
@@ -175,11 +221,21 @@ gzip Blob が回収されずに残る**。
 1. **`persistence.lazy_entry_bodies` は既定 OFF のまま据え置く**(本 doc の結論)
 2. 既定 ON を将来もう一度検討するなら、順序は
    ① migration-gate をエッジ検出から layout 不一致検出へ作り直す
-   → ② segments 孤児の掃除を `save()` に足す
+   → ② segments 孤児の掃除を `save()` と `saveDiff()` の両方に足す
    → ③ **`differential_save` の既定 ON 可否**を先に決める(lazy はその従属変数)
-   → ④ ①〜③ が済んでから、user 実環境規模(数百 MB 級)での実測
+   → ④ ①〜③ が済んでから、user 実環境規模(数百 MB 級)での実測。
+   **測る軸は boot だけでなく書込ディスク I/O**(user 指示の軸は後者)
 3. 本 doc の測定手法(対照群を必ず置く)は今後の perf 判断の型として残す。
    **対照群の振れ幅より小さい差を「改善」と呼ばない**
+4. ①(ゲートの穴)は既定 ON 可否と無関係に**今日実在する安全策の欠陥**なので、
+   本件の裁定を待たずに hotfix する
+
+## 続編 ── 「そもそも廃止すべきか」への回答
+
+user の追問(2026-07-25)「そもそも廃止した方が良いのでは?」に対する調査・設計・
+敵対的検証は [`lazy-entry-bodies-disposition-2026-07-25.md`](./lazy-entry-bodies-disposition-2026-07-25.md) に分けた。
+結論だけ記すと **flag(user 導線)は畳むが segments 実装は残す**。本 doc §2 の
+「効果が実証されない」は boot 軸に限った所見であり、廃止の根拠にはならない。
 
 ## 参照
 
