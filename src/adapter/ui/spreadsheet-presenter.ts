@@ -170,12 +170,22 @@ function buildTableElement(doc: Document, body: SpreadsheetBody): HTMLTableEleme
   const evaluated = evaluateBody(seed);
   // colgroup で column 幅を指定
   const colgroup = doc.createElement('colgroup');
+  let totalWidth = 0;
   for (let c = 0; c < cols; c++) {
     const colEl = doc.createElement('col');
-    colEl.style.width = `${colWidthAt(seed, c)}px`;
+    const w = colWidthAt(seed, c);
+    totalWidth += w;
+    colEl.style.width = `${w}px`;
     colgroup.appendChild(colEl);
   }
   table.appendChild(colgroup);
+  // B3(視覚監査 2026-07-25):**table 幅を列幅の合計で確定させる**。
+  // CSS の `width: max-content` のままだと、cell が `nowrap` になった途端に
+  // max-content が「最長セルの全長」になり、`table-layout: fixed` でも列が
+  // そこまで広がってしまう(実測:96px 指定の列が 1785px に膨張)。
+  // 幅が確定していれば colgroup の指定どおりに列が固定され、溢れは
+  // `text-overflow: ellipsis` で省略される。
+  table.style.width = `${totalWidth}px`;
   const showHeader = !seed.noHeader && seed.rows.length > 0;
   const [headerRaw, ...dataRowsRaw] = evaluated;
   if (showHeader && headerRaw) {
@@ -184,7 +194,10 @@ function buildTableElement(doc: Document, body: SpreadsheetBody): HTMLTableEleme
     tr.style.height = `${rowHeightAt(seed, 0)}px`;
     for (let i = 0; i < cols; i++) {
       const th = doc.createElement('th');
-      th.textContent = headerRaw[i] ?? '';
+      const text = headerRaw[i] ?? '';
+      th.textContent = text;
+      // B3:セルは 1 行 + 「…」省略になったので、全文は tooltip で読めるようにする。
+      if (text) th.setAttribute('title', text);
       tr.appendChild(th);
     }
     thead.appendChild(tr);
@@ -204,7 +217,11 @@ function buildTableElement(doc: Document, body: SpreadsheetBody): HTMLTableEleme
       // user direction 2026-06-03「基本的なデータ型と見せ方には対応すべき」 fix:
       // 列 format(columnFormats)があれば適用、なければ raw のまま。
       const fmt = findColumnFormat(seed, i);
-      td.textContent = formatCellValue(raw, fmt, locale);
+      const shown = formatCellValue(raw, fmt, locale);
+      td.textContent = shown;
+      // B3:省略された全文への導線。書式適用後の値と元の値が違うときは
+      // 両方見せる(例: 通貨表示 ¥1,234 の元が 1234)。
+      if (shown) td.setAttribute('title', shown === raw ? shown : `${shown}\n(${raw})`);
       if (fmt) td.setAttribute('data-pkc-col-format', fmt.type);
       tr.appendChild(td);
     }
@@ -406,6 +423,13 @@ function refreshFormulaDisplay(table: HTMLTableElement, body: SpreadsheetBody): 
       if (formatted !== raw) {
         c.setAttribute('data-pkc-raw', raw); // raw 保持
         c.textContent = formatted;
+        // B3:書式適用後の表示と元の値、両方を tooltip に。
+        c.title = `${formatted}\n(${raw})`;
+      } else if (raw) {
+        // B3:セルは 1 行 + 「…」省略なので、**全文を tooltip に残す**。
+        // ここで removeAttribute すると、buildGridTable が付けた tooltip が
+        // 入力のたび(syncGridToTextarea 経由)に消えてしまう。
+        c.title = raw;
       } else {
         c.removeAttribute('title');
       }
@@ -476,15 +500,21 @@ function buildGridTable(doc: Document, body: SpreadsheetBody): HTMLTableElement 
   // colgroup で初期幅
   const colgroup = doc.createElement('colgroup');
   // row header(行番号)用の column
+  const ROW_HEADER_WIDTH = 36;
   const rowHeaderCol = doc.createElement('col');
-  rowHeaderCol.style.width = '36px';
+  rowHeaderCol.style.width = `${ROW_HEADER_WIDTH}px`;
   colgroup.appendChild(rowHeaderCol);
+  let totalWidth = ROW_HEADER_WIDTH;
   for (let c = 0; c < cols; c++) {
     const colEl = doc.createElement('col');
-    colEl.style.width = `${colWidthAt(seed, c)}px`;
+    const w = colWidthAt(seed, c);
+    totalWidth += w;
+    colEl.style.width = `${w}px`;
     colgroup.appendChild(colEl);
   }
   table.appendChild(colgroup);
+  // B3:閲覧テーブルと同じ理由で幅を確定させる(上の buildTableElement 参照)。
+  table.style.width = `${totalWidth}px`;
 
   // column header(A, B, C, ...)+ resize handle
   const colHeaderRow = doc.createElement('tr');
@@ -535,7 +565,10 @@ function buildGridTable(doc: Document, body: SpreadsheetBody): HTMLTableElement 
       cell.contentEditable = 'true';
       cell.setAttribute('data-row', String(r));
       cell.setAttribute('data-col', String(c));
-      cell.textContent = seed.rows[r]?.[c] ?? '';
+      const cellText = seed.rows[r]?.[c] ?? '';
+      cell.textContent = cellText;
+      // B3:1 行 + 「…」省略なので、click する前に中身を確かめられるようにする。
+      if (cellText) cell.setAttribute('title', cellText);
       tr.appendChild(cell);
     }
     tbody.appendChild(tr);
@@ -621,7 +654,9 @@ function wireGridEvents(wrapper: HTMLElement): void {
     } else {
       t.removeAttribute('data-pkc-raw');
       t.removeAttribute('data-pkc-formula-error');
-      t.removeAttribute('title');
+      // B3:編集して抜けたセルだけ tooltip が消えないよう、全文を残す。
+      if (raw) t.title = raw;
+      else t.removeAttribute('title');
     }
     // 5. 他 cell(この cell を参照する formula)を refresh
     const table = wrapper.querySelector<HTMLTableElement>('table.pkc-spreadsheet-grid');
@@ -963,6 +998,21 @@ function applyColWidthLive(wrapper: HTMLElement, colIdx: number, w: number): voi
   // 0 = row header col、+1 で data col
   const col = colgroup.querySelectorAll('col')[colIdx + 1] as HTMLElement | undefined;
   if (col) col.style.width = `${w}px`;
+  // B3:table 幅を列幅の合計で固定するようにしたので、resize 中も追随させる。
+  // ここを忘れると「合計は変わらないまま他の列が縮む」= ドラッグしても
+  // 見た目が動かない、という分かりにくい退行になる。
+  syncTableWidthToCols(table);
+}
+
+/** colgroup の col 幅の合計を table の明示幅に反映する(B3)。 */
+function syncTableWidthToCols(table: HTMLTableElement): void {
+  const cols = table.querySelectorAll('col');
+  let total = 0;
+  for (const c of Array.from(cols)) {
+    const px = parseFloat((c as HTMLElement).style.width || '0');
+    if (Number.isFinite(px)) total += px;
+  }
+  if (total > 0) table.style.width = `${total}px`;
 }
 
 function startRowResize(wrapper: HTMLElement, rowIdx: number, startY: number): void {

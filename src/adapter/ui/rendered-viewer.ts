@@ -275,6 +275,31 @@ export function buildRenderedViewerHtml(
       border: 1px solid #ccc;
       padding: 0.4em 0.8em;
     }
+    /* 視覚監査 2026-07-25 B3:spreadsheet の最小 mirror。この surface には
+       .pkc-spreadsheet の規則が 1 行も無く table-layout: auto で描画されて
+       いたため、日本語セルが 1 文字ずつに潰れて行高が爆発していた
+       (min-content が CJK では 1 文字になるため)。本体と同じ「固定幅 + 1 行 +
+       省略」に揃える。幅そのものは presenter が colgroup と table の inline
+       style で持っているので、ここでは wrap 制御だけ mirror する。 */
+    .pkc-spreadsheet {
+      table-layout: fixed;
+      max-width: none;
+    }
+    .pkc-spreadsheet th,
+    .pkc-spreadsheet td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: top;
+    }
+    /* 幅が確定した table を受け止める container。これが無いと popup ページ
+       全体が横スクロールする。 */
+    .pkc-spreadsheet-embed,
+    .pkc-spreadsheet-embed-body,
+    .pkc-spreadsheet-wrapper {
+      max-width: 100%;
+      overflow-x: auto;
+    }
     /* TEXTLOG day-grouped rendering (Slice 4-B: day+log article tree
        via buildTextlogDoc). Mirrors the live viewer's class names so
        downstream tooling (e.g. exported HTML re-imported somewhere) can
@@ -955,6 +980,11 @@ export function buildRenderedViewerHtml(
         margin-bottom: 1rem;
       }
       .pkc-textlog-day { break-inside: avoid; }
+      /* B3(視覚監査 2026-07-25):画面では「1 行 + 省略、全文は tooltip」で
+         足りるが、紙 / Download HTML には tooltip も click も無い ── nowrap の
+         まま焼き込むと全文へ到達する手段が消えるので折り返しに戻す。 */
+      .pkc-spreadsheet th,
+      .pkc-spreadsheet td { white-space: pre-wrap; overflow: visible; }
       /* PR-2N(2026-05-10):layout 指定時の print 専用調整。screen の card
          box-shadow / padding を strip、column-rule も off(印刷で線重複防止)。 */
       article.pkc-viewer-body[data-pkc-layout] {

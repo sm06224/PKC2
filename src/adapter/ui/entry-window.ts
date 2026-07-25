@@ -53,6 +53,7 @@ import { parseTodoBody, formatTodoDate, isTodoPastDue } from '../../features/tod
 import {
   parseAttachmentBody,
   classifyPreviewType,
+  classifyAttachmentPreview,
   isSvg,
 } from './attachment-presenter';
 import { parseFormBody, formPresenter } from './form-presenter';
@@ -1546,7 +1547,9 @@ function renderAttachmentCard(
   // the child ever sees the bytes — we do NOT trust `att.data` from
   // the body because the new format stores data in container.assets.
   const hasData = !!ctx?.attachmentData && ctx.attachmentData.length > 0;
-  const previewType = classifyPreviewType(att.mime);
+  // B4(視覚監査 2026-07-25、user 裁定):S1 と同じく **編集できるものは閲覧も
+  // できる**。拡張子でしか text と分からない添付も拾う。
+  const previewType = classifyAttachmentPreview(att);
   const svg = isSvg(att.mime);
 
   // ── Info card ──
@@ -1629,10 +1632,16 @@ function renderPreviewShell(
   <iframe class="pkc-ew-preview-html" title="${svg ? 'SVG' : 'HTML'} preview: ${safeName}" data-pkc-ew-slot="iframe"></iframe>
   <div class="pkc-ew-sandbox-note" data-pkc-ew-slot="sandbox-note"></div>
 </div>`;
+    case 'text':
+      // B4:iframe ではなく pre。子 script が textContent で流し込むので
+      // HTML として解釈されない(sandbox 設計を持ち込まずに済む)。
+      return `<div ${base}>
+  <pre class="pkc-ew-preview-text" data-pkc-region="attachment-text-preview" data-pkc-ew-slot="text"></pre>
+</div>`;
     case 'none':
     default:
       return `<div ${base}>
-  <div class="pkc-ew-preview-none">No inline preview for this file type.</div>
+  <div class="pkc-ew-preview-none">このファイル形式はプレビューできません。</div>
 </div>`;
   }
 }
@@ -1940,6 +1949,27 @@ body {
 .pkc-md-rendered a { color: var(--c-accent); text-decoration: underline; }
 .pkc-md-rendered table { border-collapse: collapse; margin: 0.35em 0; }
 .pkc-md-rendered th, .pkc-md-rendered td { border: 1px solid var(--c-border); padding: 0.3em 0.5em; }
+/* 視覚監査 2026-07-25 B3:spreadsheet の最小 mirror(S2 rendered-viewer と同文)。
+   この surface にも .pkc-spreadsheet の規則が無く table-layout: auto で
+   描画されていたため、日本語セルが 1 文字ずつに潰れていた。 */
+.pkc-spreadsheet { table-layout: fixed; max-width: none; }
+.pkc-spreadsheet th, .pkc-spreadsheet td {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top;
+}
+/* 幅が確定した table を受け止める container(無いと子 window の body がはみ出す)。 */
+.pkc-spreadsheet-embed, .pkc-spreadsheet-embed-body, .pkc-spreadsheet-wrapper {
+  max-width: 100%; overflow-x: auto;
+}
+/* B4: text 添付のプレビュー(S1 の .pkc-attachment-text-preview と同趣旨)。 */
+.pkc-ew-preview-text {
+  margin: 0; padding: 0.6rem; max-height: 24rem; overflow: auto;
+  white-space: pre; font-size: 0.85rem; line-height: 1.55;
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 4px;
+}
+.pkc-ew-preview-text-note { margin-top: 0.3rem; font-size: 0.75rem; color: var(--c-muted); }
+@media print {
+  .pkc-spreadsheet th, .pkc-spreadsheet td { white-space: pre-wrap; overflow: visible; }
+}
 /* Two-column view layout with a sticky TOC sidebar.
    The TOC sidebar pins to the top of the scroll container
    (.pkc-window-content scrolls, not body), so the outline stays
@@ -3777,6 +3807,24 @@ function bootAttachmentPreview() {
       if (video) {
         var vurl = trackBlobUrl(URL.createObjectURL(base64ToBlob(pkcAttachmentData, mime)));
         video.src = vurl;
+      }
+    } else if (type === 'text') {
+      /* B4: text 系はデコードして pre に流す。textContent なので HTML として
+         解釈されない = sandbox 不要。巨大ファイルは頭だけ(親側と同じ方針)。 */
+      var pre = el.querySelector('[data-pkc-ew-slot="text"]');
+      if (pre) {
+        var decoded = base64ToText(pkcAttachmentData);
+        var LIMIT = 200000;
+        if (decoded.length > LIMIT) {
+          pre.textContent = decoded.slice(0, LIMIT);
+          var note = document.createElement('div');
+          note.className = 'pkc-ew-preview-text-note';
+          note.textContent = '先頭 ' + LIMIT + ' 文字だけ表示しています(全体 '
+            + decoded.length + ' 文字)。続きはダウンロードで。';
+          el.appendChild(note);
+        } else {
+          pre.textContent = decoded;
+        }
       }
     } else if (type === 'audio') {
       var audio = el.querySelector('[data-pkc-ew-slot="audio"]');

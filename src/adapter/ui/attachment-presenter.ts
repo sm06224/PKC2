@@ -420,13 +420,50 @@ export function isHtml(mime: string): boolean {
  * SVG is classified as 'html' because it can contain active content
  * (scripts, foreignObject, event handlers) and requires sandbox isolation.
  */
-export function classifyPreviewType(mime: string): 'image' | 'pdf' | 'video' | 'audio' | 'html' | 'none' {
+export type AttachmentPreviewType = 'image' | 'pdf' | 'video' | 'audio' | 'html' | 'text' | 'none';
+
+/**
+ * 視覚監査 2026-07-25 B4:mime だけで判定できる text か。
+ * `text/html` / `image/svg+xml` は先に 'html'(sandbox iframe)へ落ちるので
+ * ここには来ない ── SVG は「描画したい」ものであってソース閲覧ではない。
+ */
+function isPreviewableTextMime(mime: string): boolean {
+  const m = mime.toLowerCase();
+  if (m.startsWith('text/')) return true;
+  return (
+    m === 'application/json'
+    || m === 'application/xml'
+    || m === 'application/javascript'
+    || m === 'application/x-yaml'
+    || m === 'application/yaml'
+  );
+}
+
+export function classifyPreviewType(mime: string): AttachmentPreviewType {
   if (isPreviewableImage(mime)) return 'image';
   if (isPdf(mime)) return 'pdf';
   if (/^video\//i.test(mime)) return 'video';
   if (/^audio\//i.test(mime)) return 'audio';
   if (isHtml(mime) || isSvg(mime)) return 'html';
+  if (isPreviewableTextMime(mime)) return 'text';
   return 'none';
+}
+
+/**
+ * B4(user 裁定 2026-07-25):**編集できるものは閲覧もできる**。
+ *
+ * `classifyPreviewType` は mime 文字列しか見ないので、`application/octet-stream`
+ * の `.log` / `.conf` のように **拡張子でしか text と分からない**添付を拾えない。
+ * 一方 `isEditableTextAttachment` は拡張子も見ており、#1005 の「✎ 編集」は
+ * そちらを使っている ── 結果「編集はできるが閲覧はできない」ちぐはぐが生まれた。
+ *
+ * ここで **同じ述語に寄せる**ことで、編集導線とプレビュー導線が構造的にずれない。
+ * 新しい拡張子を `EDITABLE_TEXT_EXT_RE` に足せば、編集とプレビューの両方に効く。
+ */
+export function classifyAttachmentPreview(att: AttachmentBody): AttachmentPreviewType {
+  const byMime = classifyPreviewType(att.mime);
+  if (byMime !== 'none') return byMime;
+  return isEditableTextAttachment(att) ? 'text' : 'none';
 }
 
 /**
@@ -441,6 +478,7 @@ export function previewModeLabel(type: ReturnType<typeof classifyPreviewType>): 
     case 'video': return '動画';
     case 'audio': return '音声';
     case 'html': return 'サンドボックス';
+    case 'text': return 'テキスト';
     case 'none': return 'プレビュー不可';
   }
 }
@@ -579,7 +617,8 @@ export const attachmentPresenter: DetailPresenter = {
       metaRow.appendChild(sizeSpan);
     }
     // Preview mode badge
-    const previewType = classifyPreviewType(att.mime);
+    // B4:拡張子でしか text と分からない添付も拾う(編集導線と同じ述語)。
+    const previewType = classifyAttachmentPreview(att);
     const modeBadge = document.createElement('span');
     modeBadge.className = 'pkc-attachment-preview-mode';
     modeBadge.setAttribute('data-pkc-region', 'preview-mode');
