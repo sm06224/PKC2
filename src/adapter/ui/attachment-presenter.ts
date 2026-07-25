@@ -4,6 +4,7 @@ import { classifyFileSize, fileSizeWarningMessage, isFileTooLarge } from './guar
 import { isExtensionBound } from '../platform/extension-bindings';
 import { noteAssetMiss } from '../../features/asset/asset-miss-recorder';
 import { getAssetUrl } from '../platform/asset-url-registry';
+import { base64ToText } from '../../features/asset/text-codec';
 
 /**
  * Attachment body schema (file-like archetype).
@@ -147,6 +148,55 @@ export function isTextConvertibleAttachment(body: AttachmentBody): boolean {
 }
 
 /**
+ * code-edit-lite-design-2026-07 §5: この attachment が CodeEditLite で
+ * **編集**できるテキスト種別か(TEXT/TEXTLOG 変換提案 =
+ * `isTextConvertibleAttachment` より広く、コード系拡張子 / `text/*` /
+ * よくある構造化 mime を含む)。バイナリ(画像・音声・動画・PDF・ZIP 等)は false。
+ */
+const EDITABLE_TEXT_EXT_RE =
+  /\.(txt|text|md|markdown|json|jsonc|ya?ml|xml|svg|html?|css|scss|less|js|mjs|cjs|jsx|ts|tsx|csv|tsv|toml|ini|conf|sh|bash|zsh|py|rb|go|rs|java|c|h|cpp|sql|log|env|gitignore)$/i;
+
+export function isEditableTextAttachment(body: AttachmentBody): boolean {
+  const mime = body.mime.toLowerCase();
+  if (mime.startsWith('text/')) return true;
+  if (
+    mime === 'application/json' ||
+    mime === 'image/svg+xml' ||
+    mime === 'application/xml' ||
+    mime === 'application/javascript' ||
+    mime === 'application/x-yaml' ||
+    mime === 'application/yaml'
+  ) {
+    return true;
+  }
+  return EDITABLE_TEXT_EXT_RE.test(body.name);
+}
+
+/** attachment 名 / mime から CodeEditLite の言語 id を推定する。 */
+export function langForAttachment(body: AttachmentBody): string {
+  const ext = /\.([a-z0-9]+)$/i.exec(body.name)?.[1]?.toLowerCase() ?? '';
+  const byExt: Record<string, string> = {
+    json: 'json', jsonc: 'json',
+    yaml: 'yaml', yml: 'yaml',
+    xml: 'xml', svg: 'svg',
+    html: 'html', htm: 'html',
+    css: 'css', scss: 'css', less: 'css',
+    js: 'js', mjs: 'js', cjs: 'js', jsx: 'js',
+    ts: 'ts', tsx: 'ts',
+    csv: 'csv', tsv: 'tsv',
+    sh: 'bash', bash: 'bash', zsh: 'bash',
+    sql: 'sql',
+  };
+  if (byExt[ext]) return byExt[ext]!;
+  const mime = body.mime.toLowerCase();
+  if (mime === 'application/json') return 'json';
+  if (mime === 'image/svg+xml' || mime === 'application/xml') return 'xml';
+  if (mime === 'application/javascript') return 'js';
+  if (mime === 'application/x-yaml' || mime === 'application/yaml') return 'yaml';
+  return '';
+}
+
+/**
  * 領域 3: attachment の base64 データを UTF-8 テキストへ復号する。
  * new format(`asset_key` → `assets`)/ legacy format(`data` 直埋め)の
  * 両方に対応。データ欠落 / 不正 base64 のときは `null`。
@@ -157,13 +207,7 @@ export function decodeAttachmentText(
 ): string | null {
   const b64 = body.asset_key ? assets?.[body.asset_key] : body.data;
   if (typeof b64 !== 'string' || b64.length === 0) return null;
-  try {
-    const binary = atob(b64);
-    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-    return new TextDecoder('utf-8').decode(bytes);
-  } catch {
-    return null;
-  }
+  return base64ToText(b64);
 }
 
 /**
@@ -429,7 +473,11 @@ export function isAttachmentLightSourceHint(): boolean {
  */
 function needsBase64ForRender(att: AttachmentBody): boolean {
   const t = classifyPreviewType(att.mime);
-  return t === 'html' || isTextConvertibleAttachment(att);
+  // code-edit-lite-design-2026-07 §5: 編集可能テキスト(json / yaml / xml 等)も
+  // base64 hydrate 対象に含める。これで選択時に working-set が bytes をロード →
+  // 再 render 後に ✎ 編集の decode が成立する(記録しないと download-only 扱いで
+  // 永久に非常駐 = 編集時に「読み込み中」で弾かれ続ける)。
+  return t === 'html' || isTextConvertibleAttachment(att) || isEditableTextAttachment(att);
 }
 
 /** 描画駆動で registry の ObjectURL 供給を要求できる media 系か。 */
@@ -494,6 +542,19 @@ export const attachmentPresenter: DetailPresenter = {
     renameBtn.textContent = 'Rename';
     renameBtn.setAttribute('title', 'Rename this file');
     nameRow.appendChild(renameBtn);
+    // code-edit-lite-design-2026-07 §5: テキスト系添付は ✎ でその場編集。
+    // Light export で本体が無い(trulyStripped)ものだけ除外。データ未ロード中の
+    // クリックは openAttachmentTextEditor 側が「読み込み中」toast で弾く。
+    // readonly は CSS(#pkc-root[data-pkc-readonly]).pkc-attachment-edit-btn で非表示。
+    if (isEditableTextAttachment(att) && !trulyStripped) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'pkc-btn pkc-btn-small pkc-attachment-edit-btn';
+      editBtn.setAttribute('data-pkc-action', 'edit-attachment-text');
+      editBtn.setAttribute('data-pkc-lid', entry.lid);
+      editBtn.textContent = '✎ 編集';
+      editBtn.setAttribute('title', 'このテキストファイルを編集');
+      nameRow.appendChild(editBtn);
+    }
     card.appendChild(nameRow);
 
     // Meta row: type + size

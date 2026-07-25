@@ -3452,7 +3452,8 @@ mark.pkc-search-mark {
 .pkc-md-block[data-pkc-render-mode="both"] > .pkc-md-edit-btn {
   right: calc(var(--space-2) + 5.2em);
 }
-#pkc-root[data-pkc-readonly="true"] .pkc-md-edit-btn {
+#pkc-root[data-pkc-readonly="true"] .pkc-md-edit-btn,
+#pkc-root[data-pkc-readonly="true"] .pkc-attachment-edit-btn {
   display: none !important;
 }
 
