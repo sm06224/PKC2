@@ -52,7 +52,8 @@
     "check:docs": "npm run check:doc-orphans && npm run check:doc-deadlinks",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "visual:compare": "bash scripts/visual-compare.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

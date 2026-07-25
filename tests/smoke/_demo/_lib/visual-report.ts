@@ -98,8 +98,20 @@ export interface VisualRow {
   readonly baselineB64: string;
   readonly candidateB64: string;
   readonly diff: DiffResult;
-  /** 合格とみなす mismatch 率の上限(超えたら FAIL)。 */
+  /**
+   * 判定のしきい値。
+   * - 既定(`expectChange` 無し / false)= regression 用。**上限**として扱い、
+   *   `mismatchRatio <= tolerance` で PASS(= 変わっていないこと)
+   * - `expectChange: true` = 修正の before/after 用。**下限**として扱い、
+   *   `mismatchRatio >= tolerance` で PASS(= ちゃんと変わったこと)
+   */
   readonly tolerance: number;
+  /**
+   * 「差分が出ていること」を合格とする(修正前 / 修正後の比較レポート)。
+   * 通常の visual regression とは判定の向きが逆になるので明示フラグにする ──
+   * 比率を反転して渡す小細工をすると、表に出る数値まで反転して読めなくなる。
+   */
+  readonly expectChange?: boolean;
 }
 
 function esc(s: string): string {
@@ -116,11 +128,17 @@ export function writeVisualReport(
   let fail = 0;
   const body = rows
     .map((r) => {
-      const ok = r.diff.mismatchRatio <= r.tolerance;
+      const ok = r.expectChange
+        ? r.diff.mismatchRatio >= r.tolerance
+        : r.diff.mismatchRatio <= r.tolerance;
       if (ok) pass++;
       else fail++;
       const pct = (r.diff.mismatchRatio * 100).toFixed(3);
       const tolPct = (r.tolerance * 100).toFixed(3);
+      const tolText = r.expectChange ? `要 ≥ ${tolPct}%` : `許容 ≤ ${tolPct}%`;
+      const verdictText = r.expectChange
+        ? (ok ? '修正あり' : '変化なし')
+        : (ok ? 'PASS' : 'FAIL');
       const img = (b64: string): string =>
         `<img loading="lazy" src="data:image/png;base64,${b64}" alt="">`;
       return `
@@ -131,8 +149,8 @@ export function writeVisualReport(
         <td class="shot">${img(r.diff.diffB64)}<div class="cap">比較結果 diff（差分=赤）</div></td>
         <td class="desc">${esc(r.description)}</td>
         <td class="verdict">
-          <div class="badge ${ok ? 'badge-ok' : 'badge-ng'}">${ok ? 'PASS' : 'FAIL'}</div>
-          <div class="metric">差分 ${pct}%<br><span class="tol">許容 ≤ ${tolPct}%</span></div>
+          <div class="badge ${ok ? 'badge-ok' : 'badge-ng'}">${esc(verdictText)}</div>
+          <div class="metric">差分 ${pct}%<br><span class="tol">${esc(tolText)}</span></div>
           <div class="metric dim">${r.diff.width}×${r.diff.height}px</div>
         </td>
       </tr>`;

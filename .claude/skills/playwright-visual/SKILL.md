@@ -156,6 +156,32 @@ test('demo: <feature> の実操作', async ({ page }) => {
   再現性の確認。baseline を golden として commit すれば継続的な regression 表に
   なる(現状のデモは baseline を毎回生成する self-contained 版)
 
+### 修正前 / 修正後の比較 HTML(user が「HTML で欲しい」と言ったら)
+
+修正の成果を見せるときは、**同じ操作を 2 つの build で撮って並べる**のが
+一番伝わる(2026-07-25 user 要望)。ワンショット:
+
+```bash
+npm run visual:compare -- <baseline-commit>
+# → test-results/compare/visual-audit-before-after.html
+```
+
+`scripts/visual-compare.sh` が baseline を worktree で build し、
+`dist/pkc2.html` を差し替えながら `audit-compare-capture.spec.ts` を 2 回走らせ、
+`audit-compare-report.spec.ts` が canvas absdiff で
+「比較基準 / 比較対象 / 比較結果 / 説明 / 判定」の自己完結 HTML を書く。
+
+- **判定の向きが逆**。regression では「変わっていない = PASS」だが、修正の
+  提示では「**変わっている = PASS**」。`VisualRow.expectChange: true` で切り替える。
+  比率を反転して渡す小細工はしない ── 表に出る数値まで反転して読めなくなる
+- **crop を必ず見せ場に絞る**(`shotOf` の `maxWidth` / `maxHeight`)。
+  比較表は 3 枚を横に並べるので 1 枚あたり画面幅の 1/4 しか使えず、
+  1904×28 のような細長い crop は判読不能な帯になる(実際なった)
+- 比較項目に **before/after で絵が変わらないもの**を混ぜてしまったら、それは
+  「撮影対象を間違えている」合図。実際 A3(内部 lid 露出)でパンくずを撮って
+  差分 0.00% になり、本当に壊れていたのはファイラーの名前列だと分かった
+- サイズ感:関心領域 crop なら 9 行で ~1.2MB。SendUserFile でそのまま渡せる
+
 ## B. verify モード(Claude が確かめる)
 
 `visual-parity` skill の手順で `*-parity.spec.ts` を書く。要点だけ再掲:
