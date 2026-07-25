@@ -56,6 +56,7 @@ import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
 import { showInlinePrompt, showInlineConfirm, showInlineForm } from './inline-dialog';
 import { openFlagsJsonEditor } from './flags-json-editor';
+import { openCodeBlockEditor } from './code-block-editor';
 import {
   prepareOptimizedIntake,
   deriveDisplayFilename,
@@ -4514,6 +4515,13 @@ export function bindActions(
       case 'open-flags-json-editor': {
         // code-edit-lite-design-2026-07 §3: flags の JSON 一括編集 overlay。
         openFlagsJsonEditor(dispatcher);
+        break;
+      }
+      case 'edit-code-block': {
+        // code-edit-lite-design-2026-07 §4: S1 コードブロックのその場編集。
+        const block = target.closest<HTMLElement>('.pkc-md-block');
+        if (!block) break;
+        openCodeBlockEditor(dispatcher, block);
         break;
       }
       case 'set-bool-flag': {

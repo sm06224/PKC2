@@ -11,6 +11,7 @@ import { applyHeadingFold } from '../../features/markdown/heading-fold';
 import { expandTransclusions } from './transclusion';
 import { hydrateCardPlaceholders } from './card-hydrator';
 import { hydrateMermaidPlaceholders } from './mermaid-renderer';
+import { injectCodeBlockEditButtons } from './code-block-editor';
 import { isSyncEnabled } from './source-preview-sync';
 
 /**
@@ -147,6 +148,10 @@ const textPresenter: DetailPresenter = {
       // fire-and-forget(非同期、戻り値 promise は無視 ── render 完了は
       // 次 frame 以降に visible に)。常時有効(flag は 2026-07-24 撤去)。
       void hydrateMermaidPlaceholders(body);
+      // code-edit-lite-design-2026-07 §4:S1 限定の ✎(コードブロック編集)
+      // 後注入。features 層 markup に足すと S2/S4 で死にボタンになるため
+      // adapter 層で S1 だけに付ける。
+      injectCodeBlockEditButtons(body);
       // 領域 6:top-level 見出しを native <details> で畳めるよう再構成。
       // 純 DOM 操作のため entries 有無に依らず無条件で適用する。
       applyHeadingFold(body);

@@ -3444,6 +3444,18 @@ mark.pkc-search-mark {
   border-left-color: #d69e2e;
 }
 
+/* ── コードブロック ✎ 編集ボタン(code-edit-lite-design-2026-07 §4、S1 限定注入)──
+   copy ⧉ の左隣。-both トグルがある wrapper ではさらに 1 枠左へ。 */
+.pkc-md-block > .pkc-md-edit-btn {
+  right: calc(var(--space-2) + 2.6em);
+}
+.pkc-md-block[data-pkc-render-mode="both"] > .pkc-md-edit-btn {
+  right: calc(var(--space-2) + 5.2em);
+}
+#pkc-root[data-pkc-readonly="true"] .pkc-md-edit-btn {
+  display: none !important;
+}
+
 /* ── flags JSON 一括編集ダイアログ(code-edit-lite-design-2026-07 §3)── */
 .pkc-flags-json-overlay {
   position: fixed;
