@@ -4,14 +4,38 @@ description: >
   PKC2 の Playwright ベース視覚テストを 2 モードで回すワークフロー。
   (A)「user に見せる」デモ = 実操作の見た目スクショを撮って SendUserFile で提示、
   (B)「Claude が確認する」検証 = elementFromPoint + 実 OS event で assert する parity。
-  「動いてるか見せて」「スクショで見せて」「デモを撮って」「視覚確認して」「実機で
-  触って見せて」という文脈で使う。ブラウザバージョンのズレ(playwright bump で
-  要求 chromium が変わる / playwright install が proxy 403)で落ちないよう、
-  実バイナリを解決してから実行する環境整備込み。既存の visual-parity skill
-  (parity の書き方・seed パターン・落とし穴)と併用する。
+  「視覚テストして」「視覚テスト」「動いてるか見せて」「スクショで見せて」「デモを撮って」
+  「視覚確認して」「実機で触って見せて」「画像比較レポート」という文脈で使う。範囲指定なしの
+  bare「視覚テストして」には既定レシピ(npm run visual → Full HD 画像比較レポート提示)で
+  即応する。ブラウザバージョンのズレ(playwright bump で要求 chromium が変わる /
+  playwright install が proxy 403)で落ちないよう実バイナリを解決してから実行する環境整備込み。
+  既存の visual-parity skill(parity の書き方・seed パターン・落とし穴)と併用する。
 ---
 
 # PKC2 Playwright 視覚テスト(demo / verify 2 モード)
+
+## 「視覚テストして」= 既定レシピ(まずこれ。考え込まない)
+
+user が範囲を指定せず **ただ「視覚テストして」「実機で見せて」** と言ったら、
+**迷わず次を実行する**(シナリオ選定で止まらない — user は「もっと単純に」を
+望む、2026-07-25 user フィードバック):
+
+```bash
+eval "$(node scripts/resolve-pw-chromium.cjs --export)"   # ブラウザ固め(必須)
+npm run visual        # = build + test:demo(feature デモ + 画像比較レポート)
+```
+
+→ 生成物を **Claude が Read で全部検品** → 崩れが無ければ **SendUserFile**
+(`display: "render"`)で提示:
+- `test-results/demo/visual-regression-report.html`(baseline/candidate/diff の
+  Full HD 判定表。**これを主役に**)
+- 直近で触った feature の feature デモ png(文脈が要るとき)
+
+一言添える: 何を撮ったか / PASS・FAIL の数 / 目視で気づいた点。**diff や DOM
+ダンプでなく画像で見せる**(会話ルール)。範囲・比較対象を指定されたら
+そのシナリオに絞る。これがデフォルト、指定はオプション。
+
+---
 
 視覚テストには目的の違う 2 モードがある。両方 Playwright + 実ブラウザだが、
 **成果物が違う**:
