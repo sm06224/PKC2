@@ -202,4 +202,18 @@ test('capture: 視覚監査 before/after 比較用ショット', async ({ page }
   if (await select(page, 'att-longname')) {
     await shotOf(page, page.locator('.pkc-attachment-card').first(), '09-attachment-card', { maxWidth: 700 });
   }
+
+  // B3 長文セルの行高(スプレッドシート)
+  if (await select(page, 'sheet-1')) {
+    await shotOf(page, page.locator('[data-pkc-region="spreadsheet-table"]').first(), '10-spreadsheet-cells', {
+      maxWidth: 900, maxHeight: 420,
+    });
+  }
+
+  // B4 text 添付のプレビュー
+  if (await select(page, 'att-json')) {
+    await shotOf(page, page.locator('[data-pkc-region="center-content"]').first(), '11-text-attachment-preview', {
+      maxWidth: 900, maxHeight: 460,
+    });
+  }
 });
