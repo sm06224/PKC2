@@ -10,6 +10,20 @@ export interface TreeNode {
   entry: Entry;
   children: TreeNode[];
   depth: number;
+  /**
+   * 視覚監査 2026-07-25 B1(user 裁定「上限据え置き・打ち切りを可視化」):
+   * `maxDepth` の cap で TreeNode 化されなかった **直下の** 子の件数。
+   *
+   * 従来は cap に当たった node の `children` が空になるだけで、呼び出し側は
+   * 「子がいない」と区別できなかった ── サイドバーは深い entry を表示せず、
+   * かつ子件数を `(0)` と表示して嘘をついていた。
+   *
+   * 子孫の総数ではなく **直下件数**。総数にすると `markReachableBelowCap` の
+   * walk 結果に依存して経路によって値が変わる(walkVisited を共有するため)。
+   * 0 件のときは `undefined` ── 既存の deep-equal test や spread による node
+   * 複製を壊さないための optional。
+   */
+  truncatedChildCount?: number;
 }
 
 /**
@@ -91,16 +105,26 @@ export function buildTree(
 
     const children: TreeNode[] = [];
     const childLids = childrenOf.get(lid) ?? [];
+    let truncatedChildCount = 0;
     for (const childLid of childLids) {
       if (depth < maxDepth) {
         const child = buildNode(childLid, depth + 1, walkVisited);
         if (child) children.push(child);
       } else {
+        // B1:「本来なら行になったはずの子」だけ数える。`childrenOf` は
+        // 重複 structural relation を dedupe しない(上の loop 参照)ので
+        // walkVisited で除外し、dangling ref は entryMap で除外する ──
+        // depth < maxDepth 側の `children` は buildNode 内の同じ 2 つの
+        // guard を通っているので、これで件数の意味論が一致する。
+        // guard を落とすと「嘘(0)を別の嘘(水増し件数)で置き換える」ことになる。
+        if (entryMap.has(childLid) && !walkVisited.has(childLid)) truncatedChildCount++;
         markReachableBelowCap(childLid, walkVisited);
       }
     }
 
-    return { entry, children, depth };
+    return truncatedChildCount > 0
+      ? { entry, children, depth, truncatedChildCount }
+      : { entry, children, depth };
   }
 
   // Root nodes: entries that have no structural parent
