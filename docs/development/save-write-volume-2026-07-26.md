@@ -140,6 +140,8 @@ core record の put 間隔は 790〜1193 ms で、ベンチの編集間隔(1200 
 
 ## 参照
 
+- **手法の正本**: `.claude/skills/perf-measurement/SKILL.md`(`/measure` コマンド)
+  ── 本 doc で使った規律(対照群の作り方・fixture のゼロ次元・指標ごとの信頼度)はそちらに資産化済み
 - ハーネス: `tests/bench/save-write-volume.mjs`
 - 前身(実デバイス書込): [`storage-write-io-bench-2026-07-25.md`](./storage-write-io-bench-2026-07-25.md)
 - 断面ごとの設計検討: [`storage-arch-cross-sections-2026-07-26.md`](./storage-arch-cross-sections-2026-07-26.md)

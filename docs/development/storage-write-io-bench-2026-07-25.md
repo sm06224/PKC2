@@ -274,6 +274,8 @@ user が挙げた「500MB 超」「4MB のエントリ」は asset 主体の問�
 
 ## 参照
 
+- **手法の正本**: `.claude/skills/perf-measurement/SKILL.md`(`/measure` コマンド)
+  ── 本 doc が踏んだ罠(対照群が「ブラウザ放置」だった / fixture の revisions が 0 件 / 差し引き倍率の断定)はそちらに再発防止として収録済み
 - ハーネス: `tests/bench/storage-write-io.mjs`
 - fixture 生成: `build/scripts/generate-bench-container.ts --revisions=<N>`
 - 診察所見: [`lazy-entry-bodies-diagnosis-2026-07-25.md`](./lazy-entry-bodies-diagnosis-2026-07-25.md)

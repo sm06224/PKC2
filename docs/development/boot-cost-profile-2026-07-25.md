@@ -164,6 +164,8 @@ asset を含む実運用(数百 MB)では I/O の比率が上がる可能性が�
 
 ## 参照
 
+- **手法の正本**: `.claude/skills/perf-measurement/SKILL.md`(`/measure` コマンド)
+  ── 本 doc が踏んだ罠(計器の span を実体化前に閉じた / 百分率の取り違え)はそちらに再発防止として収録済み
 - 書込 I/O ベンチ: [`storage-write-io-bench-2026-07-25.md`](./storage-write-io-bench-2026-07-25.md)
 - 設計正本: [`storage-v3-architecture-2026-07.md`](./storage-v3-architecture-2026-07.md)
 - 履歴入り fixture 生成: `build/scripts/generate-bench-container.ts --revisions=<N>`
