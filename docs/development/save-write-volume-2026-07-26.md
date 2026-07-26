@@ -201,6 +201,43 @@ split v1 では `revOrder`(145 KB)の **3 倍**(442 KB)あり、こちらが最�
 つまり「変わった時だけ書く」を効かせるには **`revOrder` を core から外すのが前提**になる。
 順序としては `revOrder` → `relations` → `core.entries` の依存がある。
 
+### `revOrder` は単純には落とせない(調査済み・#2 の着工前提)
+
+`revisions` 配列の順序に意味があるかを調べた。消費側は **3 箇所とも `created_at` で
+並べ替える**ので、一見すると `revOrder` は冗長に見える:
+
+- `getEntryRevisions`(`container-ops.ts:382-384`)`.sort(created_at)`
+- 同 `:460-462` `.sort(created_at)`
+- `getRestoreCandidates`(`:546-561`)`created_at` 比較 + `.sort(created_at)`
+
+**しかし 1 箇所だけ配列順に依存している。** `findLatestRevisionIdForLid`(`:359-371`)の
+doc が明示している:
+
+> "Most recent" is defined as the revision with the greatest `created_at` string among
+> those matching `entry_lid === lid`; **ties are broken by array position
+> (later wins, matching insertion order)**.
+
+⇒ **`created_at` が同一(同一ミリ秒)の revision が同じ entry に 2 件あるとき、
+配列順が tie-break として効く。** `revOrder` を落とすと replay 順が
+`__rev__:` の key 順(= revision id の辞書順)になり、この tie-break が変わる。
+
+現在の revision id 形式では辞書順 ≠ 挿入順なので(例: `rev-z` < `rev-10`)、
+**単純な削除は挙動変更を伴う**。取りうる道は:
+
+1. `prev_rid` を tie-break の正本にする(`Revision.prev_rid` は既に H-6 で存在し、
+   `findLatestRevisionIdForLid` の結果がそこに入る = 線形の履歴ポインタがある)
+2. revision id を単調増加形式にする ── ただし**敵対的検証で「id 衝突 → revision の
+   無言消失を新設する」と指摘された**ので、採るなら衝突不能性の担保が要る
+3. `revOrder` を core から別レコードへ移し、**変わった時だけ書く**
+   (順序の意味は保ったまま、毎保存の O(M) は消える)
+
+**3 が最も安全**(意味論を一切変えない)。ただし core record が毎保存で変わる問題は
+`relations` / `core.entries` 側にも残るので、#2 は「core record を
+**変化した部分だけ別レコードに割る**」という一段大きい設計になる。
+
+⇒ **#2 は形式変更を伴う。user 裁定済みの「マイグレーション手段があれば構造変更可」の
+範囲だが、設計 doc を先に出すべき規模。本 PR には含めない。**
+
 ---
 
 ## 3. ⇒ どこを直すべきか(効果の大きい順)
