@@ -252,3 +252,36 @@ for (const s of summary) console.log(`  ${s.arm.key} ${s.arm.label.padEnd(26)} $
 console.log('');
 console.log('この計器はブラウザのオーバーヘッドを含まない。「アプリが書けと言った量」そのもの。');
 console.log('N・M に比例する項があれば、上の内訳でその役割の行が支配的に出る。');
+
+// ── 無効判定 ──────────────────────────────────────────
+// perf-measurement スキル §5「ハーネス自身に無効判定を埋める」。
+// 数字が出てから人間が気づくのでは遅い ── 出た時点で使えないと言わせる。
+const invalid = [];
+const sel = summary.find((s) => s.arm.selectOnly);
+for (const s of summary) {
+  if (s.perEditKB <= 0) invalid.push(`${s.arm.key} の書込が 0 — 計器が put を捕まえていない`);
+}
+// 選択のみの腕が編集の腕を上回るなら、ワークロードが取り違えられている。
+// ⚠ **同じ flag の腕としか比べない。** 差分保存の腕(B/C)は inline の S より
+//    少なくて当然で、混ぜると誤検知する(最初そう書いて ⛔ を誤爆させた)。
+const sameFlags = (a, b) => JSON.stringify(a.flags) === JSON.stringify(b.flags);
+if (sel) {
+  for (const s of summary) {
+    if (s.arm.selectOnly || !sameFlags(s.arm, sel.arm)) continue;
+    if (sel.perEditKB > s.perEditKB) {
+      invalid.push(`${s.arm.key}(${s.perEditKB.toFixed(0)} KB)が同 flag の選択のみ`
+        + `(${sel.perEditKB.toFixed(0)} KB)以下 — 編集の腕が保存を起こせていない疑い`);
+    }
+  }
+}
+// layout が腕をまたいで同じなら flag が効いていない
+if (summary.length >= 3) {
+  const layouts = new Set(summary.filter((s) => !s.arm.selectOnly).map((s) => s.arm.key));
+  if (layouts.size < 2) invalid.push('腕が 2 つ未満 — 比較になっていない');
+}
+if (invalid.length > 0) {
+  console.log('');
+  for (const m of invalid) console.log(`⚠ ${m}`);
+  console.log('\n⛔ 上の警告がある限り、この実行の数字を結論に使ってはならない。');
+  process.exitCode = 1;
+}

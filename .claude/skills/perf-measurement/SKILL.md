@@ -58,20 +58,42 @@ N=5000/M=15000 のコンテナで、差分保存 ON と OFF でどれだけ違�
 > ところが **コンテナを 1/10(4.8MB → 500KB)にしても 4.1MB と出た** ──
 > 測れていたのは保存ではなく **操作そのものがブラウザに書かせる分**だった。
 >
-> 正しい対照群は **同じクリック・同じ打鍵・同じ画面遷移をして、保存だけ起きない腕**。
-> PKC2 では `CANCEL_EDIT` が `SAVE_TRIGGERS`(`persistence.ts:48-79`)に含まれないので、
+> 対照群は **同じクリック・同じ打鍵・同じ画面遷移をして、測りたい操作だけが無い腕**。
+> PKC2 では `CANCEL_EDIT` が `SAVE_TRIGGERS`(`persistence.ts:48-78`)に含まれず、
+> reducer も `EDIT_CANCELLED` しか emit しない(`app-state.ts:4246-4255`)ので、
 > 「編集して確定せず抜ける」が使える。
 
-### 対照群が正しいかの検算
+### ⚠ その対照群も汚れていた(2026-07-26 追記)
 
-**入力規模を 1/10 にして、対照群の値が変わらないこと**を確認する。
-変わるなら、それは対照群ではなく測定対象の一部を含んでいる。
+`storage-write-io.mjs` の対照群 Y は **1 反復が行クリック(= エントリ選択)から始まる**。
+後の計測(`save-write-volume-2026-07-26.md` §(d))で **選択するだけでコンテナ全体が
+書かれる**ことが判明したため、**Y は「保存が 1 回起きる腕」だった**。
+A(編集)は 2 回なので、A − Y は「2 回 − 1 回 = 1 回分」を測っていたことになる。
+
+⇒ **対照群は「測りたい操作以外を全部同じにする」だけでは足りない。
+その「全部同じ」の中に測定対象が紛れていないかを、別の計器で確かめる。**
+ここでは `bench:write-volume`(put を直接数える計器)が Y の汚染を暴いた。
+
+### 対照群が正しいかの検算 ── 主語に注意
+
+**入力規模を 1/10 にして、〈差し引き後の結論値〉が比例して縮むこと**を確認する。
+縮まないなら、結論値は測定対象ではなく別の何かを測っている。
+
+> ⚠ **「対照群の値が変わらないこと」を確かめても意味がない**(この検算を最初そう書いて誤った)。
+> 誤った対照群だった Z(ブラウザ放置)の値は、コンテナを 1/10 にしても**変わらない** ──
+> 放置中のブラウザ書込はコンテナ規模と無関係だからである。**Z はこの検算に合格してしまう。**
+>
+> 実際に失敗を暴いたのは **結論値**のほうだった:
+> 「1 編集 3.2MB」がコンテナ 4.8MB → 500KB でも **4.1MB のまま**だった
+> (`storage-write-io-bench-2026-07-25.md:47-49`)。
+> **結論値がスケールしないなら、その計測は無効。**
 
 ## 3. 🔴 fixture が実ユーザーのデータと同じ形か(罠 ③ ── 最も高くついた)
 
 > **ゼロ件の次元があるなら、それは「測っていない次元」である。**
 
-> 実例: `bench-fixtures/c-*.json` は 5 つとも **revisions が 0 件**だった。
+> 実例: **commit 済の `bench-fixtures/c-*.json` 5 件**(c-100 / c-500 / c-1000 / c-5000 / c-audit)は
+> **すべて revisions が 0 件**だった(`*-rev.json` は 2026-07-25 に追加した未 commit の生成物)。
 > `getRevisionCount` には `revisions.length === 0` の早期 return があるため、
 > **歴代のベンチが全部「無料の道」しか通っていなかった**
 > (storage-backend-benchmark / differential-save-benchmark / 300MB の A.1 /
@@ -86,7 +108,8 @@ N=5000/M=15000 のコンテナで、差分保存 ON と OFF でどれだけ違�
 npm run bench:fixtures:rev        # 履歴入り fixture(1000/3000 と 5000/15000)を生成
 # 任意の規模が要るとき:
 npx tsx build/scripts/generate-bench-container.ts \
-  --entries=15000 --revisions=45000 --assets=0 --output=bench-fixtures/c-15000-rev.json
+  --entries=15000 --textlogs=300 --assets=0 --revisions=45000 \
+  --output=bench-fixtures/c-15000-rev.json   # --textlogs 省略時は既定 20 になる
 ```
 
 `*-rev.json` は `.gitignore:14` 済み(seed 固定で決定的に再生成できるため commit しない)。
@@ -136,11 +159,25 @@ longtask attribution)が要る。
 
 | 何を知りたいか | ハーネス | 特徴 |
 |---|---|---|
-| **アプリが何を書けと言ったか**(項の同定・O(N+M) の検証) | `npm run bench:write-volume` | `IDBObjectStore.put` を包んで key ごとのバイト数。**ブラウザのオーバーヘッドが 1 バイトも入らない**。まずこれ |
-| **実際に何バイトディスクへ落ちたか** | `npm run bench:write-io` | `/proc/diskstats`(Linux 限定)。実コストだが対照群の差し引きが要る |
-| **boot の時間がどこに消えているか** | CDP Profiler(`Profiler.start/stop` + self-time 集計) | 関数別。minify 名はバンドルを grep して引き当てる |
+| **保存 1 回でアプリが何を書けと言ったか**(項の同定・O(N+M) の検証) | `npm run bench:write-volume` | `IDBObjectStore.put` を包んで key ごとのバイト数。**ブラウザのオーバーヘッドが 1 バイトも入らない**。保存を測るならまずこれ。⚠ **⛔ 無効判定も対照群の腕も持たない**(持つのは write-io 側)ので、判定は自分で書く |
+| **実際に何バイトディスクへ落ちたか** | `npm run bench:write-io` | `/proc/diskstats`。⚠ **Linux かつデバイス名が `vda` 限定**(`storage-write-io.mjs:98` でハードコード。nvme0n1 / sda のホストでは即 throw)。実コストだが対照群の差し引きが要る |
+| **boot の時間がどこに消えているか** | **① まず既存の `npm run bench`** → `tests/bench/profile.bench.ts` + `src/runtime/profile.ts`(`?profile=1` で起動、結果は `bench-results/SUMMARY.md`) | ⚠ **自作する前に `profile.bench.ts:4-23` を読む。** リポジトリは既に seed/boot の race を踏んでおり(**空 IDB の boot を測ってしまう**)、two-phase boot(空 boot → seed → reload した方を測る)で対策済み。同じ穴を掘り直さない |
+| 同上・**関数別 self-time が要るとき** | CDP Profiler を自作(`Profiler.start/stop` + self-time 集計) | **commit されたハーネスは無い**。作るなら minify 名はバンドルを grep して引き当て、必ず §1-b の**閉じの検算**を通してから数字を出す |
 | **ストレージ方式そのものの比較**(IDB/OPFS/FSA/SQLite WASM) | `tests/bench/storage-arch-bench/` | 300MB 級。**persistent プロファイル必須**(ephemeral はメモリバックで実 I/O を踏まない) |
 | **画面が本当にそう見えるか** | `visual-parity` / `shinsatsu` スキル | 本スキルの対象外(数値ではなく視覚) |
+
+### 走らせる前に(preflight)
+
+```bash
+npm run build                 # 両ハーネスとも dist/pkc2.html を配信して測る
+npm run bench:fixtures:rev    # *-rev.json は .gitignore 済み。clean clone では必ず要る
+```
+
+つまみ: `SWV_FIXTURE` / `SWV_EDITS`(既定 3)、`WIO_FIXTURE` / `WIO_EDITS`(既定 20)/ `WIO_BOOTS`(既定 5)。
+**`*_EDITS` を変えると差し引き値の倍率が動く**(§5)ので、比較する実行では固定する。
+
+**反復は同じコマンドを 3 回叩いて手で並べる。** どちらのハーネスも 1 起動では反復しない
+(`WIO_BOOTS` は boot 時間の反復であって書込量の反復ではない)。
 
 ⚠ **ベンチ実行中に `npm run build:bundle` / `build:release` を回さない。**
 vite が `dist/` を作り直すので走行中のブラウザが落ちる(実際に踏んだ)。
