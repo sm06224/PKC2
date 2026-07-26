@@ -498,10 +498,24 @@ export function createContainerStore(
         try {
           tail = JSON.parse(json) as Revision[];
           baseSeq = keys.length - 1;
-        } catch { /* 壊れた active は作り直し */ }
-      } else {
-        baseSeq = keys.length - 1;
+        } catch {
+          // 壊れた active は読み捨て、**上書きせずに**新しい seq へ逃がす
+          // (baseSeq は keys.length のまま)。バイトは残るので、後から
+          // 手当てする余地が消えない。
+        }
       }
+      // ⚠ `json` が null(= gunzip 失敗)のときも **上書きしない**(2026-07-26)。
+      //
+      // ここは以前 `baseSeq = keys.length - 1` に下げていた。`tail` は空のままなので、
+      // **その active pack に入っていた revision が全部消える**。
+      // `gunzipSegment` は例外を握って null を返す(:390-399)ので、この失敗は
+      // データ破損とは限らず **一過性**(メモリ不足 / stream 中断)でも起きる。
+      // バイト自体は無事なのに、上書きすると確実に失う側へ倒れてしまう。
+      //
+      // JSON.parse 失敗側(上の catch)は最初から非破壊だった。同じ扱いに揃える。
+      // 読み側 `loadRevSegments`(:652-664)は読めない segment を skip し、
+      // 重複 id は Map で潰れるので、残置しても復元結果は壊れない。
+      // regression test: tests/adapter/idb-store-rev-segment-decode-failure.test.ts
     }
     const chunks = chunkRevisionsForSegments([...tail, ...added]);
     const ops: BatchOp[] = [];
