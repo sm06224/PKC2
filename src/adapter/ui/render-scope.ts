@@ -171,6 +171,48 @@ function hasAnyActiveFilter(state: AppState): boolean {
  * and idempotent, so re-running them on structurally-equal input
  * is harmless.
  */
+/**
+ * 全シェル再構築のときに、**サイドバーの行リスト DOM をそのまま使い回してよいか**
+ * (2026-07-26)。
+ *
+ * なぜ要るか ── `phase` が変わると `computeRenderScope` は無条件に `'full'` を返す
+ * (下の :183)。編集の開始(`ready → editing`)と確定(`editing → ready`)がそれで、
+ * **1 編集につき 5000 行のサイドバーを 2 回作り直していた**。
+ *
+ * 実測(N=5000 / M=15000、long task を直接観測):
+ *   1 編集あたりメインスレッド停止 **約 670 ms**(保存の寄与は −16 ms = ほぼゼロ)
+ *   ⇒ 体感を殺していたのは保存ではなく **描画**だった
+ *
+ * 行リストの中身は `phase` に依存しない。サイドバーで `phase` を読むのは
+ * 周辺の 4 箇所だけで(空状態の案内 / ルートへのドロップ枠 / ゴミ箱ペイン /
+ * ファイルドロップ枠)、**いずれも O(N) の行ループの外**にある。
+ * よって行リストだけ使い回し、サイドバーの残りは従来どおり組み直せば、
+ * **挙動を一切変えずに** O(N) を消せる。
+ *
+ * ⚠ **保守的**(迷ったら false)。ここが誤ると「古い行が残る」= user から見て
+ * データが壊れたのと区別がつかない。判定は
+ * 「**`phase` と `editingLid` 以外のすべてが同一参照/同値**」に限定する。
+ * 行の内容に効きうる入力(container / 検索 / 絞り込み / 並べ替え / view /
+ * 折りたたみ / sidebar mode …)は 1 つでも動いたら false。
+ */
+export function canReuseEntryList(prev: AppState | null, state: AppState): boolean {
+  if (prev === null || prev === state) return false;
+  // 対象は編集の出入りだけ。他の phase 遷移(initializing / exporting / error)は
+  // シェルの形自体が変わりうるので対象外。
+  const editPhases = new Set(['ready', 'editing']);
+  if (!editPhases.has(prev.phase) || !editPhases.has(state.phase)) return false;
+  if (prev.phase === state.phase) return false;
+
+  // `phase` / `editingLid` **以外**が 1 つでも違えば使い回さない。
+  // AppState に新しい field が増えても、既定で false に倒れる書き方にする。
+  const keys = new Set([...Object.keys(prev), ...Object.keys(state)]) as Set<keyof AppState>;
+  for (const k of keys) {
+    if (k === 'phase' || k === 'editingLid') continue;
+    if (prev[k] !== state[k]) return false;
+  }
+  return true;
+}
+
 export function computeRenderScope(state: AppState, prev: AppState | null): RenderScope {
   if (prev === null) return 'full';
   if (state === prev) return 'none';

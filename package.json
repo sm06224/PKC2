@@ -46,6 +46,8 @@
     "bench:write-io": "node tests/bench/storage-write-io.mjs",
     "bench:footprint": "node tests/bench/storage-footprint.mjs",
     "bench:gzip-cost": "node tests/bench/gzip-core-record-cost.mjs",
+    "bench:edit-block": "node tests/bench/edit-main-thread-block.mjs",
+    "bench:sidebar-reuse-check": "node tests/bench/sidebar-reuse-dom-check.mjs",
     "bench:run": "playwright test --config=tests/bench/playwright.config.ts",
     "bench:summarise": "tsx build/scripts/bench-summarise.ts",
     "bench": "npm run bench:fixtures && npm run build && npm run bench:run && npm run bench:summarise",
