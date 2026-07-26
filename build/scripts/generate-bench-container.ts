@@ -55,6 +55,22 @@ interface Args {
    * revision の snapshot を分離する案の効果はこの次元に左右される。
    */
   deleted: number;
+  /**
+   * 1 asset あたりの実データ量(KB、既定 0 = 従来どおり ~300 byte のダミー)。
+   *
+   * なぜ要るか(2026-07-26、user 報告「実行時メモリが爆発してる」の調査で判明):
+   * 従来の `genAssetBytes` は **200〜400 文字**しか作らないので、`--assets=5000`
+   * でも合計 2 MB にしかならない。**現実の添付は 1 件で数百 KB〜数 MB** であり、
+   * 「添付の多いワークスペース」を fixture で再現できていなかった。
+   *
+   * ⚠ CLAUDE.md「ゼロ件の次元 = 測っていない次元」の同型。commit 済 fixture は
+   * 5 つとも実質 asset ゼロ相当で、**歴代のメモリ計測が添付経路を一度も
+   * 踏んでいない**(`docs/development/storage-default-layout-decision-2026-07-26.md`
+   * §8 が限界として明記していたが、計器側が対応していなかった)。
+   *
+   * 例: `--assets=200 --asset-kb=512` で約 100 MB の添付を持つ container。
+   */
+  assetKb: number;
   output: string;
   seed: number;
 }
@@ -66,6 +82,7 @@ function parseArgs(argv: string[]): Args {
     assets: 50,
     revisions: 0,
     deleted: 0,
+    assetKb: 0,
     output: 'bench-fixtures/c-1000.json',
     seed: 1,
   };
@@ -81,6 +98,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case 'assets':
         out.assets = Math.max(0, parseInt(v, 10) || 0);
+        break;
+      case 'asset-kb':
+        out.assetKb = Math.max(0, parseInt(v, 10) || 0);
         break;
       case 'deleted':
         out.deleted = Math.max(0, parseInt(v, 10) || 0);
@@ -191,7 +211,20 @@ function genAttachmentBody(assetKey: string, name: string): string {
 // reference scanning and metadata. Each "asset" is a small base64
 // payload (~0.3 KB) so the bench focuses on entry/relation walks
 // rather than IDB write volume.
-function genAssetBytes(rng: () => number): string {
+function genAssetBytes(rng: () => number, targetKb = 0): string {
+  if (targetKb > 0) {
+    // 実データ量を指定された場合。base64 は 3 byte → 4 文字なので、
+    // 目標 KB の 3/4 の生バイトを作る。全体を rng で埋めると数百 MB 規模で
+    // 生成自体が支配的になるため、**1 KB のランダムブロックを繰り返す**
+    // (gzip 耐性は落ちるが、本用途は「メモリに載る量」の再現なので許容。
+    //  ⚠ 圧縮率を測る計測にこの fixture を使わないこと)。
+    const rawBytes = Math.max(1, Math.floor(targetKb * 1024 * 3 / 4));
+    const block = Buffer.alloc(1024);
+    for (let i = 0; i < block.length; i++) block[i] = 32 + Math.floor(rng() * 95);
+    const reps = Math.ceil(rawBytes / block.length);
+    return Buffer.concat(Array.from({ length: reps }, () => block), rawBytes)
+      .toString('base64');
+  }
   const len = pickInt(rng, 200, 400);
   let s = '';
   for (let i = 0; i < len; i++) {
@@ -299,7 +332,7 @@ function generate(args: Args): SyntheticContainer {
   const assetKeys: string[] = [];
   for (let i = 0; i < args.assets; i++) {
     const key = `ast-${i.toString(36)}-${Math.floor(rng() * 1e6).toString(36)}`;
-    assets[key] = genAssetBytes(rng);
+    assets[key] = genAssetBytes(rng, args.assetKb);
     assetKeys.push(key);
   }
 
