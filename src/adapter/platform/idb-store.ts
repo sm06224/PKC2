@@ -21,6 +21,15 @@ import { isBodyPendingGlobal } from './body-working-set';
  * まま**。実測と既定 ON 可否の判断は
  * `docs/development/lazy-entry-bodies-diagnosis-2026-07-25.md`(結論: 既定 OFF 据え置き)。
  *
+ * ⚠ **「高速起動」ではない**(2026-07-25 の実測で判明。書込 I/O ベンチ doc
+ * `storage-write-io-bench-2026-07-25.md`)。5000 entries / 15000 revisions で
+ * 使用量 6.7MB → 4.1MB(0.61 倍)になる一方、**boot は 3303ms → 6880ms(2.1 倍)**。
+ * 規模掃引では 1000/5000/15000 entries で boot +29% / +108% / +84% と**規模で消えない**。
+ * 1000 entries では使用量すら 1.4MB → 2.1MB と**増える**(分割の管理情報が圧縮を上回る)。
+ * boot で revision segments を全件 gunzip する(`loadRevSegments` は `skipBodies` に
+ * 関係なく走る)ぶんの伸長 CPU が乗るため。**storage 逼迫時の opt-in** であって
+ * 速度目的の設定ではない。既定にはしない。
+ *
  * 旧ビルド互換の注意は差分保存と同一(unaware ビルドで storage を直接開くと
  * 本文が空に見える。OFF 保存で layout 1 へ書き戻る)。
  */
@@ -30,7 +39,7 @@ export const lazyEntryBodiesEnabled = defineFlag<boolean>(
   {
     category: 'perf',
     description:
-      '案 A: 本文・履歴を segments へ分割圧縮する高速起動 layout(現行 ON = layout 5)。⚠ differential_save も同時に ON でないと無効(単独では layout 1 のまま)。留意: ON 保存した storage は旧ビルドから本文が見えない(OFF 保存で復帰)',
+      '案 A: 本文・履歴を segments へ分割圧縮する省容量 layout(現行 ON = layout 5)。実測= 数千件以上で使用量 0.6 倍・**boot 1.3〜2.1 倍**(小規模では使用量も増える)。⚠ differential_save も同時に ON でないと無効(単独では layout 1 のまま)。留意: ON 保存した storage は旧ビルドから本文が見えない(OFF 保存で復帰)',
     tier: 0,
   },
 );
@@ -655,6 +664,32 @@ export function createContainerStore(
     for (const k of written) persisted.add(k);
   }
 
+  /**
+   * layout 5 → 従来形式へ収束したあとの segments 回収(2026-07-25)。
+   *
+   * 従来は `save()` / `saveDiff()` の掃除がどちらも `containers` bucket の
+   * prefix しか見ておらず、本文・履歴の実体である gzip Blob が
+   * **コンテナ削除まで回収されなかった**(診察 doc §6)。正しさは壊れない
+   * (layout 1 の load は segments を見ない)が、「OFF 保存で従来形式へ
+   * 自動復元される(双方向に安全)」と謳う以上、片道分のゴミが残るのは穴。
+   *
+   * ⚠ 呼ぶのは **core record を書いた後** に限る。segments は収束が完了する
+   *   まで本文の唯一の実体なので、先に消すと「本文が空で焼き付いた」ときの
+   *   復旧手段が消える。加えて、pending(未 hydrate)な本文が 1 つでも
+   *   あれば **消さない** — その container は本文を実体で持っていないので、
+   *   書き戻した core record 自体が空である可能性がある。
+   */
+  async function dropSegments(cid: string, container: Container): Promise<void> {
+    if (container.entries.some((e) => bodyPending(cid, e.lid))) return;
+    const keys = [
+      ...(await segments.getKeysByPrefix(segRevPrefix(cid))),
+      ...(await segments.getKeysByPrefix(segBodyPrefix(cid))),
+    ];
+    if (keys.length > 0) {
+      await segments.applyBatch(keys.map((key) => ({ kind: 'delete' as const, key })));
+    }
+  }
+
   async function save(container: Container): Promise<void> {
     const cid = container.meta.container_id;
     await putAssets(container);
@@ -681,6 +716,9 @@ export function createContainerStore(
       if (stale.length > 0) {
         await containers.applyBatch(stale.map((key) => ({ kind: 'delete' as const, key })));
       }
+      // layout 5 から戻ってきた場合、本文・履歴の実体は segments 側に残る。
+      // inline record が正になった **後** なので、ここで回収してよい。
+      await dropSegments(cid, container);
       splitState.set(cid, false);
       layoutState.set(cid, 1);
     }
@@ -876,6 +914,10 @@ export function createContainerStore(
       { kind: 'put', key: DEFAULT_KEY, value: cid },
       ...deletes,
     ]);
+    // targetLayout 1 へ収束したときは segments が不要になる。containers の
+    // batch が commit した **後** に回収する(segments は別 bucket = 別 tx なので、
+    // 同じ batch に混ぜられない。先に消すと本文の唯一の実体を失う)。
+    if (!wantSplitBodies) await dropSegments(cid, container);
     splitState.set(cid, true);
     layoutState.set(cid, targetLayout);
   }

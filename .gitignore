@@ -7,3 +7,8 @@ playwright-report/
 # vitest --coverage output (audit-only, never committed).
 coverage/
 bench-results/
+# 履歴入り bench fixture(2026-07-25、書込 I/O ベンチ用)。既存の
+# bench-fixtures/c-*.json は commit 済だが、`--revisions` 付きは 5000 件で
+# 22MB になるため commit しない。**seed 固定で決定的に再生成できる** ので、
+# 生成コマンドは tests/bench/storage-write-io.mjs の冒頭に記載してある。
+bench-fixtures/*-rev.json

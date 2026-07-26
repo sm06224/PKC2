@@ -35,11 +35,15 @@
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+// core is pure TypeScript (invariant 2: no browser APIs), so a node
+// script can use the real hash rather than re-deriving one that drifts.
+import { fnv1a64Hex } from '../../src/core/operations/hash';
 
 interface Args {
   entries: number;
   textlogs: number;
   assets: number;
+  revisions: number;
   output: string;
   seed: number;
 }
@@ -49,6 +53,7 @@ function parseArgs(argv: string[]): Args {
     entries: 1000,
     textlogs: 20,
     assets: 50,
+    revisions: 0,
     output: 'bench-fixtures/c-1000.json',
     seed: 1,
   };
@@ -64,6 +69,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case 'assets':
         out.assets = Math.max(0, parseInt(v, 10) || 0);
+        break;
+      case 'revisions':
+        out.revisions = Math.max(0, parseInt(v, 10) || 0);
         break;
       case 'output':
         out.output = v;
@@ -203,8 +211,69 @@ interface SyntheticContainer {
     created_at: string;
     updated_at: string;
   }>;
-  revisions: unknown[];
+  revisions: Array<{
+    id: string;
+    entry_lid: string;
+    snapshot: string;
+    created_at: string;
+    prev_rid?: string;
+    content_hash?: string;
+  }>;
   assets: Record<string, string>;
+}
+
+/**
+ * Revision history for the write-I/O bench (2026-07-25).
+ *
+ * `snapshot` is `JSON.stringify(Entry)` of the pre-mutation state, per
+ * `docs/spec/data-model.md` §6 — so the bytes are realistic (a full
+ * entry copy per edit, which is exactly what the segments layout
+ * gzip-packs and what per-record layouts write one-at-a-time).
+ *
+ * Distribution is deliberately skewed: real workspaces have a few
+ * heavily-revised entries and a long tail of untouched ones. A uniform
+ * spread would understate the active-segment append pattern (the same
+ * entry edited repeatedly lands in the same pack) and flatter the
+ * per-record layouts. ~20% of entries carry ~80% of the revisions.
+ */
+function genRevisions(
+  rng: () => number,
+  entries: SyntheticContainer['entries'],
+  count: number,
+): SyntheticContainer['revisions'] {
+  const revisions: SyntheticContainer['revisions'] = [];
+  if (count === 0 || entries.length === 0) return revisions;
+
+  // The "hot" 20% that receive 80% of the edits.
+  const hotCount = Math.max(1, Math.round(entries.length * 0.2));
+  const lastRidOf = new Map<string, string>();
+  const t0 = Date.parse(T0);
+
+  for (let i = 0; i < count; i++) {
+    const hot = rng() < 0.8;
+    const idx = hot
+      ? pickInt(rng, 0, hotCount - 1)
+      : pickInt(rng, 0, entries.length - 1);
+    const entry = entries[idx]!;
+    // Pre-mutation state: the body as it was `i` edits ago. Trimming
+    // the tail is enough to make each snapshot distinct without
+    // inventing text the entry never held.
+    const trimmed = entry.body.slice(0, Math.max(1, entry.body.length - pickInt(rng, 0, 200)));
+    const snapshot = JSON.stringify({ ...entry, body: trimmed });
+    const id = `rev-${i.toString(36)}`;
+    const prev = lastRidOf.get(entry.lid);
+    revisions.push({
+      id,
+      entry_lid: entry.lid,
+      snapshot,
+      // Deterministic, monotonically increasing — one edit per minute.
+      created_at: new Date(t0 + i * 60_000).toISOString(),
+      ...(prev ? { prev_rid: prev } : {}),
+      content_hash: fnv1a64Hex(snapshot),
+    });
+    lastRidOf.set(entry.lid, id);
+  }
+  return revisions;
 }
 
 function generate(args: Args): SyntheticContainer {
@@ -343,7 +412,7 @@ function generate(args: Args): SyntheticContainer {
     },
     entries,
     relations,
-    revisions: [],
+    revisions: genRevisions(rng, entries, args.revisions),
     assets,
   };
 }
@@ -357,6 +426,7 @@ function main(): void {
   console.log(
     `[gen-bench] ${args.output}: ${container.entries.length} entries, `
     + `${container.relations.length} relations, `
+    + `${container.revisions.length} revisions, `
     + `${Object.keys(container.assets).length} assets `
     + `(${(JSON.stringify(container).length / 1024).toFixed(1)} KB)`,
   );

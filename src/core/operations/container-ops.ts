@@ -396,6 +396,37 @@ export function getLatestRevision(
 }
 
 /**
+ * `entry_lid` → revision 件数の索引。**`revisions` 配列の同一性**をキーにした
+ * memo なので、Container が immutable に更新される限り自動で失効する
+ * (本ファイルの更新系は常に新しい配列を作る:
+ * `revisions: [...container.revisions, revision]`)。
+ *
+ * 実測の背景(2026-07-25): sidebar render は全 entry に対して
+ * `getRevisionCount` を呼ぶ。素朴実装は 1 件ごとに全 revision を走査するので
+ * **O(N×M)** になり、15000 entries × 45000 revisions の CPU プロファイルで
+ * **boot 22.9 秒のうち 15.1 秒(65.5%)** をこの 1 関数が占めていた。
+ * 同 boot の IDB I/O は 1.5% であり、**ストレージではなく計算量が boot の
+ * 支配要因だった**。
+ *
+ * ⚠ 長く見つからなかった理由: 下の `length === 0` 早期 return があるため、
+ * **revisions を持たない bench fixture では常に無料**になっていた。
+ * `bench-fixtures/c-*.json` は全て revisions 0 件だったので、歴代のベンチは
+ * この経路を一度も踏んでいない。fixture に履歴を入れて初めて露出した。
+ */
+const revisionCountMemo = new WeakMap<Revision[], Map<string, number>>();
+
+function revisionCountIndex(revisions: Revision[]): Map<string, number> {
+  const cached = revisionCountMemo.get(revisions);
+  if (cached) return cached;
+  const index = new Map<string, number>();
+  for (const r of revisions) {
+    index.set(r.entry_lid, (index.get(r.entry_lid) ?? 0) + 1);
+  }
+  revisionCountMemo.set(revisions, index);
+  return index;
+}
+
+/**
  * Get the revision count for an entry.
  *
  * pgc-230:revisions が空配列のとき(typical fresh container)早期 return ──
@@ -407,11 +438,7 @@ export function getRevisionCount(
   lid: string,
 ): number {
   if (container.revisions.length === 0) return 0;
-  let count = 0;
-  for (const r of container.revisions) {
-    if (r.entry_lid === lid) count++;
-  }
-  return count;
+  return revisionCountIndex(container.revisions).get(lid) ?? 0;
 }
 
 /**
