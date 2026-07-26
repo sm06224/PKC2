@@ -35,9 +35,12 @@ npm run typecheck        # テストを追加した場合は追加「後」に�
 - 視覚に触れる変更は visual-parity skill の手順で parity test を最低 1 件
 - user-facing 変更は `src/adapter/ui/startup-notice.ts` の先頭 entry に 1 行追記
 - 新 doc は同 commit で `docs/development/INDEX.md` に登録(check:doc-orphans CI)
-- commit trailer(必須):
-  `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` + `Claude-Session: <URL>`
-  model ID はコード / PR に書かない
+- commit trailer(必須):`Co-Authored-By:` + `Claude-Session: <URL>`。
+  ⚠ **モデル名をここに固定で書かない**(2026-07-26)。trailer の正確な文面は
+  **そのセッションの環境が指定してくるもの**が正であり、セッションごとに変わる
+  ── 本書は以前 `Claude Fable 5` を固定で書いており、別モデルで走ったセッションでは
+  実態と食い違っていた。手順書に「今日の事実」を焼き付けると、次に使う時に嘘になる。
+  model ID(`claude-*` 形式)はコード / PR / commit に書かない
 
 ## 2. push → PR 作成
 

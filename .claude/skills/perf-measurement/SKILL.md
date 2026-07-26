@@ -119,7 +119,9 @@ npx tsx build/scripts/generate-bench-container.ts \
   --output=bench-fixtures/c-15000-rev.json   # --textlogs 省略時は既定 20 になる
 ```
 
-`*-rev.json` は `.gitignore:14` 済み(seed 固定で決定的に再生成できるため commit しない)。
+`*-rev*.json` は `.gitignore` 済み(seed 固定で決定的に再生成できるため commit しない)。
+⚠ パターンは接頭辞 `bench-fixtures/c-*-rev*.json` で書かれている ── `*-rev.json` だけだと
+`--deleted` を足した `c-5000-rev-del.json` が漏れる(2026-07-26 に 25MB を commit しかけた)。
 
 ## 4. 🔴 推測した機構のまま実装しない(罠 ④)
 
@@ -238,6 +240,13 @@ gunzip    105 ms / boot
 「core record の 66.7%」で最有力に見えたが、**実際に買えるのは
 structured clone の 74 → 54 ms = 20 ms** だけだった(残りは IDB の
 `put` / `applyBatch` 自体のコスト)。
+
+⚠ **ただしこの棄却自体が「弱い数字」の実例でもある**(2026-07-26 追記)。
+`74 → 54 ms` は**専用ハーネスも生出力も測定条件(N / M / 走行回数)も残っていない**。
+本書と `docs/development/storage-default-layout-decision-2026-07-26.md` §7-c の
+記述が唯一の痕跡で、**第三者は再現できない**。gzip 案(上)はハーネスが commit
+されているので強度が違う。⇒ **棄却にも強度がある。** 再提案されたら
+「その棄却は再現できるか」を先に確かめ、できないなら測り直しから始める。
 
 ⇒ **「削減できるバイト数」は案の採否を決めない。** その形式で**追加で払う代金**
    (CPU / boot / 番兵の新設 / 移行リスク)を同じ精度で測ってから並べる。

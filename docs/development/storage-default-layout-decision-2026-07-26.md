@@ -285,14 +285,24 @@ idle backfill が回り続けないよう試行回数の上限だけ設けた。
 | B-5 | core record 丸ごと gzip | 25,668 → 3,578 KB(7.2 倍) | 旧ビルド不可 |
 | B-3 | entry `body` を segments へ | −5,266 KB | 版マーカー必須 |
 
-**B-2 が次の本命。** boot が読むのは spine(id / entry_lid / created_at / prev_rid /
-content_hash = 1,894 KB)だけで、`snapshot` を読むのは `parseRevisionSnapshot` の
-呼び元(ゴミ箱 / 選択中 entry / export)に限られる ── **boot を重くせずに 66.7% 減らせる**
-唯一の項。
+> 🔴 **訂正(2026-07-26 追記)。本節は初版で「B-2 が次の本命」と書いていたが、
+> 同日中に B-2 は棄却された。** 下の §7-c を先に読むこと。
+>
+> 静的分解の見立て(66.7% / 17,132 KB)自体は正しい。誤っていたのは
+> **「バイト数の大きい項 = 買える時間の大きい項」という接続**である。
+> 見立てを消さずに残すのは、次に同じ静的分解をした人が同じ結論に到達するのを
+> 防ぐため ── 消すと「まだ試していない有望案」に見えて再発明される。
+
+**(初版の見立て。棄却済み)** boot が読むのは spine(id / entry_lid / created_at /
+prev_rid / content_hash = 1,894 KB)だけで、`snapshot` を読むのは
+`parseRevisionSnapshot` の呼び元(ゴミ箱 / 選択中 entry / export)に限られる ──
+**boot を重くせずに 66.7% 減らせる**唯一の項。
 
 ⚠ ただし **fixture の削除済み lid が 0 件**なので、ゴミ箱経路
 (`getRestoreCandidates` → `renderer.ts:5261/5297` が毎 render で snapshot を読む)は
 **一度も測られていない**。B-2 の効果はここに左右されるので、fixture を作り直してから判断する。
+→ ゴミ箱の次元は #1029 で測った(§7-b)。**boot には効かない**。ただし
+**保存側は今も未測定**(`session-handoff-2026-07-26.md` §4 の宿題)。
 
 ---
 
@@ -336,13 +346,38 @@ generator に `--deleted=<N>` を足して測った:
 ⇒ 差は同一走行内の振れ(Z 446 / Y 426 / A 414)に埋もれる。
 **ゴミ箱は既定 boot の障害にならない。**
 
-### ⇒ 残る本命は B-2(`snapshot` だけ分離)
+### 7-c. 🔴 B-2(`snapshot` だけ分離)── **棄却**(2026-07-26)
+
+初版は本節を「⇒ 残る本命は B-2」と書いていた。**同日中に棄却したので書き換える。**
+
+**静的分解の見立て(これは正しい・残す)**
 
 - core record の **66.7%(17,132 KB)** が `snapshot`
+  (分母は put 計器の core record 25,688 KB。gzip ハーネスの
+  `JSON.stringify` 長 25,668 KB とは計器が違うので混ぜない)
 - boot が読む必要があるのは spine(id / entry_lid / created_at / prev_rid /
-  content_hash = 1,894 KB)だけ
+  content_hash = 1,894 KB)だけ。revisions 全体は約 19,026 KB
 - `snapshot` を読む消費者は `parseRevisionSnapshot` の呼び元に限られる
-  (ゴミ箱 / 選択中 entry / export)── そのゴミ箱が boot に効かないことは上で確認済み
+  (ゴミ箱 / 選択中 entry / export)── そのゴミ箱が boot に効かないことは §7-b で確認済み
+
+**棄却の理由(実測)**
+
+分離して実際に買えるのは **保存時の `structuredClone` 74 → 54 ms = 20 ms** だけ。
+残りは IndexedDB の put / applyBatch 自体のコストで、`snapshot` を外しても消えない。
+**17,132 KB(66.7%)というバイト数と、買える 20 ms は釣り合わない。**
+
+⚠ **この棄却は 4 案のなかで根拠が最も弱い。** 「74 → 54 ms」を測った専用ハーネスも
+生の出力も repo に無く、測定条件(N / M / 走行回数)の記録も無い
+(記述は本 doc と `.claude/skills/perf-measurement/SKILL.md` §B-2 のみ)。
+**再提案するなら、まず計器を書いて測り直すところから始めること。**
+他 3 案(gzip / 差分保存の既定 ON / layout 5)の棄却根拠と同じ強度では扱えない。
+
+⚠ 併せて **保存側のゴミ箱次元は今も未測定**。§7-b で確認したのは boot だけで、
+削除済み entry を含む継続編集の**保存**は測っていない
+(`session-handoff-2026-07-26.md` §4 の宿題)。B-2 の効果はここに左右される。
+
+**⇒ 現時点で「次の本命」に該当する案は無い。** 4 案とも棄却または保留であり、
+静的分解の数字だけを見て 1 つを選ぶことはしない、が本 doc の結論である。
 
 ---
 
