@@ -120,7 +120,11 @@ describe('tree 行 memo(#938 R9)', () => {
     expect(rowOf(root, 'r1')).toBe(rootRowBefore);
   });
 
-  it('container 更新(entry 編集)で全行 invalidate される', () => {
+  it('🔴 container 更新(entry 編集)では **変わった行だけ** invalidate される', () => {
+    // 契約変更(2026-07-26)。従来は container 参照の変化で全行を捨てていたが、
+    // 本文を 1 文字直すだけでも container 参照は変わるため、**編集の確定のたびに
+    // 全行を作り直していた**(実測 106 ms / 確定、N=5000)。
+    // 派生値の指紋(`derivedRowFingerprint`)を memo に載せ、違う行だけ作り直す。
     const s1 = readyState(treeFixture());
     render(s1, root, null);
     const before = rowOf(root, 'r1');
@@ -133,7 +137,9 @@ describe('tree 行 memo(#938 R9)', () => {
     };
     const s2 = readyState(c2);
     render(s2, root, null);
-    expect(rowOf(root, 'r1')).not.toBe(before);
+    // r1 は何も変わっていない → 使い回す(ここが変更点)
+    expect(rowOf(root, 'r1')).toBe(before);
+    // 変えた r2 はちゃんと新しい内容になっている
     expect(rowOf(root, 'r2')!.textContent).toContain('Root 2 edited');
   });
 
