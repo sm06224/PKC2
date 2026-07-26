@@ -34,6 +34,11 @@
  *   (+19.2% ↔ -23.2%)。**対照群の振れ幅より小さい差を「改善」と呼ばない**、
  *   そして **対照群は「測りたい操作以外を全部同じにしたもの」でなければならない**。
  *
+ * ⚠ **実行中に `npm run build:bundle` / `build:release` を回さないこと。**
+ *   vite が dist/ を空にして作り直すため、走行中のブラウザが
+ *   `net::ERR_HTTP_RESPONSE_CODE_FAILURE` で落ちる(2026-07-25 に踏んだ)。
+ *   本ベンチは dist/pkc2.html を配信して測るので、ビルドとは排他で回す。
+ *
  * 使い方(Linux 前提 — /proc/diskstats を使う):
  *   node tests/bench/storage-write-io.mjs
  *   WIO_FIXTURE=bench-fixtures/c-5000-rev.json WIO_EDITS=30 node tests/bench/storage-write-io.mjs
