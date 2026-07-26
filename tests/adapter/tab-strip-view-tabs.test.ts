@@ -21,6 +21,7 @@ import {
 import type { Container } from '../../src/core/model/container';
 import type { Entry } from '../../src/core/model/record';
 import type { AppState } from '../../src/adapter/state/app-state';
+import { setFlagSource } from '@core/flags';
 
 function mkEntry(lid: string, title: string, archetype: Entry['archetype'] = 'text'): Entry {
   return { lid, title, body: '', archetype, created_at: '2026-05-23T00:00:00Z', updated_at: '2026-05-23T00:00:00Z' };
@@ -35,7 +36,13 @@ function mkState(c: Container | null = null): AppState {
   return { container: c, phase: 'ready' } as AppState;
 }
 
+
+// 2026-07-26: `persistTabState` は `shell.tabs_enabled` OFF では書かなくなった
+// (既定 OFF の opt-in 機能が、選択のたびに container 全体保存を起こしていたため
+//  ── docs/development/save-write-volume-2026-07-26.md)。
+// 本ファイルは **永続化そのもの** の round-trip を検証するので flag を ON にする。
 beforeEach(() => {
+  setFlagSource('tab-persistence-test', (key) => (key === 'shell.tabs_enabled' ? true : undefined));
   resetTabState();
   if (typeof localStorage !== 'undefined') localStorage.clear();
 });

@@ -327,10 +327,33 @@ interface SavedTabStrip {
 }
 
 /**
- * 現状 openTabs を localStorage に書き出す。failure(quota / disabled)は
+ * 現状 openTabs を書き出す。failure(quota / disabled)は
  * silent ignore(persistence は best-effort、必須でない)。
+ *
+ * ⚠ **flag OFF のときは書かない**(2026-07-26、実測にもとづく)。
+ *
+ * `wireTabStrip` は設計上 always-on で、tab を「開いた履歴」として
+ * メモリに記録し続ける(この doc の :696 参照)。それ自体は安いが、
+ * **書き出し先が container の `__settings__`** である
+ * (`ui-prefs.ts:8`「正本 = container の `__settings__` payload `uiPrefs`」)。
+ * つまり `setUiPref` → `SET_UI_PREFS` → `__settings__` に merge →
+ * `SETTINGS_CHANGED`(`SAVE_TRIGGERS` の一員)→ **コンテナ全体の保存**。
+ *
+ * 実測(`docs/development/save-write-volume-2026-07-26.md`):
+ * **サイドバーの行を 1 回クリックするだけで core record が丸ごと 1 回 put される**
+ * (N=1000/M=3000 の 5MB コンテナで 5,104 KB、25MB なら 25MB)。
+ * 保存の前後で container を差分して、変化していたのが
+ * `uiPrefs["pkc2.tabStrip"]` の 1 キーだけであることを直接確認した。
+ *
+ * ⇒ **既定 OFF の opt-in 機能が、全 user の選択ごとに全件書込みを起こしていた。**
+ * 本ファイル冒頭が宣言する「flag OFF で完全 no-op」が永続化の次元で破れていた。
+ *
+ * メモリ内の記録(= 有効化したときに履歴が残っている、という意図)は
+ * そのまま残し、**永続化だけ** flag に従わせる。OFF の間に書かれなかった
+ * 分は、ON にした後の操作から普通に溜まる。
  */
 export function persistTabState(): void {
+  if (!shellTabsEnabled()) return;
   const payload: SavedTabStrip = {
     lids: openTabs.map((t) => t.lid),
     active: activeLid,

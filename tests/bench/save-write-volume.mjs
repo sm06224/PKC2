@@ -259,7 +259,13 @@ console.log('N・M に比例する項があれば、上の内訳でその役割�
 const invalid = [];
 const sel = summary.find((s) => s.arm.selectOnly);
 for (const s of summary) {
+  // ⚠ 選択のみの腕は **0 が正解**でありうる(2026-07-26 の tab-strip 修正後がまさにそれ)。
+  //    ここを一律「0 = 故障」にすると、直った瞬間に ⛔ を誤爆する(実際に踏んだ)。
+  if (s.arm.selectOnly) continue;
   if (s.perEditKB <= 0) invalid.push(`${s.arm.key} の書込が 0 — 計器が put を捕まえていない`);
+}
+if (sel && sel.perEditKB === 0) {
+  console.log('✅ 選択のみの腕が 0 KB — 選択が保存を起こしていない(期待どおり)');
 }
 // 選択のみの腕が編集の腕を上回るなら、ワークロードが取り違えられている。
 // ⚠ **同じ flag の腕としか比べない。** 差分保存の腕(B/C)は inline の S より
