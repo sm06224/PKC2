@@ -168,8 +168,49 @@ export function mergeSystemEntries(base: Container, newSystemEntries: Entry[]): 
   const mergedExisting = base.entries.map((e) => supplied.get(e.lid) ?? e);
   const existingLids = new Set(base.entries.map((e) => e.lid));
   const appended = newSystemEntries.filter((e) => !existingLids.has(e.lid));
+  // 何も変わらないなら **base をそのまま返す**(2026-07-26)。
+  //
+  // なぜ参照を保つ必要があるか ── 呼び元(`main.ts` の boot)は結果を
+  // `SYS_INIT_COMPLETE` へ渡し、reducer が `CONTAINER_LOADED` を出す。これは
+  // `SAVE_TRIGGERS` の一員なので、**起動しただけでコンテナ全体が 1 回保存される**
+  // (実測: N=5000 / M=15000 で 25,685 KB)。保存側が「前回永続化した参照と
+  // 同一なら書かない」で無駄書きを止めるには、**変化が無いときに新しい
+  // オブジェクトを作らない**ことが前提になる。
+  //
+  // 比較は供給された system entry の分だけ(通常ひと握り)。全 entry の
+  // 深い比較はしない ── ここは boot の同期経路である。
+  const unchanged =
+    appended.length === 0 &&
+    newSystemEntries.every((s) => {
+      const cur = base.entries.find((e) => e.lid === s.lid);
+      return cur !== undefined && entriesEquivalent(cur, s);
+    });
+  if (unchanged) return base;
   return {
     ...base,
     entries: [...mergedExisting, ...appended],
   };
+}
+
+/**
+ * `mergeSystemEntries` 専用の等価判定。**保守的**(判定に迷ったら「違う」)。
+ * 偽陰性(違うと言う)は保存が 1 回走るだけで安全側、偽陽性(同じと言う)は
+ * system entry の更新を storage へ書き損ねるので、必ずこの向きに倒す。
+ */
+function entriesEquivalent(a: Entry, b: Entry): boolean {
+  const ka = Object.keys(a) as Array<keyof Entry>;
+  const kb = Object.keys(b) as Array<keyof Entry>;
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    const va = a[k];
+    const vb = b[k];
+    if (va === vb) continue;
+    // 配列(tags など)は要素の同一性で比較。オブジェクトが来たら「違う」に倒す。
+    if (Array.isArray(va) && Array.isArray(vb)) {
+      if (va.length !== vb.length || va.some((v, i) => v !== vb[i])) return false;
+      continue;
+    }
+    return false;
+  }
+  return true;
 }

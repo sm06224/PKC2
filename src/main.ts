@@ -75,7 +75,7 @@ import {
   showIdbSaveFailureBanner,
   classifySaveError,
 } from './adapter/platform/idb-warning-banner';
-import { mountPersistence, loadFromStore } from './adapter/platform/persistence';
+import { mountPersistence, loadFromStore, notePersistedBaseline } from './adapter/platform/persistence';
 import { mountBodyWorkingSet } from './adapter/platform/body-working-set';
 import { registerExportStore } from './adapter/platform/idb-store';
 import { mountWorkingSet } from './adapter/platform/asset-working-set';
@@ -1125,8 +1125,9 @@ async function boot(): Promise<void> {
     // フォールバック掲示ダイアログが 6a の probe 経由で出る)。
     let idbContainer: Container | null = null;
     let bodiesDeferred: boolean | undefined;
+    let storedInline = false;
     try {
-      ({ container: idbContainer, bodiesDeferred } = await loadFromStore(store));
+      ({ container: idbContainer, bodiesDeferred, storedInline } = await loadFromStore(store));
     } catch (storeErr) {
       console.warn('[PKC2] store load failed — booting without browser storage:', storeErr);
     }
@@ -1190,6 +1191,16 @@ async function boot(): Promise<void> {
           chosen.systemEntriesFromPkcData ?? [],
         );
         primeUiPrefsFromContainer(dispatcher, container);
+        // `CONTAINER_LOADED` は `SAVE_TRIGGERS` の一員なので、**編集を 1 回も
+        // しなくても起動のたびにコンテナ全体が保存される**(実測: N=5000 /
+        // M=15000 で 25,685 KB)。storage が既に inline 形式で、かつ
+        // `mergeSystemEntries` が何も足していない(= 参照が保たれている)なら、
+        // その保存は 1 バイトも storage を変えない純粋な無駄書きである。
+        // ⚠ `storedInline` が false のときは止めない ── その保存は
+        //   形式を戻す作業(flag OFF → inline へ書き戻る安全弁)である。
+        if (storedInline && container === chosen.container) {
+          notePersistedBaseline(container);
+        }
         dispatcher.dispatch({
           type: 'SYS_INIT_COMPLETE',
           container,
