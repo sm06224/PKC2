@@ -255,6 +255,26 @@ const BODY_PREFIX = '__body__:';
  * (旧データは record が無いので自動的に inline 経路)。
  */
 const REL_PREFIX = '__rel__:';
+/**
+ * 順序リストのサイドカー prefix(2026-07-26)。
+ *
+ * relations を出した後、core record に残る O(N+M) は
+ * `marker.entryOrder`(全 lid)と `marker.revOrder`(全 revision id)だった:
+ *
+ *   split v1 : revOrder 145 KB / entryOrder 47 KB(N=5000 / M=15000)
+ *
+ * **`revOrder` は毎保存で伸びる**ので「変わった時だけ書く」だけでは効かない。
+ * 固定長チャンクに割り、**末尾チャンクだけ書き直す**(追記の実体は 1 id なので、
+ * 実質 O(チャンク) に落ちる)。`entryOrder` は entry の増減時しか変わらないので
+ * relations と同じ「変わった時だけ」で足りる。
+ *
+ * 復元は seq 順にチャンクを連結するだけ ── 配列順の意味論
+ * (`created_at` 同着時の prev_rid tie-break、`tests/core/revision-order-tiebreak.test.ts`)
+ * をそのまま保つ。サイドカーが 1 つも無ければ marker の inline へ fallback する。
+ */
+const ORDER_PREFIX = '__order__:';
+/** 順序リスト 1 チャンクあたりの id 数。 */
+const ORDER_CHUNK = 2000;
 
 /**
  * split 形式の core record に付く marker。順序リストは
@@ -404,6 +424,13 @@ function relKey(cid: string): string {
 }
 function relPrefix(cid: string): string {
   return `${REL_PREFIX}${cid}`;
+}
+/** 順序リストのチャンク key。`kind` = 'rev' | 'entry'。seq は 6 桁 0 埋め(key 順 = seq 順)。 */
+function orderKey(cid: string, kind: 'rev' | 'entry', seq: number): string {
+  return `${ORDER_PREFIX}${cid}:${kind}:${String(seq).padStart(6, '0')}`;
+}
+function orderPrefix(cid: string, kind?: 'rev' | 'entry'): string {
+  return kind ? `${ORDER_PREFIX}${cid}:${kind}:` : `${ORDER_PREFIX}${cid}:`;
 }
 
 /**
@@ -742,6 +769,8 @@ export function createContainerStore(
         // inline へ戻したのに古い relations が正本として読まれ続ける**
         // (読み側は record の有無で正本を決めるため)。
         ...(await containers.getKeysByPrefix(relPrefix(cid))),
+        // 順序リストのサイドカーも同様(残っていると古い順序が正本として読まれる)。
+        ...(await containers.getKeysByPrefix(orderPrefix(cid))),
       ];
       if (stale.length > 0) {
         await containers.applyBatch(stale.map((key) => ({ kind: 'delete' as const, key })));
@@ -920,6 +949,54 @@ export function createContainerStore(
       // live に載る。ここでは掃除対象にしない。
     }
 
+    /**
+     * 順序リストのチャンク書き出し(2026-07-26)。
+     *
+     * `prevLen` までが不変(= 追記のみ)と分かっているときは、
+     * その位置を含むチャンクから末尾までだけを書く。それ以外(prune / 並べ替え /
+     * base 無し)は全チャンクを書き直す ── **正しさを優先し、速いのは追記の常道だけ**。
+     * 余ったチャンク(件数が減った場合)は必ず消す。
+     */
+    const writeOrder = async (
+      kind: 'rev' | 'entry',
+      ids: string[],
+      prevLen: number | null,
+    ): Promise<void> => {
+      const chunkCount = Math.ceil(ids.length / ORDER_CHUNK);
+      const from = prevLen === null ? 0 : Math.floor(prevLen / ORDER_CHUNK);
+      for (let i = from; i < chunkCount; i++) {
+        ops.push({
+          kind: 'put',
+          key: orderKey(cid, kind, i),
+          value: ids.slice(i * ORDER_CHUNK, (i + 1) * ORDER_CHUNK),
+        });
+      }
+      // 件数が減った / 形式が変わった分の余りチャンクを掃除
+      for (const k of await containers.getKeysByPrefix(orderPrefix(cid, kind))) {
+        const seq = Number(k.slice(orderPrefix(cid, kind).length));
+        if (!Number.isFinite(seq) || seq >= chunkCount) deletes.push({ kind: 'delete', key: k });
+      }
+    };
+
+    // revOrder: 追記のみと確認できたときは末尾チャンクだけ書く。
+    // 判定は「件数が減っていない」かつ「旧末尾の id が同じ位置にある」。
+    const revIds = container.revisions.map((r) => r.id);
+    const prevRevLen = base && base.revisions.length <= revIds.length
+      && (base.revisions.length === 0
+        || base.revisions[base.revisions.length - 1]?.id === revIds[base.revisions.length - 1])
+      ? base.revisions.length
+      : null;
+    await writeOrder('rev', revIds, prevRevLen);
+
+    // entryOrder は entry の増減時しか変わらない(split v1 のみ使う)。
+    // layout 5 では空なので、空を 1 チャンクも書かずに済むよう分岐する。
+    const entryIds = wantSplitBodies ? [] : container.entries.map((e) => e.lid);
+    const prevEntryIds = base && !wantSplitBodies ? base.entries.map((e) => e.lid) : null;
+    const entryOrderSame = prevEntryIds !== null
+      && prevEntryIds.length === entryIds.length
+      && prevEntryIds.every((v, i) => v === entryIds[i]);
+    if (!entryOrderSame) await writeOrder('entry', entryIds, null);
+
     // relations サイドカー(2026-07-26): **変わったときだけ**書く。
     // Container は immutable 更新なので参照比較で十分(entries / revisions の
     // 差分判定と同じ idiom)。base が無い = 全件書込み経路では必ず書く。
@@ -929,12 +1006,10 @@ export function createContainerStore(
       ops.push({ kind: 'put', key: relKey(cid), value: container.relations });
     }
 
-    const marker: SplitMarker = {
-      // v3: entries は core に inline(配列順が正本)なので entryOrder は
-      // 空でよい。v1 split は従来どおり順序リストが正本。
-      entryOrder: wantSplitBodies ? [] : container.entries.map((e) => e.lid),
-      revOrder: container.revisions.map((r) => r.id),
-    };
+    // 順序リストは上のサイドカー(__order__:)が正本。core の marker は空にする。
+    // 読み側はサイドカーが 1 つも無ければ marker の inline へ fallback するので、
+    // 旧データ(marker に実体が入っている)とそのまま両立する。
+    const marker: SplitMarker = { entryOrder: [], revOrder: [] };
     const core: StoredContainerRecord = {
       ...container,
       // v3: body なし entries を core に inline(meta 単一小レコード)。
@@ -981,6 +1056,23 @@ export function createContainerStore(
    *   必ず消さなければならない ── 残っていると古い relations が
    *   正しい inline を上書きして見える。
    */
+  /**
+   * 順序リストの合流(2026-07-26)。チャンクを seq 順に連結する。
+   * 1 つも無ければ marker の inline(旧データ)へ fallback。
+   */
+  async function mergeOrder(
+    cid: string,
+    kind: 'rev' | 'entry',
+    fallback: string[],
+  ): Promise<string[]> {
+    const pairs = [...(await containers.getAllByPrefix(orderPrefix(cid, kind)))]
+      .sort((a, b) => a.key.localeCompare(b.key));
+    if (pairs.length === 0) return fallback;
+    const out: string[] = [];
+    for (const { value } of pairs) if (Array.isArray(value)) out.push(...(value as string[]));
+    return out;
+  }
+
   async function mergeRelations(
     cid: string,
     fallback: Container['relations'],
@@ -1035,7 +1127,7 @@ export function createContainerStore(
         }
       }
       const revisions3: Revision[] = [];
-      for (const id of marker.revOrder) {
+      for (const id of await mergeOrder(cid, 'rev', marker.revOrder)) {
         const r = revById3.get(id);
         if (r) {
           revisions3.push(r);
@@ -1074,7 +1166,7 @@ export function createContainerStore(
       entryByLid.set(lid, isV2 ? { ...e, body: bodyByLid.get(lid) ?? '' } : e);
     }
     const entries: Entry[] = [];
-    for (const lid of marker.entryOrder) {
+    for (const lid of await mergeOrder(cid, 'entry', marker.entryOrder)) {
       const e = entryByLid.get(lid);
       if (e) {
         entries.push(e);
@@ -1087,7 +1179,7 @@ export function createContainerStore(
       revById.set(key.slice(splitRevPrefix(cid).length), value as Revision);
     }
     const revisions: Revision[] = [];
-    for (const id of marker.revOrder) {
+    for (const id of await mergeOrder(cid, 'rev', marker.revOrder)) {
       const r = revById.get(id);
       if (r) {
         revisions.push(r);
@@ -1223,6 +1315,7 @@ export function createContainerStore(
       // 2026-07-26: relations サイドカーもコンテナ削除で回収する
       // (segments 孤児と同じ穴を新設しないため)。
       ...(await containers.getKeysByPrefix(relPrefix(containerId))),
+      ...(await containers.getKeysByPrefix(orderPrefix(containerId))),
     ];
     // P2-2/P2-3: v4/v5 の revision / body segments も一緒に消す
     const segKeys = [

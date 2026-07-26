@@ -23,7 +23,7 @@
  *  `snapshotEntry` が付ける `prev_rid` を通して観測する)
  */
 import { describe, it, expect } from 'vitest';
-import { snapshotEntry } from '@core/operations/container-ops';
+import { snapshotEntry, getRestoreCandidates } from '@core/operations/container-ops';
 import type { Container, Revision } from '@core/model/container';
 import type { Entry } from '@core/model/record';
 
@@ -78,6 +78,22 @@ describe('revisions 配列順は prev_rid の tie-break として意味を持つ
       rev('r-e1-b', 'e1', SAME),
     ]);
     expect(snapshotEntry(c, 'e1', 'r-next', T).revisions.at(-1)?.prev_rid).toBe('r-e1-b');
+  });
+
+  it('🔴 getRestoreCandidates は同着で **先勝ち**(prev_rid とは逆向き)', () => {
+    // 2026-07-26: 設計レビューの指摘で判明 ── 配列順に依存する消費者は 2 つある。
+    //   findLatestRevisionIdForLid : `created_at >= best` → **後勝ち**
+    //   getRestoreCandidates       : `created_at >  existing` → **先勝ち**
+    // 向きが逆なので、順序を保つ実装は両方を同時に守らなければならない。
+    const a = rev('r-a', 'e-gone', SAME);
+    const b = rev('r-b', 'e-gone', SAME);
+    // entries に居ない lid = 削除済み扱い
+    const base = makeContainer([a, b]);
+    const c1: Container = { ...base, entries: [entry('e1')] };
+    expect(getRestoreCandidates(c1).map((r) => r.id)).toEqual(['r-a']);
+
+    const c2: Container = { ...c1, revisions: [b, a] };
+    expect(getRestoreCandidates(c2).map((r) => r.id)).toEqual(['r-b']);
   });
 
   it('その entry の revision が無ければ prev_rid は付かない', () => {
