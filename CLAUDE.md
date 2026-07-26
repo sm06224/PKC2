@@ -166,6 +166,17 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 - Renderer tests は `data-pkc-*` selector を region scope(`[data-pkc-region="..."]`)で query
 - **描画と状態は別物**:vitest / happy-dom の pass は生成の正しさを示すだけで、ユーザー実機の視認を保証しない。**視覚を持つ feature**(click / hover / drag / overlay)は `elementFromPoint` / `page.mouse.click(x,y)` 経由の **visual parity test を最低 1 件**持つ。方法論は `docs/development/visual-state-parity-testing.md`
 - 動的機構(flag / event 連携 / dispatch+副作用)は **state mutation → consumer 観測点(DOM 数値 / 表示要素数 / 副作用)** の end-to-end parity を assert(DOM attribute 遷移で止めない)
+- 🔴 **pass していても stderr のスタックトレースは調査する**(2026-07-26 に実際に踏んだ)。
+  症状: 全 10,973 test 中 2 件だけ `TypeError: URL is not a constructor` が出ており、
+  「既知の happy-dom ノイズ」として無視していた。原因: test が
+  `vi.stubGlobal('URL', { ...URL, createObjectURL })` で **URL を非コンストラクタ**にしており、
+  happy-dom が `<a download>` のクリックを**ナビゲーション**として処理する経路で落ちていた。
+  **本質はここから** ── その TypeError が**偶然ナビゲーションを止めていた**。ノイズを消したら、
+  当該 test が `window.location` を `blob:` へ遷移させて**後続 6 件を壊す**ことが露見した。
+  **ノイズが潜在バグを隠していた。** 規律:(1) グローバルを丸ごと差し替えず、**必要な静的メソッドだけ
+  `vi.spyOn`**(コンストラクタを壊さない)(2) `vi.spyOn` は**既定で本体を呼び抜ける** ──
+  「実行させたくない」なら `mockImplementation` で止める(3) **全スイートの stderr は 0 行を保つ**。
+  1 行でも常在すると、本物のエラーがそこに紛れる
 - **「量が多い」と「体感が悪い」は別の主張**(2026-07-26)。書込量・使用量の計器で出した数字を、そのまま
   「操作が重い」の根拠にしてはいけない(IDB の書込はメインスレッド外)。体感を語るなら long task か
   `Performance.getMetrics`(Script / Layout / RecalcStyle)を測る。実例: 既定パスは 1 編集 25.7MB 書いて
@@ -177,7 +188,8 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 肥大の根本原因は**儀式過積載で 1 PR が高コスト化 → 着地せず stack に逃げる**こと(50 PR 一本 stack の事故)。最小限の硬い規律に絞る:
 
 1. **stack 上限を守る**:open PR が積み上がったら下から sequential merge で main を最新化してから次を積む。stacked PR の squash は **base retarget が先**(中間 branch 着地事故を防ぐ)
-2. **bundle 予算監視**:`git diff --stat` + bundle サイズを毎 PR 確認。bundle.js は 5MB 級で CI size budget 内。**機能 subtract による削減は 2026-07-01 user 判断で撤回**(mermaid / Office export / chart.js は keep・強化対象)。新規の重い dep 追加は引き続き原則しない
+2. **bundle 予算監視**:`git diff --stat` + bundle サイズを毎 PR 確認。**機能 subtract による削減は 2026-07-01 user 判断で撤回**(mermaid / Office export / chart.js は keep・強化対象)。新規の重い dep 追加は引き続き原則しない。
+🔑 **size budget の目的は「手違いの検出」であって、サイズを守らせる規律ではない**(user 指示 2026-07-26「**前から言ってるけど、予算はあくまで何かの手違いを検出するために設定してる。引き上げで問題ない**」/ 同旨 2026-07-07「size budget は実質凍結、適用超過に問題ない」)。重い dep の誤取込・生成物の取り違えといった**事故の桁**を止める tripwire なので、**残量が減ったこと自体は問題ではなく、通常増加で cap に触れたら引き上げてよい**。⚠ ただし**撤廃はしない**(本体を PKC-extension へ外だしする分水嶺の regression signal)。報告するときは「予算内」ではなく **残量(KB と %)** を書く ── 「内」と「あと 35 KB」は別の情報である
 3. **既存問題は別 hotfix PR**:wave に紛れ込ませず即剥がす
 4. **視覚機能 PR は visual parity test 最低 1 件**(上記 Testing 参照)
 5. **新 doc は同 commit で INDEX 登録**(`check:doc-orphans` CI)

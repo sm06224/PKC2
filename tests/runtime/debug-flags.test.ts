@@ -197,15 +197,32 @@ describe('dispatchDebugReport — synthesizes <a download> click for the JSON', 
 
   it('creates a Blob URL and clicks an <a download="..."> with that URL', () => {
     const blobs: Blob[] = [];
-    vi.stubGlobal('URL', {
-      ...URL,
-      createObjectURL: (b: Blob) => {
-        blobs.push(b);
-        return 'blob:test-1';
-      },
-      revokeObjectURL: () => undefined,
+    // ⚠ **グローバル `URL` ごと差し替えない**(2026-07-26)。
+    //   `vi.stubGlobal('URL', { ...URL, createObjectURL })` は URL を
+    //   プレーンオブジェクト = **コンストラクタでないもの**にしてしまう。
+    //   happy-dom は `<a download>` のクリックを「ダウンロード」ではなく
+    //   **ナビゲーション**として処理するため、その経路の `new URL()` が
+    //   `TypeError: URL is not a constructor` を吐く(happy-dom が内部で
+    //   握るので test は pass するが、**全スイート唯一の stderr ノイズ**として
+    //   残り、本物のエラーが紛れる)。
+    //   置換したい静的メソッドだけ spy すれば、コンストラクタは壊れない。
+    //   `restoreAllMocks()` で戻るので他 describe を汚染しない
+    //   (`class extends URL` での差し替えも試したが、`history.replaceState`
+    //    経由で後続 describe が壊れた ── グローバル差し替えは筋が悪い)。
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((b: Blob | MediaSource): string => {
+      blobs.push(b as Blob);
+      return 'blob:test-1';
     });
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation((): void => undefined);
+    // ⚠ **呼び抜けさせない**(`mockImplementation` で本体を止める)。
+    //   素の `spyOn` は本物の `click()` を呼ぶため、happy-dom が
+    //   `<a download>` を**ナビゲーション**として実行し、detached frame が
+    //   `blob:` へ遷移して `window.location` が変わる ── 後続 describe の
+    //   `setUrl()` / `location.search` を見る test が巻き添えで壊れる。
+    //   直前まで `TypeError: URL is not a constructor` がその遷移を
+    //   偶然止めていた(ノイズが不具合を隠していた形)。
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation((): void => undefined);
 
     const result = dispatchDebugReport(sample);
     expect(result).toBe(true);

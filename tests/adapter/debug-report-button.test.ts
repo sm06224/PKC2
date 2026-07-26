@@ -23,15 +23,20 @@ afterEach(() => {
 describe('runDebugReportDump — download happy path', () => {
   it('synthesizes a click on a hidden <a download> with a sortable filename', () => {
     setUrl('pkc-debug=*');
-    const createObjectURL = vi.fn().mockReturnValue('blob:fake-1');
-    vi.stubGlobal('URL', {
-      ...URL,
-      createObjectURL,
-      revokeObjectURL: () => undefined,
-    });
+    // ⚠ **グローバル `URL` ごと差し替えない**(2026-07-26)。プレーンオブジェクトに
+    //   すると happy-dom が `<a download>` のクリックをナビゲーションとして処理する
+    //   経路で `new URL()` に失敗し、`TypeError: URL is not a constructor` を
+    //   stderr に吐く(内部で握られるので test は pass するが、本物のエラーが
+    //   紛れるノイズになる)。静的メソッドだけ spy すればコンストラクタは壊れない。
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake-1');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation((): void => undefined);
     // Spy on the anchor's click() so we can assert the synthetic
     // navigation fires without the test harness actually downloading.
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click');
+    // ⚠ **呼び抜けさせない** ── 素の `spyOn` は本物の `click()` を呼ぶため、
+    //   happy-dom が `<a download>` をナビゲーションとして実行し
+    //   `window.location` が `blob:` へ遷移する(2026-07-26)。
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation((): void => undefined);
 
     const dispatcher = createDispatcher();
     runDebugReportDump(dispatcher);
