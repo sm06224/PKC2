@@ -130,6 +130,7 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 - Renderer tests は `data-pkc-*` selector を region scope(`[data-pkc-region="..."]`)で query
 - **描画と状態は別物**:vitest / happy-dom の pass は生成の正しさを示すだけで、ユーザー実機の視認を保証しない。**視覚を持つ feature**(click / hover / drag / overlay)は `elementFromPoint` / `page.mouse.click(x,y)` 経由の **visual parity test を最低 1 件**持つ。方法論は `docs/development/visual-state-parity-testing.md`
 - 動的機構(flag / event 連携 / dispatch+副作用)は **state mutation → consumer 観測点(DOM 数値 / 表示要素数 / 副作用)** の end-to-end parity を assert(DOM attribute 遷移で止めない)
+- **性能の主張は数字を出す前に手法を固める**(2026-07-26、同一セッションで 6 回誤った反省)。手順とハーネスの使い分けは `.claude/skills/perf-measurement/SKILL.md`(`/measure` コマンド)。とくに:**ベンチ fixture のゼロ件の次元は「測っていない次元」**(`bench-fixtures/c-*.json` が revisions 0 件だったため歴代のベンチが全部 O(N×M) を素通りしていた)/ **対照群は「何もしない」ではなく「測りたい操作以外を全部同じにしたもの」** / **差し引きで出た値は向きのみ信頼し倍率は書かない** / **百分率は「どの実行の何に対する比率か」まで書く**
 
 ## PR / Wave 運用(slim)
 
