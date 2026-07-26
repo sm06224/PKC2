@@ -16,6 +16,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **doc-first**: 実装前に設計 doc → GitHub URL で提示 → user 裁定 → 実装。裁定前に実装を進めない
 - **意図を読む**: user の発言が事実と食い違っていても、関連する実態を探して会話で聞き返す(字義対応で突っ走らない)
 - 直近セッションの成果・残件・教訓は `docs/development/session-handoff-2026-07-24.md`
+- 🔑 **セッション引き継ぎは「引き継ぎ用の PR」で完成する(user 指示 2026-07-26)**。doc を書いただけ・
+  会話に要約を書いただけでは完成していない ── 次セッションは会話履歴を持たないので、**1 個の PR URL に
+  集約されている**ことが条件。**PR には引き継ぎ事項に加えて「最初の仕事の有無」を必ず含める**
+  (あり / なし・指示待ち / なし・裁定待ち の 3 択。曖昧にすると次セッションが勝手に仕事を作る)。
+  手順は `.claude/skills/session-handoff/SKILL.md`(`/handoff` は明示版)
 
 ## 資産の自己免疫整備(user 指示 2026-07-25。最優先・本節削除不可)
 
