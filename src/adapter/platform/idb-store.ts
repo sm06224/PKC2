@@ -23,7 +23,9 @@ import { isBodyPendingGlobal } from './body-working-set';
  *
  * ⚠ **「高速起動」ではない**(2026-07-25 の実測で判明。書込 I/O ベンチ doc
  * `storage-write-io-bench-2026-07-25.md`)。5000 entries / 15000 revisions で
- * 使用量 5.7MB → 3.4MB(0.6 倍)になる一方、**boot は 3370ms → 6205ms(1.8 倍)**。
+ * 使用量 6.7MB → 4.1MB(0.61 倍)になる一方、**boot は 3303ms → 6880ms(2.1 倍)**。
+ * 規模掃引では 1000/5000/15000 entries で boot +29% / +108% / +84% と**規模で消えない**。
+ * 1000 entries では使用量すら 1.4MB → 2.1MB と**増える**(分割の管理情報が圧縮を上回る)。
  * boot で revision segments を全件 gunzip する(`loadRevSegments` は `skipBodies` に
  * 関係なく走る)ぶんの伸長 CPU が乗るため。**storage 逼迫時の opt-in** であって
  * 速度目的の設定ではない。既定にはしない。
@@ -37,7 +39,7 @@ export const lazyEntryBodiesEnabled = defineFlag<boolean>(
   {
     category: 'perf',
     description:
-      '案 A: 本文・履歴を segments へ分割圧縮する省容量 layout(現行 ON = layout 5)。実測(5000 entries / 15000 revisions)= 使用量 0.6 倍・**boot 1.8 倍**。⚠ differential_save も同時に ON でないと無効(単独では layout 1 のまま)。留意: ON 保存した storage は旧ビルドから本文が見えない(OFF 保存で復帰)',
+      '案 A: 本文・履歴を segments へ分割圧縮する省容量 layout(現行 ON = layout 5)。実測= 数千件以上で使用量 0.6 倍・**boot 1.3〜2.1 倍**(小規模では使用量も増える)。⚠ differential_save も同時に ON でないと無効(単独では layout 1 のまま)。留意: ON 保存した storage は旧ビルドから本文が見えない(OFF 保存で復帰)',
     tier: 0,
   },
 );
