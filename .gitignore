@@ -11,4 +11,6 @@ bench-results/
 # bench-fixtures/c-*.json は commit 済だが、`--revisions` 付きは 5000 件で
 # 22MB になるため commit しない。**seed 固定で決定的に再生成できる** ので、
 # 生成コマンドは tests/bench/storage-write-io.mjs の冒頭に記載してある。
-bench-fixtures/*-rev.json
+# ⚠ パターンは **接頭辞**で書く。`*-rev.json` だけだと `--deleted` を足した
+#    `c-5000-rev-del.json` が漏れて 25MB を commit しかける(2026-07-26 に実際に踏んだ)。
+bench-fixtures/c-*-rev*.json
