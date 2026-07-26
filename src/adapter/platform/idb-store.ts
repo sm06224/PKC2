@@ -1713,10 +1713,20 @@ export async function loadAssetDirect(cid: string, key: string): Promise<string 
  */
 export async function hydrateForExport(container: Container): Promise<Container> {
   if (!activeExportStore) return container;
-  const withAssets = await hydrateReferencedAssets(activeExportStore, container);
-  // #940 段階4: 未 hydrate の本文(body working-set の pending)も export
-  // 前に必ず復元する ── export 内容が lazy 化の影響を受けない barrier。
-  return hydratePendingBodiesForExport(withAssets);
+  // #940 段階4: 未 hydrate の本文(body working-set の pending)を export 前に
+  // 必ず復元する ── export 内容が lazy 化の影響を受けない barrier。
+  //
+  // ⚠ **本文を先に戻すこと。順序を逆にしてはいけない**(2026-07-26 hotfix)。
+  // asset の参照源は **entry の body だけ**である(`features/asset/asset-scan.ts`:
+  // attachment body の JSON `asset_key` / text・textlog body の `![](asset:K)`)。
+  // lazy layout の meta-first boot 直後は全 entry の body が `''` なので、
+  // 本文より先に `hydrateReferencedAssets` を呼ぶと **参照集合が空になり、
+  // 添付を 1 件も含まない ZIP / HTML が出来る**(本文だけは後段で戻るため
+  // 「本文はあるのに添付が全部無い」バックアップになり、気づきにくい)。
+  // 移行前バックアップ ZIP もこの経路なので、**安全網そのものが壊れていた**。
+  // regression test: tests/adapter/export-hydration-order.test.ts
+  const withBodies = await hydratePendingBodiesForExport(container);
+  return hydrateReferencedAssets(activeExportStore, withBodies);
 }
 
 // ── Availability probe ──────────────────────
