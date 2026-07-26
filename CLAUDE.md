@@ -49,6 +49,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ⚠ **定義は消さない** ── getter が生きていないと、既に有効化された環境が「既定値へ戻る = 安全な形式へ書き戻る」
 経路ごと失われる。⚠ **戻し道の安全性を先に確かめる** ── 退役は全 user をその経路に乗せるので、
 そこが壊れていると廃止作業自体がデータを壊す(実際 `save()` に本文の未読ガードが無く、S3 として先に塞いだ)。
+⚠ **「次回起動で強制マイグレーション」は既存 4 経路の合成で成立する**(2026-07-26、`differential_save` の退役で確立。
+新しい移行コードを書かない ── 移行専用の書込経路こそが S3 で穴の空いていた場所である):
+① retired = 保存の分岐が inline 側に固定される ② `CONTAINER_LOADED` が `SAVE_TRIGGERS` の一員 = 起動しただけで保存が走る
+③ `main.ts` が `storedInline === false` のとき `notePersistedBaseline()` を**呼ばない**(#1024 の「変わっていないなら
+書かない」最適化の carve-out)④ `save()` が旧形式の record を掃除する。
+**4 つはどれも性能最適化で消えうる**ので、退役するなら 4 つとも test で pin する
+(`tests/adapter/differential-save-retirement.test.ts`)。
+退役済み: `persistence.lazy_entry_bodies`(3 ヶ月後に廃止予定)/ `persistence.differential_save`。
 
 🚫 新 archetype / feature / markdown 方言 / UI mode の追加は**凍結**。user が「足したい」と言い出したら本方針を引いて一旦止め、Issue 化して優先度判断へ回す
 - 凍結中の旧計画(8案v3 / Phase β / 68PR Phase γ / roadmap 領域)は frozen backlog issue #776 に保全
@@ -139,7 +147,16 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 2. **core has NO browser APIs** — pure TypeScript only
 3. **Single HTML product** — everything bundles into one file via `build/release-builder.ts`
 4. **Container is source of truth** — UI state is runtime-only
-5. **Backward compatibility** — never break existing data contracts
+5. **Backward compatibility** — never break existing data contracts。
+   ⚠ **互換は双方向で考える**(2026-07-26、差分保存の退役で判明)。「新ビルドが旧データを
+   読める」だけでは足りない ── PKC2 は**単一 HTML 製品で、user は旧 `pkc2.html` を手元に
+   残す**ので、**旧ビルドが新データを読めるか**も互換の一部である。とくに危険なのは
+   **「読み側に合流処理を足して両立させる」型の変更**(#1022 の `__rel__:` / `__order__:`
+   サイドカー):新ビルドでは正しく動くので test が全部通り、**旧ビルドでだけ静かに欠損する**
+   (relations が 0 件に見え、保存すると実際に消えた)。判定法 ──
+   **「この変更を知らない読み手が core record だけを読んだら何が見えるか」を必ず書き出す**。
+   pin の型は `tests/adapter/differential-save-retirement.test.ts`(旧ビルドの読み方を
+   再現して assert する)
 6. **No premature abstraction** — three similar lines > one premature helper
 
 ## Testing
