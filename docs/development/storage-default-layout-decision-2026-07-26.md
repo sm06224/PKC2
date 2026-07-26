@@ -296,6 +296,71 @@ content_hash = 1,894 KB)だけで、`snapshot` を読むのは `parseRevisionSna
 
 ---
 
+## 7-b. ✅ 次の一手の絞り込み(2026-07-26 追測)
+
+§7 に挙げた候補のうち 2 つを実測で潰した。
+
+### 🔴 B-5(core record 丸ごと gzip)は **棄却**
+
+静的分解では「25,668 → 3,578 KB(7.2 倍)」で最も筋が良く見えたが、
+**CPU を測っていなかった**。実ブラウザで測ると:
+
+| 項目 | 実測(N=5000 / M=15000) |
+|---|---|
+| サイズ | 25,668 → 3,578 KB(**7.2 倍**) |
+| **gzip(毎編集の追加 CPU)** | 🔴 **1,193 ms** |
+| gunzip(毎 boot の追加 CPU) | 105 ms |
+| 現行が払っている `JSON.stringify` | 53 ms |
+| 現行が払っている `JSON.parse` | 60 ms |
+
+**1 編集ごとに 1.2 秒の圧縮**が乗る。保存は debounce 300ms の裏で走るので、
+**編集のたびに 1 秒以上メインスレッドを塞ぐ**。書込が 7.2 倍減っても体感は確実に悪化する。
+
+⇒ サイズだけ見て採用していたら、本セッションで繰り返し戒めた失敗の再演だった。
+
+ハーネス: `tests/bench/gzip-core-record-cost.mjs`(round-trip 一致を検査してから数字を出す)
+
+### ✅ ゴミ箱の次元は既定 boot に効かない
+
+`snapshot` 分離案は「ゴミ箱ペインが復元候補ごとに `snapshot` を parse する」量に
+効果が左右される。**現行 fixture は削除済み lid が 0 件**で、この次元を一度も
+測っていなかった(CLAUDE.md「ゼロ件の次元 = 測っていない次元」)。
+
+generator に `--deleted=<N>` を足して測った:
+
+| fixture | A(既定 inline)の boot |
+|---|---|
+| 削除 0 件 | **414 ms** |
+| 削除 300 件 | **416 ms** |
+
+⇒ 差は同一走行内の振れ(Z 446 / Y 426 / A 414)に埋もれる。
+**ゴミ箱は既定 boot の障害にならない。**
+
+### ⇒ 残る本命は B-2(`snapshot` だけ分離)
+
+- core record の **66.7%(17,132 KB)** が `snapshot`
+- boot が読む必要があるのは spine(id / entry_lid / created_at / prev_rid /
+  content_hash = 1,894 KB)だけ
+- `snapshot` を読む消費者は `parseRevisionSnapshot` の呼び元に限られる
+  (ゴミ箱 / 選択中 entry / export)── そのゴミ箱が boot に効かないことは上で確認済み
+
+---
+
+## 🔴 ハーネスの無効判定を grep で捨てない(2026-07-26 の実例)
+
+`storage-write-io.mjs` の出力を `grep -E "^■|boot 中央値"` で絞ったところ、
+**ハーネスが出していた `⚠ B と C の layout が同じ — flag が効いていない。計測が無効`
+を自分の grep で消していた**。
+
+`lazy_entry_bodies` の退役(§5-b)で C 腕は layout 5 にならず、**B と同じ split v1 を
+2 回測っていた**。B 923ms / C 933ms という数字だけ見れば「layout 5 が速くなった」と
+読める ── ハーネスは正しく警告していたのに、こちらが捨てた。
+
+⇒ 出力を絞るときは **必ず `⚠` と `⛔` を残す**。
+`perf-measurement` skill に再発防止として収録済み。
+
+---
+
 ## 8. 測定の限界(結論に持ち込む前に明記する)
 
 - **asset 0 の fixture。** user の「500MB 超」は asset 主体で、そこは P1(Blob 化)の領分

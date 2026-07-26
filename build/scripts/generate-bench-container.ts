@@ -44,6 +44,17 @@ interface Args {
   textlogs: number;
   assets: number;
   revisions: number;
+  /**
+   * 削除済み entry の数(2026-07-26)。**revision は残すが entry を消す** ──
+   * PKC2 の「ゴミ箱」はこの形で表現される(`getRestoreCandidates` は
+   * `entries` に居ない `entry_lid` の revision を候補として拾う)。
+   *
+   * なぜ要るか: 既存 fixture は 5 つとも削除済み lid が **0 件**で、
+   * ゴミ箱ペイン(`renderer.ts` が毎 render で候補の `snapshot` を parse する)を
+   * **一度も測っていなかった**。CLAUDE.md「ゼロ件の次元 = 測っていない次元」。
+   * revision の snapshot を分離する案の効果はこの次元に左右される。
+   */
+  deleted: number;
   output: string;
   seed: number;
 }
@@ -54,6 +65,7 @@ function parseArgs(argv: string[]): Args {
     textlogs: 20,
     assets: 50,
     revisions: 0,
+    deleted: 0,
     output: 'bench-fixtures/c-1000.json',
     seed: 1,
   };
@@ -69,6 +81,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case 'assets':
         out.assets = Math.max(0, parseInt(v, 10) || 0);
+        break;
+      case 'deleted':
+        out.deleted = Math.max(0, parseInt(v, 10) || 0);
         break;
       case 'revisions':
         out.revisions = Math.max(0, parseInt(v, 10) || 0);
@@ -417,9 +432,37 @@ function generate(args: Args): SyntheticContainer {
   };
 }
 
+/**
+ * 末尾 N 件の entry を **削除済み**にする(revision は残す)。
+ *
+ * PKC2 の削除は「entry を消して revision を残す」形で、`getRestoreCandidates`
+ * (`container-ops.ts`)が `entries` に居ない `entry_lid` の revision を
+ * 復元候補として拾う。ゴミ箱ペインはその候補ごとに `snapshot` を parse する
+ * ので、**削除済み lid の数がそのまま毎 render の parse 量**になる。
+ *
+ * ⚠ 削除対象は「revision を持っている entry」から選ぶ。revision の無い entry を
+ * 消しても復元候補にならず、測りたい次元が増えない。
+ */
+function applyDeletions(
+  container: SyntheticContainer,
+  count: number,
+): SyntheticContainer {
+  if (count === 0) return container;
+  const withRevisions = new Set(container.revisions.map((r) => r.entry_lid));
+  const victims = new Set(
+    container.entries.filter((e) => withRevisions.has(e.lid)).slice(-count).map((e) => e.lid),
+  );
+  if (victims.size === 0) return container;
+  return {
+    ...container,
+    entries: container.entries.filter((e) => !victims.has(e.lid)),
+    // relations も張り替えない(削除済み lid を指す relation は実運用でも残る)
+  };
+}
+
 function main(): void {
   const args = parseArgs(process.argv);
-  const container = generate(args);
+  const container = applyDeletions(generate(args), args.deleted);
   mkdirSync(dirname(args.output), { recursive: true });
   writeFileSync(args.output, JSON.stringify(container));
   // eslint-disable-next-line no-console
@@ -427,6 +470,7 @@ function main(): void {
     `[gen-bench] ${args.output}: ${container.entries.length} entries, `
     + `${container.relations.length} relations, `
     + `${container.revisions.length} revisions, `
+    + `${args.deleted > 0 ? `${args.deleted} deleted, ` : ''}`
     + `${Object.keys(container.assets).length} assets `
     + `(${(JSON.stringify(container).length / 1024).toFixed(1)} KB)`,
   );
