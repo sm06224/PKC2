@@ -147,8 +147,20 @@ describe('PR #179 — flat-mode entry-row memoization', () => {
 
     const liA1After = entryRowFor('a1');
     const liA2After = entryRowFor('a2');
-    expect(liA1After).not.toBe(liA1Before); // ← container ref changed → cache wholesale invalidated
-    expect(liA2After).not.toBe(liA2Before);
+    // 🔴 契約変更(2026-07-26): **container 参照が変わっても全行は捨てない**。
+    //
+    // 従来は「relations / revisions / connectedness の派生値が全行で古くなる」
+    // ことを理由に、container 参照の変化で memo を全部捨てていた。しかし本文を
+    // 1 文字直すだけでも container 参照は変わるので、**編集の確定のたびに全行を
+    // 作り直していた**(実測 106 ms / 確定、N=5000。Performance.getMetrics で
+    // Script を分離して計測)。
+    //
+    // 派生値は行ごとに安く比較できるので `derivedRowFingerprint` を memo に載せ、
+    // **1 つでも違う行だけ**作り直す方式に変えた。よって:
+    //   a1 = entry 参照が変わった   → 作り直し
+    //   a2 = 何も変わっていない     → **使い回し**(ここが変更点)
+    expect(liA1After).not.toBe(liA1Before);
+    expect(liA2After).toBe(liA2Before);
   });
 
   it('multi-selection post-pass works on cache hits', () => {

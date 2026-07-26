@@ -5480,18 +5480,18 @@ interface TreeRowMemoEntry {
    * し、folder toggle 等の元 title を確実に復元するため param に含める。
    */
   inWindow: boolean;
+  /** 行が読む container 由来の派生値の指紋。`derivedRowFingerprint` 参照。 */
+  derived: string;
 }
 
-let cachedContainerForTreeRowMemo: import('@core/model/container').Container | null = null;
 let treeRowMemo = new WeakMap<Entry, TreeRowMemoEntry>();
 
 function clearTreeRowMemoIfStale(
   container: import('@core/model/container').Container | null,
 ): void {
-  if (container !== cachedContainerForTreeRowMemo) {
-    cachedContainerForTreeRowMemo = container;
-    treeRowMemo = new WeakMap();
-  }
+  // 2026-07-26: flat memo と同じく **container 参照での全 invalidate をやめた**。
+  // 派生値は `derivedRowFingerprint` が行ごとに比較する。
+  void container;
 }
 
 /** manual mode の ↑↓ button gate(renderEntryItem 内の条件の mirror)。 */
@@ -5504,6 +5504,52 @@ function treeRowHasMoveButtons(entry: Entry, state: AppState): boolean {
     && state.importPreview === null
     && state.batchImportPreview === null
   );
+}
+
+/**
+ * 行が読む「他行にも波及しうる派生値」の指紋(2026-07-26)。
+ *
+ * 従来、行 memo は **container の参照が変わると全部捨てて**いた
+ * (「relations / revisions / connectedness の派生値が全行で古くなるから」)。
+ * ところが本文を 1 文字直すだけでも container 参照は変わるので、
+ * **編集の確定のたびに全行が作り直されていた**。
+ *
+ * 実測(N=5000、Performance.getMetrics で Script / Layout / Style を分離):
+ *   取消(保存なし) Script  89 ms
+ *   確定(保存あり) Script 195 ms   ← 差 106 ms が行の作り直し
+ *
+ * 派生値は **行ごとに安く比較できる**。指紋を memo に載せて 1 つでも違えば
+ * その行だけ作り直す ── treeRowMemo が depth / collapsed などで既にやっている
+ * のと同じ方式を、container 由来の値にも広げる。
+ *
+ * ⚠ **ここに載せ忘れた入力は「古い行が残る」= 画面が嘘をつく事故になる**
+ *   (型 error も test failure も出ない)。`renderEntryItem` が読む
+ *   container 由来の値を列挙したもので、増やしたら必ずここへ足すこと。
+ *   regression test: tests/adapter/renderer-row-memo-derived.test.ts
+ */
+function derivedRowFingerprint(
+  entry: Entry,
+  state: AppState,
+  backlinkCounts?: ReadonlyMap<string, number>,
+  connectedLids?: ReadonlySet<string>,
+  connectednessSets?: ConnectednessSets | null,
+): string {
+  const lid = entry.lid;
+  const rev = state.container ? getRevisionCount(state.container, lid) : 0;
+  const back = backlinkCounts?.get(lid) ?? 0;
+  const conn = connectedLids?.has(lid) ? 1 : 0;
+  // ConnectednessSets は複数のバケツを持つ。どれに属するかが行の marker を決める。
+  const sets = connectednessSets
+    ? Object.entries(connectednessSets)
+      .map(([k, v]) => (v instanceof Set && v.has(lid) ? k : ''))
+      .filter(Boolean)
+      .sort()
+      .join(',')
+    : '';
+  // 行が読む state 由来のうち、選択(post-pass)以外のもの。
+  const importing = (state.importPreview ? 1 : 0) + (state.batchImportPreview ? 2 : 0);
+  return `${rev}|${back}|${conn}|${sets}|${state.viewMode}|${state.sortKey}|`
+    + `${state.readonly ? 1 : 0}|${importing}|${shellTodoOverdueIndicatorEnabled() ? 1 : 0}`;
 }
 
 function renderTreeNode(
@@ -5519,10 +5565,14 @@ function renderTreeNode(
   const hasMoveButtons = treeRowHasMoveButtons(node.entry, state);
   const inWindow = (state.childWindowLids ?? []).includes(node.entry.lid);
 
+  const derived = derivedRowFingerprint(
+    node.entry, state, backlinkCounts, connectedLids, connectednessSets,
+  );
   const memo = treeRowMemo.get(node.entry);
   let li: HTMLElement;
   if (
     memo
+    && memo.derived === derived
     && memo.depth === node.depth
     && memo.collapsed === isCollapsed
     && memo.childCount === node.children.length
@@ -5541,6 +5591,7 @@ function renderTreeNode(
       truncatedChildCount: node.truncatedChildCount ?? 0,
       hasMoveButtons,
       inWindow,
+      derived,
     });
   }
   // 選択 highlight は flat memo と同じ post-pass(cache hit でも最新化)。
@@ -5700,16 +5751,24 @@ export function __resetIndexMemoForTest(): void {
 //
 // Tree mode は長らく対象外だったが、#938 R9 で専用 memo(treeRowMemo、
 // 装飾パラメータ比較つき)が付いた — renderTreeNode 直上の doc 参照。
-let cachedContainerForRowMemo: import('@core/model/container').Container | null = null;
-let entryRowMemo = new WeakMap<Entry, HTMLElement>();
+let entryRowMemo = new WeakMap<Entry, { li: HTMLElement; derived: string }>();
 
+/**
+ * 2026-07-26: **container 参照での全 invalidate をやめた**。
+ *
+ * 従来ここは「container が変わったら memo を全部捨てる」だった
+ * (relations / revisions / connectedness の派生値が全行で古くなるため)。
+ * しかし本文を 1 文字直すだけでも container 参照は変わるので、
+ * **編集の確定のたびに全行が作り直されていた**(実測 106 ms / 確定、N=5000)。
+ *
+ * 派生値は行ごとに安く比較できるので、`derivedRowFingerprint` を memo に載せて
+ * **1 つでも違う行だけ**作り直す。関数は互換のため残すが、もう何もしない
+ * (呼び元を消すより、なぜ不要になったかをここに残すほうが後で効く)。
+ */
 function clearEntryRowMemoIfStale(
-  container: import('@core/model/container').Container | null,
+  _container: import('@core/model/container').Container | null,
 ): void {
-  if (container !== cachedContainerForRowMemo) {
-    cachedContainerForRowMemo = container;
-    entryRowMemo = new WeakMap();
-  }
+  /* no-op — 派生値の比較に置き換わった(上の doc 参照) */
 }
 
 function applyEntryRowSelectionAttrs(li: HTMLElement, entry: Entry, state: AppState): void {
@@ -5732,10 +5791,16 @@ function getOrCreateMemoizedEntryItem(
   connectedLids: ReadonlySet<string> | undefined,
   connectednessSets: ConnectednessSets | null,
 ): HTMLElement {
-  let li = entryRowMemo.get(entry);
-  if (!li) {
+  const derived = derivedRowFingerprint(
+    entry, state, backlinkCounts, connectedLids, connectednessSets,
+  );
+  const memo = entryRowMemo.get(entry);
+  let li: HTMLElement;
+  if (memo && memo.derived === derived) {
+    li = memo.li;
+  } else {
     li = renderEntryItem(entry, state, backlinkCounts, connectedLids, connectednessSets);
-    entryRowMemo.set(entry, li);
+    entryRowMemo.set(entry, { li, derived });
   }
   applyEntryRowSelectionAttrs(li, entry, state);
   return li;
@@ -5749,11 +5814,9 @@ function getOrCreateMemoizedEntryItem(
  *  observable (cache hit on second render of the same entry), and
  *  tests need a deterministic starting point. */
 export function __resetEntryRowMemoForTest(): void {
-  cachedContainerForRowMemo = null;
   entryRowMemo = new WeakMap();
   // #938 R9: tree 行 memo も同じ test hook で reset する(既存テストは
   // この 1 本で「行 memo なしのクリーンな状態」を期待している)。
-  cachedContainerForTreeRowMemo = null;
   treeRowMemo = new WeakMap();
 }
 
