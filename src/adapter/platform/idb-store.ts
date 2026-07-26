@@ -113,8 +113,17 @@ export interface ContainerStore {
    * `bodiesDeferred` が true のとき、caller は `loadBodies` で本文を
    * background 復元して merge する責務を負う。v1 storage では
    * `loadDefaultShallow` と同一(bodiesDeferred = false)。
+   *
+   * `storedInline` は「読んだそのままを書き戻しても storage が 1 バイトも
+   * 変わらない形式か」。呼び元(boot)はこれが true のときだけ
+   * `notePersistedBaseline` を立ててよい ── false のときの保存は
+   * **形式を戻す作業**であって無駄書きではない。
    */
-  loadDefaultMetaShallow(): Promise<{ container: Container | null; bodiesDeferred: boolean }>;
+  loadDefaultMetaShallow(): Promise<{
+    container: Container | null;
+    bodiesDeferred: boolean;
+    storedInline: boolean;
+  }>;
   /** #940 案 A 段階2: layout v2 の本文 record を一括で読む(lid → body)。 */
   loadBodies(containerId: string): Promise<Record<string, string>>;
   /** #940 案 A 段階3: 指定 lid の本文だけ読む(部分 hydrate)。 */
@@ -1255,16 +1264,30 @@ export function createContainerStore(
   }
 
   // #940 案 A 段階2: meta-first boot 用。v2 なら本文を読まず即返す。
-  async function loadDefaultMetaShallow(): Promise<{ container: Container | null; bodiesDeferred: boolean }> {
+  async function loadDefaultMetaShallow(): Promise<{
+    container: Container | null;
+    bodiesDeferred: boolean;
+    storedInline: boolean;
+  }> {
     const defaultId = await containers.get(DEFAULT_KEY);
-    if (typeof defaultId !== 'string') return { container: null, bodiesDeferred: false };
+    if (typeof defaultId !== 'string') {
+      return { container: null, bodiesDeferred: false, storedInline: false };
+    }
     const record = await containers.get(defaultId);
-    if (!record) return { container: null, bodiesDeferred: false };
+    if (!record) return { container: null, bodiesDeferred: false, storedInline: false };
     const rec = record as StoredContainerRecord;
     // v2 / v3 とも本文は `__body__:` 分離 — meta-first boot が成立する。
     const bodiesSplit = rec.__pkc_layout__ !== undefined && rec.__pkc_layout__ >= 2;
+    // 「読んだそのままを書き戻しても storage が 1 バイトも変わらない」形式か。
+    // ⚠ `bodiesDeferred === false` では代用できない ── split v1 は
+    //   `__pkc_layout__` を持たず(= layout 1 扱い)bodiesDeferred も false だが、
+    //   `__pkc_split__` marker を持つので inline ではない。ここを取り違えると、
+    //   flag を OFF に戻したときの「次の保存で inline へ書き戻る」安全弁
+    //   (idb-store.ts の flag doc / differential-default-cross-mode.test.ts が pin)
+    //   が働かなくなる。
+    const storedInline = rec.__pkc_split__ === undefined && rec.__pkc_layout__ === undefined;
     const assembled = await reassembleSplit(defaultId, rec, { skipBodies: true });
-    return { container: { ...assembled, assets: {} }, bodiesDeferred: bodiesSplit };
+    return { container: { ...assembled, assets: {} }, bodiesDeferred: bodiesSplit, storedInline };
   }
 
   // P2-3: v5 は本文が segments 側。core の索引を見て経路を選ぶ

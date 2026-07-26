@@ -170,6 +170,24 @@ export async function flushActivePersistence(): Promise<void> {
   if (activeFlush) await activeFlush();
 }
 
+/**
+ * boot 時の「storage と一致していると分かっている container 参照」を
+ * persistence に教える module-level hook(2026-07-26)。
+ *
+ * `mountPersistence` は container を読む**前**に呼ばれる(`main.ts`)ため、
+ * 基準値を options では渡せない。呼び元は store から読んだ container を
+ * dispatch する直前にここへ渡す。
+ *
+ * ⚠ **呼んでよいのは storage が既に「書き戻しても変わらない形式」のときだけ**。
+ * `loadDefaultMetaShallow().storedInline` がその判定であり、false のときの
+ * 起動時保存は無駄書きではなく **形式を戻す作業**なので止めてはならない。
+ */
+let noteBaseline: ((container: Container) => void) | null = null;
+
+export function notePersistedBaseline(container: Container): void {
+  noteBaseline?.(container);
+}
+
 export function mountPersistence(
   dispatcher: Dispatcher,
   options: PersistenceOptions,
@@ -186,6 +204,18 @@ export function mountPersistence(
   // (inline へ書いた時点で split ベースは無効。次の saveDiff は
   // marker 不在を検出して全件書込みへフォールバックする)。
   let diffBase: Container | null = null;
+  // 「storage の内容と一致していると分かっている container 参照」(2026-07-26)。
+  //
+  // なぜ要るか ── `CONTAINER_LOADED` は `SAVE_TRIGGERS` の一員なので、
+  // **編集を 1 回もしなくても起動のたびにコンテナ全体が保存される**。
+  // 実測(put 計器・N=5000 / M=15000):**起動しただけで 25,685 KB**。
+  // 既定パスなので全 user が毎起動これを踏んでいる。
+  //
+  // 判定は **参照比較のみ**。Container は immutable に更新されるので、
+  // 参照が同じなら中身も同じ(偽陽性なし)。参照が違っても中身が同じことは
+  // ありうるが、その場合は保存が 1 回走るだけで安全側に倒れる。
+  // (差分保存の relations / entries 判定と同じ idiom)
+  let persistedRef: Container | null = null;
   // Armed by an `ORPHAN_ASSETS_PURGED` event; consumed by the next
   // `doSave`. Since `save()` is additive-only (段階2 #868), deleting
   // the purged asset bytes from IDB is an explicit follow-up step.
@@ -249,6 +279,11 @@ export function mountPersistence(
       return;
     }
 
+    // storage と一致していると分かっている参照そのものなら、書くことが無い。
+    // ⚠ `pendingPurge` が立っているときは skip しない ── orphan asset の
+    //   回収は container の中身が同じでも実行しなければならない副作用である。
+    if (persistedRef === container && !pendingPurge) return;
+
     saving = true;
     // Consume the purge arm-flag for this cycle. Re-arm on failure so
     // the next save still attempts the cleanup.
@@ -266,6 +301,7 @@ export function mountPersistence(
         await store.save(container);
         diffBase = null;
       }
+      persistedRef = container;
       if (purgeThisCycle) {
         // Additive-only save left the orphan bytes in IDB. Delete
         // exactly the unreferenced keys. `keep` is derived from a FULL
@@ -306,6 +342,9 @@ export function mountPersistence(
 
   // この persistence を「現在アクティブ」として登録(reload 前 flush 用)。
   activeFlush = flushPending;
+  // boot 側から「storage と一致している参照」を受け取る hook。
+  const setBaseline = (c: Container): void => { persistedRef = c; };
+  noteBaseline = setBaseline;
 
   function handleEvent(event: DomainEvent): void {
     if (event.type === 'ORPHAN_ASSETS_PURGED') {
@@ -348,6 +387,7 @@ export function mountPersistence(
     unsubEvent();
     // この persistence が active hook の場合だけ解除(別 mount を消さない)。
     if (activeFlush === flushPending) activeFlush = null;
+    if (noteBaseline === setBaseline) noteBaseline = null;
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
@@ -384,16 +424,21 @@ export async function loadFromStore(
   container: import('../../core/model/container').Container | null;
   /** #940 案 A 段階2: layout v2 で本文が未読(caller が SYS_BODIES_LOADED で復元)。 */
   bodiesDeferred: boolean;
+  /**
+   * storage が既に「書き戻しても 1 バイトも変わらない形式」か(2026-07-26)。
+   * true のときだけ、boot 由来の起動時保存を無駄書きとして止めてよい。
+   */
+  storedInline: boolean;
 }> {
   try {
     // #940 案 A 段階2: meta-first。v2 storage では本文を読まず即返し、
     // caller(main.ts)が background で loadBodies → SYS_BODIES_LOADED。
-    const { container, bodiesDeferred } = await store.loadDefaultMetaShallow();
+    const { container, bodiesDeferred, storedInline } = await store.loadDefaultMetaShallow();
     if (container) {
-      return { source: 'idb', container, bodiesDeferred };
+      return { source: 'idb', container, bodiesDeferred, storedInline };
     }
   } catch (err) {
     console.warn('[PKC2] IDB load failed, falling back to pkc-data:', err);
   }
-  return { source: 'none', container: null, bodiesDeferred: false };
+  return { source: 'none', container: null, bodiesDeferred: false, storedInline: false };
 }
