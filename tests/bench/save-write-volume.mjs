@@ -90,7 +90,25 @@ const INSTRUMENT = `
           // put(value, key) / delete(key)
           const key = kind === 'delete' ? args[0] : args[1];
           const bytes = kind === 'delete' ? 0 : sizeOf(args[0]);
-          S.ops.push({ kind, store: this.name, key: String(key ?? '(inline)'), bytes, t: Math.round(performance.now()) });
+          // core record は「何が O(N+M) なのか」を知りたいので**中身を項別に**割る。
+          // どの項が支配的かは推測せず測る(perf-measurement §4)。
+          let fields = null;
+          const v = args[0];
+          if (kind === 'put' && this.name === 'containers' && v && typeof v === 'object' && v.meta) {
+            fields = {};
+            for (const k of Object.keys(v)) {
+              try { fields[k] = JSON.stringify(v[k]).length; } catch { fields[k] = -1; }
+            }
+            // marker(__pkc_split__)はさらに内訳を割る
+            if (v.__pkc_split__) {
+              try {
+                fields['__pkc_split__.entryOrder'] = JSON.stringify(v.__pkc_split__.entryOrder ?? []).length;
+                fields['__pkc_split__.revOrder'] = JSON.stringify(v.__pkc_split__.revOrder ?? []).length;
+                delete fields['__pkc_split__'];
+              } catch {}
+            }
+          }
+          S.ops.push({ kind, store: this.name, key: String(key ?? '(inline)'), bytes, fields, t: Math.round(performance.now()) });
         } catch { /* 計器が本体を壊さない */ }
       }
       return orig.apply(this, args);
@@ -239,6 +257,16 @@ for (const arm of ARMS) {
     const gaps = coreTimes.slice(1).map((t, i) => t - coreTimes[i]);
     console.log(`     core record の put 間隔(ms): ${gaps.join(' / ')}`);
     console.log(`     → 300ms 前後の間隔があれば「1 編集で保存が 2 回走っている」`);
+  }
+  // core record の項別内訳(最後の put のもの)。O(N+M) の正体を名指しする。
+  const coreOps = ops.filter((o) => o.kind === 'put' && o.fields && classify(o).startsWith('core record'));
+  if (coreOps.length) {
+    const f = coreOps[coreOps.length - 1].fields;
+    const rowsF = Object.entries(f).filter(([, n]) => n > 512).sort((a, b) => b[1] - a[1]);
+    if (rowsF.length) {
+      console.log('     core record の項別内訳(1 回分):');
+      for (const [k, n] of rowsF) console.log(`       ${(n / 1024).toFixed(0).padStart(7)} KB  ${k}`);
+    }
   }
   console.log('');
   summary.push({ arm, perEditKB: totalBytes / EDITS / 1024, rows });

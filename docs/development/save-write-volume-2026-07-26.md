@@ -153,6 +153,56 @@ always-on(open 履歴を保持しておく)」と明記)。しかし**書き出�
 
 ---
 
+## 2-b. core record の項別内訳 ── **推測は外れていた**(2026-07-26 追記)
+
+「core record が 99.8% を占める」までは分かったが、**その中の何が O(N+M) なのか**は
+測っていなかった。計器を項別に割って測ったところ、**コード読みで名指ししていた項が
+最大ではなかった**。
+
+N=5000 / M=15000 / R=3074、1 保存あたり:
+
+| 腕 | core record の中身 | |
+|---|---|---|
+| **A 既定(inline)** | `revisions` **19,206 KB** / `entries` 6,041 KB / `relations` 442 KB | 履歴が支配 |
+| **B 差分保存(split v1)** | **`relations` 442 KB** / `revOrder` 145 KB / `entryOrder` 47 KB | **relations が最大** |
+| **C layout 5** | `entries` 768 KB / **`relations` 442 KB** / `revOrder` 145 KB / `__pkc_bodyseg__` 57 KB | entries と relations |
+
+### 訂正
+
+§4(前身 doc)で「差分保存の O(N+M) は `marker.revOrder` と `core.entries`」と書いたが、
+**`relations` を挙げていなかった**。`core` は
+
+```ts
+const core: StoredContainerRecord = {
+  ...container,        // ← relations がここで丸ごと入る
+  entries: wantSplitBodies ? …meta のみ… : [],
+  revisions: [],
+  assets: {},
+  __pkc_split__: marker,
+};
+```
+
+と `...container` を spread しているため、**relations は全 layout で毎保存・全件書き**である。
+split v1 では `revOrder`(145 KB)の **3 倍**(442 KB)あり、こちらが最大項だった。
+
+⇒ **コード読みで項を名指しするのは当てにならない。項別に測ること。**
+(`perf-measurement` §4「推測した機構のまま実装しない」の実例をもう 1 つ増やした)
+
+### 効く順(実測ベース)
+
+| 対象 | B で減る | C で減る | 備考 |
+|---|---|---|---|
+| **relations を core から出す** | **442 KB** | **442 KB** | 両方に効く最大項。relations は滅多に変わらないので、変わった時だけ書けば実質ゼロ |
+| `core.entries`(meta 全件) | — | 768 KB | C のみ。C で最大 |
+| `revOrder` | 145 KB | 145 KB | id 形式を変えずに減らす方法の検討が要る |
+| `__pkc_bodyseg__` | — | 57 KB | C のみ |
+
+⚠ ただし **core record は毎保存で必ず変わる**(revision が 1 件増えると `revOrder` が伸びる)。
+つまり「変わった時だけ書く」を効かせるには **`revOrder` を core から外すのが前提**になる。
+順序としては `revOrder` → `relations` → `core.entries` の依存がある。
+
+---
+
 ## 3. ⇒ どこを直すべきか(効果の大きい順)
 
 | # | 対象 | 効く範囲 | 見積り |
