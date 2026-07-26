@@ -251,12 +251,17 @@ regression test: `tests/adapter/lazy-bodies-retirement.test.ts`(5 件)
 | # | 内容 | 状態 |
 |---|---|---|
 | S1 | `hydrateForExport` が本文より先に asset を集める ⇒ **バックアップ ZIP から添付が丸ごと落ちる**(移行前バックアップも同経路) | ✅ **#1023 で修正** |
-| S2 | 読めなかった本文が `''` として焼き付く(`body-working-set.ts:66-68` が無条件に pending を外す / 書き側 `?? ''`) | ⏳ 未着手 |
+| S2 | 読めなかった本文が `''` として焼き付く(`body-working-set.ts` が無条件に pending を外す) | ✅ **修正**(返ってきた lid だけ pending を外す) |
 | S3 | `differential_save` 単独 OFF で `save()` が空本文を inline に焼き、`dropSegments` が segments を消す(`save()` に `bodyPending` guard が無い) | ✅ **修正**(§5-b。退役の戻し道そのものだった) |
 | S4 | `appendRevSegments` が**復号失敗**した active segment を `tail=[]` で上書き破棄(JSON 破損側は非破壊なのに gzip 破損側だけ破壊的) | ✅ **#1025 で修正** |
 
-**残るは S2 のみ。** `lazy_entry_bodies` は退役した(§5-b)ので新規に到達する経路は無く、
-対象は「3 ヶ月の間に一度も保存せず layout 5 のまま放置される環境」だけになった。
+**S1〜S4 はすべて修正済み。** `lazy_entry_bodies` の退役(§5-b)で新規に到達する経路も無い。
+
+S2 の要点: segments 形式では **本文が空の entry も `''` として索引に載る**ので、
+**返ってこない = 読み失敗**である。従来は「元から無い」と同じ扱いで pending を外しており、
+それにより保存側のガード(§5-b)も素通りしていた。解決できなかった lid は
+pending のまま残し、**保存を保留する**(空で上書きしない)。
+idle backfill が回り続けないよう試行回数の上限だけ設けた。
 
 ### compaction の実態(既定化を考えるなら要る知識)
 
