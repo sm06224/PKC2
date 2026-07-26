@@ -113,6 +113,14 @@ scope drift / 後方互換の破壊 / 大規模 refactor / 不可逆操作 / プ
 
 ## 既知の落とし穴
 
+- **生成物の .gitignore は接頭辞で書く。** `bench-fixtures/*-rev.json` では
+  `--deleted` を足した `c-5000-rev-del.json` が漏れ、**25MB を commit しかけた**
+  (2026-07-26)。`git add -A` の直前に `git status --short` を必ず見る ──
+  ハーネスや fixture を増やした回は特に(`c-*-rev*.json` に修正済み)
+- **src を触っていない回は dist を commit しない。** build を回すと commit hash が
+  スタンプされるだけの差分が出る。`git checkout HEAD -- dist/` で戻す
+
+
 - GitHub の squash commit(committer noreply@github.com)は改変対象外。stop hook が
   Unverified を訴えても amend しない(branch ref の push 同期のみで対処)
 - 複数 PR を積まない(stack 事故の教訓)。1 PR ずつ着地させてから次を積む

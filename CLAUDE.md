@@ -23,6 +23,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **自己免疫的に整備する**: セッションで得た教訓・踏んだ罠は都度 `.claude/skills|agents|commands` と参照 doc に反映する。実態と乖離した記述(廃止済み flag への言及 / 変わった手順 / 壊れた導線)は見つけ次第その場で修正し、肥大した儀式は削る。資産は「書いた時」ではなく**「次に使う時」に正しくあること**
 - 🚫 **免疫の不可侵領域(最重要)**: user 由来の**金言的プロンプト** — プライム・ディレクティブ、会話・提示ルール、裁定記録、本節、その他「user 確立 / user 指示 / user 裁定」の出典タグが付いた記述 — は自己免疫の**対象外**。**削除はもちろん、希釈・要約・言い換えによる骨抜きも禁止**。変更できるのは user の明示裁定のみ。整理で迷ったら「消す」ではなく会話で確認する
 - 出典タグの規約: user の方針・裁定を資産に書き込むときは「(user 指示/裁定 YYYY-MM-DD)」を付ける。**タグ付き記述 = 不可侵**、が機械的な判定基準
+- 🔑 **合図(user 指示 2026-07-26)**: 「**着地後に知見を .claude に反映してくれ**」── この言い回しは
+  **スキル / コマンド / ルール / エージェントの更新を指す合図**である。出たら `.claude/skills/knowledge-reflection/SKILL.md`
+  の手順で反映する(`/reflect` は明示版)。**着地後**が既定 ── merge 前は「結局どう直したか」が
+  確定しておらず、書いた内容が嘘になるため。ただし実態との乖離(廃止済み flag への言及 / 壊れた導線)は
+  その場で直す
 
 ## 現在の運用方針(2026-06、最優先)
 
@@ -31,7 +36,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 単一正本 = `docs/development/v3-consolidation-and-direction-2026-06.md`(診断 / 凍結表 / 4 レーン / North Star)。**まずこれを読む**
 - **live tracking は GitHub Issues が正本**(file ベース台帳は archive 済)。レーン: `lane:perf` / `lane:curation` / `lane:arch-v3` / `lane:process`、`frozen` = 凍結中・参照のみ
 - 許可される作業: ① bug fix ② perf ③ ~~bundle 引き算(機能 subtract)~~(**2026-07-01 user 判断で撤回**:mermaid / Office export / chart.js は keep・むしろ強化対象。削減候補として蒸し返さない)④ main 着陸の取捨選択 ⑤ doc/process 整理 ⑥ 設計 doc(実装しない)
-- 🚫 新 archetype / feature / markdown 方言 / UI mode の追加は**凍結**。user が「足したい」と言い出したら本方針を引いて一旦止め、Issue 化して優先度判断へ回す
+- **flag を畳むときの作法**(user 裁定 2026-07-26、`lazy_entry_bodies` の退役で確立):
+`defineFlag` の `retired: true` を使う。**値の解決と一覧の両方**が塞がる
+(URL / container の `__flags__` / Inspector 編集をすべて無視し、`getRegisteredFlags()` からも消える)。
+⚠ **UI から消すだけでは足りない** ── URL flag で有効化できてしまう(2026-07-25 に移行前 ZIP ゲートで実際に踏んだ)。
+⚠ **定義は消さない** ── getter が生きていないと、既に有効化された環境が「既定値へ戻る = 安全な形式へ書き戻る」
+経路ごと失われる。⚠ **戻し道の安全性を先に確かめる** ── 退役は全 user をその経路に乗せるので、
+そこが壊れていると廃止作業自体がデータを壊す(実際 `save()` に本文の未読ガードが無く、S3 として先に塞いだ)。
+
+🚫 新 archetype / feature / markdown 方言 / UI mode の追加は**凍結**。user が「足したい」と言い出したら本方針を引いて一旦止め、Issue 化して優先度判断へ回す
 - 凍結中の旧計画(8案v3 / Phase β / 68PR Phase γ / roadmap 領域)は frozen backlog issue #776 に保全
 
 ## Build & Development Commands
@@ -130,6 +143,10 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
 - Renderer tests は `data-pkc-*` selector を region scope(`[data-pkc-region="..."]`)で query
 - **描画と状態は別物**:vitest / happy-dom の pass は生成の正しさを示すだけで、ユーザー実機の視認を保証しない。**視覚を持つ feature**(click / hover / drag / overlay)は `elementFromPoint` / `page.mouse.click(x,y)` 経由の **visual parity test を最低 1 件**持つ。方法論は `docs/development/visual-state-parity-testing.md`
 - 動的機構(flag / event 連携 / dispatch+副作用)は **state mutation → consumer 観測点(DOM 数値 / 表示要素数 / 副作用)** の end-to-end parity を assert(DOM attribute 遷移で止めない)
+- **「量が多い」と「体感が悪い」は別の主張**(2026-07-26)。書込量・使用量の計器で出した数字を、そのまま
+  「操作が重い」の根拠にしてはいけない(IDB の書込はメインスレッド外)。体感を語るなら long task か
+  `Performance.getMetrics`(Script / Layout / RecalcStyle)を測る。実例: 既定パスは 1 編集 25.7MB 書いて
+  いたが体感の主因は**描画**で、5000 行のサイドバーを編集の開始・確定のたびに作り直していた
 - **性能の主張は数字を出す前に手法を固める**(2026-07-26、同一セッションで 6 回誤った反省)。手順とハーネスの使い分けは `.claude/skills/perf-measurement/SKILL.md`(`/measure` コマンド)。とくに:**ベンチ fixture のゼロ件の次元は「測っていない次元」**(`bench-fixtures/c-*.json` が revisions 0 件だったため歴代のベンチが全部 O(N×M) を素通りしていた)/ **対照群は「何もしない」ではなく「測りたい操作以外を全部同じにしたもの」** / **差し引きで出た値は向きのみ信頼し倍率は書かない** / **百分率は「どの実行の何に対する比率か」まで書く**
 
 ## PR / Wave 運用(slim)
@@ -154,6 +171,7 @@ markdown は 3 経路で独立 render:center pane(detail-presenter)/ Viewer popu
 
 - `docs/development/v3-consolidation-and-direction-2026-06.md` — **方針正本**
 - `docs/development/session-handoff-2026-07-24.md` — 直近セッションの成果・残件・教訓(storage v3 P0〜P2 完了時点)
+- `docs/development/storage-default-layout-decision-2026-07-26.md` — 既定 storage layout の再判定(差分保存の既定 ON 棄却 / layout 5 の判断保留とその理由 / 手法の訂正 2 件 / データ消失経路 S1〜S4)
 - `docs/development/archived/CLAUDE-md-2026-05-pre-slim.md` — スリム化前の全文(reform-2026-05 Phase 1–11 の wave 規律詳細)
 - `docs/development/visual-state-parity-testing.md` — parity test 方法論
 - `docs/development/pr-review-checklist.md` — PR 自己監査の正本
