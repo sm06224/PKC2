@@ -50,21 +50,59 @@ git push --force-with-lease -u origin <branch>
   `🤖 Generated with [Claude Code](https://claude.com/claude-code)` + セッション URL
 - **user への提示は必ず GitHub URL(PR / rendered ファイル)**。diff の貼り付けは不可
 
-## 3. CI 監視 cron を仕込む
+## 3. CI を待つ ── **1 回だけ起きる。待機中は黙る**
 
-`CronCreate` で 3 分間隔のループを登録し、prompt に手順を自己完結で書く:
+### なぜ CI を待つのか(ローカルと重複していないもの)
 
-- `mcp__github__pull_request_read`(method: `get_check_runs`)で check 状態を確認
-- **Tier-B shard の `skipped` は正常**(PR gate は Tier-A)。判定対象は
-  `typecheck + test + build` / `Smoke Tier-A` / `scan`
-- 実行中 → 何もせず終了(次の発火を待つ。sleep でのポーリング禁止)
-- fail → job logs を調査して修正 push(ローカルで再現 → 修正 → 手順 1 からやり直し)
+user の当然の問い「ローカルで `npm test` を通したのに、なぜ CI green を待つのか。
+二度手間では?」への答え。**半分は重複、半分は重複していない**:
+
+| CI job | ローカルと重複? | CI にしか無いもの |
+|---|---|---|
+| `typecheck + test + build` | **ほぼ重複** | `test:coverage`(カバレッジ閾値)/ `check-bundle-size` / `build:manual` |
+| `Smoke Tier-A (PR gate)` | **重複しない** | 実 Chromium の Playwright |
+| `scan`(Gitleaks) | **重複しない** | 秘密情報スキャン |
+| `Smoke Tier-B shard */4` | — | PR では `skipped`(正常) |
+
+⇒ **4 つとも green を merge 条件に保つ。** 「ローカルで test が通ったから
+`typecheck + test + build` は飛ばしてよい」は誤り ── カバレッジ閾値・bundle
+サイズ・マニュアルビルドの 3 つがすり抜ける。
+
+### 待ち方(2026-07-26、user 指摘「同じところをぐるぐるしていないか」を受けて確定)
+
+**実測: CI は約 200 秒で全部片付く**(#1024: Tier-A 146s / scan 30s /
+typecheck+test+build 197s)。
+
+1. PR 作成直後に `send_later` を **240 秒後**に 1 回だけ仕掛ける
+   (従来は 13〜15 分後に置いていた。**実測の 4 倍以上の待ちで、その間ずっと
+   手が空いて確認を繰り返していた**のが「ぐるぐる」の正体)
+2. **待機中は `get_check_runs` を叩かない。user にも報告しない。**
+   「まだ走行中です」は情報がゼロで、待ちを長く見せるだけ
+3. 発火したら 1 回確認する:
+   - 全 green → §4 へ(その場で merge)
+   - まだ走行中 → **180 秒後**にもう 1 回だけ仕掛ける(黙って再予約)
+   - fail → job logs を調査してローカルで再現 → 修正 → 手順 1 からやり直し
+4. merge したら **予約を必ず消す**(`delete_trigger`)。残すと後で
+   「merge 済み PR の CI を確認する時刻です」が届いて、また空回りする
+
+⚠ **`sleep` でのポーリング禁止**(従来からの規律)。加えて
+**「確認 → まだです → 報告」を繰り返さない**(今回追加した規律)。
+
+### ローカル側の重複を減らす
+
+CI を待つ理由が残る以上、削るべきはローカルの**反復中の**フル実行:
+
+- 反復中(実装 → 直す → また直す)は **関係する test file だけ**回す
+  `npx vitest run tests/adapter/foo.test.ts`
+- フル `npm test`(約 170 秒)は **commit 直前の 1 回**だけ。これは残す ──
+  「push 前に壊れていると分かる」価値が実際にあり、2026-07-26 の 1 セッションでも
+  2 回、push 前に失敗を捕まえている
 
 ## 4. 全 green → squash merge
 
 - `mcp__github__merge_pull_request`(method: squash、
   **commit title = PR title + " (#PR番号)"**)
-- merge 後: cron を `CronDelete` → local main 同期:
+- merge 後: **予約(`send_later` / cron)を必ず削除** → local main 同期:
   `git checkout main && git fetch --prune origin main && git merge --ff-only origin/main`
 - user に日本語で報告(merge 済み PR URL + 要約 + 必要な確認依頼)
 
