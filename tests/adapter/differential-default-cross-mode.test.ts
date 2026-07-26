@@ -129,11 +129,24 @@ async function coreRecord(adapter: StorageAdapter, cid: string): Promise<Record<
   return (await adapter.bucket('containers').get(cid)) as Record<string, unknown> | undefined;
 }
 
+/**
+ * 差分保存機構を動かす注入口の値。
+ *
+ * ⚠ `persistence.differential_save` は 2026-07-26 に**退役**したので、
+ * flag source 経由では ON にできない(退役 flag はどの source も見ない)。
+ * split 機構自体は残っている(FS backend の委譲元)ため、cross-mode の
+ * 往復検証は `mountPersistence` の注入口で続ける。
+ */
+let diffOn = true;
+const differentialSave = (): boolean => diffOn;
+
 beforeEach(() => {
-  // 既定 OFF(#958)のため、本 suite は opt-in(ON)を明示して split
-  // 機構を検証する。OFF 復帰の test は個別に上書きする。
-  setContainerFlagSource({ 'persistence.differential_save': true });
-  return () => setContainerFlagSource({});
+  diffOn = true;
+  setContainerFlagSource({});
+  return () => {
+    diffOn = true;
+    setContainerFlagSource({});
+  };
 });
 
 for (const mode of MODES) {
@@ -159,7 +172,9 @@ for (const mode of MODES) {
 
       // persistence を flag ON(opt-in)で mount し、編集 → 自動保存
       const dispatcher = createDispatcher();
-      const handle = mountPersistence(dispatcher, { store, debounceMs: 0, unloadTarget: null });
+      const handle = mountPersistence(dispatcher, {
+        store, debounceMs: 0, unloadTarget: null, differentialSave,
+      });
       dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: makeContainer() });
       dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: 'e2', body: 'edited' });
       await handle.flushPending();
@@ -200,10 +215,12 @@ for (const mode of MODES) {
         expect(await splitKeyCount(adapter)).toBe(0);
       }
 
-      // OFF(オプトアウト)で自動保存 → inline へ書き戻し
-      setContainerFlagSource({ 'persistence.differential_save': false });
+      // OFF(オプトアウト = 退役後の既定)で自動保存 → inline へ書き戻し
+      diffOn = false;
       const dispatcher = createDispatcher();
-      const handle = mountPersistence(dispatcher, { store, debounceMs: 0, unloadTarget: null });
+      const handle = mountPersistence(dispatcher, {
+        store, debounceMs: 0, unloadTarget: null, differentialSave,
+      });
       dispatcher.dispatch({ type: 'SYS_INIT_COMPLETE', container: makeContainer() });
       dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: 'e1', body: 'reverted' });
       await handle.flushPending();
