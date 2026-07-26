@@ -32,6 +32,29 @@ export interface DefineFlagOptions<T extends FlagPrimitive> {
   category?: string;
   tier?: FlagTier;
   requiresReload?: boolean;
+  /**
+   * 退役(2026-07-26、user 裁定「3 ヶ月後に廃止する方向性で調整に入る /
+   * まずは導線の封鎖と戻し道をつける」)。
+   *
+   * true の flag は:
+   *   - **どの source から指定されても既定値に落ちる**(URL / container の
+   *     `__flags__` / Inspector 編集 ── すべて無視)
+   *   - `getRegisteredFlags()` が返さない = **Inspector の一覧から消える**
+   *
+   * 「値の解決」と「一覧」の両方を 1 箇所で塞ぐのが要点。片方だけだと、
+   * UI から消えても URL flag で有効化できてしまう(実際 2026-07-25 に
+   * 移行前 ZIP ゲートが `?pkc-flag=` を素通りする穴が見つかっている)。
+   *
+   * ⚠ **定義自体は消さない。** 既に有効化されている環境が
+   * 「既定値へ戻る = 安全な形式へ書き戻る」ために、getter は生きている
+   * 必要がある。宣言ごと消すと呼び元がコンパイルエラーになり、
+   * 戻し道の実装まで一緒に消えてしまう。
+   *
+   * `reason` は Inspector の JSON 編集などで「知らない key」と混同されない
+   * よう、退役の理由を残すためのメモ(表示には使わない)。
+   */
+  retired?: boolean;
+  retiredReason?: string;
 }
 
 /**
@@ -130,6 +153,9 @@ function resolveValue<T extends FlagPrimitive>(
   defaultValue: T,
   options: DefineFlagOptions<T>,
 ): { value: T; source: FlagSource } {
+  // 退役 flag はどの source も見ない。URL / container / Inspector のどこから
+  // 指定されても既定値に落ちる ── これが「導線の封鎖」の実体。
+  if (options.retired) return { value: defaultValue, source: 'default' };
   for (const src of sources) {
     const raw = src.lookup(key);
     if (raw === undefined) continue;
@@ -195,6 +221,8 @@ export function defineFlag<T extends FlagPrimitive>(
 export function getRegisteredFlags(): readonly FlagDescriptor[] {
   const out: FlagDescriptor[] = [];
   for (const entry of registry.values()) {
+    // 退役 flag は一覧に出さない(Inspector から触れなくする)。
+    if (entry.options.retired) continue;
     const { value, source } = resolveValue(
       entry.key,
       entry.defaultValue,
