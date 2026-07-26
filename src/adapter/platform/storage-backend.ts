@@ -136,7 +136,15 @@ async function migrateFromIdbIfEmpty(
   target: ContainerStore,
   makeIdbStore: () => ContainerStore,
 ): Promise<boolean> {
-  const targetDefault = await target.loadDefault();
+  // 「空か」を知りたいだけなので **本文も asset も読まない**。
+  //
+  // 2026-07-25: ここは元々 `target.loadDefault()` で、`false` を返すためだけに
+  // **container 全体 + 全 asset** を読んでいた。OPFS / FSA を選んだ user は
+  // 移行済みでも **毎 boot** これを踏む(呼び元 `createConfiguredStore` は
+  // boot 経路)。数百 MB 規模では致命的で、しかも成果は捨てられる。
+  // `loadDefaultMetaShallow` は `__default__` → core record の 2 read で、
+  // 本文は skip し assets は空で返す(idb-store.ts:1093-1103)。
+  const { container: targetDefault } = await target.loadDefaultMetaShallow();
   if (targetDefault) return false; // already populated — nothing to do
   const idbDefault: Container | null = await makeIdbStore().loadDefault();
   if (!idbDefault) return false; // nothing to migrate
