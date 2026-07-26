@@ -192,7 +192,7 @@ split v1 では `revOrder`(145 KB)の **3 倍**(442 KB)あり、こちらが最�
 
 | 対象 | B で減る | C で減る | 備考 |
 |---|---|---|---|
-| **relations を core から出す** | **442 KB** | **442 KB** | 両方に効く最大項。relations は滅多に変わらないので、変わった時だけ書けば実質ゼロ |
+| ✅ **relations を core から出す** | **442 KB** | **442 KB** | **着地済み**(下記)。両方に効く最大項 |
 | `core.entries`(meta 全件) | — | 768 KB | C のみ。C で最大 |
 | `revOrder` | 145 KB | 145 KB | id 形式を変えずに減らす方法の検討が要る |
 | `__pkc_bodyseg__` | — | 57 KB | C のみ |
@@ -237,6 +237,52 @@ doc が明示している:
 
 ⇒ **#2 は形式変更を伴う。user 裁定済みの「マイグレーション手段があれば構造変更可」の
 範囲だが、設計 doc を先に出すべき規模。本 PR には含めない。**
+
+---
+
+## 2-c. ✅ relations サイドカーを実装した(2026-07-26)
+
+`core` が `...container` を spread しているせいで、**本文 1 文字の編集でも
+relations が全件書き直されていた**。relations は滅多に変わらないので、
+**変わったときだけ** `__rel__:<cid>` へ書くようにした。
+
+- 読み側は「**サイドカーがあればそれが正本、無ければ core の inline**」。
+  形式フラグを増やさずに旧データと両立する(旧データは record が無いので自動的に inline 経路)
+- ⚠ **inline へ復帰する経路(`save()`)でサイドカーを必ず消す。**
+  残っていると古い relations が正しい inline を上書きして見える。
+  `delete()`(コンテナ削除)でも回収する ── segments 孤児と同じ穴を新設しないため
+- 変更検出は参照比較(Container は immutable 更新。entries / revisions の差分判定と同じ idiom)
+
+### 実測(N=5000 / M=15000 / R=3074、1 編集あたり)
+
+| 腕 | セッション開始時 | tab-strip 修正後 | **relations サイドカー後** |
+|---|---|---|---|
+| **B 差分保存(split v1)** | 1,270 KB | 635 KB | **194 KB** |
+| **C 差分保存+lazy(layout 5)** | 3,012 KB | 1,564 KB | **1,122 KB** |
+| A 既定(inline) | 51,378 KB | 25,688 KB | 25,688 KB |
+
+**B は開始時比 6.5 倍の削減。** core record の項別内訳から `relations 442 KB` が
+完全に消え、残るのは:
+
+```
+B: revOrder 145 KB / entryOrder 47 KB
+C: entries 768 KB / revOrder 145 KB / __pkc_bodyseg__ 57 KB
+```
+
+### 残る項と、次の一手
+
+| 項 | B | C | 難度 |
+|---|---|---|---|
+| `core.entries`(meta 全件) | — | **768 KB** | C の最大項。layout 5 の設計そのもの |
+| `revOrder` | 145 KB | 145 KB | **配列順が tie-break として効いている**(§2-b)。別 record へ移すのが安全 |
+| `entryOrder` | 47 KB | — | revOrder と同型 |
+
+⚠ **`revOrder` を core から外さない限り、core record は毎保存で必ず変わる**
+(revision が 1 件増えると伸びるため)。逆に外せれば、本文だけの編集では
+core record 自体を put せずに済む可能性がある ── そこが次の一手。
+
+regression test: `tests/adapter/idb-store-relations-sidecar.test.ts`(7 件)
+── とくに「inline 復帰で古い relations が残らない」を pin している。
 
 ---
 

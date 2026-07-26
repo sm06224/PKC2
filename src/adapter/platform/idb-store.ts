@@ -236,6 +236,25 @@ const SPLIT_ENTRY_PREFIX = '__entry__:';
 const SPLIT_REV_PREFIX = '__rev__:';
 /** #940 案 A 段階1(layout v2): per-entry body record の key prefix。 */
 const BODY_PREFIX = '__body__:';
+/**
+ * 差分保存の relations サイドカー record の key prefix(2026-07-26)。
+ *
+ * **なぜ分けるか**: 実測(`docs/development/save-write-volume-2026-07-26.md`)で
+ * core record の内訳を項別に測ったところ、**relations が最大項**だった:
+ *
+ *   N=5000 / M=15000 / R=3074、1 保存あたりの core record
+ *     split v1 : relations 442 KB(70%)/ revOrder 145 KB / entryOrder 47 KB
+ *     layout 5 : entries 768 KB / relations 442 KB / revOrder 145 KB / bodyseg 57 KB
+ *
+ * `core` が `...container` を spread しているため、**本文 1 文字の編集でも
+ * relations が全件書き直されていた**。relations は滅多に変わらないので、
+ * **変わったときだけ**別 record へ書けば、その分がまるごと消える。
+ *
+ * 読み側は「この record があればそれが正本、無ければ core の inline」。
+ * marker に形式フラグを増やさずに旧データと両立する
+ * (旧データは record が無いので自動的に inline 経路)。
+ */
+const REL_PREFIX = '__rel__:';
 
 /**
  * split 形式の core record に付く marker。順序リストは
@@ -378,6 +397,13 @@ function bodyPrefix(cid: string): string {
 }
 function splitRevPrefix(cid: string): string {
   return `${SPLIT_REV_PREFIX}${cid}:`;
+}
+/** relations サイドカー(cid ごとに 1 record)。 */
+function relKey(cid: string): string {
+  return `${REL_PREFIX}${cid}`;
+}
+function relPrefix(cid: string): string {
+  return `${REL_PREFIX}${cid}`;
 }
 
 /**
@@ -712,6 +738,10 @@ export function createContainerStore(
         ...(await containers.getKeysByPrefix(splitRevPrefix(cid))),
         // #940 案 A: layout v2 の body record も inline 復帰時に掃除。
         ...(await containers.getKeysByPrefix(bodyPrefix(cid))),
+        // 2026-07-26: relations サイドカー。**これを消し忘れると、
+        // inline へ戻したのに古い relations が正本として読まれ続ける**
+        // (読み側は record の有無で正本を決めるため)。
+        ...(await containers.getKeysByPrefix(relPrefix(cid))),
       ];
       if (stale.length > 0) {
         await containers.applyBatch(stale.map((key) => ({ kind: 'delete' as const, key })));
@@ -886,6 +916,17 @@ export function createContainerStore(
       for (const k of await containers.getKeysByPrefix(bodyPrefix(cid))) {
         if (!live.has(k)) deletes.push({ kind: 'delete', key: k });
       }
+      // relations サイドカーは下で必ず put する(base 無し = 全件書込み)ので
+      // live に載る。ここでは掃除対象にしない。
+    }
+
+    // relations サイドカー(2026-07-26): **変わったときだけ**書く。
+    // Container は immutable 更新なので参照比較で十分(entries / revisions の
+    // 差分判定と同じ idiom)。base が無い = 全件書込み経路では必ず書く。
+    //
+    // これで本文 1 文字の編集から relations 全件書き(実測 442 KB)が消える。
+    if (!base || base.relations !== container.relations) {
+      ops.push({ kind: 'put', key: relKey(cid), value: container.relations });
     }
 
     const marker: SplitMarker = {
@@ -901,6 +942,9 @@ export function createContainerStore(
         ? container.entries.map((e) => (e.body === '' ? e : { ...e, body: '' }))
         : [],
       revisions: [],
+      // relations は上のサイドカー record が正本。core からは外す
+      // (読み側は record が無ければ inline へ fallback するので旧データと両立)。
+      relations: [],
       assets: {},
       __pkc_split__: marker,
       ...(wantSplitBodies ? { __pkc_layout__: 5, __pkc_bodyseg__: bodySegIndex ?? {} } : {}),
@@ -928,6 +972,23 @@ export function createContainerStore(
    * marker の順序リストが正本。リストに無い stray record(全件書込みの
    * 中断で残った余り)は末尾に付ける — 消すより安全側。
    */
+  /**
+   * relations の合流(2026-07-26)。サイドカー record があればそれが正本、
+   * 無ければ core の inline(旧データ)。**形式フラグを増やさずに両立させる**
+   * ため、record の有無そのものを判定に使う。
+   *
+   * ⚠ したがって inline へ復帰する経路(`save()`)では、このサイドカーを
+   *   必ず消さなければならない ── 残っていると古い relations が
+   *   正しい inline を上書きして見える。
+   */
+  async function mergeRelations(
+    cid: string,
+    fallback: Container['relations'],
+  ): Promise<Container['relations']> {
+    const sidecar = await containers.get(relKey(cid));
+    return Array.isArray(sidecar) ? (sidecar as Container['relations']) : fallback;
+  }
+
   async function reassembleSplit(
     cid: string,
     record: StoredContainerRecord,
@@ -983,7 +1044,13 @@ export function createContainerStore(
       }
       for (const r of revById3.values()) revisions3.push(r);
       const { __pkc_split__: _m3, __pkc_layout__: _l3, __pkc_bodyseg__: _b3, ...rest3 } = record;
-      return { ...rest3, entries: entries3, revisions: revisions3, assets: {} };
+      return {
+        ...rest3,
+        entries: entries3,
+        revisions: revisions3,
+        relations: await mergeRelations(cid, rest3.relations ?? []),
+        assets: {},
+      };
     }
     const isV2 = record.__pkc_layout__ === 2;
     layoutState.set(cid, isV2 ? 2 : 1);
@@ -1029,7 +1096,13 @@ export function createContainerStore(
     }
     for (const r of revById.values()) revisions.push(r);
     const { __pkc_split__: _m, __pkc_layout__: _l, ...rest } = record;
-    return { ...rest, entries, revisions, assets: {} };
+    return {
+      ...rest,
+      entries,
+      revisions,
+      relations: await mergeRelations(cid, rest.relations ?? []),
+      assets: {},
+    };
   }
 
   async function reassembleAssets(cid: string, container: Container): Promise<Container> {
@@ -1147,6 +1220,9 @@ export function createContainerStore(
       ...(await containers.getKeysByPrefix(splitEntryPrefix(containerId))),
       ...(await containers.getKeysByPrefix(splitRevPrefix(containerId))),
       ...(await containers.getKeysByPrefix(bodyPrefix(containerId))),
+      // 2026-07-26: relations サイドカーもコンテナ削除で回収する
+      // (segments 孤児と同じ穴を新設しないため)。
+      ...(await containers.getKeysByPrefix(relPrefix(containerId))),
     ];
     // P2-2/P2-3: v4/v5 の revision / body segments も一緒に消す
     const segKeys = [
