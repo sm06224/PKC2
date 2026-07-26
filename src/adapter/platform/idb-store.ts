@@ -33,11 +33,48 @@ import { isBodyPendingGlobal } from './body-working-set';
  * 旧ビルド互換の注意は差分保存と同一(unaware ビルドで storage を直接開くと
  * 本文が空に見える。OFF 保存で layout 1 へ書き戻る)。
  */
+/**
+ * 🔴 **退役(2026-07-26、user 裁定)**
+ *
+ * > 「lazy_entry_bodies は効果が少なく、リスクが多いなら廃止したい /
+ * >  3 ヶ月後に廃止する方向性で調整に入りましょう /
+ * >  まずは導線の封鎖と戻し道をつけてください /
+ * >  3 ヶ月の間にユーザーが一度でも上書きすれば、安全な道に戻る」
+ *
+ * `retired: true` により **どの source から指定されても既定値(false)に落ち**、
+ * Inspector の一覧からも消える。既に有効化していた環境は、次の保存で
+ * `targetLayout = 1` に落ちて **従来形式へ書き戻る**(= 戻し道)。
+ *
+ * 判断の根拠(2026-07-26 の実測と実装監査):
+ * - 効果があるのは **書込軸だけ**(1 編集 25,688 → 987 KB、使用量 0.62 倍)。
+ *   起動軸は **比較が成立していなかった** ── layout 5 は本文 0 件で
+ *   `bootReady` に到達し、その後 32 件/200ms で backfill する
+ *   (15000 件なら収束まで約 94 秒。測定の外側にあった)
+ * - この機構に **データ消失経路が 4 件**集中していた:
+ *   ① export が本文より先に asset を集める → バックアップから添付が全部落ちる(#1023 修正)
+ *   ② rev segment の復号失敗が破壊的 → 履歴が消える(#1025 修正)
+ *   ③ 読めなかった本文が `''` として焼き付く(body-working-set が無条件に pending を外す)
+ *   ④ `save()` に `bodyPending` guard が無い(本 PR で修正 ── **戻し道そのものだった**)
+ * - 「起動のたびの 25.7MB 無駄書き」を本 flag と無関係に潰した(#1024)ため、
+ *   相対的な価値がさらに下がった
+ *
+ * ⚠ **`storage-v3-redesign-2026-07.md` §A.7 の user 出典タグ付き指示**
+ * (「ゆるいストリーミング圧縮とチャンクパックはスケールのために必須」/
+ *  実デバイス書込 1/4.9 の実測)は **撤回されていない**。よって
+ * **segments 実装そのものは残す**。本件で塞ぐのは user 導線だけであり、
+ * 3 ヶ月後の廃止範囲(実装を消すか)は別途 user 裁定を要する。
+ *
+ * ⚠ **定義を消してはならない。** getter が生きていないと、既に有効化された
+ * 環境が「既定値へ戻る = 安全な形式へ書き戻る」経路ごと失われる。
+ */
 export const lazyEntryBodiesEnabled = defineFlag<boolean>(
   'persistence.lazy_entry_bodies',
   false,
   {
     category: 'perf',
+    retired: true,
+    retiredReason:
+      '2026-07-26 user 裁定により退役(3 ヶ月後に廃止予定)。導線を封鎖し、次の保存で従来形式へ戻す',
     description:
       '案 A: 本文・履歴を segments へ分割圧縮する省容量 layout(現行 ON = layout 5)。実測= 数千件以上で使用量 0.6 倍・**boot 1.3〜2.1 倍**(小規模では使用量も増える)。⚠ differential_save も同時に ON でないと無効(単独では layout 1 のまま)。留意: ON 保存した storage は旧ビルドから本文が見えない(OFF 保存で復帰)',
     tier: 0,
@@ -770,8 +807,43 @@ export function createContainerStore(
     const cid = container.meta.container_id;
     await putAssets(container);
 
+    // 🔴 未 hydrate の本文を **空のまま inline へ焼かない**(2026-07-26)。
+    //
+    // `save()` には `bodyPending` guard が 1 つも無かった(`saveDiff` にはある)。
+    // lazy layout から従来形式へ戻す経路はここを通るので、本文が未読のまま
+    // 走ると `entries[].body === ''` が **正本として書き込まれ**、直後の
+    // `dropSegments`(下)が本文の実体である segments を消す ── 復旧手段ごと
+    // 失われる。唯一の防御は `persistence.ts` の `bodiesPending` チェックだけで、
+    // その pending フラグは読み失敗時にも外れる(body-working-set)。
+    //
+    // 退役 flag の「戻し道」は全 user が通る経路になるので、ここを塞ぐ。
+    // 方針は **保守的**: 未読の本文が 1 つでも復元できないなら、
+    // **inline へ書き戻さずに現状のまま残す**。layout 5 のままでいる方が、
+    // 空で焼き付くより常に安全。
+    const pendingLids = container.entries
+      .filter((e) => bodyPending(cid, e.lid))
+      .map((e) => e.lid);
+    let toWrite = container;
+    if (pendingLids.length > 0) {
+      const restored = await loadBodiesFor(cid, pendingLids);
+      const missing = pendingLids.filter((lid) => typeof restored[lid] !== 'string');
+      if (missing.length > 0) {
+        console.warn(
+          `[PKC2] save(): ${missing.length} 件の本文を復元できないため inline 変換を中止しました`
+            + '(storage は現状のまま。次の保存で再試行されます)',
+        );
+        return;
+      }
+      toWrite = {
+        ...container,
+        entries: container.entries.map((e) =>
+          restored[e.lid] !== undefined ? { ...e, body: restored[e.lid]! } : e,
+        ),
+      };
+    }
+
     // Container record sans assets — the assets bucket owns those.
-    const stripped: Container = { ...container, assets: {} };
+    const stripped: Container = { ...toWrite, assets: {} };
     await containers.applyBatch([
       { kind: 'put', key: cid, value: stripped },
       { kind: 'put', key: DEFAULT_KEY, value: cid },
@@ -800,7 +872,7 @@ export function createContainerStore(
       }
       // layout 5 から戻ってきた場合、本文・履歴の実体は segments 側に残る。
       // inline record が正になった **後** なので、ここで回収してよい。
-      await dropSegments(cid, container);
+      await dropSegments(cid, toWrite);
       splitState.set(cid, false);
       layoutState.set(cid, 1);
     }
