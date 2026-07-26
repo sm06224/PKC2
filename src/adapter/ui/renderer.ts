@@ -80,7 +80,7 @@ import { collectUnreferencedAttachmentLids } from '../../features/asset/asset-sc
 import { getFilterIndexes, getTodosByDate } from './filter-cache';
 import { shellStartupNoticeEnabled } from './startup-notice';
 import { start as profileStart } from '../../runtime/profile';
-import { computeRenderScope, findEntryBodyChangeLid } from './render-scope';
+import { computeRenderScope, findEntryBodyChangeLid, canReuseEntryList } from './render-scope';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -448,6 +448,12 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // wall-clock" measure used by the bench runner. No-op when
   // profiling is disabled.
   const endProfile = profileStart(`render:phase=${state.phase}`);
+  // 🔴 編集の出入り(`ready ↔ editing`)では行リストを作り直さない(2026-07-26)。
+  // `root.innerHTML` を消す**前に** node を退避し、新しいサイドバーへ差し込む。
+  // 判定は `canReuseEntryList`(phase / editingLid 以外がすべて同一のときだけ true)。
+  const reusableEntryList = canReuseEntryList(prev, state)
+    ? root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]')
+    : null;
   const localeSettings = state.settings?.locale;
   setFormatContext(localeSettings?.language, localeSettings?.timezone);
 
@@ -521,7 +527,7 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
     case 'ready':
     case 'editing':
     case 'exporting':
-      root.appendChild(renderShell(state));
+      root.appendChild(renderShell(state, reusableEntryList));
       break;
   }
 
@@ -999,7 +1005,11 @@ function renderError(error: string | null): HTMLElement {
   return el;
 }
 
-function renderShell(state: AppState): HTMLElement {
+function renderShell(
+  state: AppState,
+  /** 使い回す既存の行リスト(2026-07-26)。詳細は `canReuseEntryList`。 */
+  reusableEntryList: HTMLElement | null = null,
+): HTMLElement {
   const shell = createElement('div', 'pkc-shell');
   // pgc-139 wave-δ #13(user bug report 2026-05-24):上部 4 段(header /
   // breadcrumb / tab strip / view-mode bar)の縦 padding を圧縮する
@@ -1123,7 +1133,7 @@ function renderShell(state: AppState): HTMLElement {
     const tab = getActivityBarActiveTab();
     switch (tab) {
       case 'explorer':
-        sidebar = renderSidebar(state, linkIndex);
+        sidebar = renderSidebar(state, linkIndex, reusableEntryList);
         break;
       case 'outline':
         sidebar = buildOutlineTab(state);
@@ -1145,7 +1155,7 @@ function renderShell(state: AppState): HTMLElement {
         break;
     }
   } else {
-    sidebar = renderSidebar(state, linkIndex);
+    sidebar = renderSidebar(state, linkIndex, reusableEntryList);
   }
   main.appendChild(sidebar);
 
@@ -4045,7 +4055,16 @@ function renderRecentEntriesPane(
   return pane;
 }
 
-function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
+function renderSidebar(
+  state: AppState,
+  sharedLinkIndex: LinkIndex | null = null,
+  /**
+   * 使い回す既存の `<ul data-pkc-region="entry-list">`(2026-07-26)。
+   * 渡されたときは **O(N) の行ループを丸ごと skip** して、この node を
+   * そのまま差し込む。呼び元は `canReuseEntryList` が true のときだけ渡す。
+   */
+  reuseEntryList: HTMLElement | null = null,
+): HTMLElement {
   const endProfile = profileStart('render:sidebar');
   try {
     // 領域 10-6 ζ'' Phase 4 follow-up: `sidebar.mode = 'filer'` で
@@ -4053,7 +4072,7 @@ function renderSidebar(state: AppState, sharedLinkIndex: LinkIndex | null = null
     // 既存実装を流用。
     const sidebar = sidebarMode() === 'filer'
       ? renderSidebarAsFiler(state)
-      : renderSidebarImpl(state, sharedLinkIndex);
+      : renderSidebarImpl(state, sharedLinkIndex, reuseEntryList);
     markChildWindowItems(sidebar, state.childWindowLids);
     return sidebar;
   } finally {
@@ -4491,7 +4510,11 @@ function renderSidebarAsFiler(state: AppState): HTMLElement {
   return sidebar;
 }
 
-function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = null): HTMLElement {
+function renderSidebarImpl(
+  state: AppState,
+  sharedLinkIndex: LinkIndex | null = null,
+  reuseEntryList: HTMLElement | null = null,
+): HTMLElement {
   const sidebar = createElement('aside', 'pkc-sidebar');
   sidebar.setAttribute('data-pkc-region', 'sidebar');
 
@@ -4947,119 +4970,135 @@ function renderSidebarImpl(state: AppState, sharedLinkIndex: LinkIndex | null = 
     return sidebar;
   }
 
-  const list = createElement('ul', 'pkc-entry-list');
-  // PR-GG (2026-05-06): mark the entry-list as a scroll region so
-  // render-continuity capture/restore preserves it across full
-  // re-renders. Critical: the `<aside class="pkc-sidebar">` wrapper
-  // never overflows because the entry-list is `flex:1; overflow-y:
-  // auto` — the user's actual scroll lives on this UL, not on the
-  // outer sidebar. Without this attribute, every dispatch silently
-  // wiped the sidebar's scroll position back to 0, manifesting as
-  // "大量のエントリでクリックすると左ペインが上に戻る".
-  list.setAttribute('data-pkc-region', 'entry-list');
-  // #932: opt-in 小字 + 折り返し表示(長いエントリ名対策)。class は行の
-  // memo 対象外の親 UL に付けるので、flag flip が既存 memo 行にも即効く。
-  if (shellCompactEntryLabelsEnabled()) list.classList.add('pkc-compact-labels');
-  const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null || (state.unreferencedAttachmentsOnly ?? false);
+  // 🔴 行リストの使い回し(2026-07-26)。
+  //
+  // `phase` が変わると render scope は無条件に 'full' になる(render-scope.ts:183)。
+  // 編集の開始と確定がそれで、**1 編集につき 5000 行のサイドバーを 2 回**
+  // 作り直していた。long task を直接測ると **1 編集あたり約 670 ms** の
+  // メインスレッド停止で、保存の寄与は −16 ms(= ほぼゼロ)だった。
+  // 体感を殺していたのは保存ではなく描画である。
+  //
+  // 行の内容は `phase` に依存しない(サイドバーで phase を読む 4 箇所は
+  // すべてこのループの外)。よって既存の `<ul>` をそのまま差し込み、
+  // サイドバーの残りは従来どおり組み直す ── **挙動は一切変えずに** O(N) が消える。
+  // 使い回してよいかの判定は `canReuseEntryList`(保守的・迷ったら false)。
+  if (reuseEntryList) {
+    sidebar.appendChild(reuseEntryList);
+  } else {
+    const list = createElement('ul', 'pkc-entry-list');
+    // PR-GG (2026-05-06): mark the entry-list as a scroll region so
+    // render-continuity capture/restore preserves it across full
+    // re-renders. Critical: the `<aside class="pkc-sidebar">` wrapper
+    // never overflows because the entry-list is `flex:1; overflow-y:
+    // auto` — the user's actual scroll lives on this UL, not on the
+    // outer sidebar. Without this attribute, every dispatch silently
+    // wiped the sidebar's scroll position back to 0, manifesting as
+    // "大量のエントリでクリックすると左ペインが上に戻る".
+    list.setAttribute('data-pkc-region', 'entry-list');
+    // #932: opt-in 小字 + 折り返し表示(長いエントリ名対策)。class は行の
+    // memo 対象外の親 UL に付けるので、flag flip が既存 memo 行にも即効く。
+    if (shellCompactEntryLabelsEnabled()) list.classList.add('pkc-compact-labels');
+    const hasActiveFilter = state.searchQuery !== '' || state.archetypeFilter.size > 0 || (state.tagFilter?.size ?? 0) > 0 || (state.colorTagFilter?.size ?? 0) > 0 || state.categoricalPeerFilter !== null || (state.unreferencedAttachmentsOnly ?? false);
 
-  // v1 backlink count badge: per-target count map. PR #192 routes
-  // through `getFilterIndexes` so the O(R) walk is cached by
-  // container ref — search keystrokes no longer pay it. Same source
-  // and contract as `buildInboundCountMap`. See
-  // docs/development/sidebar-backlink-badge-v1.md.
-  const filterIndexes = state.container ? getFilterIndexes(state.container) : null;
-  const backlinkCounts = filterIndexes?.backlinkCounts
-    ?? buildInboundCountMap(state.container?.relations ?? []);
-  // v1 orphan detection: lids appearing in ANY relation. PR #192
-  // also routes through the same cache.
-  const connectedLids = filterIndexes?.connectedLids
-    ?? buildConnectedLidSet(state.container?.relations ?? []);
-  // v3 connectedness sets (Unified Orphan Detection, S4). Additive layer
-  // built alongside the v1 helpers — v1 `connectedLids` stays authoritative
-  // for `.pkc-orphan-marker` / `data-pkc-orphan`; v3 sets drive the new
-  // `data-pkc-connectedness` attribute and `.pkc-unconnected-marker`. See
-  // docs/development/unified-orphan-detection-v3-contract.md §2.3 / §4.4.
-  // PR #179: memoized — same container ⇒ cached graph traversal
-  // result reused. Falls through to a fresh build when sharedLinkIndex
-  // is missing because the per-render memo is keyed off container
-  // alone and is consistent with whichever linkIndex memo returned.
-  const connectednessSets: ConnectednessSets | null = state.container
-    ? memoizedBuildConnectednessSets(state.container, sharedLinkIndex ?? memoizedBuildLinkIndex(state.container))
-    : null;
+    // v1 backlink count badge: per-target count map. PR #192 routes
+    // through `getFilterIndexes` so the O(R) walk is cached by
+    // container ref — search keystrokes no longer pay it. Same source
+    // and contract as `buildInboundCountMap`. See
+    // docs/development/sidebar-backlink-badge-v1.md.
+    const filterIndexes = state.container ? getFilterIndexes(state.container) : null;
+    const backlinkCounts = filterIndexes?.backlinkCounts
+      ?? buildInboundCountMap(state.container?.relations ?? []);
+    // v1 orphan detection: lids appearing in ANY relation. PR #192
+    // also routes through the same cache.
+    const connectedLids = filterIndexes?.connectedLids
+      ?? buildConnectedLidSet(state.container?.relations ?? []);
+    // v3 connectedness sets (Unified Orphan Detection, S4). Additive layer
+    // built alongside the v1 helpers — v1 `connectedLids` stays authoritative
+    // for `.pkc-orphan-marker` / `data-pkc-orphan`; v3 sets drive the new
+    // `data-pkc-connectedness` attribute and `.pkc-unconnected-marker`. See
+    // docs/development/unified-orphan-detection-v3-contract.md §2.3 / §4.4.
+    // PR #179: memoized — same container ⇒ cached graph traversal
+    // result reused. Falls through to a fresh build when sharedLinkIndex
+    // is missing because the per-render memo is keyed off container
+    // alone and is consistent with whichever linkIndex memo returned.
+    const connectednessSets: ConnectednessSets | null = state.container
+      ? memoizedBuildConnectednessSets(state.container, sharedLinkIndex ?? memoizedBuildLinkIndex(state.container))
+      : null;
 
-  if (hasActiveFilter || !state.container) {
-    // Flat mode when filters are active (tree doesn't make sense for search results).
-    // PR #179: memoize per-entry rows so a search-keystroke that
-    // narrows the visible list does not rebuild markup for rows it
-    // already produced. Cache invalidation hooks off container
-    // reference equality — see `getOrCreateMemoizedEntryItem`.
-    clearEntryRowMemoIfStale(state.container ?? null);
-    const query = state.searchQuery.trim();
-    // PR #182: split flat-loop into row-construction vs sub-location
-    // hit scanning. The former is dominated by memo hits + DOM
-    // append; the latter is the body-scan path that was the prime
-    // suspect in PR #179's residual cost.
-    const endFlatLoop = profileStart('render:sidebar:flat-loop');
-    let endSubLocation: (() => void) | null = null;
-    // #938 R9: sub-location 展開は先頭 N 行に限定(可視件数限定)。
-    // flat list は仮想化されていないため、hit を持つ entry が多い
-    // container では走査 + hit 行構築がキーストロークごとに件数比例で
-    // 積み上がる。ユーザーが目視するのはリスト先頭のみ — 上限以降の
-    // entry は行自体は従来どおり表示し、sub-location 展開だけ省略。
-    const sublocRowCap = searchSublocScanMaxRows();
-    let sublocRowsScanned = 0;
-    for (const entry of entries) {
-      list.appendChild(
-        getOrCreateMemoizedEntryItem(
-          entry,
-          state,
-          backlinkCounts,
-          connectedLids,
-          connectednessSets,
-        ),
-      );
-      // S-18 (A-4 FULL, 2026-04-14): when the user has typed a
-      // search query AND the entry has sub-location matches, expand
-      // them as clickable sidebar rows that scroll to the exact spot
-      // on click. Only runs for TEXT / TEXTLOG (the indexer returns
-      // [] for other archetypes). Limited to the top 5 matches per
-      // entry by the indexer's maxPerEntry default — keeps the list
-      // scannable on frequent terms.
-      if (query !== '' && sublocRowsScanned < sublocRowCap) {
-        sublocRowsScanned++;
-        if (!endSubLocation) endSubLocation = profileStart('render:sidebar:sublocation-scan');
-        const hits = findSubLocationHits(entry, query);
-        for (const hit of hits) {
-          list.appendChild(renderSubLocationItem(hit));
+    if (hasActiveFilter || !state.container) {
+      // Flat mode when filters are active (tree doesn't make sense for search results).
+      // PR #179: memoize per-entry rows so a search-keystroke that
+      // narrows the visible list does not rebuild markup for rows it
+      // already produced. Cache invalidation hooks off container
+      // reference equality — see `getOrCreateMemoizedEntryItem`.
+      clearEntryRowMemoIfStale(state.container ?? null);
+      const query = state.searchQuery.trim();
+      // PR #182: split flat-loop into row-construction vs sub-location
+      // hit scanning. The former is dominated by memo hits + DOM
+      // append; the latter is the body-scan path that was the prime
+      // suspect in PR #179's residual cost.
+      const endFlatLoop = profileStart('render:sidebar:flat-loop');
+      let endSubLocation: (() => void) | null = null;
+      // #938 R9: sub-location 展開は先頭 N 行に限定(可視件数限定)。
+      // flat list は仮想化されていないため、hit を持つ entry が多い
+      // container では走査 + hit 行構築がキーストロークごとに件数比例で
+      // 積み上がる。ユーザーが目視するのはリスト先頭のみ — 上限以降の
+      // entry は行自体は従来どおり表示し、sub-location 展開だけ省略。
+      const sublocRowCap = searchSublocScanMaxRows();
+      let sublocRowsScanned = 0;
+      for (const entry of entries) {
+        list.appendChild(
+          getOrCreateMemoizedEntryItem(
+            entry,
+            state,
+            backlinkCounts,
+            connectedLids,
+            connectednessSets,
+          ),
+        );
+        // S-18 (A-4 FULL, 2026-04-14): when the user has typed a
+        // search query AND the entry has sub-location matches, expand
+        // them as clickable sidebar rows that scroll to the exact spot
+        // on click. Only runs for TEXT / TEXTLOG (the indexer returns
+        // [] for other archetypes). Limited to the top 5 matches per
+        // entry by the indexer's maxPerEntry default — keeps the list
+        // scannable on frequent terms.
+        if (query !== '' && sublocRowsScanned < sublocRowCap) {
+          sublocRowsScanned++;
+          if (!endSubLocation) endSubLocation = profileStart('render:sidebar:sublocation-scan');
+          const hits = findSubLocationHits(entry, query);
+          for (const hit of hits) {
+            list.appendChild(renderSubLocationItem(hit));
+          }
         }
       }
+      endSubLocation?.();
+      endFlatLoop();
+    } else {
+      // Tree mode: build from structural relations
+      // #938 R9: tree 行 memo(flat 行の PR #179 memo と同 doctrine)。
+      clearTreeRowMemoIfStale(state.container);
+      const endBuildTree = profileStart('tree:buildTree');
+      const tree = buildTree(entries, state.container.relations);
+      endBuildTree();
+      // C-2 v1 manual mode: buildTree orders children by relation
+      // iteration order, not by `entries` position. Reorder each node's
+      // children so folder-child ordering reflects `entry_order`.
+      // PR-W24 v6(user 報告「左ペイン要素並び替え 1 階層しか sort 対応で
+      // バラバラ」):manual 以外の sort key で **各 level 内で sort** + folder
+      // を先頭に grouping(`sortTreeNodes` 再帰)。これにより manual の
+      // 章エントリ + ASSETS folder + 画像 attachment が hierarchical に整理。
+      const displayTree = state.sortKey === 'manual'
+        ? reorderTreeByEntries(tree, entries)
+        : sortTreeNodes(tree, state.sortKey, state.sortDirection);
+      const endTreeLoop = profileStart('render:sidebar:tree-loop');
+      for (const node of displayTree) {
+        renderTreeNode(node, list, state, backlinkCounts, connectedLids, connectednessSets);
+      }
+      endTreeLoop();
     }
-    endSubLocation?.();
-    endFlatLoop();
-  } else {
-    // Tree mode: build from structural relations
-    // #938 R9: tree 行 memo(flat 行の PR #179 memo と同 doctrine)。
-    clearTreeRowMemoIfStale(state.container);
-    const endBuildTree = profileStart('tree:buildTree');
-    const tree = buildTree(entries, state.container.relations);
-    endBuildTree();
-    // C-2 v1 manual mode: buildTree orders children by relation
-    // iteration order, not by `entries` position. Reorder each node's
-    // children so folder-child ordering reflects `entry_order`.
-    // PR-W24 v6(user 報告「左ペイン要素並び替え 1 階層しか sort 対応で
-    // バラバラ」):manual 以外の sort key で **各 level 内で sort** + folder
-    // を先頭に grouping(`sortTreeNodes` 再帰)。これにより manual の
-    // 章エントリ + ASSETS folder + 画像 attachment が hierarchical に整理。
-    const displayTree = state.sortKey === 'manual'
-      ? reorderTreeByEntries(tree, entries)
-      : sortTreeNodes(tree, state.sortKey, state.sortDirection);
-    const endTreeLoop = profileStart('render:sidebar:tree-loop');
-    for (const node of displayTree) {
-      renderTreeNode(node, list, state, backlinkCounts, connectedLids, connectednessSets);
-    }
-    endTreeLoop();
+    sidebar.appendChild(list);
   }
-  sidebar.appendChild(list);
 
   // Root drop zone: drop here to move entry to root level
   if (state.phase === 'ready' && !state.readonly) {
