@@ -3,7 +3,11 @@
  *
  * R6(#938)で一度既定 ON にしたが、#958(遅いストレージ × 巨大
  * container で split 形式の分散読みが boot をボトルネック化)で
- * **既定 OFF へ撤回**。本 spec は「既定のまま使う実ユーザーの経路」で:
+ * **既定 OFF へ撤回**し、2026-07-26 に**退役**した(旧ビルドが relations を
+ * 0 件と誤読するため。`tests/adapter/differential-save-retirement.test.ts`)。
+ * 退役後は flag 指定で ON にできないので、本 spec が観測する「inline 保存」は
+ * 既定の parity であると同時に **退役後の唯一の経路**の parity でもある。
+ * 本 spec は「既定のまま使う実ユーザーの経路」で:
  *   1. entry 作成 → 実 IndexedDB に **inline 単一 record** で保存される
  *      (split marker / `__entry__:` record が無い)こと
  *   2. reload 後にデータが完全に読めること

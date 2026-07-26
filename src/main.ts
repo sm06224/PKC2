@@ -1196,8 +1196,16 @@ async function boot(): Promise<void> {
         // M=15000 で 25,685 KB)。storage が既に inline 形式で、かつ
         // `mergeSystemEntries` が何も足していない(= 参照が保たれている)なら、
         // その保存は 1 バイトも storage を変えない純粋な無駄書きである。
-        // ⚠ `storedInline` が false のときは止めない ── その保存は
-        //   形式を戻す作業(flag OFF → inline へ書き戻る安全弁)である。
+        // 🔴 `storedInline` が false のときは**絶対に止めない** ── その保存は
+        //   無駄書きではなく **形式を戻す作業**である。2026-07-26 に
+        //   `persistence.lazy_entry_bodies`(#1027)と
+        //   `persistence.differential_save`(本 carve-out に依存)を退役させた
+        //   結果、**この 1 行が「退役した保存形式の user を次回起動で安全な
+        //   形式へ戻す」唯一の起点**になっている。ここを「container が同じなら
+        //   書かない」へ一般化すると、移行が永久に起きなくなり、旧ビルドから
+        //   relations が 0 件に見える storage が残り続ける。
+        //   pin: `tests/adapter/differential-save-retirement.test.ts`
+        //        (storedInline が split で false になることの assert 込み)
         if (storedInline && container === chosen.container) {
           notePersistedBaseline(container);
         }

@@ -114,8 +114,54 @@ const persistenceDebounceMs = defineFlag<number>('persistence.debounce_ms', 300,
  * 「この機能を知らない旧ビルド」で開くと entries が空に見える(データ
  * 自体は残っており、新ビルドで開き直せば戻る)。
  */
+/**
+ * 🔴 **退役(2026-07-26、user 指示「差分保存のユーザーが次回起動したら、
+ * 強制的にマイグレーションしてください」)**
+ *
+ * `retired: true` により **どの source から指定されても既定値(false)に落ち**、
+ * Inspector の一覧からも消える。既に split 形式で保存されている storage は
+ * **次回起動の保存で inline へ書き戻る**(下記「強制マイグレーションの経路」)。
+ *
+ * 退役の理由は性能ではなく **旧ビルドとの非互換**である:
+ *
+ * #1022 が relations と順序リストを core record から `__rel__:` / `__order__:`
+ * サイドカーへ出した。読み側は「サイドカーがあればそれが正本、無ければ core の
+ * inline」で両立させているが、**#1022 より前のビルドにはこの合流が無い**
+ * (`git show d5aef45^:src/adapter/platform/idb-store.ts` の load は core の
+ * `relations` をそのまま採る)。よって差分保存 ON の storage を古い
+ * `pkc2.html` で開くと **relations が 0 件に見え、その状態で保存すると実際に消える**。
+ * revisions も保存時の配列順を失う ── 配列順は同着 revision の tie-break として
+ * 効いており、後勝ち / 先勝ちの逆向きの消費者が 2 つあるため順序の喪失は観測できる。
+ * PKC2 は単一 HTML 製品で、user が旧 `pkc2.html` を手元に残す運用が実在する。
+ *
+ * ⚠ **代償を明記する。** 差分保存 ON は 1 編集 11 KB、OFF は 25,688 KB
+ * (N=5000 / M=15000、put 計器。`docs/development/save-write-volume-2026-07-26.md`)。
+ * 退役はこの差を捨てる ── 書込量は増える。それでも退役を選ぶのは、
+ * ① 既定 OFF・マニュアルでも非推奨で母数が小さい ② #958 で「boot が 5.5〜6.0 倍」を
+ * 理由に既定から撤回済み ③ 失われるのが**復旧不能なデータ**である、の 3 点による。
+ *
+ * ## 強制マイグレーションの経路(この 4 つが揃って成立する)
+ *
+ *   1. 本 flag が `retired` = 保存の分岐が必ず `store.save()`(inline)を選ぶ
+ *   2. `CONTAINER_LOADED` が `SAVE_TRIGGERS` の一員 = 起動しただけで保存が走る
+ *   3. `main.ts` は `storedInline === false` のとき `notePersistedBaseline()` を
+ *      **呼ばない** = #1024 の「変わっていないなら書かない」最適化に潰されない
+ *   4. `save()` が `__entry__:` / `__rev__:` / `__rel__:` / `__order__:` を掃除する
+ *      = サイドカーが残って古い正本として読まれ続けることがない
+ *
+ * ⚠ **この 4 つはどれも「性能最適化」で消えうる。** 実際 #1024 は 3 の carve-out を
+ * 忘れれば戻し道ごと殺すところだった。`tests/adapter/differential-save-retirement.test.ts`
+ * が 4 つとも pin している ── 落ちたら最適化ではなく退行である。
+ *
+ * ⚠ **定義を消してはならない。** getter が生きていないと、既に有効化された環境が
+ * 「既定値へ戻る = 安全な形式へ書き戻る」経路ごと失われる。`saveDiff()` の実装も
+ * 残す(FS backend の委譲元であり、退役は user 導線の封鎖であって実装の削除ではない)。
+ */
 const differentialSaveEnabled = defineFlag<boolean>('persistence.differential_save', false, {
   category: 'perf',
+  retired: true,
+  retiredReason:
+    '2026-07-26 user 指示により退役。#1022 のサイドカー分離で旧ビルドが relations を 0 件と誤読するため、次回起動で inline へ強制マイグレーションする',
   description:
     '差分保存(entry/revision 単位の split 形式、既定 OFF)。書込は変更分 O(1) になるが、読出(起動)が数千 record の分散読みになり、遅いストレージ × 大きな container では起動が極端に遅くなる(#958)。書込頻度が課題で起動速度に余裕がある環境のみ ON 推奨',
   tier: 0,
@@ -140,6 +186,19 @@ export interface PersistenceOptions {
    * `mountPersistence` for the resolution logic.
    */
   unloadTarget?: EventTarget | null;
+  /**
+   * 差分保存経路を使うかの判定。既定 = flag(退役済みのため常に false)。
+   *
+   * `persistence.differential_save` の退役で本番の分岐は `save()` に固定された
+   * が、`saveDiff()` の実装自体は残っている(FS backend の委譲元)。その機構を
+   * test から動かすための注入口 ── `createContainerStore(adapter,
+   * { lazyEntryBodies })` と同じ作法(退役 flag は source 経由では立たないので、
+   * flag source を差し替える形の test は退役と同時に機能しなくなる)。
+   *
+   * ⚠ **production から渡してはならない。** 渡した瞬間に「次回起動で強制
+   * マイグレーション」の前提 1 が崩れる。
+   */
+  differentialSave?: () => boolean;
 }
 
 /**
@@ -193,6 +252,7 @@ export function mountPersistence(
   options: PersistenceOptions,
 ): PersistenceHandle {
   const { store, debounceMs: debounceOverride, onError } = options;
+  const useDifferentialSave = options.differentialSave ?? differentialSaveEnabled;
   const unloadTarget = options.unloadTarget === undefined
     ? (typeof window !== 'undefined' ? window : null)
     : options.unloadTarget;
@@ -290,7 +350,7 @@ export function mountPersistence(
     const purgeThisCycle = pendingPurge;
     pendingPurge = false;
     try {
-      if (differentialSaveEnabled()) {
+      if (useDifferentialSave()) {
         const prev =
           diffBase && diffBase.meta.container_id === container.meta.container_id
             ? diffBase
