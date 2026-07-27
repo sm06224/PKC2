@@ -246,6 +246,51 @@ main 腕 = origin/main 98a7f8b5 のビルド(bundle 5,995KB)/ dev 腕 = P2 3b519
   モデル常駐を丸ごと消す** ── そこで boot 軸の逆転を測り直す
 - 移行 8 秒は一度きり(idempotent)。P5 の移行ゲートでは進捗表示が要る
 
+### 7-d. P4 設計 addendum ── revisions の COUNT + 要求時読み(実装前・user 裁定待ち)
+
+P4 は P2/P3 と違い **storage 層に閉じない**(reducer / renderer / export / 拡張 host に
+跨る)ため、doc-first で設計を固定してから実装する。
+
+**目的(§7-c の実測と 1:1)**: ① idle 常駐のデータ比例分(revisions の heap 常駐。
+P1 fixture で +0.31GB)を消す ② boot の revisions 全行転送(§7-c の 2 回目 ready
+1.16s → 3.07s の主因)を消す。
+
+**機構(sqlite flag ON のときだけ。JSON 経路は一切触らない)**:
+
+1. **store に 2 つの読み口を足す**(ContainerStore の追加メソッド、旧実装は
+   全量配列から導出する互換実装を持つ):
+   - `loadRevisionCounts(cid): Promise<Map<entry_lid, number>>` ── sqlite は
+     `SELECT entry_lid, COUNT(*) GROUP BY` 1 発
+   - `loadRevisionsFor(cid, entry_lid): Promise<Revision[]>` ── 選択 entry の分だけ行読み
+2. **boot は revisions を積まない**: sqlite 経路の `loadDefaultMetaShallow` が
+   `revisions: []` + counts 索引を返す。`container.revisions` は**常駐 working set**
+   になる(本文の body-working-set と同じ型)
+3. **カウント消費者**(sidebar バッジ / guardrails / 拡張 projection)は
+   `revisionCountIndex`(参照 memo)の代わりに counts 索引を読む。`addRevision`
+   (編集時の追記)は in-memory 追記 + 索引 increment ── 追記は従来どおり
+   reducer 純関数のまま
+4. **履歴 pane は選択時 hydrate**: SELECT_ENTRY → `loadRevisionsFor` → 常駐 set へ
+   merge → 再 render(body-working-set の確立パターン。placeholder 表示が変わるので
+   **visual parity test 1 件必須** ── PR 運用 4)
+5. **export / import / 拡張の全量面**: export 前に全 revisions を hydrate する
+   (asset の `hydrateAllAssets` と同じ seam。**#1023 の教訓 = export が部分 view を
+   直列化してバックアップから欠けさせる事故を、ここで構造的に塞ぐ**)
+6. **安全性(S1〜S4 級の轍を踏まない)**:
+   - 参照 diff は **baseline に無い行の delete を出さない**(diffKeyed の削除判定は
+     「baseline にあって next に無い key」だけ)── 常駐 set が部分でも、未読の行が
+     消えることは構造的に無い。**これを test で pin する**(部分 revisions で save →
+     未読行が sqlite に残ることを assert)
+   - revisions を**削除**する経路が現存するか実装時に監査し、あれば store の明示
+     削除 op(`deleteRevisionsFor`)経由に限定する(in-memory filter だけだと
+     未読分が sqlite に残る = ghost)
+7. **zstd グループ圧縮(§5)は P4b に分離**: 本 addendum の範囲外(メモリ勝ちは
+   要求時読みが取り、zstd はディスク勝ち)。custom SQLite を待たず app 層 codec で
+   snapshot 列に適用する案のまま、P4a 着地後に別途設計
+
+**受け入れ計測(§7-c と同一計器・同一 fixture)**: 2 回目 boot ready と settle RSS の
+逆転を確認(予測: 行転送消滅で ready は main 同等以下、settle は revisions 常駐分だけ
+main より下がる)。
+
 ## 8. 未確定(裁定・調査が要るもの)
 
 1. ✅ **実機確認済み(2026-07-27、tests/bench/sqlite-spike.mjs)**:
