@@ -29,6 +29,10 @@ const argOf = (n, d) => {
 };
 const FIXTURE = argOf('fixture', '');
 const FLAGQ = argOf('flag', '') === '1' ? '?pkc-flag=storage.sqlite_backend%3Dtrue' : '';
+// 第 4 腕(2026-07-27 user 提起「使った後に破棄するようにできないか」):
+// mermaid / chart を実際に描画させてから dump し、「使用後の常駐」= 遅延評価+
+// 破棄 lifecycle 設計の賞金を数字にする。
+const USE_FEATURES = argOf('use-features', '') === '1';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 
 const srv = await new Promise((r) => {
@@ -71,6 +75,38 @@ if (FIXTURE) {
   await page.goto(`${srv.origin}/dist/pkc2.html${FLAGQ}`);
   await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 300000 });
   if (FLAGQ) console.log(`   storage: ${JSON.stringify(await page.evaluate('window.__pkc2StorageInfo'))}`);
+}
+if (USE_FEATURES) {
+  // mermaid + chart の fence を持つ entry を UI で作って描画させる
+  // (dynamic import が実際に走る唯一の公道)。
+  // chart.js は markdown fence ではなく spreadsheet presenter 経由なので、
+  // ここでは最大 dep の mermaid だけを行使する(賞金の下限を測る)。
+  const body = [
+    '```mermaid',
+    'graph TD; A[開始]-->B{分岐}; B-->C[終了]; B-->D[別経路];',
+    '```',
+  ].join('\n');
+  await page.locator('[data-pkc-action="create-entry"]').first().click();
+  await page.waitForFunction(`document.querySelector('#pkc-root')?.getAttribute('data-pkc-phase') === 'editing'`, null, { timeout: 20000 });
+  await page.locator('[data-pkc-field="title"]').first().fill('feature-use probe');
+  await page.locator('[data-pkc-field="body"]').first().fill(body);
+  await page.locator('[data-pkc-action="commit-edit"]').first().click();
+  await page.waitForFunction(`document.querySelector('#pkc-root')?.getAttribute('data-pkc-phase') === 'ready'`, null, { timeout: 20000 });
+  // 描画完了を待つ(placeholder が SVG へ置換される = lazy import('mermaid') 完了)
+  await page.waitForFunction(
+    `(() => {
+      const ph = document.querySelectorAll('.pkc-mermaid-placeholder');
+      if (ph.length === 0) return false; // まだ描画前 or 本文が出ていない
+      return Array.from(ph).some((p) => p.querySelector('svg'));
+    })() || (document.querySelectorAll('.pkc-mermaid-placeholder').length === 0 && document.querySelectorAll('svg').length > 0)`,
+    null,
+    { timeout: 30000 },
+  ).catch(() => undefined);
+  const rendered = await page.evaluate(
+    `({ ph: document.querySelectorAll('.pkc-mermaid-placeholder').length, svg: document.querySelectorAll('svg').length })`,
+  );
+  console.log(`   使用した機能: mermaid placeholder=${rendered.ph} / svg 総数=${rendered.svg}`);
+  if (rendered.svg === 0) { console.log('⛔ mermaid が描画されていない ── この腕は無効'); }
 }
 // 定常化を待つ(GC / lazy 初期化が落ち着く窓 ── boot-rss 実測で settle は ~30s)
 await page.waitForTimeout(35000);

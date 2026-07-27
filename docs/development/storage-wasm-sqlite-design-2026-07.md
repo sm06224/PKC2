@@ -350,8 +350,35 @@ DOM + compositor)。**storage 形式ではもう削れない領域**に入った
 2. sqlite ファイルの export(= .sqlite そのままの持ち出し)を製品機能にするか
 3. FTS5 / sqlite-vec は本 doc の範囲外(「機能を足さない」に抵触するため、
    拡張点だけ確保して凍結)
-4. **空アプリで renderer 356 MB(JS heap 18 MB)の内訳** ── bundle 6MB の
-   コンパイル済みコードと boot 時展開の寄与を分解する(sqlite とは独立の調査)
+4. ✅ **実測済み(2026-07-27、tests/bench/renderer-memory-breakdown.mjs ──
+   memory-infra detailed dump、2 回目 boot + 35s settle)**。
+   user 提起「まだ 1GB は大きく見える。wasm で畳める部分を畳む /
+   使った後に時間で破棄する案も知りたい」への回答:
+
+   | allocator | 空アプリ | 292MB fixture(JSON) | 292MB fixture(sqlite) |
+   |---|---|---|---|
+   | **計上合計(renderer)** | **69.9 MB** | 204.1 MB | **146.6 MB** |
+   | v8 | 7.0 | **98.0** | **15.3**(main 10.3 + worker 4.6) |
+   | partition_alloc + blink_gc(DOM 系) | 16.1 | 43.0 | 59.3 |
+   | malloc | 14.1 | 29.5 | 38.3(worker wasm 込み) |
+   | parkable_strings(script source) | 20.6 | 20.6 | 20.6 |
+
+   結論:
+   - **「renderer 356MB」の大半はアプリの割当ではない**(計上合計は空で 70MB。
+     残りは chromium 自体のバイナリ写像等 ── VmRSS 計器は共有ページを
+     二重計上する。アプリから削れない床)
+   - **v8 のコード常駐は犯人ではない**(空 7MB)。「wasm で畳む」「重量 dep の
+     遅延評価 + 時間破棄」の賞金を実測した: **mermaid を実際に描画しても
+     GC 後ヒープは増えない**(36.4 → 25.2MB、30s idle 後 25.1MB ── V8 の
+     遅延コンパイル + bytecode flushing で既にほぼ無料)。
+     ⇒ dep 向けの破棄 lifecycle は**いまは作らない**(方向の否定ではない ──
+     export 生成器(docx/pptx/exceljs)を触る際は worker+terminate 化が正道。
+     sqlite worker の idle 時 terminate → 再起動も同じ型で、賞金 ~20-30MB)
+   - **アプリ側で残る最大の芝**: DOM 系(partition_alloc + blink_gc)が
+     3000 entries で 16 → 59MB。**sidebar の DOM 仮想化**が本命
+     (編集ごとの 5000 行再構築問題の恒久版でもある)
+   - sqlite 経路の追加 malloc(worker の wasm/page cache ~10-20MB)は
+     PRAGMA cache_size / idle 時 release で削れる(小、積み上げ先あり)
 
 ## 9. 参照
 
