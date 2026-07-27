@@ -688,6 +688,9 @@ async function boot(): Promise<void> {
     sqlite: sqlite === true,
     migrated,
   };
+  // 実ブラウザ harness(tests/bench/sqlite-roundtrip.mjs)が store 契約を
+  // 直接検証するためのデバッグ導線。製品 UI からは参照しない。
+  (window as unknown as Record<string, unknown>).__pkc2StoreDebug = store;
   // #940: FSA 選択中に permission が prompt に落ちて IDB へ fallback した
   // boot では、silent に「新規コンテナ状態」で開いたように見せず、再接続
   // バナーを常駐表示する。ボタン click = user gesture で requestPermission

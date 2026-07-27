@@ -117,6 +117,37 @@ check('sqlite backend 復帰', info && info.sqlite === true);
 titles = await sidebarTitles();
 check('SQLITE-EDIT-2 が戻る', has(titles, 'SQLITE-EDIT-2'));
 
+console.log('■ F. P3: asset(Blob record + meta 行)の store 契約を実機で往復');
+const p3 = await page.evaluate(async () => {
+  const store = window.__pkc2StoreDebug;
+  const cid = 'p3check';
+  await store.saveAsset(cid, 'a.bin', 'QUJDRA=='); // "ABCD"
+  const b64 = await store.loadAsset(cid, 'a.bin');
+  const blob = await store.loadAssetBlob(cid, 'a.bin');
+  await store.saveAssetMeta(cid, { 'a.bin': { size: 4, hash: '0123456789abcdef' } });
+  const meta = await store.loadAssetMeta(cid);
+  await store.saveAssetMeta(cid, {});
+  const metaAfterClear = await store.loadAssetMeta(cid);
+  return {
+    b64,
+    isBlob: blob instanceof Blob,
+    blobSize: blob ? blob.size : -1,
+    meta,
+    metaAfterClear,
+  };
+});
+check('base64 → Blob record → base64 の両読み往復', p3.b64 === 'QUJDRA==');
+check('loadAssetBlob が Blob(4 bytes)を返す', p3.isBlob && p3.blobSize === 4, JSON.stringify({ isBlob: p3.isBlob, size: p3.blobSize }));
+check('asset meta が sqlite 行で往復する', JSON.stringify(p3.meta) === JSON.stringify({ 'a.bin': { size: 4, hash: '0123456789abcdef' } }), JSON.stringify(p3.meta));
+check('行 0 件 = null(未索引と同型)', p3.metaAfterClear === null);
+// meta 行が reload を跨いで残るか(worker/OPFS の実永続)
+await page.evaluate(async () => {
+  await window.__pkc2StoreDebug.saveAssetMeta('p3check', { 'a.bin': { size: 4, hash: 'feedfacefeedface' } });
+});
+info = await boot(true);
+const metaAfterReload = await page.evaluate(() => window.__pkc2StoreDebug.loadAssetMeta('p3check'));
+check('meta 行が reload を跨いで永続する', JSON.stringify(metaAfterReload) === JSON.stringify({ 'a.bin': { size: 4, hash: 'feedfacefeedface' } }), JSON.stringify(metaAfterReload));
+
 if (pageErrors.length) {
   console.log(`⚠ pageerror ${pageErrors.length} 件:`);
   for (const e of pageErrors.slice(0, 5)) console.log(`   ${e}`);

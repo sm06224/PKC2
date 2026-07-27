@@ -27,7 +27,11 @@ import {
   type RevisionRow,
   type RowOp,
 } from '../../src/adapter/platform/storage/sqlite/sqlite-schema';
-import type { SqliteRequestBody, SqliteRpc } from '../../src/adapter/platform/storage/sqlite/sqlite-rpc';
+import type {
+  AssetMetaRow,
+  SqliteRequestBody,
+  SqliteRpc,
+} from '../../src/adapter/platform/storage/sqlite/sqlite-rpc';
 
 /** worker の in-memory 代役: RowOp / query を Map 上で忠実に適用する。 */
 function createFakeRpc(): SqliteRpc & { calls: SqliteRequestBody[] } {
@@ -36,6 +40,7 @@ function createFakeRpc(): SqliteRpc & { calls: SqliteRequestBody[] } {
   const revisions = new Map<string, Map<string, RevisionRow>>();
   const relations = new Map<string, Map<string, RelationRow>>();
   const kv = new Map<string, string>();
+  const assetMeta = new Map<string, AssetMetaRow[]>();
   const calls: SqliteRequestBody[] = [];
 
   const tableFor = <T>(m: Map<string, Map<string, T>>, cid: string): Map<string, T> => {
@@ -136,6 +141,7 @@ function createFakeRpc(): SqliteRpc & { calls: SqliteRequestBody[] } {
           entries.delete(req.cid);
           revisions.delete(req.cid);
           relations.delete(req.cid);
+          assetMeta.delete(req.cid);
           if (kv.get('__default__') === req.cid) kv.delete('__default__');
           return done(undefined);
         case 'clearAll':
@@ -143,6 +149,7 @@ function createFakeRpc(): SqliteRpc & { calls: SqliteRequestBody[] } {
           entries.clear();
           revisions.clear();
           relations.clear();
+          assetMeta.clear();
           kv.clear();
           return done(undefined);
         case 'getDefaultCid':
@@ -164,6 +171,11 @@ function createFakeRpc(): SqliteRpc & { calls: SqliteRequestBody[] } {
               .filter(([k]) => k.startsWith(req.prefix))
               .map(([k, v]) => ({ k, v })),
           );
+        case 'assetMetaGet':
+          return done(assetMeta.get(req.cid) ?? []);
+        case 'assetMetaSet':
+          assetMeta.set(req.cid, req.rows.map((r) => ({ ...r })));
+          return done(undefined);
         default:
           return Promise.reject(new Error(`fake rpc: unknown op`));
       }
@@ -334,6 +346,33 @@ describe('SqliteContainerStore', () => {
     expect(list.map((c) => c.title)).toEqual(['Alpha', 'beta']);
   });
 
+  it('P3: asset meta は sqlite 行で往復し、行 0 件は null(未索引)', async () => {
+    expect(await store.loadAssetMeta('c1')).toBeNull();
+    const index = {
+      'a.png': { size: 3, hash: 'aaaa000000000000' },
+      'b.png': { size: 5, hash: 'bbbb000000000000' },
+    };
+    await store.saveAssetMeta('c1', index);
+    expect(await store.loadAssetMeta('c1')).toEqual(index);
+    // 全消し保存 → 行 0 件 = null に戻る(空 index の焼き付きはしない)
+    await store.saveAssetMeta('c1', {});
+    expect(await store.loadAssetMeta('c1')).toBeNull();
+    // inner の record は触っていない(sqlite が正本)
+    expect(await inner.loadAssetMeta('c1')).toBeNull();
+  });
+
+  it('P3: asset bytes は Blob record として書かれ、base64 の読み互換が保たれる', async () => {
+    const c = { ...makeContainer(), assets: { 'a.png': 'AAAA' } };
+    await store.save(c);
+    const blob = await inner.loadAssetBlob('c1', 'a.png');
+    expect(blob).toBeInstanceOf(Blob);
+    expect(await store.loadAsset('c1', 'a.png')).toBe('AAAA'); // 両読み互換
+    // 明示 saveAsset も Blob 経由
+    await store.saveAsset('c1', 'b.png', 'BBBB');
+    expect(await inner.loadAssetBlob('c1', 'b.png')).toBeInstanceOf(Blob);
+    expect(await store.loadAsset('c1', 'b.png')).toBe('BBBB');
+  });
+
   it('delete は sqlite と inner の両方から消す(明示操作)', async () => {
     const c = { ...makeContainer(), assets: { 'a.png': 'AAAA' } };
     await inner.save(c); // 旧形式の record を残しておく
@@ -360,6 +399,8 @@ describe('migrateFromInnerIfEmpty(IDB → sqlite、非破壊)', () => {
       updated_at: '2026-07-01T00:00:00Z',
     });
     await inner.setActiveWorkspaceId('w1');
+    // P3: 既存の asset meta 索引は移行時に行へ写る
+    await inner.saveAssetMeta('c1', { 'a.png': { size: 3, hash: 'aaaa000000000000' } });
 
     const rpc = createFakeRpc();
     const store = createSqliteContainerStore(inner, rpc);
@@ -371,6 +412,9 @@ describe('migrateFromInnerIfEmpty(IDB → sqlite、非破壊)', () => {
     expect((await store.loadDefaultShallow())?.meta.container_id).toBe('c1');
     expect((await store.listWorkspaces()).map((w) => w.id)).toEqual(['w1']);
     expect(await store.getActiveWorkspaceId()).toBe('w1');
+    expect(await store.loadAssetMeta('c1')).toEqual({
+      'a.png': { size: 3, hash: 'aaaa000000000000' },
+    });
 
     // inner(旧 IDB 相当)は無傷 = 旧ビルドの戻り先が生きている
     expect((await inner.loadDefault())?.meta.container_id).toBe('c1');

@@ -21,14 +21,14 @@
  */
 import type { Container } from '../../../../core/model/container';
 import type { AssetMetaIndex } from '../../../../features/asset/asset-meta';
-import type { ContainerStore, ContainerSummary, Workspace } from '../../idb-store';
+import { base64ToBlob, type ContainerStore, type ContainerSummary, type Workspace } from '../../idb-store';
 import {
   containerToRows,
   diffContainerToOps,
   rowsToContainer,
   type ContainerRows,
 } from './sqlite-schema';
-import type { SqliteRpc } from './sqlite-rpc';
+import type { AssetMetaRow, SqliteRpc } from './sqlite-rpc';
 
 const ACTIVE_WORKSPACE_KEY = '__active_workspace__';
 const WORKSPACE_PREFIX = 'workspace:';
@@ -65,13 +65,18 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
   /**
    * assets は additive-only(idb-store と同じ B5 不変条件): container.assets に
    * ある key を書くだけで、**絶対に削除しない**。既に書いた key は skip。
+   *
+   * P3(#1042 吸収): bytes は **Blob record** として書く(base64 → Blob 変換は
+   * 書込時の 1 回だけ。以後の読みは `loadAssetBlob` 経由で heap ±0)。
+   * 読み側互換は inner の両読みが保証(loadAsset は Blob record を base64 へ、
+   * loadAssetBlob は base64 record を Blob へ変換して返す ── #967)。
    */
   async function writeAssetsAdditive(container: Container): Promise<void> {
     const cid = container.meta.container_id;
     const persisted = persistedSetFor(cid);
     for (const [key, data] of Object.entries(container.assets)) {
       if (persisted.has(key)) continue;
-      await inner.saveAsset(cid, key, data);
+      await inner.saveAssetBlob(cid, key, base64ToBlob(data));
       persisted.add(key);
     }
   }
@@ -270,7 +275,8 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
     // ── asset 面は inner に委譲(bytes は Blob/asset storage が本業 ── §2)──
 
     async saveAsset(cid: string, key: string, data: string): Promise<void> {
-      await inner.saveAsset(cid, key, data);
+      // P3: 明示の base64 書込も Blob record へ(読み側は inner の両読みで互換)。
+      await inner.saveAssetBlob(cid, key, base64ToBlob(data));
       persistedSetFor(cid).add(key);
     },
 
@@ -296,12 +302,25 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
       return inner.loadAssetBlob(cid, key);
     },
 
-    loadAssetMeta(cid: string): Promise<AssetMetaIndex | null> {
-      return inner.loadAssetMeta(cid);
+    // P3: asset meta 索引は sqlite の assets 表(行)が正本。
+    // 行 0 件は「未索引」= null(IDB 時代の「record なし」と同型 ── caller の
+    // reconcile は universe が空なら何も書かないので、asset 0 件の container で
+    // 走査ループが再発することはない)。
+    async loadAssetMeta(cid: string): Promise<AssetMetaIndex | null> {
+      const rows = await rpc.call<AssetMetaRow[]>({ op: 'assetMetaGet', cid });
+      if (rows.length === 0) return null;
+      const index: AssetMetaIndex = {};
+      for (const r of rows) index[r.key] = { size: r.size, hash: r.hash };
+      return index;
     },
 
-    saveAssetMeta(cid: string, index: AssetMetaIndex): Promise<void> {
-      return inner.saveAssetMeta(cid, index);
+    async saveAssetMeta(cid: string, index: AssetMetaIndex): Promise<void> {
+      const rows: AssetMetaRow[] = Object.entries(index).map(([key, m]) => ({
+        key,
+        size: m.size,
+        hash: m.hash,
+      }));
+      await rpc.call({ op: 'assetMetaSet', cid, rows });
     },
 
     async purgeAssetsExcept(cid: string, keep: Iterable<string>): Promise<string[]> {
@@ -334,6 +353,10 @@ export async function migrateFromInnerIfEmpty(
     // loadShallow: assets を heap に載せない(500MB 級で必須)。
     const container = await inner.loadShallow(s.id);
     if (container) await store.save(container);
+    // P3: 既存の asset meta 索引(`__assetmeta__:` record)があれば行へ写す。
+    // 無ければ何もしない ── 既存 reconcile が 1 回だけ走査して行を書く。
+    const meta = await inner.loadAssetMeta(s.id);
+    if (meta) await store.saveAssetMeta(s.id, meta);
   }
   // save() は最後に保存した cid へ default を動かすので、正しい既定へ戻す。
   const def = await inner.loadDefaultShallow();

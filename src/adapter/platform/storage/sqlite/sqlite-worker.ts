@@ -31,6 +31,7 @@ import {
   type RowOp,
 } from './sqlite-schema';
 import type {
+  AssetMetaRow,
   SqliteInitResult,
   SqlitePersistenceProbeResult,
   SqliteProbeResult,
@@ -380,6 +381,20 @@ function handleClearAll(): void {
   });
 }
 
+/** P3: asset meta 索引の全置換(cid 単位・1 transaction)。数百行の軽量書込。 */
+function handleAssetMetaSet(cid: string, rows: AssetMetaRow[]): void {
+  const d = mustDb();
+  const stmt = d.prepare(`INSERT INTO assets (cid,key,mime,size,hash) VALUES (?,?,NULL,?,?)`);
+  try {
+    inTransaction(d, () => {
+      d.exec({ sql: `DELETE FROM assets WHERE cid=?`, bind: [cid] });
+      for (const r of rows) run(stmt, [cid, r.key, r.size, r.hash]);
+    });
+  } finally {
+    stmt.finalize();
+  }
+}
+
 function kvGet(k: string): string | null {
   const rows = selectRows<{ v: string }>(mustDb(), `SELECT v FROM kv WHERE cid='' AND k=?`, [k]);
   return rows[0]?.v ?? null;
@@ -502,6 +517,15 @@ async function handle(req: SqliteRequest): Promise<unknown> {
       return undefined;
     case 'kvDelete':
       mustDb().exec({ sql: `DELETE FROM kv WHERE cid='' AND k=?`, bind: [req.k] });
+      return undefined;
+    case 'assetMetaGet':
+      return selectRows<AssetMetaRow>(
+        mustDb(),
+        `SELECT key, size, hash FROM assets WHERE cid=?`,
+        [req.cid],
+      );
+    case 'assetMetaSet':
+      handleAssetMetaSet(req.cid, req.rows);
       return undefined;
     case 'kvList': {
       // prefix range scan(LIKE の escape 問題を避ける)。'￿' 番兵は

@@ -27,7 +27,17 @@ export type SqliteRequestBody =
   | { op: 'kvGet'; k: string }
   | { op: 'kvSet'; k: string; v: string }
   | { op: 'kvDelete'; k: string }
-  | { op: 'kvList'; prefix: string };
+  | { op: 'kvList'; prefix: string }
+  // P3: asset meta 索引を assets 表の行として読み書き(bytes は持たない)。
+  | { op: 'assetMetaGet'; cid: string }
+  | { op: 'assetMetaSet'; cid: string; rows: AssetMetaRow[] };
+
+/** assets 表の 1 行(P3)。bytes は Blob storage 側 ── ここは meta のみ。 */
+export interface AssetMetaRow {
+  key: string;
+  size: number;
+  hash: string;
+}
 
 export type SqliteRequest = SqliteRequestBody & { id: number };
 

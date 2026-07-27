@@ -162,7 +162,7 @@ lazy_entry_bodies(S1〜S4)・#1022 サイドカーの事故と同じ轍を踏ま
 | P0 | 本 doc の裁定 | — |
 | P1 | ✅ **継続使用の計測ハーネス**(編集セッション N 分の RSS 時系列。boot 窓だけで判定しない ── user 指示⑤)+ 現行のベースライン取得 → **取得済み(下表)** | — |
 | P2 | ✅ **実装済み(2026-07-27)** sqlite3.wasm 静的 bundle + worker 常駐 + `SqliteContainerStore`(ContainerStore の別実装)。flag `storage.sqlite_backend` opt-in で read/write。**この時点から新規データは JSON 内部表現を持たない**。実機 pin: `tests/bench/sqlite-roundtrip.mjs`(移行→編集→再起動→OFF 併存→復帰の 5 局面) | — |
-| P3 | assets: sqlite 行(meta)+ Blob record(bytes) | #1042 |
+| P3 | ✅ **実装済み(2026-07-27)** assets: meta は sqlite `assets` 表の行(`__assetmeta__:` record を置換、行 0 件 = 未索引 null)/ bytes は **Blob record**(書込時に base64→Blob 変換 1 回、読みは heap ±0。読み互換は #967 の両読み)。移行時に既存 meta 索引を行へ seed。実機 pin: roundtrip Phase F(reload 跨ぎの行永続まで) | #1042 |
 | P4 | revisions: COUNT / 要求時読み + zstd グループ圧縮 | #1041 |
 | P5 | 既定化 + 移行ゲート(バックアップ必須・旧データ非破壊) | — |
 
