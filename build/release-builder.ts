@@ -35,6 +35,38 @@ const FAVICON_CANDIDATES: { path: string; mime: string }[] = [
 ];
 const APPLE_TOUCH_ICON = resolve(ROOT, 'build', 'apple-touch-icon.png');
 
+/**
+ * ICO(複数 PNG のコンテナ)から**最大サイズの PNG を 1 枚**取り出す。
+ *
+ * 単一 HTML では画像を data URL で埋めるしかないので、同じ絵を 2 か所に
+ * 入れると DOM 属性文字列としてそのぶん常駐する。manifest には 1 枚あれば
+ * 足りるため、ここで最大の 1 エントリだけ抜く。
+ * エントリが PNG でない(BMP 形式の)ICO では null を返し、呼び元は
+ * 従来どおり ICO 全体を使う。
+ */
+function extractLargestIcoPng(
+  buf: Buffer,
+): { png: Buffer; width: number; height: number } | null {
+  if (buf.length < 6 || buf.readUInt16LE(0) !== 0 || buf.readUInt16LE(2) !== 1) return null;
+  const count = buf.readUInt16LE(4);
+  let best: { png: Buffer; width: number; height: number } | null = null;
+  for (let i = 0; i < count; i++) {
+    const o = 6 + i * 16;
+    if (o + 16 > buf.length) break;
+    const width = buf[o] === 0 ? 256 : (buf[o] as number);
+    const height = buf[o + 1] === 0 ? 256 : (buf[o + 1] as number);
+    const size = buf.readUInt32LE(o + 8);
+    const off = buf.readUInt32LE(o + 12);
+    if (off + size > buf.length) continue;
+    // PNG signature(BMP エントリはここで弾く)
+    if (!(buf[off] === 0x89 && buf[off + 1] === 0x50)) continue;
+    if (!best || width > best.width) {
+      best = { png: buf.subarray(off, off + size), width, height };
+    }
+  }
+  return best;
+}
+
 // Source-side constants (mirrored from src/runtime/release-meta.ts)
 const APP_ID = 'pkc2';
 const SCHEMA_VERSION = 1;
@@ -143,14 +175,32 @@ function main(): void {
   // origin が serving context 依存(file:// / localhost / HTTPS)のため origin
   // trial token は同梱せず、user が Chrome flag `chrome://flags/#install-element`
   // を enable する想定。
+  //
+  // 🔴 **manifest の icon に favicon 全体を入れない**(2026-07-27 常駐棚卸し)。
+  // 従来は `<link rel=icon>` の data URL(ICO 全体)を manifest JSON に**再掲**し、
+  // その JSON をさらに base64 化していたため、153KB の ICO が
+  //   link: 204,654 chars + manifest: 273,583 chars = **478,237 chars**
+  // の DOM 属性文字列として常駐していた(同じ画像が 2 部、片方は二重 base64)。
+  // ICO は 6 サイズの PNG を束ねたコンテナなので、**manifest には 1 枚だけ
+  // 取り出して入れる**(PWA の installability は 144px 以上の icon が要件 ──
+  // 128px では足りないので 256px を採る。それでも全体より小さい)。
   let firstFaviconDataUrl: string | null = null;
   let firstFaviconMime: string | null = null;
   for (const cand of FAVICON_CANDIDATES) {
     if (!existsSync(cand.path)) continue;
     const buf = readFileSync(cand.path);
-    const b64 = buf.toString('base64');
-    firstFaviconDataUrl = `data:${cand.mime};base64,${b64}`;
-    firstFaviconMime = cand.mime;
+    const single = cand.mime === 'image/x-icon' ? extractLargestIcoPng(buf) : null;
+    if (single) {
+      firstFaviconDataUrl = `data:image/png;base64,${single.png.toString('base64')}`;
+      firstFaviconMime = 'image/png';
+      console.log(
+        `  manifest icon: ICO から ${single.width}x${single.height} PNG を抽出`
+        + ` (${(buf.length / 1024).toFixed(1)} KB → ${(single.png.length / 1024).toFixed(1)} KB)`,
+      );
+    } else {
+      firstFaviconDataUrl = `data:${cand.mime};base64,${buf.toString('base64')}`;
+      firstFaviconMime = cand.mime;
+    }
     break;
   }
   const manifest: Record<string, unknown> = {
