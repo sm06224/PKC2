@@ -193,6 +193,59 @@ fixture: entries 3000(5.2MB)+ revisions 75,000(299.7MB)+ assets 400 × 512KB(200
 ⚠ 数字は本 doc 内の相対比較専用。走行をまたいだ絶対値比較・実機のタブ単体表示との
 直接比較はしない(計器の基準が違う)。
 
+### 7-c. P2 段階計測 ── dev(sqlite flag ON)vs main の多角比較(2026-07-27)
+
+user 指示「全部開発に乗ったらベンチして main とのパフォーマンス比較を多角的に」
+に対する **P2 時点の段階計測**(各段階が単独で着地し、単独で計測できる ── §7)。
+両腕とも同一計器・同一 fixture・同一日・同一マシンの連続走行。
+fixture: entries 3000(3.5MB)+ revisions 75,000(88MB)+ assets 400×512KB(200MB)= 292MB
+(P1 の 505MB fixture とは revisions の本文長が異なる ── **7-b との絶対値比較はしない**)。
+main 腕 = origin/main 98a7f8b5 のビルド(bundle 5,995KB)/ dev 腕 = P2 3b519d77
+(bundle 8,710KB、`?pkc-flag=storage.sqlite_backend=true`)。
+
+**軸 1: boot(boot-rss.mjs、100 秒観測)**
+
+| 局面 | main | dev(sqlite) |
+|---|---|---|
+| 初回 boot ready | 1.34s | **8.00s**(IDB→sqlite 一括移行込み・一度きり) |
+| 初回 peak / settle | 1.79 / 1.01 GB | 1.90 / 1.18 GB |
+| 2 回目 boot ready | 1.16s | **3.07s** |
+| 2 回目 peak / settle | 1.39 / 1.01 GB | 1.60 / 1.16 GB |
+| settle 時 JS heap(main thread) | 107 MB | 117 MB |
+
+**軸 2: 継続使用(sustained-use-rss.mjs、2 回目起動 + 5 分 ≒130 編集)**
+
+| | main | dev(sqlite) |
+|---|---|---|
+| 序盤 5 点平均 | 1.28 GB | 1.53 GB |
+| 終盤 5 点平均 | **1.53 GB** | **1.42 GB** |
+| 5 分間の増分 | **+253 MB(+19.3%)上昇し続ける** | **−113 MB(−7.2%)下がって安定** |
+
+**軸 3: 保存起因の main thread 停止(edit-main-thread-block.mjs、N=5000/M=15000)**
+
+| | main | dev(sqlite) |
+|---|---|---|
+| 保存に帰せられる long task(A−Y、1 編集あたり) | 100 ms | 74 ms(向き: 減。5 編集の小標本 ── 倍率は書かない) |
+
+**軸 4: storage 使用量(navigator.storage.estimate)**: main 57MB / dev 158MB。
+⚠ この計器は harness が直接 seed した IDB を過小に見せている疑いが強く
+(200MB の assets が 57MB と出る)、**絶対値は使わない**。差分から読めるのは
+「OPFS 側に sqlite DB ~100MB が実在する」ことまで。
+
+**読み方(P2 の設計予測との突き合わせ)**:
+
+- ✅ **編集 churn の向きが反転した**(P2 の本丸)。main は編集を重ねるほど水位が
+  上がり続ける(保存のたびに core record 全量を直列化 + structured clone)。
+  dev は **編集し続けても水位が下がって安定**し、終盤は sqlite 常駐を抱えたまま
+  main より低い。保存が O(変更行) の applyOps になった構造効果そのもの
+- ✅ 保存起因の main thread 停止も減る向き(直列化が diff だけになり、書込は worker 側)
+- ⚠ **boot と常駐は P2 時点では不利**(設計どおり ── まだ直っていない、ではなく
+  **P4 の仕事**)。2 回目 boot +1.9s の主因は revisions 75,000 行を postMessage で
+  main thread のモデルに全量転送していること。settle +150MB は worker の
+  wasm/SQLite 常駐分。**P4(revisions を COUNT + 要求時読みへ)がこの行転送と
+  モデル常駐を丸ごと消す** ── そこで boot 軸の逆転を測り直す
+- 移行 8 秒は一度きり(idempotent)。P5 の移行ゲートでは進捗表示が要る
+
 ## 8. 未確定(裁定・調査が要るもの)
 
 1. ✅ **実機確認済み(2026-07-27、tests/bench/sqlite-spike.mjs)**:
