@@ -65,6 +65,29 @@ export interface AssetMetaIndexManager {
   dispose(): void;
 }
 
+/**
+ * 走査のペーシング(2026-07-27、user 報告「500MB・添付多め・起動直後に
+ * OOM」を受けて)。
+ *
+ * 従来の backfill は「1 件ずつ読む」ためピークは 1 asset 分だったが、
+ * **息継ぎなしの読み捨てループ**だった ── 500MB 分の base64 文字列を
+ * 確保 → 破棄し続け、boot 直後の(ただでさえ確保が多い)時間帯に GC 圧を
+ * 全部重ねていた。
+ *
+ * さらに致命的だったのは **索引の永続化が全件走査の完了後 1 回だけ**
+ * だったこと。OOM やタブ closeで走査が中断すると進捗ゼロに戻り、
+ * **次の起動がまた 500MB を頭から読む** ── 「起動のたびに爆発する」の
+ * 増幅器になっていた(走査が一度も完走できない環境では永遠に繰り返す)。
+ *
+ *   - BATCH 件ごとに YIELD_MS 譲る(event loop / GC に息継ぎを渡す)
+ *   - PERSIST_EVERY 件ごとに索引を保存する(中断しても進捗が残り、
+ *     次の起動は続きから。部分索引は `ready` が立つまで消費者に出ない
+ *     ── `getResidentAssetMeta` は ready 前は null を返す)
+ */
+const RECONCILE_BATCH = 8;
+const RECONCILE_YIELD_MS = 50;
+const PERSIST_EVERY = 32;
+
 const RECONCILE_EVENTS: ReadonlySet<DomainEvent['type']> = new Set([
   'CONTAINER_LOADED',
   'CONTAINER_IMPORTED',
@@ -107,8 +130,11 @@ export function mountAssetMetaIndex(
     for (const k of Object.keys(resident)) universe.add(k);
 
     let changed = false;
+    let inBatch = 0;
+    let sincePersist = 0;
     // Fill gaps — resident bytes first (working-set / unsaved pastes), else
     // load from the store ONE AT A TIME so peak memory stays at one asset.
+    // ペーシングと逐次 persist は上の定数 doc を参照(500MB 実データの OOM 対策)。
     for (const key of universe) {
       if (index[key]) continue;
       let bytes: string | null | undefined = resident[key];
@@ -117,6 +143,19 @@ export function mountAssetMetaIndex(
       if (typeof bytes === 'string') {
         index[key] = computeAssetMeta(bytes);
         changed = true;
+        sincePersist++;
+      }
+      inBatch++;
+      if (inBatch >= RECONCILE_BATCH) {
+        inBatch = 0;
+        if (sincePersist >= PERSIST_EVERY) {
+          sincePersist = 0;
+          // 部分保存 ── 中断(OOM / タブ close)しても次の起動は続きから。
+          await store.saveAssetMeta(cid, index);
+          if (disposed) return;
+        }
+        await new Promise<void>((r) => { setTimeout(r, RECONCILE_YIELD_MS); });
+        if (disposed) return;
       }
     }
     // Drop entries for keys that no longer exist anywhere (purged).
