@@ -52,7 +52,65 @@ function stripSqliteWorker1Promiser(): Plugin {
         touched = true;
       }
 
+      /**
+       * OPFS **async proxy** VFS を落とす(2026-07-27、B4)。
+       *
+       * sqlite-wasm には永続 VFS が 2 系統ある:
+       *   - `opfs`(async proxy + SharedArrayBuffer + 専用 worker。COOP/COEP 必須)
+       *   - `opfs-sahpool`(createSyncAccessHandle 直叩き。COI 不要)← **PKC2 が使うのはこちら**
+       * PKC2 は sqlite-worker.ts で `installOpfsSAHPoolVfs` しか呼ばないので
+       * async proxy は**一度も使われない**。にもかかわらず:
+       *   ① `new URL("sqlite3-opfs-async-proxy.js", import.meta.url)` を vite が拾い、
+       *      32,289 バイトの proxy を **base64 43,096 文字**として bundle へ焼き込む
+       *   ② bootstrap の initializersAsync が `installOpfsVfs()` を**自動実行**するため、
+       *      COI が成立する環境(COOP/COEP 付き host の iframe など)では
+       *      **使いもしない worker が sqlite worker 起動のたびに 1 個増える**
+       * ので、URL を作る行ごと reject に差し替える。呼び出し側は
+       * `installOpfsVfs().catch(e => config.warn(...))` で握られており、
+       * `promiseReject` 経由なら `opfsVfs.dispose()` も正しく走る
+       * (raw throw だと dispose が飛ぶので、必ず promiseReject を通すこと)。
+       *
+       * ⚠ `opfs-sahpool` には一切触らない ── 永続化の本線はこちらである。
+       */
+      const asyncProxy =
+        /const opfsAsyncProxyUrl = new URL\("sqlite3-opfs-async-proxy\.js",\s*import\.meta\.url\);/;
+      if (asyncProxy.test(out)) {
+        out = out.replace(
+          asyncProxy,
+          'promiseReject(new Error("OPFS async proxy VFS is not bundled (PKC2 static build uses opfs-sahpool)")); return;',
+        );
+        touched = true;
+      }
+
       return touched ? out : null;
+    },
+  };
+}
+
+/**
+ * pptxgenjs の `IMG_PLAYBTN`(74,428 文字の base64 PNG)を落とす(2026-07-27、B4)。
+ *
+ * これは `addMedia()` が cover 未指定のときに敷く「再生ボタン」画像で、
+ * **PKC2 は addMedia を呼ばない**(export-pptx.ts が使うのは addImage だけ)。
+ * dynamic import は inlineDynamicImports で 1 chunk に畳まれるため、
+ * 「lazy だから常駐しない」は成り立たない ── script source として居座る。
+ *
+ * ⚠ 同じファイルの `IMG_BROKEN`(2.1KB)は **落とさない**: addImage が
+ * 画像取得に失敗したときの差し替え先で、生きた経路から参照される。
+ */
+function stripPptxPlayButton(): Plugin {
+  return {
+    name: 'pkc2-strip-pptx-playbtn',
+    enforce: 'pre',
+    transform(code: string, id: string) {
+      if (!id.includes('pptxgenjs')) return null;
+      const playBtn = /const IMG_PLAYBTN = 'data:image\/png;base64,[A-Za-z0-9+/=]+';/;
+      if (!playBtn.test(code)) return null;
+      // 形は保つ(1x1 透明 PNG)。万一 addMedia が呼ばれても data URI として妥当。
+      return code.replace(
+        playBtn,
+        "const IMG_PLAYBTN = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';",
+      );
     },
   };
 }
@@ -63,7 +121,7 @@ export default defineConfig({
   // `.bin` は vite の既知 asset 型でないため、明示しないと module として
   // resolve されて UNLOADABLE_DEPENDENCY になる(2026-07-27 実測)。
   assetsInclude: ['**/*.wasm.bin'],
-  plugins: [stripSqliteWorker1Promiser()],
+  plugins: [stripSqliteWorker1Promiser(), stripPptxPlayButton()],
   worker: {
     // sqlite worker(`?worker&inline`)は iife 1 chunk に閉じる(単一 HTML)。
     format: 'iife',
