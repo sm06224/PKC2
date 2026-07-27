@@ -38,7 +38,24 @@ export async function ensureDefaultWorkspace(store: ContainerStore): Promise<Wor
     return list[0]!;
   }
   const containers = await store.listContainers();
-  const def = await store.loadDefault();
+  // 🔴 **`container_id` が欲しいだけなので、本文も asset も読まない**(2026-07-26)。
+  //
+  // ここは `store.loadDefault()` だった ── **container 全体 + 全 asset を
+  // メモリへ載せて、使うのは下の `def.meta.container_id` 1 個**。
+  // 本節は `list.length > 0` の早期 return の後なので、**ワークスペース情報が
+  // まだ無い初回起動**(= 新しいビルドへの移行時)に必ず走る。
+  //
+  // 実測(`tests/bench/migration-heap.mjs`、添付 100 件 × 512KB):
+  // 起動中の asset 読出 **200 件 / 100 MB**。その約半分がこの 1 行で、
+  // しかも **1 本の配列に全部同時に載る**(`reassembleAssets` の
+  // `getAllByPrefix`)。500MB・添付主体のワークスペースでは base64 化で
+  // さらに 4/3 倍になり、user 報告のとおり **2GB 超 → OOM** に達する。
+  //
+  // ⚠ これは #1021 が `storage-backend.ts` の `migrateFromIdbIfEmpty` で
+  // 直したのと **同一のバグ**(あちらのコメント:「`false` を返すためだけに
+  // container 全体 + 全 asset を読んでいた」)。**こちらが直し漏れていた。**
+  // 判定に container の中身が要らないなら `loadDefaultMetaShallow` を使う。
+  const { container: def } = await store.loadDefaultMetaShallow();
   const ws: Workspace = {
     id: newWorkspaceId(),
     name: 'Default',

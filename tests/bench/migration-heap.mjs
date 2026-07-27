@@ -135,20 +135,49 @@ async function arm(label, split) {
   //    こちらは GC タイミングに依存しない。
   await ctx.addInitScript(() => {
     const w = /** @type {any} */ (window);
+    const size = (v) => {
+      if (typeof v === 'string') return v.length;
+      if (v && typeof v.size === 'number') return v.size;
+      if (v) { try { return JSON.stringify(v).length; } catch { return 0; } }
+      return 0;
+    };
     w.__putTally = { assets: { n: 0, bytes: 0 }, containers: { n: 0, bytes: 0 } };
-    const orig = IDBObjectStore.prototype.put;
+    // 読出も数える ── 「起動で全 asset を読んでいないか」の決定的な観測点。
+    w.__getTally = { assets: { n: 0, bytes: 0 }, containers: { n: 0, bytes: 0 } };
+    w.__stacks = [];
+    w.__resetTally = () => {
+      w.__stacks.length = 0;
+      for (const t of [w.__putTally, w.__getTally]) {
+        for (const k of Object.keys(t)) { t[k].n = 0; t[k].bytes = 0; }
+      }
+    };
+    const origPut = IDBObjectStore.prototype.put;
     IDBObjectStore.prototype.put = function (value, key) {
       try {
         const t = w.__putTally[this.name];
-        if (t) {
-          t.n += 1;
-          if (typeof value === 'string') t.bytes += value.length;
-          else if (value && typeof value.size === 'number') t.bytes += value.size;
-          else if (value) { try { t.bytes += JSON.stringify(value).length; } catch { /* noop */ } }
-        }
+        if (t) { t.n += 1; t.bytes += size(value); }
       } catch { /* noop */ }
-      return orig.call(this, value, key);
+      return origPut.call(this, value, key);
     };
+    for (const m of ['get', 'getAll']) {
+      const orig = IDBObjectStore.prototype[m];
+      IDBObjectStore.prototype[m] = function (...args) {
+        const req = orig.apply(this, args);
+        const store = this.name;
+        const stk = store === 'assets' ? (new Error().stack || '') : '';
+        try {
+          req.addEventListener('success', () => {
+            const t = w.__getTally[store];
+            if (!t) return;
+            const r = req.result;
+            if (Array.isArray(r)) { t.n += r.length; for (const v of r) t.bytes += size(v); }
+            else if (r !== undefined) { t.n += 1; t.bytes += size(r); }
+            if (store === 'assets' && w.__stacks.length < 400) w.__stacks.push(stk);
+          });
+        } catch { /* noop */ }
+        return req;
+      };
+    }
   });
   const page = await ctx.newPage();
   const cdp = await ctx.newCDPSession(page);
@@ -169,6 +198,10 @@ async function arm(label, split) {
   await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 180000 });
   await page.evaluate(SEED, { url: `${srv.origin}/__fixture.json`, cid: CID, split });
 
+  // ⚠ seed ページ(52MB の JSON parse + 全 asset 書込)の分が混ざらないよう、
+  //    計測対象の起動の直前で tally を 0 に戻す。
+  await page.evaluate('window.__resetTally && window.__resetTally()');
+
   // 起動 → (B なら)移行が走る。ピークを拾うため短間隔でサンプリング。
   let peak = 0;
   const t = setInterval(() => { used().then((v) => { if (v > peak) peak = v; }).catch(() => {}); }, 120);
@@ -180,6 +213,14 @@ async function arm(label, split) {
   const after = await settled();
   // seed は初回ページで済ませているので、この tally は **起動だけ**の書込。
   const tally = await page.evaluate('window.__putTally');
+  const reads = await page.evaluate('window.__getTally');
+  const stacks = await page.evaluate('window.__stacks || []');
+  const byFrame = new Map();
+  for (const st of stacks) {
+    const line = String(st).split('\n').slice(1).find((l) => !/IDBObjectStore|migration-heap|<anonymous>:/.test(l)) || '(unknown)';
+    const k = line.trim().slice(0, 120);
+    byFrame.set(k, (byFrame.get(k) || 0) + 1);
+  }
 
   // 実際に inline へ移行できたか(B の成否確認)
   const shape = await page.evaluate(async (cid) => {
@@ -205,11 +246,15 @@ async function arm(label, split) {
 
   await ctx.close();
   console.log(`■ ${label}`);
+  console.log(`   🔑 起動中の asset 読出: ${reads.assets.n} 件 / ${MB(reads.assets.bytes)}  ← 決定的`);
+  for (const [frame, n] of [...byFrame.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)) {
+    console.log(`      ${String(n).padStart(4)} 件  ${frame}`);
+  }
   console.log(`   🔑 起動中の asset 書込: ${tally.assets.n} 回 / ${MB(tally.assets.bytes)}  ← 決定的`);
   console.log(`      containers 書込:    ${tally.containers.n} 回 / ${MB(tally.containers.bytes)}`);
   console.log(`   ピーク heap ${MB(peak)} / 収束後 ${MB(after)}  ⚠ ピークは分散大・参考値`);
   console.log(`   storage: split=${shape.split} / core entries=${shape.entries} / __entry__ record=${shape.sidecars}`);
-  return { peak, after, shape, tally };
+  return { peak, after, shape, tally, reads };
 }
 
 const A = await arm('A(control)inline で seed ── 移行なし', false);
@@ -218,6 +263,7 @@ await srv.close();
 
 console.log('');
 console.log('■ 差(B − A = 移行のコスト)');
+console.log(`   🔑 asset 読出  ${A.reads.assets.n} 件 / ${MB(A.reads.assets.bytes)}  →  ${B.reads.assets.n} 件 / ${MB(B.reads.assets.bytes)}`);
 console.log(`   🔑 asset 書込  ${A.tally.assets.n} 回 / ${MB(A.tally.assets.bytes)}  →  ${B.tally.assets.n} 回 / ${MB(B.tally.assets.bytes)}`);
 console.log(`      containers  ${A.tally.containers.n} 回 / ${MB(A.tally.containers.bytes)}  →  ${B.tally.containers.n} 回 / ${MB(B.tally.containers.bytes)}`);
 console.log(`   ピーク heap   ${MB(A.peak)} → ${MB(B.peak)}  ⚠ 分散が大きく、単独では結論に使えない`);
