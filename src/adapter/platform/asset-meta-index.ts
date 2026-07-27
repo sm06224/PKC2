@@ -83,6 +83,29 @@ export interface AssetMetaIndexManager {
  *   - PERSIST_EVERY 件ごとに索引を保存する(中断しても進捗が残り、
  *     次の起動は続きから。部分索引は `ready` が立つまで消費者に出ない
  *     ── `getResidentAssetMeta` は ready 前は null を返す)
+ *
+ * ## ⚠ テンポでは「走査中のメモリの山」は消えない(2026-07-27、実測で確定)
+ *
+ * `tests/bench/boot-rss.mjs`(プロセス RSS 計測)で 500MB fixture の初回
+ * 走査を 3 通り測った。**走査中の RSS の山は全て 1.5〜1.6GB で不変**:
+ *
+ *   - 8 件 / 50ms(~80MB/s)     … 山 1.5〜1.6GB、走査 約 55 秒
+ *   - 4 件 / 300ms(~4MB/s)     … 山 1.6GB のまま、走査が 2 分に伸びただけ
+ *   - rIC yield(idle GC 期待)  … 山 1.6GB のまま(headless では timeout 側で回る)
+ *
+ * 原因は割当速度ではない: 512KB 級の base64 文字列は V8 の large object
+ * space に直行し、**V8 は数百 MB 貯めてからまとめて回収する**。読み捨てでも
+ * 山の高さは V8 の回収閾値で決まり、走査側のテンポ / yield 方式では制御
+ * できない。⇒ **テンポを落とす調整は「山はそのまま・期間だけ延ばす」改悪**
+ * なので戻した。再挑戦するなら方向は 2 つだけ:
+ * ① asset を Blob record へ移行(bytes をヒープに載せない ── 保存形式の
+ *   変更なので設計 doc 必須)② hash を遅延化して走査自体を不要にする
+ * (これも size 取得に読みが要る string record では成立しない)。
+ *
+ * 山は**初回起動の約 1 分だけ**(索引永続化後は 0 読み ── 2 回目起動の
+ * 実測で asset 読出 0 件を確認済み)。逐次 persist(#1039)で中断しても
+ * 完走は保証される。定常 RSS を決めるのは走査ではなく revisions の
+ * heap 常駐など(handoff 参照)。
  */
 const RECONCILE_BATCH = 8;
 const RECONCILE_YIELD_MS = 50;
