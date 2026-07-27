@@ -35,10 +35,14 @@ await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 12000
 const heapBefore = await page.evaluate('performance.memory.usedJSHeapSize');
 const result = await page.evaluate('window.__pkc2SqliteProbe()');
 const heapAfter = await page.evaluate('performance.memory.usedJSHeapSize');
+const persist = await page.evaluate('window.__pkc2SqlitePersistProbe()');
 console.log('■ sqlite3.wasm 静的 bundle 実証(単一 HTML / fetch なし)');
 console.log(`   probe: ${JSON.stringify(result)}`);
 console.log(`   JS heap: probe 前 ${(heapBefore / 1048576).toFixed(1)} MB → 後 ${(heapAfter / 1048576).toFixed(1)} MB(遅延初期化コスト +${((heapAfter - heapBefore) / 1048576).toFixed(1)} MB)`);
 console.log(`   外部ネットワーク要求: ${netRequests.length} 件${netRequests.length ? ' ⛔ ' + netRequests.join(', ') : '(なし = 静的)'}`);
+console.log('■ §8-1 永続化 VFS の実機確認');
+console.log(`   crossOriginIsolated: ${persist.coi} / 'opfs' VFS 登録: ${persist.opfsVfsRegistered}`);
+console.log(`   SAHPool(main thread): ${JSON.stringify(persist.sahpool)}`);
 await browser.close();
 await srv.close();
 process.exit(result && result.ok ? 0 : 1);

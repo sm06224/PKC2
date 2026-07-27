@@ -190,6 +190,8 @@ async function boot(): Promise<void> {
   // tests/bench/sqlite-spike.mjs がこの hook を叩く。
   (window as unknown as Record<string, unknown>).__pkc2SqliteProbe = () =>
     import('./adapter/platform/storage/sqlite/sqlite3-instance').then((m) => m.probeSqliteWasm());
+  (window as unknown as Record<string, unknown>).__pkc2SqlitePersistProbe = () =>
+    import('./adapter/platform/storage/sqlite/sqlite3-instance').then((m) => m.probeSqlitePersistence());
   const root = document.getElementById(SLOT.ROOT);
   if (!root) {
     console.error(`[PKC2] #${SLOT.ROOT} not found`);

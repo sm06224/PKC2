@@ -102,3 +102,61 @@ export async function probeSqliteWasm(): Promise<SqliteProbeResult> {
     return { ok: false, version: '', ms: performance.now() - t0, error: String(err) };
   }
 }
+
+export interface SqlitePersistenceProbeResult {
+  /** crossOriginIsolated(COOP/COEP)── 単一 HTML では制御できない前提の確認。 */
+  coi: boolean;
+  /** 'opfs' VFS(worker + SAB 方式)が登録されたか。COI 必須なので通常 false。 */
+  opfsVfsRegistered: boolean;
+  /** SAHPool VFS(§8-1 の本命)を main thread で install できたか。 */
+  sahpool: { ok: boolean; ms: number; error?: string; roundTrip?: boolean };
+}
+
+/**
+ * §8-1 実機確認: 永続化 VFS の成立条件を実ブラウザで確かめる。
+ *
+ * 論点: OPFS の `createSyncAccessHandle` は歴史的に worker 専用とされ、
+ * SAHPool が main thread で成立するかは文献で判断しない(実測が正)。
+ * 成立しなければ sqlite を worker に置く設計になる(設計 doc §8-1)。
+ */
+export async function probeSqlitePersistence(): Promise<SqlitePersistenceProbeResult> {
+  const sqlite3 = await getSqlite3();
+  const out: SqlitePersistenceProbeResult = {
+    coi: (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true,
+    opfsVfsRegistered: !!sqlite3.capi.sqlite3_vfs_find('opfs'),
+    sahpool: { ok: false, ms: 0 },
+  };
+  const t0 = performance.now();
+  try {
+    const s3 = sqlite3 as unknown as {
+      installOpfsSAHPoolVfs: (o: { name: string }) => Promise<{
+        OpfsSAHPoolDb: new (path: string) => InstanceType<Sqlite3Static['oo1']['DB']>;
+        removeVfs: () => Promise<boolean>;
+      }>;
+    };
+    const pool = await s3.installOpfsSAHPoolVfs({ name: 'pkc2-p2-probe' });
+    try {
+      const db = new pool.OpfsSAHPoolDb('/probe.db');
+      try {
+        db.exec('CREATE TABLE IF NOT EXISTS p (k TEXT PRIMARY KEY, v TEXT)');
+        db.exec({ sql: 'INSERT OR REPLACE INTO p (k, v) VALUES (?, ?)', bind: ['k', 'persist'] });
+        const rows: unknown[] = [];
+        db.exec({ sql: 'SELECT v FROM p WHERE k = ?', bind: ['k'], rowMode: 'array', resultRows: rows as never });
+        const first = rows[0] as string[] | undefined;
+        out.sahpool = {
+          ok: true,
+          roundTrip: Array.isArray(first) && first[0] === 'persist',
+          ms: performance.now() - t0,
+        };
+      } finally {
+        db.close(); // 速やかな破棄
+      }
+    } finally {
+      // probe は痕跡を残さない(実装ではないので VFS ごと撤去)
+      await pool.removeVfs().catch(() => undefined);
+    }
+  } catch (err) {
+    out.sahpool = { ok: false, ms: performance.now() - t0, error: String(err) };
+  }
+  return out;
+}

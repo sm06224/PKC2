@@ -181,9 +181,15 @@ fixture: entries 3000(5.2MB)+ revisions 75,000(299.7MB)+ assets 400 × 512KB(200
 
 ## 8. 未確定(裁定・調査が要るもの)
 
-1. OPFS SAHPool は **crossOriginIsolated 不要の構成**を選ぶ(single HTML は
-   COOP/COEP ヘッダを制御できない)── official ビルドの非 Atomics 経路で成立するか、
-   P2 の最初に実機確認(成立しなければ IDB-VFS が主経路になる)
+1. ✅ **実機確認済み(2026-07-27、tests/bench/sqlite-spike.mjs)**:
+   - crossOriginIsolated: **false**(想定どおり ── 単一 HTML は COOP/COEP を制御できない)
+   - 'opfs' VFS(worker+SAB 方式): **未登録**(COI 必須のため)
+   - **SAHPool の main thread install: 失敗**(`Missing required OPFS APIs` ──
+     `createSyncAccessHandle` は worker 専用)
+   ⇒ **永続化 sqlite は worker に置く**(SAHPool + 自前 worker を Blob URL で起動 =
+   静的 bundle と両立)。副産物として保存処理が main thread から完全に外れる
+   (編集 churn +0.4GB の直列化コストも worker 側へ)。main thread 側は
+   postMessage RPC の薄い facade(ContainerStore 実装)になる
 2. sqlite ファイルの export(= .sqlite そのままの持ち出し)を製品機能にするか
 3. FTS5 / sqlite-vec は本 doc の範囲外(「機能を足さない」に抵触するため、
    拡張点だけ確保して凍結)
