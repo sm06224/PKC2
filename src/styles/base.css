@@ -2043,6 +2043,41 @@ html, body {
   flex-shrink: 0;
 }
 
+/* L3-S3(2026-07-27):manual sort の選択行に出る ↑↓ button。
+ *
+ * **これまで CSS 規則が 1 つも無く**、UA 既定の button ボックス
+ * (padding 1px 6px + border 2px + 既定 font)がそのまま効いていた。
+ * 結果、選択行だけ 24.91px → 26px に伸び、**選択するたびに行が
+ * 1px ずれる**(サイドバー全体が 1px 押し下がる)。
+ *
+ * 仮想化は「単位行高が一様であること」を前提に窓の index を計算するので、
+ * これは前工事として潰しておく必要がある ── と同時に、単体でも
+ * 見た目のバグ修正である(仮想化を採らなくても直っている)。
+ *
+ * 高さを行に合わせる方法は `line-height` ではなく **`height: 1em` +
+ * `padding: 0`**:行ボックスは flex の align-items:center で中央に
+ * 揃うので、button 自身が行高を押し広げないことだけが要件。 */
+.pkc-entry-move-btn {
+  flex-shrink: 0;
+  height: 1em;
+  min-height: 0;
+  padding: 0 4px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 2px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pkc-entry-move-btn:hover,
+.pkc-entry-move-btn:focus-visible {
+  border-color: var(--c-border);
+  background: var(--c-bg-subtle, transparent);
+}
+
 .pkc-entry-item:hover .pkc-entry-copy-link,
 .pkc-entry-copy-link:focus,
 .pkc-entry-copy-link:focus-visible {

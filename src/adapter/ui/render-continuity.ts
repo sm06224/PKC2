@@ -191,6 +191,23 @@ function captureEditorFields(root: HTMLElement): EditorFieldSnapshot[] {
  * scrollTop wins. The double-write is cheap and idempotent: when
  * the synchronous write already landed, the rAF write is a no-op.
  */
+/**
+ * snapshot から 1 region の scroll 復元だけを外す(L3-S5)。
+ *
+ * ensure-visible が「選択行を見せるために」意図的に scroll した描画では、
+ * 継続性の復元(同期 + rAF + 200ms)が**必ずそれを打ち消す**。窓化前は
+ * 選択行が近く移動量も小さかったため実害が見えにくかったが、窓化すると
+ * 数百行先へ飛ぶので露見する(実測: 870px を書いても 148px に戻り、
+ * 選択行が永久に画面外)。
+ */
+export function withoutScrollRegion(
+  snapshot: RenderContinuitySnapshot,
+  region: string,
+): RenderContinuitySnapshot {
+  if (!snapshot.scrolls.some((s) => s.region === region)) return snapshot;
+  return { ...snapshot, scrolls: snapshot.scrolls.filter((s) => s.region !== region) };
+}
+
 export function restoreRenderContinuity(
   root: HTMLElement,
   snapshot: RenderContinuitySnapshot,

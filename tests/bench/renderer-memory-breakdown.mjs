@@ -28,7 +28,12 @@ const argOf = (n, d) => {
   return a ? a.slice(n.length + 3) : d;
 };
 const FIXTURE = argOf('fixture', '');
-const FLAGQ = argOf('flag', '') === '1' ? '?pkc-flag=storage.sqlite_backend%3Dtrue' : '';
+// `--flag=1` は sqlite backend の短縮形。`--url-flags=a%3Dtrue,b%3D1` で任意の
+// flag も渡せる(L3 の窓化など、対照群を flag だけで作りたいとき)。
+const EXTRA_FLAGS = argOf('url-flags', '');
+const FLAGQ = EXTRA_FLAGS
+  ? `?pkc-flag=${EXTRA_FLAGS}`
+  : (argOf('flag', '') === '1' ? '?pkc-flag=storage.sqlite_backend%3Dtrue' : '');
 // 第 4 腕(2026-07-27 user 提起「使った後に破棄するようにできないか」):
 // mermaid / chart を実際に描画させてから dump し、「使用後の常駐」= 遅延評価+
 // 破棄 lifecycle 設計の賞金を数字にする。

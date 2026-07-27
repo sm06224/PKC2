@@ -584,6 +584,28 @@ export const shellLauncherUrlTilesEnabled = defineFlag<boolean>(
 // #932(2026-07-17、user 要望):左ペイン / タブでエントリ名が表示しきれ
 // ないケースへの opt-in 対策。ON で entry list とタブのエントリ名を小さい
 // 字 + 2 行折り返しで表示する(全文はツールチップで常時参照可)。
+/**
+ * L3-S4/S5(2026-07-27):サイドバー行の**窓化**(仮想化)。既定 OFF。
+ *
+ * ON でも、次を**両方**満たしたときだけ発動する(片方でも欠けたら全件描画へ
+ * 自動 fallback ── happy-dom は高さが全部 0、小 N では窓化の意味が無い):
+ *   ① 単位行高が実測できる(> 0)
+ *   ② 論理行数 >= `SIDEBAR_VIRTUAL_MIN_ROWS`
+ * さらに **検索中(sub-location 行が混ざる場面)では発動しない** ── 1 entry =
+ * 1 行の等質なリストでないと窓の index 計算が成立しないため。
+ *
+ * ⚠ 既定 ON にするのは別判断(数字が出てから)。
+ */
+export const sidebarVirtualListEnabled = defineFlag<boolean>(
+  'sidebar.virtual_list',
+  false,
+  {
+    category: 'shell',
+    description:
+      '左ペインの行を可視範囲だけ DOM に置く(仮想化)。大量エントリでの DOM 常駐と行生成コストを削る。opt-in',
+  },
+);
+
 export const shellCompactEntryLabelsEnabled = defineFlag<boolean>(
   'shell.compact_entry_labels',
   false,

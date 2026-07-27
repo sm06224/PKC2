@@ -17,7 +17,7 @@ import {
   metaPaneYamlGraphicalEnabled,
   metaPaneModeTabsEnabled,
 } from './meta-pane-flags';
-import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled, shellLauncherUrlTilesEnabled, shellCompactEntryLabelsEnabled } from './shell-flags';
+import { shellEditModeEnabled, shellTabsEnabled, shellSplitViewEnabled, shellNewButtonPickerEnabled, shellDataInShellMenuEnabled, shellBackForwardInBreadcrumbEnabled, shellActivityBarEnabled, shellFormatPanelDefaultHiddenEnabled, shellViewModeTabsScopedEnabled, shellMetaPaneReferencesClarifyEnabled, shellAboutPkcMarkdownShowcaseEnabled, shellEditorFooterWordcountEnabled, shellTodoOverdueIndicatorEnabled, shellTrayBarSlimEnabled, shellHeaderCompactEnabled, shellRevisionDiffViewerEnabled, shellLauncherUrlTilesEnabled, shellCompactEntryLabelsEnabled, sidebarVirtualListEnabled } from './shell-flags';
 import { sortLauncherTiles, normalizeGroup } from '@features/launcher/tile-order';
 import { diffRows } from '../../features/diff/line-diff';
 import { buildEditorFooterWordcount } from './editor-footer-wordcount';
@@ -80,7 +80,16 @@ import { getFilterIndexes, getTodosByDate } from './filter-cache';
 import { shellStartupNoticeEnabled } from './startup-notice';
 import { start as profileStart } from '../../runtime/profile';
 import { computeRenderScope, findEntryBodyChangeLid, canReuseEntryList } from './render-scope';
-import { recordVisibleOrder } from './visible-order';
+import { recordVisibleOrder, getRecordedVisibleOrder } from './visible-order';
+import {
+  SIDEBAR_VIRTUAL_MIN_ROWS,
+  applySpacers,
+  computeWindowRange,
+  measureUnitRowHeight,
+  scrollOffsetForIndex,
+  shouldVirtualize,
+  type WindowRange,
+} from './sidebar-window';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -594,6 +603,7 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // counts amplify this). Schedule a rAF-deferred re-apply so the
   // captured value wins once `scrollHeight` settles. Idempotent:
   // a successful synchronous write turns the rAF pass into a no-op.
+  entryListScrollOverridden = false; // この描画ぶんの判定をリセット
   if (prevSidebarScroll !== null) {
     const sidebar = root.querySelector<HTMLElement>('[data-pkc-region="sidebar"]');
     if (sidebar) sidebar.scrollTop = prevSidebarScroll;
@@ -617,7 +627,8 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
             sidebar.scrollTop = prevSidebarScroll;
           }
         }
-        if (prevEntryListScroll !== null) {
+        // ensure-visible が意図的に動かしていたら書き戻さない(上の doc 参照)。
+        if (prevEntryListScroll !== null && !entryListScrollOverridden) {
           const entryList = root.querySelector<HTMLElement>('[data-pkc-region="entry-list"]');
           if (entryList && entryList.scrollTop !== prevEntryListScroll) {
             entryList.scrollTop = prevEntryListScroll;
@@ -639,6 +650,11 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // close the "selected but not visible" gap for Storage Profile
   // jumps, entry-ref clicks, calendar / kanban taps, and anything
   // else that dispatches SELECT_ENTRY from outside the tree.
+  // L3-S5: attach 後に窓化を確定する(単位行高は layout 後にしか測れない)。
+  // **scrollSelectedSidebarNodeIntoView より前**に呼ぶ ── 窓を確定してから
+  // 「選択行が見えているか」を判定しないと、直後に窓が動いてずれる。
+  finalizeSidebarWindow(root, state);
+
   scrollSelectedSidebarNodeIntoView(state, root);
 
   // P1-1: reconcile the TEXT → TEXTLOG preview modal with the
@@ -685,6 +701,36 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
  * - Scoped to the sidebar region so center-pane selections (kanban
  *   cards, calendar cells) don't trigger sidebar scroll.
  */
+/**
+ * 🔴 ensure-visible が entry-list を**意図的に**スクロールしたかどうか(L3-S5)。
+ *
+ * scroll 継続性の復元(`prevEntryListScroll`)には **rAF での再適用**があり、
+ * 「描画前の scrollTop と違っていたら書き戻す」という無条件の処理になっている。
+ * 同期の復元は ensure-visible より前に走るので競合しないが、**rAF の再適用は
+ * 後から走って ensure-visible のスクロールを打ち消す**。
+ *
+ * 窓化前は「選択行は近くにあり scrollIntoView の移動も小さい」ため実害が
+ * 見えにくかったが、窓化すると選択行が数百行先になりうるので必ず露見する
+ * (実測: 目標 870px を書いても rAF が 148px へ戻し、選択行が永久に画面外)。
+ *
+ * → ensure-visible が動かしたときだけ、その 1 回の再適用を見送る。
+ */
+let entryListScrollOverridden = false;
+
+/**
+ * 「この描画で ensure-visible が entry-list を動かしたか」。
+ * 呼び出し側(main.ts)は true のとき scroll 継続性の復元から entry-list を
+ * 外す ── そうしないと復元(同期 + rAF + 200ms の 3 段)が ensure-visible の
+ * スクロールを必ず打ち消す。
+ *
+ * ⚠ **読むだけで消さない**。renderer 内の rAF 再適用も同じフラグを見ており、
+ *    ここで消すと**そちらが false を読んで書き戻してしまう**(実測: 選択行が
+ *    5 行ぶん手前で止まった)。リセットは次の描画の入口で 1 回だけ行う。
+ */
+export function didEnsureVisibleScrollEntryList(): boolean {
+  return entryListScrollOverridden;
+}
+
 function scrollSelectedSidebarNodeIntoView(
   state: AppState,
   root: HTMLElement,
@@ -698,6 +744,30 @@ function scrollSelectedSidebarNodeIntoView(
     '[data-pkc-region="sidebar"]',
   );
   if (!sidebar) return;
+  // 🔴 L3-S5: **窓化中は DOM を見ずに位置を計算する**。
+  //
+  // 窓化すると選択行は「DOM に居ない」か「居るが窓の描き替えと scroll 復元の
+  // 相互作用で表示範囲の外」のどちらにもなりうる。前者は従来ここで黙って
+  // return し(= 選んだのに見えない)、後者は `scrollIntoView` が効いても
+  // 直後の再描画で位置が戻る。どちらも例外は出ない。
+  // 論理 index × 単位行高で位置は決まるので、窓化中は**常に**計算で寄せる。
+  const list = sidebar.querySelector<HTMLElement>('ul[data-pkc-region="entry-list"]');
+  const windowed = !!list?.querySelector('[data-pkc-spacer]');
+  if (windowed && list) {
+    const order = getRecordedVisibleOrder(list);
+    const index = order ? order.indexOf(state.selectedLid) : -1;
+    const unit = index >= 0 ? measureUnitRowHeight(list) : null;
+    if (unit !== null && index >= 0) {
+      const offset = scrollOffsetForIndex(index, unit, list.clientHeight, list.scrollTop);
+      if (offset !== null) {
+        list.scrollTop = offset;
+        entryListScrollOverridden = true; // 復元(同期/rAF/200ms)に勝たせる
+      }
+      root.dataset.pkcLastScrolledLid = state.selectedLid;
+      return;
+    }
+  }
+
   const node = sidebar.querySelector<HTMLElement>(
     `[data-pkc-selected="true"][data-pkc-lid="${CSS.escape(state.selectedLid)}"]`,
   );
@@ -718,6 +788,7 @@ function scrollSelectedSidebarNodeIntoView(
     && nodeRect.bottom <= sidebarRect.bottom;
   if (!fullyInView) {
     node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    entryListScrollOverridden = true;
   }
   root.dataset.pkcLastScrolledLid = state.selectedLid;
 }
@@ -823,6 +894,8 @@ function replaceSelectionRegions(state: AppState, root: HTMLElement): void {
   // 2b. Nudge the newly-selected sidebar row into view (and update the
   // `data-pkc-last-scrolled-lid` memo) exactly as the full path does —
   // must run AFTER the highlight so the node query resolves.
+  // L3-S5: 窓化していれば選択行が DOM に無いことがある(scroll 計算へ落ちる)。
+  finalizeSidebarWindow(root, state);
   scrollSelectedSidebarNodeIntoView(state, root);
 
   // 3. Center pane — full swap.
@@ -5032,7 +5105,17 @@ function renderSidebarImpl(
     // L3-S2: この描画で並べた entry 行の lid を**描画順**で集める。
     // 消費側(Shift+click 範囲選択 / ↑↓ ナビ)が DOM を走査して順序を
     // 導出するのをやめるため ── 窓化すると DOM に無い行が出てくる。
+    //
+    // 🔑 窓化しても、ここに入るのは **論理行の全件**である(窓の中だけでは
+    //    ない)。これが S2 を前工事にした理由そのもの ── 消費側は「画面に
+    //    並んでいる全行の順序」を必要としており、DOM に居るかどうかは別問題。
     const visibleLids: string[] = [];
+
+    // L3-S5: 窓化してよい場面か。**検索中は窓化しない** ── sub-location 行が
+    // 混ざって「1 entry = 1 行」が崩れ、窓の index 計算が成立しないため。
+    const virtualizable = sidebarVirtualListEnabled() && state.searchQuery === '';
+    /** 窓化の材料(attach 後の後処理と scroll handler が使う)。 */
+    let windowPlan: SidebarWindowContext | null = null;
 
     if (hasActiveFilter || !state.container) {
       // Flat mode when filters are active (tree doesn't make sense for search results).
@@ -5055,6 +5138,12 @@ function renderSidebarImpl(
       // entry は行自体は従来どおり表示し、sub-location 展開だけ省略。
       const sublocRowCap = searchSublocScanMaxRows();
       let sublocRowsScanned = 0;
+      // L3-S5: 窓化は**描画後の後処理**でやる(ここでは全件描いて材料だけ残す)。
+      // 単位行高は attach 済みの UL からしか実測できず、`content-visibility` の
+      // 行は未表示だと嘘の高さを返すので、「描く前に窓を決める」ができない。
+      if (virtualizable && entries.length >= SIDEBAR_VIRTUAL_MIN_ROWS) {
+        windowPlan = { kind: 'flat', rows: entries, backlinkCounts, connectedLids, connectednessSets };
+      }
       for (const entry of entries) {
         visibleLids.push(entry.lid);
         list.appendChild(
@@ -5102,6 +5191,12 @@ function renderSidebarImpl(
         ? reorderTreeByEntries(tree, entries)
         : sortTreeNodes(tree, state.sortKey, state.sortDirection);
       const endTreeLoop = profileStart('render:sidebar:tree-loop');
+      if (virtualizable) {
+        const flatNodes = flattenDisplayTree(displayTree, state);
+        if (flatNodes.length >= SIDEBAR_VIRTUAL_MIN_ROWS) {
+          windowPlan = { kind: 'tree', rows: flatNodes, backlinkCounts, connectedLids, connectednessSets };
+        }
+      }
       for (const node of displayTree) {
         renderTreeNode(node, list, state, backlinkCounts, connectedLids, connectednessSets, visibleLids);
       }
@@ -5112,6 +5207,8 @@ function renderSidebarImpl(
     pruneRowMemos();
     // L3-S2/S1: 描画順を UL に記録(+ 論理行数 `data-pkc-row-count`)。
     recordVisibleOrder(list, visibleLids);
+    // L3-S5: 窓化の材料を UL に預ける(実際の窓化は attach 後の後処理)。
+    setSidebarWindowContext(list, windowPlan);
     sidebar.appendChild(list);
   }
 
@@ -5664,6 +5761,205 @@ function renderTreeNode(
   for (const child of node.children) {
     renderTreeNode(child, parent, state, backlinkCounts, connectedLids, connectednessSets, visibleLids);
   }
+}
+
+/**
+ * L3-S5: 窓化の材料と適用。
+ *
+ * ## なぜ「描画後の後処理」なのか
+ *
+ * 窓を決めるには**単位行高**が要るが、これは attach 済みで layout の付いた
+ * 行からしか測れない。しかも `content-visibility: auto` の行は未表示だと
+ * **39px という嘘の高さ**を返す(真値 24.91px)ので、`scrollHeight / 行数`
+ * では出せない。よって「一度全件描く → 測る → 窓へ削る」の順になる。
+ *
+ * 一見無駄に見えるが、削る側は memo hit なので 2 度目以降の描画では
+ * 行の**生成**は起きない。そして常駐(DOM ノード)は窓ぶんに落ちる ──
+ * 買っているのは生成コストではなく**常駐**である。
+ *
+ * ## UL に材料を預ける理由
+ *
+ * `canReuseEntryList` は UL ごと使い回すので、その描画では行の構築ループを
+ * 一切通らない。module 変数に持つと「使い回した UL に前回の材料」がぶら下がる。
+ * UL 自身に付けておけば、使い回されても引っ越しても正しいものが付いてくる
+ * (S2 の `WeakMap<UL, order>` と同じ理由)。
+ */
+export interface SidebarWindowContext {
+  kind: 'flat' | 'tree';
+  rows: readonly Entry[] | readonly TreeNode[];
+  backlinkCounts: ReadonlyMap<string, number> | undefined;
+  connectedLids: ReadonlySet<string> | undefined;
+  connectednessSets: ConnectednessSets | null;
+}
+
+type WindowedList = HTMLElement & {
+  __pkcWindowCtx?: SidebarWindowContext | null;
+  __pkcWindowCleanup?: () => void;
+  __pkcWindowRange?: WindowRange;
+};
+
+function setSidebarWindowContext(list: HTMLElement, ctx: SidebarWindowContext | null): void {
+  (list as WindowedList).__pkcWindowCtx = ctx;
+}
+
+/** 窓の slice を DOM に反映する(行は memo 経由なので hit なら生成しない)。 */
+function paintWindow(
+  list: HTMLElement,
+  ctx: SidebarWindowContext,
+  state: AppState,
+  range: WindowRange,
+  unitHeight: number,
+): void {
+  // 🔴 **spacer を先に伸ばしてから行を入れ替える**(順序が命)。
+  //
+  // 先に行を全部 remove すると、その瞬間だけ UL の内容高が spacer ぶんまで
+  // 縮む → browser が `scrollTop` を max まで**クランプ**する → 直後に
+  // spacer を戻しても scroll 位置は戻らない。実測ではこれで scrollTop が
+  // 148px から動かなくなり、「↓ を押しても選択行が画面外のまま」になった。
+  // scrollTop は保険としても保存・復元する(クランプは非同期に見えることがある)。
+  const keepScrollTop = list.scrollTop;
+  applySpacers(list, range, unitHeight, ctx.rows.length);
+  for (const row of Array.from(list.querySelectorAll('li.pkc-entry-item'))) row.remove();
+  const bottom = list.querySelector('[data-pkc-spacer="bottom"]');
+  for (let i = range.start; i < range.end; i++) {
+    if (ctx.kind === 'flat') {
+      const el = getOrCreateMemoizedEntryItem(
+        (ctx.rows as readonly Entry[])[i]!, state,
+        ctx.backlinkCounts, ctx.connectedLids, ctx.connectednessSets,
+      );
+      list.insertBefore(el, bottom);
+    } else {
+      renderTreeRowOnly(
+        (ctx.rows as readonly TreeNode[])[i]!, list, state,
+        ctx.backlinkCounts, ctx.connectedLids, ctx.connectednessSets,
+      );
+      const appended = list.lastElementChild;
+      if (appended && bottom && appended !== bottom) list.insertBefore(appended, bottom);
+    }
+  }
+  // B18: 窓の外へ出た行の memo は捨てる(スクロールで溜め込まない)。
+  pruneRowMemos();
+  if (list.scrollTop !== keepScrollTop) list.scrollTop = keepScrollTop;
+  (list as WindowedList).__pkcWindowRange = range;
+}
+
+/**
+ * attach 後の窓化。`render()` の末尾から 1 回だけ呼ぶ。
+ *
+ * 発動条件を満たさなければ**何もしない**(全件描画のまま)。happy-dom は
+ * 高さが 0 なので構造的にここで抜ける ── 既存 test は旧経路のまま守られる。
+ */
+function finalizeSidebarWindow(root: HTMLElement, state: AppState): void {
+  const list = root.querySelector<HTMLElement>('ul[data-pkc-region="entry-list"]') as WindowedList | null;
+  if (!list) return;
+  const ctx = list.__pkcWindowCtx ?? null;
+  if (!ctx) {
+    // 窓化しない描画になった ── 前回張った scroll listener を必ず外す。
+    list.__pkcWindowCleanup?.();
+    list.__pkcWindowCleanup = undefined;
+    return;
+  }
+  const unitHeight = measureUnitRowHeight(list);
+  if (!shouldVirtualize(unitHeight, ctx.rows.length)) {
+    list.__pkcWindowCleanup?.();
+    list.__pkcWindowCleanup = undefined;
+    return;
+  }
+
+  const range = computeWindowRange({
+    scrollTop: list.scrollTop,
+    viewportHeight: list.clientHeight,
+    unitHeight,
+    total: ctx.rows.length,
+  });
+  paintWindow(list, ctx, state, range, unitHeight);
+
+  // scroll 追従。listener は **UL 1 枚につき 1 本**に保つ(使い回しで積み上がる)。
+  list.__pkcWindowCleanup?.();
+  const onScroll = (): void => {
+    const cur = list.__pkcWindowRange;
+    const next = computeWindowRange({
+      scrollTop: list.scrollTop,
+      viewportHeight: list.clientHeight,
+      unitHeight,
+      total: ctx.rows.length,
+    });
+    if (cur && next.start === cur.start && next.end === cur.end) return;
+    paintWindow(list, ctx, state, next, unitHeight);
+  };
+  list.addEventListener('scroll', onScroll, { passive: true });
+  list.__pkcWindowCleanup = () => list.removeEventListener('scroll', onScroll);
+}
+
+/**
+ * L3-S5: 折り畳みを反映した**表示順の平坦化**(DOM を作らない)。
+ *
+ * 窓化は「N 行のうち i..j 行目だけ描く」機構なので、tree でも
+ * 「何番目に何が来るか」を DOM 抜きで確定できないと始まらない。
+ * 折り畳み判定は `renderTreeNode` と**同じ式**を使う ── ここがズレると
+ * 窓の index と画面が食い違う(しかも静かに)。
+ */
+function flattenDisplayTree(nodes: readonly TreeNode[], state: AppState): TreeNode[] {
+  const out: TreeNode[] = [];
+  const walk = (node: TreeNode): void => {
+    out.push(node);
+    const isCollapsed =
+      node.entry.archetype === 'folder' && state.collapsedFolders.includes(node.entry.lid);
+    if (isCollapsed) return;
+    for (const child of node.children) walk(child);
+  };
+  for (const n of nodes) walk(n);
+  return out;
+}
+
+/**
+ * L3-S5: tree 行を 1 行だけ描く(再帰しない)。窓の slice を描くのに使う。
+ * memo の扱い・装飾・選択 post-pass は `renderTreeNode` と同一。
+ */
+function renderTreeRowOnly(
+  node: TreeNode,
+  parent: HTMLElement,
+  state: AppState,
+  backlinkCounts: ReadonlyMap<string, number> | undefined,
+  connectedLids: ReadonlySet<string> | undefined,
+  connectednessSets: ConnectednessSets | null,
+): void {
+  const isCollapsed =
+    node.entry.archetype === 'folder' && state.collapsedFolders.includes(node.entry.lid);
+  const hasMoveButtons = treeRowHasMoveButtons(node.entry, state);
+  const inWindow = (state.childWindowLids ?? []).includes(node.entry.lid);
+  const derived = derivedRowFingerprint(
+    node.entry, state, backlinkCounts, connectedLids, connectednessSets,
+  );
+  rowMemoTouched.add(node.entry);
+  const memo = treeRowMemo.get(node.entry);
+  let li: HTMLElement;
+  if (
+    memo
+    && memo.derived === derived
+    && memo.depth === node.depth
+    && memo.collapsed === isCollapsed
+    && memo.childCount === node.children.length
+    && memo.truncatedChildCount === (node.truncatedChildCount ?? 0)
+    && memo.hasMoveButtons === hasMoveButtons
+    && memo.inWindow === inWindow
+  ) {
+    li = memo.li;
+  } else {
+    li = buildTreeRow(node, state, isCollapsed, backlinkCounts, connectedLids, connectednessSets);
+    treeRowMemo.set(node.entry, {
+      li,
+      depth: node.depth,
+      collapsed: isCollapsed,
+      childCount: node.children.length,
+      truncatedChildCount: node.truncatedChildCount ?? 0,
+      hasMoveButtons,
+      inWindow,
+      derived,
+    });
+  }
+  applyEntryRowSelectionAttrs(li, node.entry, state);
+  parent.appendChild(li);
 }
 
 /** tree 行の実構築(memo miss 時のみ)。従来の renderTreeNode の装飾部。 */

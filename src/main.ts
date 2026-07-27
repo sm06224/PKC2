@@ -10,7 +10,7 @@ import {
   refreshStorageEstimate,
 } from './runtime/debug-flags';
 import { createDispatcher } from './adapter/state/dispatcher';
-import { render } from './adapter/ui/renderer';
+import { render, didEnsureVisibleScrollEntryList } from './adapter/ui/renderer';
 import { computeRenderScope } from './adapter/ui/render-scope';
 import { getFilterIndexes } from './adapter/ui/filter-cache';
 import type { AppState } from './adapter/state/app-state';
@@ -20,6 +20,7 @@ import { preferredEditFocusSelector } from './adapter/ui/edit-focus';
 import {
   captureRenderContinuity,
   restoreRenderContinuity,
+  withoutScrollRegion,
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
@@ -294,7 +295,12 @@ async function boot(): Promise<void> {
       // touches center-pane preview Blobs and is also center-only.
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       populateAttachmentPreviews(root, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
@@ -311,7 +317,12 @@ async function boot(): Promise<void> {
       cleanupBlobUrls(root);
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       populateAttachmentPreviews(root, dispatcher);
       populateInlineAssetPreviews(root, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
@@ -326,7 +337,12 @@ async function boot(): Promise<void> {
       cleanupBlobUrls(root);
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       populateAttachmentPreviews(root, dispatcher);
       populateInlineAssetPreviews(root, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
@@ -340,7 +356,12 @@ async function boot(): Promise<void> {
       // hydration 系 hook は不要。continuity は center scroll / focus 維持用。
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
       return;
@@ -356,7 +377,12 @@ async function boot(): Promise<void> {
       cleanupBlobUrls(root);
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       populateAttachmentPreviews(root, dispatcher);
       populateInlineAssetPreviews(root, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
