@@ -349,14 +349,29 @@ export function attachHydrator(
   }
 
   let lookaheadDone = false;
+  /**
+   * 🔴 **先読み tick を disconnect で止める**(B9、2026-07-27)。
+   *
+   * tick は自分自身を再スケジュールし続ける(スクロール中は setTimeout、
+   * それ以外は requestIdleCallback / rAF)のに、**止める手段が無かった**。
+   * presenter が畳まれても連鎖は生き続け、
+   *   - `docEl.querySelectorAll` は**剥がれた DOM でも要素を返す**ので
+   *     tick は「まだ仕事がある」と判断して回り続け、
+   *   - closure が docEl / ctxMap / renderFn / observer を掴んだままなので
+   *     **剥がれた記事ツリーごと解放されない**。
+   * 表示を切り替えるたびに 1 本ずつ増える(上限なし)。
+   */
+  let disposed = false;
+  let lookaheadTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleLookahead(): void {
     if (lookaheadDone) return;
     lookaheadDone = true;
     let i = 0;
     function tick(): void {
+      if (disposed) return; // 畳まれたら連鎖を切る(再スケジュールしない)
       if (scrolling) {
         // 先読みの差し替えもスクロール中は止める(同じ空回り源)。
-        setTimeout(tick, SCROLL_SETTLE_MS);
+        lookaheadTimer = setTimeout(tick, SCROLL_SETTLE_MS);
         return;
       }
       const remaining = docEl.querySelectorAll<HTMLElement>(
@@ -386,7 +401,12 @@ export function attachHydrator(
 
   return {
     disconnect() {
+      disposed = true;
       observer.disconnect();
+      if (lookaheadTimer !== null) {
+        clearTimeout(lookaheadTimer);
+        lookaheadTimer = null;
+      }
       if (settleTimer !== null) {
         clearTimeout(settleTimer);
         settleTimer = null;
