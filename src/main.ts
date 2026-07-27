@@ -194,6 +194,17 @@ async function boot(): Promise<void> {
     import('./adapter/platform/storage/sqlite/sqlite-client').then((m) => m.probeSqliteWasm());
   (window as unknown as Record<string, unknown>).__pkc2SqlitePersistProbe = () =>
     import('./adapter/platform/storage/sqlite/sqlite-client').then((m) => m.probeSqlitePersistence());
+  // グラフアルゴリズム PoC(2026-07-27、user 要望「cytoscape で描画したい」)。
+  // cytoscape は mermaid の依存として**既に bundle 内にある**ため追加コストが
+  // ほぼ無い ── その実証と、現行 PKC2 に無いグラフ演算(中心性 / PageRank /
+  // 連結成分 / 最短経路)の実測用。**UI からは到達しない debug hook**。
+  (window as unknown as Record<string, unknown>).__pkc2GraphProbe = () => {
+    const c = dispatcher.getState().container;
+    if (!c) return Promise.resolve({ ok: false, error: 'container 未読込' });
+    return import('./features/relation/graph-algorithms-poc').then((m) =>
+      m.probeGraphAlgorithms(c.relations, c.entries.map((e) => e.lid)),
+    );
+  };
   const root = document.getElementById(SLOT.ROOT);
   if (!root) {
     console.error(`[PKC2] #${SLOT.ROOT} not found`);
