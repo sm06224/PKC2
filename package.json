@@ -29,7 +29,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build:bundle": "vite build",
+    "build:bundle": "node build/scripts/copy-sqlite-wasm.cjs && vite build",
     "build:release": "tsx build/release-builder.ts",
     "build:manual": "tsx build/manual-builder.ts",
     "build": "npm run build:bundle && npm run build:release",
@@ -82,6 +82,7 @@
     "esbuild": "^0.28.1"
   },
   "dependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
     "chart.js": "^4.5.1",
     "docx": "^9.7.1",
     "markdown-it": "^14.3.0",

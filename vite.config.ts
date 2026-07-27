@@ -3,6 +3,10 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: '.',
+  // P2(dev/storage-sqlite): sqlite3.wasm を `.wasm.bin` として ?inline 焼き込む。
+  // `.bin` は vite の既知 asset 型でないため、明示しないと module として
+  // resolve されて UNLOADABLE_DEPENDENCY になる(2026-07-27 実測)。
+  assetsInclude: ['**/*.wasm.bin'],
   resolve: {
     alias: {
       '@core': resolve(__dirname, 'src/core'),

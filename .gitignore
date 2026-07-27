@@ -14,3 +14,8 @@ bench-results/
 # ⚠ パターンは **接頭辞**で書く。`*-rev.json` だけだと `--deleted` を足した
 #    `c-5000-rev-del.json` が漏れて 25MB を commit しかける(2026-07-26 に実際に踏んだ)。
 bench-fixtures/c-*-rev*.json
+
+# P2: build 前段で node_modules からコピーされる生成物(copy-sqlite-wasm.cjs)
+src/adapter/platform/storage/sqlite/sqlite3.wasm*.bin
+# P2: sqlite-wasm の worker チャンク(worker1 API は未使用。単一 HTML には載らない)
+dist/assets/

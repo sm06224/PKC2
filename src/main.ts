@@ -184,6 +184,12 @@ async function boot(): Promise<void> {
   // can carry quota numbers without a Promise round-trip at click time.
   installDebugErrorCapture();
   void refreshStorageEstimate();
+  // P2 spike(wasm-sqlite 設計 §7、dev/storage-sqlite):静的 bundle した
+  // sqlite3.wasm の動作実証フック。**呼ばれるまで wasm の compile も
+  // 初期化も走らない**(遅延 singleton)。実ブラウザ検証は
+  // tests/bench/sqlite-spike.mjs がこの hook を叩く。
+  (window as unknown as Record<string, unknown>).__pkc2SqliteProbe = () =>
+    import('./adapter/platform/storage/sqlite/sqlite3-instance').then((m) => m.probeSqliteWasm());
   const root = document.getElementById(SLOT.ROOT);
   if (!root) {
     console.error(`[PKC2] #${SLOT.ROOT} not found`);
