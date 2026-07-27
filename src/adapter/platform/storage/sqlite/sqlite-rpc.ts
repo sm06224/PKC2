@@ -13,6 +13,10 @@ import type { ContainerRows, RowOp } from './sqlite-schema';
 /** リクエスト本体(id は client が付ける)。 */
 export type SqliteRequestBody =
   | { op: 'init'; dbName: string }
+  // 破棄 lifecycle(user 指示 2026-07-27「生成とライフサイクル後の速やかな破棄」):
+  // close = DB と VFS を閉じ terminate 可能にする / shrinkMemory = 開いたまま解放
+  | { op: 'close' }
+  | { op: 'shrinkMemory' }
   | { op: 'probe' }
   | { op: 'probePersistence' }
   | { op: 'saveFull'; cid: string; rows: ContainerRows; setDefault: boolean }

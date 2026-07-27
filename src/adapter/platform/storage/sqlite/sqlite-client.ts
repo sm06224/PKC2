@@ -18,6 +18,8 @@ import type {
   SqliteResponse,
   SqliteRpc,
 } from './sqlite-rpc';
+import { createManagedRpc, type ManagedSqliteRpc } from './sqlite-lifecycle';
+export type { ManagedSqliteRpc } from './sqlite-lifecycle';
 
 export function createSqliteRpc(): SqliteRpc {
   const worker = new SqliteWorkerFactory();
@@ -64,6 +66,22 @@ export function createSqliteRpc(): SqliteRpc {
 /** worker を起動して常駐 DB を open する。persistent=false は SAHPool 不成立。 */
 export function initSqlite(rpc: SqliteRpc, dbName: string): Promise<SqliteInitResult> {
   return rpc.call<SqliteInitResult>({ op: 'init', dbName });
+}
+
+/**
+ * 破棄 lifecycle 付きの RPC(L1、user 指示 2026-07-27
+ * 「使った後に破棄するようにできないか。連続で使われないなら、時間で破棄」)。
+ * 制御ロジック本体は `sqlite-lifecycle.ts`(wasm 抜きで test できるよう分離)。
+ * ここは**実 worker の生成手段を注入するだけ**。
+ */
+export function createManagedSqliteRpc(
+  dbName: string,
+  options: { idleMs?: number } = {},
+): ManagedSqliteRpc {
+  return createManagedRpc(dbName, {
+    ...options,
+    factory: () => createSqliteRpc(),
+  });
 }
 
 /**

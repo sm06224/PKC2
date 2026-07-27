@@ -367,13 +367,23 @@ DOM + compositor)。**storage 形式ではもう削れない領域**に入った
    - **「renderer 356MB」の大半はアプリの割当ではない**(計上合計は空で 70MB。
      残りは chromium 自体のバイナリ写像等 ── VmRSS 計器は共有ページを
      二重計上する。アプリから削れない床)
-   - **v8 のコード常駐は犯人ではない**(空 7MB)。「wasm で畳む」「重量 dep の
-     遅延評価 + 時間破棄」の賞金を実測した: **mermaid を実際に描画しても
-     GC 後ヒープは増えない**(36.4 → 25.2MB、30s idle 後 25.1MB ── V8 の
-     遅延コンパイル + bytecode flushing で既にほぼ無料)。
-     ⇒ dep 向けの破棄 lifecycle は**いまは作らない**(方向の否定ではない ──
-     export 生成器(docx/pptx/exceljs)を触る際は worker+terminate 化が正道。
-     sqlite worker の idle 時 terminate → 再起動も同じ型で、賞金 ~20-30MB)
+   - 🔴 **訂正(2026-07-27、user 指摘を受けて同日中に撤回)**: 当初ここには
+     「mermaid を描画しても GC 後ヒープは増えない(36.4 → 25.2MB)ので
+     **dep 向けの破棄 lifecycle はいまは作らない**」と書いた。**これは誤りで、
+     判定の根拠にした計測が JS heap しか見ていなかった。**
+     同じ日の allocator 内訳を突き合わせると、**mermaid を 1 枚描いただけで
+     renderer 計上は 69.9 → 76.8MB(+6.9MB)**(v8 +3 / malloc +3 / skia +1.4)。
+     JS heap の外(blink 側・skia・コード)に残るものを、JS heap 計器で
+     「無い」と言っていた。**dep の遅延評価 + 使用後の破棄には実測の賞金がある。**
+     ⇒ 破棄 lifecycle は**作る**(mermaid / chart.js / docx / pptxgenjs、および
+     sqlite worker の idle terminate)。効果の測定は **JS heap ではなく
+     allocator 内訳**(renderer-memory-breakdown.mjs)で行う。
+     ⚠ 規律: 「効果が小さい / 無い」の判定を**単一計器で下してはならない**
+     (user 指示③「効果が小さいからやらないではなく、積み上げた先に価値が
+     あるなら小さかろうが積んでください」に照らして、そもそも棄却理由に
+     しないのが規約。ここでは棄却理由にしたうえ、その根拠すら誤っていた)
+   - **v8 のコード常駐は空アプリでは 7MB** ── ただし上記のとおり
+     「使うと増えて残る」ので、静的な空アプリ計測だけで判断しない
    - **アプリ側で残る最大の芝**: DOM 系(partition_alloc + blink_gc)が
      3000 entries で 16 → 59MB。**sidebar の DOM 仮想化**が本命
      (編集ごとの 5000 行再構築問題の恒久版でもある)

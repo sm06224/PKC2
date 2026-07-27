@@ -202,6 +202,38 @@ info = await boot(true);
   check('選択駆動の hydrate で履歴行が揃う(読み込み中行が消える)', rowCount >= 1, `rows=${rowCount}`);
 }
 
+console.log('■ H. L1: worker の破棄 lifecycle(畳んでも状態が連続するか)');
+{
+  const before = await page.evaluate(`({ alive: window.__pkc2SqliteRpcDebug.alive(), restarts: window.__pkc2SqliteRpcDebug.restarts() })`);
+  check('worker が生きている', before.alive === true, JSON.stringify(before));
+  // 明示的に畳む(idle 30 秒を待たない)
+  await page.evaluate(`window.__pkc2SqliteRpcDebug.collapseNow()`);
+  const collapsed = await page.evaluate(`({ alive: window.__pkc2SqliteRpcDebug.alive(), restarts: window.__pkc2SqliteRpcDebug.restarts() })`);
+  check('collapse で worker が畳まれる(close → terminate)', collapsed.alive === false, JSON.stringify(collapsed));
+  // 畳んだ後に store を触る → 透過再生成 + データが連続していること
+  const revived = await page.evaluate(async () => {
+    const store = window.__pkc2StoreDebug;
+    const def = await store.loadDefaultMetaShallow();
+    return {
+      alive: window.__pkc2SqliteRpcDebug.alive(),
+      restarts: window.__pkc2SqliteRpcDebug.restarts(),
+      titles: def.container ? def.container.entries.map((e) => e.title) : [],
+    };
+  });
+  check('畳んだ後の呼び出しで worker が再生成される', revived.alive === true && revived.restarts === collapsed.restarts + 1, JSON.stringify({ alive: revived.alive, restarts: revived.restarts }));
+  check('再生成後もデータが連続する(SQLITE-EDIT-2 が読める)', revived.titles.some((t) => String(t).includes('SQLITE-EDIT-2')), `entries=${revived.titles.length}`);
+  // 畳む → 書く → 畳む → 読む(書込が再生成をまたいで永続するか)
+  const rw = await page.evaluate(async () => {
+    const store = window.__pkc2StoreDebug;
+    await store.saveAssetMeta('lifecycle-probe', { 'k.bin': { size: 7, hash: 'cafebabecafebabe' } });
+    await window.__pkc2SqliteRpcDebug.collapseNow();
+    const aliveAfter = window.__pkc2SqliteRpcDebug.alive();
+    const meta = await store.loadAssetMeta('lifecycle-probe');
+    return { aliveAfter, meta };
+  });
+  check('畳む前の書込が、再生成後に読める', JSON.stringify(rw.meta) === JSON.stringify({ 'k.bin': { size: 7, hash: 'cafebabecafebabe' } }), JSON.stringify(rw.meta));
+}
+
 if (pageErrors.length) {
   console.log(`⚠ pageerror ${pageErrors.length} 件:`);
   for (const e of pageErrors.slice(0, 5)) console.log(`   ${e}`);

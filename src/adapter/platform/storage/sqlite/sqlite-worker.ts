@@ -88,7 +88,20 @@ function getSqlite3(): Promise<Sqlite3Static> {
 type OoDb = InstanceType<Sqlite3Static['oo1']['DB']>;
 type SahPoolUtil = {
   OpfsSAHPoolDb: new (path: string) => OoDb;
+  /**
+   * 🔴 **DB ファイルごと消す**(実装 index.mjs:15164-15179 ──
+   * `removeEntry(OPAQUE_DIR_NAME, {recursive:true})` + VFS root ごと削除。
+   * 公式 doc も "intended primarily for testing" と明記)。
+   * **probe(使い捨ての別 VFS 名)以外で呼んではならない。**
+   * 2026-07-27、L1 の close 経路でこれを使って実際にデータを消し、
+   * roundtrip Phase H が検出した。畳むときは `pauseVfs()` を使う。
+   */
   removeVfs: () => Promise<boolean>;
+  /**
+   * SAH を解放して VFS を unregister する。**ファイルは残る**(index.mjs:15200-)。
+   * 開いている file handle があると throw するので、**db.close() の後に呼ぶ**。
+   */
+  pauseVfs: () => unknown;
 };
 
 function installSahPool(sqlite3: Sqlite3Static, name: string): Promise<SahPoolUtil> {
@@ -101,7 +114,26 @@ function installSahPool(sqlite3: Sqlite3Static, name: string): Promise<SahPoolUt
 // ── 常駐 DB ──
 
 let db: OoDb | null = null;
+let poolUtil: SahPoolUtil | null = null;
 let initInfo: SqliteInitResult | null = null;
+
+/**
+ * 常駐メモリの上限設定(2026-07-27、user 指示「ゼロコピー、生成とライフサイクル
+ * 後の速やかな破棄を徹底」)。
+ *
+ * - `cache_size` は**負値で KiB 指定**。既定 -2000(2MB)だが、明示して
+ *   「ページキャッシュがデータ量に比例して伸びない」ことを契約にする
+ *   (75,000 行の一括移行のような書込でキャッシュが膨らんだまま居座るのを防ぐ)
+ * - `mmap_size = 0`: SAHPool VFS は mmap を提供しない。明示 0 で
+ *   wasm 側に無駄なマップ領域を作らせない
+ * - `journal_mode = TRUNCATE` + `synchronous = NORMAL`: SAHPool は WAL 非対応。
+ *   既定のままだが、明示して「別モードに落ちて挙動が変わる」事故を防ぐ
+ */
+const PRAGMAS: readonly string[] = [
+  'PRAGMA cache_size = -2000',
+  'PRAGMA mmap_size = 0',
+  'PRAGMA synchronous = NORMAL',
+];
 
 async function handleInit(dbName: string): Promise<SqliteInitResult> {
   if (initInfo && db) return initInfo; // idempotent(再 init は既存を返す)
@@ -110,8 +142,23 @@ async function handleInit(dbName: string): Promise<SqliteInitResult> {
   let vfs: SqliteInitResult['vfs'] = 'memory';
   let error: string | undefined;
   try {
-    const pool = await installSahPool(sqlite3, dbName);
-    db = new pool.OpfsSAHPoolDb('/pkc2.db');
+    // ⚠ idle terminate → 再起動(§2 の破棄 lifecycle)で、直前の worker が
+    // 握っていた SAH handle の解放が完了していないことがある。install は
+    // 短い間隔で数回だけ retry する(それでも駄目なら :memory: へは**落とさず**
+    // 例外を返し、client が IDB 継続を選ぶ ── 揮発 DB に書き始めない)。
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        poolUtil = await installSahPool(sqlite3, dbName);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        await new Promise<void>((r) => setTimeout(r, 60 * (attempt + 1)));
+      }
+    }
+    if (lastErr || !poolUtil) throw lastErr ?? new Error('SAHPool install failed');
+    db = new poolUtil.OpfsSAHPoolDb('/pkc2.db');
     vfs = 'sahpool';
   } catch (err) {
     // SAHPool 不成立(OPFS 不可環境 / 多重 tab lock)── :memory: に落として
@@ -119,9 +166,17 @@ async function handleInit(dbName: string): Promise<SqliteInitResult> {
     // これを **不成立として扱い IDB へ fallback** する(データを揮発 DB に
     // 書き始めない ── 消失経路 S1〜S4 の教訓)。
     error = String(err);
+    poolUtil = null;
     db = new sqlite3.oo1.DB(':memory:');
   }
   for (const sql of DDL) db.exec(sql);
+  for (const sql of PRAGMAS) {
+    try {
+      db.exec(sql);
+    } catch {
+      /* PRAGMA 不対応は致命ではない(既定値で続行) */
+    }
+  }
   initInfo = {
     persistent: vfs === 'sahpool',
     vfs,
@@ -130,6 +185,54 @@ async function handleInit(dbName: string): Promise<SqliteInitResult> {
     ...(error ? { error } : {}),
   };
   return initInfo;
+}
+
+/**
+ * SQLite が保持している解放可能メモリを OS/allocator へ返す。
+ * idle 時と、大量書込(移行 / 全量保存)の直後に呼ぶ。DB は開いたまま。
+ */
+function handleShrinkMemory(): void {
+  if (!db) return;
+  try {
+    db.exec('PRAGMA shrink_memory');
+  } catch {
+    /* 不対応でも致命ではない */
+  }
+}
+
+/**
+ * **速やかな破棄**(user 指示 2026-07-27)── DB を閉じ SAH を解放して、
+ * worker を terminate できる状態にする。client は idle N 秒でこれを呼んでから
+ * terminate し、次の呼び出しで透過的に再 init する。
+ *
+ * 順序が意味を持つ: `shrink_memory` → `db.close()` → `pauseVfs()`。
+ * - close より先に pause すると「開いている file handle がある」で throw する
+ * - 🔴 **`removeVfs()` は使わない** ── **DB ファイルごと消える**
+ *   (2026-07-27、ここで実際に消して roundtrip Phase H が検出した)。
+ *   `pauseVfs()` は SAH を解放しつつ**ファイルを残す**、畳むための API
+ * - SAH を明示解放しておくと、次の worker の install が確実に取れる
+ *   (init 側の retry はあくまで保険)
+ */
+async function handleClose(): Promise<void> {
+  handleShrinkMemory();
+  try {
+    db?.close();
+  } catch {
+    /* 既に閉じている */
+  }
+  db = null;
+  initInfo = null;
+  const pool = poolUtil;
+  poolUtil = null;
+  if (pool) {
+    try {
+      pool.pauseVfs();
+    } catch (err) {
+      // 解放できなくても terminate はする(worker 終了で OS/ブラウザが回収)。
+      console.warn('[PKC2] sqlite worker: pauseVfs 失敗(terminate で回収):', err);
+    }
+  }
+  await Promise.resolve();
 }
 
 function mustDb(): OoDb {
@@ -543,6 +646,12 @@ async function handle(req: SqliteRequest): Promise<unknown> {
   switch (req.op) {
     case 'init':
       return handleInit(req.dbName);
+    case 'close':
+      await handleClose();
+      return undefined;
+    case 'shrinkMemory':
+      handleShrinkMemory();
+      return undefined;
     case 'probe':
       return handleProbe();
     case 'probePersistence':

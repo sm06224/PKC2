@@ -31,7 +31,7 @@ import {
   type ContainerRows,
   type RevisionRow,
 } from './sqlite-schema';
-import type { AssetMetaRow, SqliteRpc } from './sqlite-rpc';
+import type { AssetMetaRow, SqliteInitResult, SqliteRpc } from './sqlite-rpc';
 
 const ACTIVE_WORKSPACE_KEY = '__active_workspace__';
 const WORKSPACE_PREFIX = 'workspace:';
@@ -438,11 +438,12 @@ export async function migrateFromInnerIfEmpty(
 export async function createSqliteBackend(
   inner: ContainerStore,
 ): Promise<SqliteBackendResult | null> {
-  const { createSqliteRpc, initSqlite } = await import('./sqlite-client');
-  let rpc: SqliteRpc | null = null;
+  const { createManagedSqliteRpc } = await import('./sqlite-client');
+  // 破棄 lifecycle 付き RPC(user 指示 2026-07-27): idle が続けば worker ごと
+  // 畳み、次の操作で透過的に作り直す。init は最初の call が面倒を見る。
+  const rpc = createManagedSqliteRpc('pkc2-sqlite');
   try {
-    rpc = createSqliteRpc();
-    const init = await initSqlite(rpc, 'pkc2-sqlite');
+    const init = await rpc.call<SqliteInitResult>({ op: 'init', dbName: 'pkc2-sqlite' });
     if (!init.persistent) {
       // :memory: に落ちた = 永続化できない。揮発 DB に書き始めるのは
       // データ消失経路(S1〜S4 の教訓)なので、使わずに畳む。
@@ -452,11 +453,18 @@ export async function createSqliteBackend(
     }
     const store = createSqliteContainerStore(inner, rpc);
     const migrated = await migrateFromInnerIfEmpty(store, inner, rpc);
-    const rpcRef = rpc;
-    return { store, migrated, dispose: () => rpcRef.dispose() };
+    // 一括移行の直後は page cache が膨らんでいる ── 開いたまま解放する。
+    if (migrated) await rpc.call({ op: 'shrinkMemory' }).catch(() => undefined);
+    // 計器(bench / roundtrip harness が破棄と復帰を観測する導線)。
+    (globalThis as unknown as Record<string, unknown>).__pkc2SqliteRpcDebug = {
+      restarts: () => rpc.restarts(),
+      alive: () => rpc.alive(),
+      collapseNow: () => rpc.collapseNow(),
+    };
+    return { store, migrated, dispose: () => rpc.dispose() };
   } catch (err) {
     console.warn('[PKC2] sqlite backend 初期化失敗 — IDB を継続:', err);
-    rpc?.dispose();
+    rpc.dispose();
     return null;
   }
 }

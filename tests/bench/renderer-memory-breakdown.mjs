@@ -33,6 +33,8 @@ const FLAGQ = argOf('flag', '') === '1' ? '?pkc-flag=storage.sqlite_backend%3Dtr
 // mermaid / chart を実際に描画させてから dump し、「使用後の常駐」= 遅延評価+
 // 破棄 lifecycle 設計の賞金を数字にする。
 const USE_FEATURES = argOf('use-features', '') === '1';
+// L1 の効果計測: dump の直前に sqlite worker を畳む(idle 30 秒の到来を待たない)。
+const COLLAPSE = argOf('collapse', '') === '1';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 
 const srv = await new Promise((r) => {
@@ -110,6 +112,13 @@ if (USE_FEATURES) {
 }
 // 定常化を待つ(GC / lazy 初期化が落ち着く窓 ── boot-rss 実測で settle は ~30s)
 await page.waitForTimeout(35000);
+if (COLLAPSE) {
+  const before = await page.evaluate(`window.__pkc2SqliteRpcDebug ? window.__pkc2SqliteRpcDebug.alive() : null`);
+  await page.evaluate(`window.__pkc2SqliteRpcDebug && window.__pkc2SqliteRpcDebug.collapseNow()`);
+  const after = await page.evaluate(`window.__pkc2SqliteRpcDebug ? window.__pkc2SqliteRpcDebug.alive() : null`);
+  console.log(`   L1 collapse: alive ${before} → ${after}`);
+  await page.waitForTimeout(8000); // 解放が allocator に反映される窓
+}
 
 // memory-infra の detailed dump を 1 回取る
 const cdp = await ctx.newCDPSession(page);
