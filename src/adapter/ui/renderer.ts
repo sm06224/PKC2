@@ -5100,6 +5100,9 @@ function renderSidebarImpl(
       }
       endTreeLoop();
     }
+    // B18: 今回描いた行以外の memo を捨てる(flat / tree どちらの枝を通っても
+    // 1 回。枝ごとに書くと、モード切替で反対側の memo が残る)。
+    pruneRowMemos();
     sidebar.appendChild(list);
   }
 
@@ -5487,7 +5490,49 @@ interface TreeRowMemoEntry {
   derived: string;
 }
 
-let treeRowMemo = new WeakMap<Entry, TreeRowMemoEntry>();
+/**
+ * 🔴 **WeakMap → Map + 描画ごとの prune**(B18、2026-07-27)。
+ *
+ * WeakMap のキーは Entry なので、**Entry が生きている限り行 DOM が生き続ける**。
+ * Entry は container の寿命ぶん生きるから、これは事実上「一度でも描画された行の
+ * DOM を永久に持つ」と同じだった。#1031 で container 参照による全 invalidate を
+ * やめた(それ自体は正しい ── 1 文字の編集で 5000 行を作り直していた)結果、
+ * 溜め込みだけが残った形になる。
+ *
+ * 実測(c-5000 / 検索条件を 4 回変えて戻す / 強制 GC 後):
+ *   jsHeap  13.4 → 16.2 MB(+2.8MB)だが **nodes 40,527 → 73,136(+32,609)**。
+ *   画面に出ているのは 100 行。JS heap で見ると小さく見えるが、実体は
+ *   3.2 万ノードの detached DOM である(B1 の計器で初めて正しい単位で見えた)。
+ *
+ * 直し方: **描画のたびに「今回描いた行」以外を捨てる**。memo の保持は
+ * 常に**画面に付いている行と一致**し、detached が積まれなくなる。
+ * 速度の性質は保つ ── #1031 が守りたかったのは「編集確定 → 同じ一覧を再描画」で
+ * あって、そこは 100% hit のまま(prune は今回描いた行を残すため)。
+ * 絞り込みを A→B→A と往復したときだけ A を作り直す = cold 描画 1 回ぶん。
+ */
+let treeRowMemo = new Map<Entry, TreeRowMemoEntry>();
+
+/**
+ * この描画パスで実際に使った Entry。パス終端の `pruneRowMemos()` で
+ * これ以外の memo を落とす。
+ */
+const rowMemoTouched = new Set<Entry>();
+
+/** 今回の描画で使わなかった行 memo を捨てる(detached DOM を溜めない)。 */
+function pruneRowMemos(): void {
+  for (const key of entryRowMemo.keys()) {
+    if (!rowMemoTouched.has(key)) entryRowMemo.delete(key);
+  }
+  for (const key of treeRowMemo.keys()) {
+    if (!rowMemoTouched.has(key)) treeRowMemo.delete(key);
+  }
+  rowMemoTouched.clear();
+}
+
+/** 計器: 行 memo が保持している行数(常駐の pin 用)。 */
+export function __rowMemoSize(): { flat: number; tree: number } {
+  return { flat: entryRowMemo.size, tree: treeRowMemo.size };
+}
 
 function clearTreeRowMemoIfStale(
   container: import('@core/model/container').Container | null,
@@ -5572,6 +5617,7 @@ function renderTreeNode(
   const derived = derivedRowFingerprint(
     node.entry, state, backlinkCounts, connectedLids, connectednessSets,
   );
+  rowMemoTouched.add(node.entry);
   const memo = treeRowMemo.get(node.entry);
   let li: HTMLElement;
   if (
@@ -5755,7 +5801,7 @@ export function __resetIndexMemoForTest(): void {
 //
 // Tree mode は長らく対象外だったが、#938 R9 で専用 memo(treeRowMemo、
 // 装飾パラメータ比較つき)が付いた — renderTreeNode 直上の doc 参照。
-let entryRowMemo = new WeakMap<Entry, { li: HTMLElement; derived: string }>();
+let entryRowMemo = new Map<Entry, { li: HTMLElement; derived: string }>();
 
 /**
  * 2026-07-26: **container 参照での全 invalidate をやめた**。
@@ -5798,6 +5844,7 @@ function getOrCreateMemoizedEntryItem(
   const derived = derivedRowFingerprint(
     entry, state, backlinkCounts, connectedLids, connectednessSets,
   );
+  rowMemoTouched.add(entry);
   const memo = entryRowMemo.get(entry);
   let li: HTMLElement;
   if (memo && memo.derived === derived) {
@@ -5818,10 +5865,11 @@ function getOrCreateMemoizedEntryItem(
  *  observable (cache hit on second render of the same entry), and
  *  tests need a deterministic starting point. */
 export function __resetEntryRowMemoForTest(): void {
-  entryRowMemo = new WeakMap();
+  entryRowMemo = new Map();
   // #938 R9: tree 行 memo も同じ test hook で reset する(既存テストは
   // この 1 本で「行 memo なしのクリーンな状態」を期待している)。
-  treeRowMemo = new WeakMap();
+  treeRowMemo = new Map();
+  rowMemoTouched.clear();
 }
 
 function renderEntryItem(
