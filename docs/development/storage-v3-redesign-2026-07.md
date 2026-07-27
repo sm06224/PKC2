@@ -50,6 +50,16 @@
 |---|---|---|---|---|
 | A1: **IDB v3 スキーマ**(推奨) | IndexedDB を「単一巨大 record」から「実体別 store + **Blob 値**」へ再設計 | 依存ゼロ / 全ブラウザ / **Blob をネイティブ格納**(ヒープ外・disk 退避可)/ index による部分読み | SQL は無い(必要になった実績もない) | ◎ 採用 |
 | A2: SQLite WASM(wa-sqlite / sql.js) | 本物の DB エンジン | SQL・トランザクション表現力 | +1MB 級 WASM dep(bundle 予算・単一 HTML と衝突)/ **blob が WASM メモリを通る**ため GB 級 media にむしろ不利 / OPFS 永続は VFS 依存 | △ 見送り(将来 query 需要が実証されたら再評価) |
+
+> 🔴 **追記(2026-07-27)**: 本行の「見送り」は**上書きされた**。:164 で求めた動機は
+> 回答された ── 「**私が wasm-sqlite にこだわったのはこういうメモリ消費の安全性面も
+> あるからな? ゼロコピー、生成とライフサイクル後の速やかな破棄を徹底してください /
+> ビルドが静的であれば何も問題ない**」(user 指示 2026-07-27)。同日の実測
+> (PR #1040、500MB 実データ相当で初回 RSS 1.5〜1.6GB / 定常 1.0GB / revisions 80MB
+> 常駐)がこの動機を裏づけた。見送り理由のうち「bundle 予算」は使えない(予算は
+> tripwire ── user 指示 2026-07-26)。「blob が WASM メモリを通る」は正しいので、
+> 後継設計は構造データ = sqlite / media bytes = Blob のハイブリッドとした。
+> **後継: `storage-wasm-sqlite-design-2026-07.md`**
 | A3: OPFS ファイルシステム直 | asset を実ファイル、メタを JSON | media に最適(stream 読書き)/ eviction 耐性 | すでに `fs-directory-adapter` seam あり。ただし**メタデータの index/部分読みは自前**になる | ○ **asset bytes 層としてハイブリッド採用**(A1 と併用可能な seam) |
 | A4: PGlite 等 | — | — | 重量級、論外 | ✕ |
 
