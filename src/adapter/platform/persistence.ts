@@ -411,11 +411,32 @@ export function mountPersistence(
       // Arm the explicit IDB purge for the next save cycle (段階2 #868).
       pendingPurge = true;
     }
-    if (event.type === 'CONTAINER_IMPORTED' || event.type === 'CONTAINER_LOADED') {
+    if (event.type === 'CONTAINER_IMPORTED') {
       // #938 R1: import / 外部由来の container 差し替えは同一 asset key の
       // bytes を差し替えうる唯一の経路。dirty-tracking の「persist 済み」
       // 記録を破棄し、次の保存で全 asset を書き直させる(通常編集の
       // 保存は skip 最適化のまま)。
+      //
+      // 🔴 **`CONTAINER_LOADED` を条件から外した(2026-07-26)。**
+      //
+      // 実測(`tests/bench/migration-heap.mjs`、2000 entries / 添付 100 件 ×
+      // 512KB = 52.5MB):起動時のピーク heap が **157.3 → 271.8 MB(+114.6 MB)**。
+      // #1035 の強制マイグレーションで起動時保存が実際に走るようになった結果、
+      // **全 asset が毎起動書き直されていた**。
+      //
+      // なぜ外して安全か:
+      //   - `CONTAINER_LOADED` の発行元は `SYS_INIT_COMPLETE` の 2 箇所だけ = **起動**。
+      //     import は `CONTAINER_IMPORTED` を別に出すので、本来の目的は残る
+      //   - IDB 起動なら asset は store から読んだもので、`reassembleAssets` が
+      //     「読めた = persist 済み」として記録済み(`idb-store.ts:1308`)。
+      //     **その正しい記録を消していたのがこの行だった**
+      //   - pkc-data / light / 閲覧のみ起動では `viewOnlySource` / `lightSource` が
+      //     立ち、`doSave` が保存自体を skip する ⇒ 記録の有無は結果に影響しない
+      //   - 起動時に asset を読まなかった場合は記録が空のままなので、
+      //     従来どおり書かれる(skip 過多にはならない)
+      //
+      // ⚠ 記録の更新は「書込成功」or「読出成功」のみ、という不変条件は変えていない。
+      //   pin: `tests/adapter/persistence-asset-invalidation.test.ts`
       const cid = dispatcher.getState().container?.meta.container_id;
       if (cid) store.invalidatePersistedAssets(cid);
     }
