@@ -138,10 +138,15 @@ lazy_entry_bodies(S1〜S4)・#1022 サイドカーの事故と同じ轍を踏ま
 
 ## 7. 段階(小さく積む ── user 指示③「小さかろうが積んでください」)
 
+> 🔴 **開発の進め方(user 指示 2026-07-27)**: 「**main にそのまま着地させるのは
+> 危ないから、開発ブランチとしてここから先はブランチに乗せたまま進めてください**」
+> ── 本設計の実装は **`dev/storage-sqlite`** branch 上に積む。**main への merge は
+> user 裁定まで凍結**(merge-on-green の委任はこの branch には適用しない)。
+
 | 段階 | 内容 | 吸収する Issue |
 |---|---|---|
 | P0 | 本 doc の裁定 | — |
-| P1 | **継続使用の計測ハーネス**(編集セッション N 分の RSS 時系列。boot 窓だけで判定しない ── user 指示⑤)+ 現行のベースライン取得 | — |
+| P1 | ✅ **継続使用の計測ハーネス**(編集セッション N 分の RSS 時系列。boot 窓だけで判定しない ── user 指示⑤)+ 現行のベースライン取得 → **取得済み(下表)** | — |
 | P2 | sqlite3.wasm 静的 bundle + `SqliteContainerStore`(ContainerStore の別実装)。flag opt-in で read/write。**この時点から新規データは JSON 内部表現を持たない** | — |
 | P3 | assets: sqlite 行(meta)+ Blob record(bytes) | #1042 |
 | P4 | revisions: COUNT / 要求時読み + zstd グループ圧縮 | #1041 |
@@ -149,6 +154,30 @@ lazy_entry_bodies(S1〜S4)・#1022 サイドカーの事故と同じ轍を踏ま
 
 各段階が単独で着地し、単独で計測できる。**「効果が小さい」は棄却理由にしない**
 ── 積み上げ先(本 doc)が確定しているため。
+
+### 7-b. P1 ベースライン(2026-07-27 取得。sqlite 実装の前後比較の基準)
+
+計器: `tests/bench/boot-rss.mjs` / `tests/bench/sustained-use-rss.mjs`
+(chromium 全プロセスの /proc RSS 合算・強制 GC なし・隔離環境)。
+fixture: entries 3000(5.2MB)+ revisions 75,000(299.7MB)+ assets 400 × 512KB(200MB)= 505MB。
+
+| 局面 | 総RSS | renderer | JS heap |
+|---|---|---|---|
+| ほぼ空(100 entries)の定常 ── 固定費 | 0.89 GB | 356 MB | 18 MB |
+| 500MB・idle 定常(2 回目起動・索引済み) | 1.20 GB | 682 MB | 309 MB |
+| 500MB・**編集継続中の水位**(5 分 / 114 編集) | **1.58〜1.61 GB** | ~970 MB | — |
+| 500MB・初回起動 × 編集(索引構築と重なる) | **2.48 GB** | 1,968 MB | — |
+
+読み方:
+- **データ比例分** = idle 1.20 − 空 0.89 = **+0.31 GB ≒ revisions 300MB の heap 常駐**(P4 が消す)
+- **編集 churn 分** = 編集中 1.6 − idle 1.2 = **+0.4 GB**(保存のたびに core record 300MB+ を
+  直列化 + structured clone する現行形式のコスト。sqlite の行 UPDATE で消える)
+- **初回 2.48 GB** = 上記 + 索引構築の読み捨て churn ── **user 報告「2GB 超で OOM」と一致**
+- **空でも renderer 356 MB(JS heap 18 MB)** ── bundle のコンパイル済みコード +
+  起動時展開の V8 未返却と推定。**内訳は未測定**(別調査 ── §8 に追加)
+
+⚠ 数字は本 doc 内の相対比較専用。走行をまたいだ絶対値比較・実機のタブ単体表示との
+直接比較はしない(計器の基準が違う)。
 
 ## 8. 未確定(裁定・調査が要るもの)
 
@@ -158,6 +187,8 @@ lazy_entry_bodies(S1〜S4)・#1022 サイドカーの事故と同じ轍を踏ま
 2. sqlite ファイルの export(= .sqlite そのままの持ち出し)を製品機能にするか
 3. FTS5 / sqlite-vec は本 doc の範囲外(「機能を足さない」に抵触するため、
    拡張点だけ確保して凍結)
+4. **空アプリで renderer 356 MB(JS heap 18 MB)の内訳** ── bundle 6MB の
+   コンパイル済みコードと boot 時展開の寄与を分解する(sqlite とは独立の調査)
 
 ## 9. 参照
 
