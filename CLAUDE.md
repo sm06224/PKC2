@@ -197,6 +197,16 @@ The **Dispatcher** is the single coordination point: dispatch → reduce → not
   「操作が重い」の根拠にしてはいけない(IDB の書込はメインスレッド外)。体感を語るなら long task か
   `Performance.getMetrics`(Script / Layout / RecalcStyle)を測る。実例: 既定パスは 1 編集 25.7MB 書いて
   いたが体感の主因は**描画**で、5000 行のサイドバーを編集の開始・確定のたびに作り直していた
+- 🔴 **「効果が無い / 小さい」の判定を単一計器で下さない**(2026-07-27、同日中に自分で撤回)。
+  user 直接要望の「使った後に破棄 / 時間で破棄」の賞金を **JS heap だけ**で測り
+  「増えない」と読んで棚上げしたが、同日の allocator 内訳では **mermaid 1 枚で
+  renderer 計上 +6.9MB**(v8 +3 / malloc +3 / skia +1.4)。**JS heap の外に残るものを
+  JS heap 計器で「無い」と言っていた**。メモリの「効果なし」を主張するなら最低 2 系統
+  (JS heap と `renderer-memory-breakdown.mjs` の allocator 内訳)。
+  ⚠ そもそも**「効果が小さい」は棄却理由にしてはならない**(不可侵の user 指示③)──
+  この件は棄却したうえ根拠まで誤っていた。効果不明は「計測タスク」として残す
+- 🔴 **VmRSS 合計から倍率・削減量を書かない**(共有ページの二重計上。chromium は
+  6 プロセスでバイナリを共有する)。プロセス種別の分解は `tests/bench/base-cost-breakdown.mjs`
 - **性能の主張は数字を出す前に手法を固める**(2026-07-26、同一セッションで 6 回誤った反省)。手順とハーネスの使い分けは `.claude/skills/perf-measurement/SKILL.md`(`/measure` コマンド)。とくに:**ベンチ fixture のゼロ件の次元は「測っていない次元」**(`bench-fixtures/c-*.json` が revisions 0 件だったため歴代のベンチが全部 O(N×M) を素通りしていた)/ **対照群は「何もしない」ではなく「測りたい操作以外を全部同じにしたもの」** / **差し引きで出た値は向きのみ信頼し倍率は書かない** / **百分率は「どの実行の何に対する比率か」まで書く**
 
 ## PR / Wave 運用(slim)

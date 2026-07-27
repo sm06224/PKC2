@@ -276,6 +276,48 @@ structured clone の 74 → 54 ms = 20 ms** だけだった(残りは IDB の
 
 ---
 
+## 12. 🔴 「効果が無い / 小さい」の判定を**単一計器で下さない**(罠 ⑫、2026-07-27)
+
+**実例(同日中に自分で撤回した)**: user から直接要望のあった
+「重量 dep を使った後に破棄する / 連続で使われないなら時間で破棄する」案の
+賞金を測るのに、**JS heap(`performance.memory` + forced GC)だけ**を見た。
+mermaid を実描画して 36.4 → 25.2MB、30 秒 idle 後 25.1MB ── 「増えない」と読み、
+**「dep 向けの破棄 lifecycle はいまは作らない」と設計 doc に書いた。**
+
+同じ日の allocator 内訳(`renderer-memory-breakdown.mjs`)を突き合わせると、
+**mermaid 1 枚で renderer 計上は 69.9 → 76.8MB(+6.9MB)**
+(v8 +3 / malloc +3 / skia +1.4)。**JS heap の外に残るものを、JS heap 計器で
+「無い」と言っていた。**
+
+**規律:**
+- **メモリの「効果なし」を主張するなら、最低 2 系統**で見る
+  ── JS heap(`performance.memory`)と **allocator 内訳**
+  (`renderer-memory-breakdown.mjs` = memory-infra detailed dump)。
+  DOM / canvas / コード / wasm は **JS heap に出ない**
+- 対象が何を使う feature かで見るべき allocator が決まる:
+  SVG/DOM を作る → `partition_alloc` / `blink_gc` / `skia`、
+  コードを評価する → `v8` / `parkable_strings`、
+  wasm/worker → worker 側 pid の `malloc` / `v8`
+- ⚠ **そもそも「効果が小さい」は棄却理由にしてはならない**
+  (user 指示 2026-07-27③、不可侵)。この罠が悪質なのは、
+  **棄却したうえに、その根拠すら間違っていた**こと。
+  棄却してよいのは**方向ごと否定されたとき**だけで、
+  効果が不明なら「計測タスク」として残す ── 落とさない
+
+### 併せて: 「基盤が大きい」を推測で否定しない(2026-07-27)
+
+user が「基盤部分が一番でかい」と指摘したとき、実測せずに
+「WebView2 は Chromium だから減らない」と**防御論を先に出した**。
+正しい順序は **分解して測る → 事実を出す**。
+`tests/bench/base-cost-breakdown.mjs`(プロセス種別に RSS を分解)を作って
+初めて「about:blank だけで 0.66GB、その内訳は browser 親 / renderer×2 /
+zygote×2 / NetworkService / gpu / StorageService」と言えるようになった。
+
+⚠ **VmRSS 合計は共有ページを二重計上する**(chromium は 6 プロセスでバイナリ共有)。
+**倍率・削減量を VmRSS 合計から書かない**。必要なら PSS / USS を使う。
+
+---
+
 ## 既存ハーネスの使い分け
 
 > **2026-07-26 追加**(いずれも npm script 登録済み):
