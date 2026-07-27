@@ -14,6 +14,8 @@
  * 使い方:
  *   node tests/bench/boot-rss.mjs --fixture=<path> [--seconds=150]
  *   node tests/bench/boot-rss.mjs --fixture=<path> --second=1   # 2 回目起動(seed なし)
+ *   --dist=<dir>  … dist を別ディレクトリから配信(main 対照ビルドの A/B 用)
+ *   --flag=1      … `?pkc-flag=storage.sqlite_backend=true` を付けて boot(P2 dev 腕)
  */
 import { createRequire } from 'node:module';
 const require2 = createRequire('/home/user/PKC2/package.json');
@@ -31,6 +33,9 @@ const FIXTURE = argOf('fixture', '');
 const SECONDS = Number(argOf('seconds', '150'));
 const LABEL = argOf('label', '');
 const SECOND = argOf('second', '') === '1'; // 既存 profile で 2 回目起動を測る
+const DIST_DIR = argOf('dist', join(ROOT, 'dist')); // A/B: 対照ビルドの dist を配信
+const SQLITE_FLAG = argOf('flag', '') === '1';
+const PAGE_URL_SUFFIX = SQLITE_FLAG ? '?pkc-flag=storage.sqlite_backend%3Dtrue' : '';
 const CID = 'rssbench';
 const ROW_SEL = '[data-pkc-region="entry-list"] [data-pkc-action="select-entry"]';
 
@@ -42,8 +47,11 @@ function serve(fixturePath) {
   const server = http.createServer((req, res) => {
     try {
       const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
-      const f = p === '/__fixture.json' ? fixturePath : join(ROOT, p);
-      if (p !== '/__fixture.json' && !f.startsWith(ROOT + sep)) { res.writeHead(403); res.end(); return; }
+      // /dist/* は DIST_DIR から(A/B で対照ビルドを差し込む)、それ以外は ROOT。
+      const f = p === '/__fixture.json' ? fixturePath
+        : p.startsWith('/dist/') || p.startsWith(`${sep}dist${sep}`) ? join(DIST_DIR, p.slice(5))
+        : join(ROOT, p);
+      if (p !== '/__fixture.json' && !f.startsWith(ROOT + sep) && !f.startsWith(DIST_DIR + sep)) { res.writeHead(403); res.end(); return; }
       if (!existsSync(f) || !statSync(f).isFile()) { res.writeHead(404); res.end(); return; }
       res.writeHead(200, { 'content-type': MIME[extname(f).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' });
       createReadStream(f).pipe(res);
@@ -145,7 +153,10 @@ if (!rootPid) { console.log('⛔ chrome root pid が見つからない'); proces
 const PAGE_MARK='x';
 const page = await ctx.newPage();
 page.on('console', (m) => { const t = m.text(); if (t.includes('[DIAG]')) console.log('   ' + t); });
-await page.goto(`${srv.origin}/dist/pkc2.html`);
+// seed 用の最初の boot は flag を付けない ── flag 付きで空 boot すると
+// 初期 container が sqlite 側に作られ、seed 後の再 boot で「sqlite に
+// データあり」と判定されて移行が skip される(= fixture が見えない)。
+await page.goto(`${srv.origin}/dist/pkc2.html${SECOND ? PAGE_URL_SUFFIX : ''}`);
 await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 180000 });
 if (!SECOND) await page.evaluate(async ({ url, cid }) => {
   const c = await (await fetch(url)).json();
@@ -160,9 +171,18 @@ if (!SECOND) await page.evaluate(async ({ url, cid }) => {
 
 // 計測対象の起動(user の「初回起動」相当)
 console.log('   -- 起動 --');
-await page.goto(`${srv.origin}/dist/pkc2.html`);
+const tBoot = Date.now();
+await page.goto(`${srv.origin}/dist/pkc2.html${PAGE_URL_SUFFIX}`);
 await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 300000 });
+const readyMs = Date.now() - tBoot;
 await page.waitForFunction(`document.querySelectorAll('${ROW_SEL}').length > 10`, null, { timeout: 180000 });
+const listMs = Date.now() - tBoot;
+console.log(`   boot: ready ${readyMs}ms / 一覧表示 ${listMs}ms`);
+if (SQLITE_FLAG) {
+  const si = await page.evaluate('window.__pkc2StorageInfo').catch(() => null);
+  console.log(`   storage: ${JSON.stringify(si)}`);
+  if (!si || si.sqlite !== true) { console.log('⛔ sqlite backend が成立していない ── この走行は無効'); }
+}
 
 let peak = { total: 0 };
 const t0 = Date.now();
@@ -177,7 +197,9 @@ for (let s = 0; s < SECONDS; s += 5) {
   await new Promise((r2) => setTimeout(r2, 5000));
 }
 const fin = treeRss(rootPid);
+const est = await page.evaluate('navigator.storage && navigator.storage.estimate ? navigator.storage.estimate() : null').catch(() => null);
 console.log('');
 console.log(`■ 結果: ピーク総RSS ${GB(peak.total)} GB(renderer ${MBs(peak.renderer)} MB)/ 最終 ${GB(fin.total)} GB(renderer ${MBs(fin.renderer)} MB)`);
+if (est && est.usage) console.log(`   storage usage: ${(est.usage / 1048576).toFixed(0)} MB(IDB + OPFS 合算の origin 使用量)`);
 await ctx.close();
 await srv.close();

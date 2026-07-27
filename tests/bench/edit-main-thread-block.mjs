@@ -33,6 +33,10 @@ const { chromium } = require('playwright');
 const ROOT = process.cwd();
 const FIXTURE = process.env.EMB_FIXTURE || 'bench-fixtures/c-5000-rev.json';
 const EDITS = Number(process.env.EMB_EDITS || 5);
+// A/B(P2): EMB_DIST=<dir> で対照ビルドの dist を配信、EMB_FLAG=1 で
+// `?pkc-flag=storage.sqlite_backend=true` を付けて boot(dev 腕)。
+const DIST_DIR = process.env.EMB_DIST || join(ROOT, 'dist');
+const FLAGQ = process.env.EMB_FLAG === '1' ? '?pkc-flag=storage.sqlite_backend%3Dtrue' : '';
 const CID = 'embbench';
 
 const MIME = {
@@ -44,8 +48,8 @@ function serveRepo() {
   const server = http.createServer((req, res) => {
     try {
       const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
-      const f = join(ROOT, p);
-      if (!f.startsWith(ROOT + sep) && f !== ROOT) { res.writeHead(403); res.end(); return; }
+      const f = p.startsWith('/dist/') ? join(DIST_DIR, p.slice(5)) : join(ROOT, p);
+      if (!f.startsWith(ROOT + sep) && !f.startsWith(DIST_DIR + sep) && f !== ROOT) { res.writeHead(403); res.end(); return; }
       if (!existsSync(f) || !statSync(f).isFile()) { res.writeHead(404); res.end(); return; }
       res.writeHead(200, { 'content-type': MIME[extname(f).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' });
       createReadStream(f).pipe(res);
@@ -142,9 +146,14 @@ for (const arm of ARMS) {
     db.close();
   }, { raw, cid: CID });
 
-  await page.goto(`${srv.origin}/dist/pkc2.html`);
+  await page.goto(`${srv.origin}/dist/pkc2.html${FLAGQ}`);
   await page.waitForFunction('typeof window.__embBoot === "number"', null, { timeout: 300000 });
   await page.waitForFunction(`document.querySelectorAll('${ROW_SEL}').length > 50`, null, { timeout: 120000 });
+  if (FLAGQ) {
+    const si = await page.evaluate('window.__pkc2StorageInfo').catch(() => null);
+    console.log(`   storage: ${JSON.stringify(si)}`);
+    if (!si || si.sqlite !== true) { console.log('⛔ sqlite backend が成立していない ── この走行は無効'); await ctx.close(); await srv.close(); process.exit(1); }
+  }
   if (await page.evaluate('window.__embNoLongtask === true')) {
     console.log('⛔ longtask observer が使えない環境 — この計測は成立しない');
     await ctx.close(); await srv.close(); process.exit(1);

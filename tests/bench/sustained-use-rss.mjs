@@ -32,6 +32,9 @@ const argOf = (n, d) => {
 const FIXTURE = argOf('fixture', '');
 const MINUTES = Number(argOf('minutes', '5'));
 const SECOND = argOf('second', '') === '1';
+const DIST_DIR = argOf('dist', join(ROOT, 'dist')); // A/B: 対照ビルドの dist を配信
+const SQLITE_FLAG = argOf('flag', '') === '1';
+const PAGE_URL_SUFFIX = SQLITE_FLAG ? '?pkc-flag=storage.sqlite_backend%3Dtrue' : '';
 const CID = 'surss';
 const ROW_SEL = '[data-pkc-region="entry-list"] [data-pkc-action="select-entry"]';
 
@@ -43,8 +46,10 @@ function serve(fixturePath) {
   const server = http.createServer((req, res) => {
     try {
       const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
-      const f = p === '/__fixture.json' ? fixturePath : join(ROOT, p);
-      if (p !== '/__fixture.json' && !f.startsWith(ROOT + sep)) { res.writeHead(403); res.end(); return; }
+      const f = p === '/__fixture.json' ? fixturePath
+        : p.startsWith('/dist/') ? join(DIST_DIR, p.slice(5))
+        : join(ROOT, p);
+      if (p !== '/__fixture.json' && !f.startsWith(ROOT + sep) && !f.startsWith(DIST_DIR + sep)) { res.writeHead(403); res.end(); return; }
       if (!existsSync(f) || !statSync(f).isFile()) { res.writeHead(404); res.end(); return; }
       res.writeHead(200, { 'content-type': MIME[extname(f).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' });
       createReadStream(f).pipe(res);
@@ -111,7 +116,9 @@ for (const d of readdirSync('/proc')) {
 if (!rootPid) { console.log('⛔ chrome root pid が見つからない'); process.exit(1); }
 
 const page = await ctx.newPage();
-await page.goto(`${srv.origin}/dist/pkc2.html`);
+// seed 前の boot は flag を付けない(空 boot で sqlite 側に初期 container が
+// 出来ると、seed 後の移行が skip される ── boot-rss.mjs と同じ注意)。
+await page.goto(`${srv.origin}/dist/pkc2.html${SECOND ? PAGE_URL_SUFFIX : ''}`);
 await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 180000 });
 if (!SECOND) {
   await page.evaluate(async ({ url, cid }) => {
@@ -124,10 +131,15 @@ if (!SECOND) {
     await put('containers', [[cid, { ...c, assets: {} }], ['__default__', cid]]);
     db.close();
   }, { url: `${srv.origin}/__fixture.json`, cid: CID });
-  await page.goto(`${srv.origin}/dist/pkc2.html`);
+  await page.goto(`${srv.origin}/dist/pkc2.html${PAGE_URL_SUFFIX}`);
   await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 300000 });
 }
 await page.waitForFunction(`document.querySelectorAll('${ROW_SEL}').length > 10`, null, { timeout: 180000 });
+if (SQLITE_FLAG) {
+  const si = await page.evaluate('window.__pkc2StorageInfo').catch(() => null);
+  console.log(`   storage: ${JSON.stringify(si)}`);
+  if (!si || si.sqlite !== true) { console.log('⛔ sqlite backend が成立していない ── この走行は無効'); process.exit(1); }
+}
 
 // 編集対象は fixture の text entry から選ぶ(todo 等は editor の形が違い
 // `[data-pkc-field="body"]` が textarea にならない ── edit-main-thread-block と同じ作法)
