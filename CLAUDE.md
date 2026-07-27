@@ -40,6 +40,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > **プライム・ディレクティブ:機能を足さない。削る・選る・着陸させる。**
 
 - 単一正本 = `docs/development/v3-consolidation-and-direction-2026-06.md`(診断 / 凍結表 / 4 レーン / North Star)。**まずこれを読む**
+- 🔴 **storage の方向(user 指示 2026-07-27。不可侵)**:
+  ① 「**私が wasm-sqlite にこだわったのはこういうメモリ消費の安全性面もあるからな?**
+  **ゼロコピー、生成とライフサイクル後の速やかな破棄を徹底してください**」
+  ② 「**私は依存をなくして欲しいと言っただけで、完全になくせとは言っていないからな?**
+  **ビルドが静的であれば何も問題ないんだからな?**」── 依存削減 ≠ 依存全廃。
+  単一 HTML に静的に焼き込めるなら wasm-sqlite は禁じ手ではない(旧 doc の
+  「bundle 予算と衝突」を見送り理由に使わない ── 予算は tripwire であり規律ではない)
+  ③ 「**効果が小さいからやらないではなく、積み上げた先に価値があるなら小さかろうが積んでください**」
+  ── 「20ms しか買えないから棄却」型の判断は、**ロードマップ上に積み上げ先がある場合は禁止**。
+  棄却してよいのは方向ごと否定されたときだけ
+  ④ 「**俺は再三 JSON をそのままコンテナにすることに反対している**」── container 丸ごと
+  1 JSON record という内部表現は user が繰り返し反対してきたもの。**メリットを持ち出して
+  守るな**。JSON は交換形式(export)としては残る ── 反対されているのは内部表現
+  ⑤ 「**boot 直後とか測ってない?意味ないからね、ソレ**」── boot 窓だけの計測で
+  「定常」を語らない。**継続使用(編集セッション)の計測を必ず持つ**
+  設計 doc: `docs/development/storage-wasm-sqlite-design-2026-07.md`
 - **live tracking は GitHub Issues が正本**(file ベース台帳は archive 済)。レーン: `lane:perf` / `lane:curation` / `lane:arch-v3` / `lane:process`、`frozen` = 凍結中・参照のみ
 - 許可される作業: ① bug fix ② perf ③ ~~bundle 引き算(機能 subtract)~~(**2026-07-01 user 判断で撤回**:mermaid / Office export / chart.js は keep・むしろ強化対象。削減候補として蒸し返さない)④ main 着陸の取捨選択 ⑤ doc/process 整理 ⑥ 設計 doc(実装しない)
 - **flag を畳むときの作法**(user 裁定 2026-07-26、`lazy_entry_bodies` の退役で確立):
