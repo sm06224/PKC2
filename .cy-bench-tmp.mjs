@@ -18,11 +18,11 @@ const FCOSE = readFileSync(resolve(ROOT, 'node_modules/cytoscape-fcose/cytoscape
 const LAYOUT_BASE = readFileSync(resolve(ROOT, 'node_modules/cytoscape-fcose/node_modules/layout-base/layout-base.js'), 'utf8');
 const COSE_BASE = readFileSync(resolve(ROOT, 'node_modules/cytoscape-fcose/node_modules/cose-base/cose-base.js'), 'utf8');
 
-const SIZES = [1000, 5000, 20000];
+const SIZES = (process.argv[2]||'1000').split(',').map(Number);
 
 const browser = await chromium.launch({
   executablePath: process.env.PKC_PRE_INSTALLED_CHROMIUM,
-  args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--js-flags=--expose-gc'],
+  args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--js-flags=--expose-gc','--enable-precise-memory-info'],
 });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 page.on('console', (m) => { if (m.type() === 'error') console.error('  [page error]', m.text()); });
@@ -37,7 +37,7 @@ await page.evaluate(() => { window.cytoscape.use(window.cytoscapeFcose); });
 const results = [];
 
 for (const n of SIZES) {
-  for (const arm of ['canvas+grid', 'canvas+fcose', 'webgl+grid']) {
+  for (const arm of (process.argv[3]||'canvas+grid,canvas+fcose,webgl+grid').split(',')) {
     const r = await page.evaluate(async ({ n, arm }) => {
       const webgl = arm.startsWith('webgl');
       const layoutName = arm.endsWith('fcose') ? 'fcose' : 'grid';
@@ -117,10 +117,10 @@ for (const n of SIZES) {
     }, { n, arm });
 
     results.push(r);
-    console.log(
+    process.stdout.write(
       `n=${String(r.n).padStart(5)} edges=${String(r.edges).padStart(5)} ${r.arm.padEnd(12)} ` +
       `build=${String(r.buildMs).padStart(7)}ms layout=${String(r.layoutMs).padStart(8)}ms ` +
-      `medFrame=${String(r.medFrameMs).padStart(6)}ms heapΔ=${String(r.heapMB).padStart(6)}MB`,
+      `medFrame=${String(r.medFrameMs).padStart(6)}ms heapΔ=${String(r.heapMB).padStart(6)}MB\n`,
     );
   }
 }

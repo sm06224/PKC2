@@ -169,8 +169,33 @@ async function loadMermaid(): Promise<typeof import('mermaid')> {
 }
 
 let theme_listener_attached = false;
+/**
+ * theme 切替時に再 hydrate すべき root の集合。
+ *
+ * 🔴 **強参照の Set である**(2026-07-27 の常駐棚卸しで判明)。呼び手
+ * (`detail-presenter.ts` の center pane / `rendered-viewer.ts` の popup body ほか)は
+ * **render のたびに新しい element** を渡すため、ここに入れっぱなしにすると
+ * **detach 済みの DOM がすべて残る**(popup を閉じた別 document ごと残る)。
+ * 「mermaid を 1 枚描くと +6.9MB が戻らない」の直接の説明がこれ。
+ *
+ * prune は従来 `rehydrateIfThemeChanged` の中だけにあったが、そこは
+ * 「resolved theme が変わったとき」しか到達しない(通常は永久に来ない)。
+ * → **hydrate のたびに接続の切れた root を落とす**(`prunePendingRoots`)。
+ */
 const pendingRoots = new Set<HTMLElement>();
 let themeAttrObserver: MutationObserver | null = null;
+
+/** detach された root を落とす。hydrate のたびに呼ぶ(O(登録数)、通常は数個)。 */
+function prunePendingRoots(): void {
+  for (const root of pendingRoots) {
+    if (!root.isConnected) pendingRoots.delete(root);
+  }
+}
+
+/** 計器(bench harness が保持数を読む窓口)。 */
+export function __mermaidPendingRootCount(): number {
+  return pendingRoots.size;
+}
 
 /**
  * theme 実効値の変化時、現 hydrated root を全 re-hydrate(placeholder に
@@ -259,6 +284,8 @@ export async function hydrateMermaidPlaceholders(root: HTMLElement): Promise<voi
   const placeholders = root.querySelectorAll<HTMLElement>('.pkc-mermaid-placeholder');
   if (placeholders.length === 0) return;
   ensureThemeListener();
+  // 先に掃除してから登録する ── 登録が増える瞬間が唯一の確実な契機。
+  prunePendingRoots();
   pendingRoots.add(root);
   // user direction 2026-05-28「負荷を増幅させずに」── cache fast path:current
   // theme での既知 source は mermaid.render を skip して直接 SVG inject。

@@ -68,6 +68,25 @@ export default defineConfig({
     terserOptions: {
       compress: { passes: 2 },
       mangle: { toplevel: true },
+      format: {
+        /**
+         * 非 ASCII を `\uXXXX` へ逃がす(2026-07-27、常駐削減)。
+         *
+         * 理由は**メモリ**であって文字化け対策ではない: Blink は script source を
+         * ParkableString として常駐させるが、**1 文字でも Latin-1 に収まらない
+         * 文字があると文字列全体が UTF-16(2 バイト/文字)になる**。PKC2 は
+         * UI 文言が日本語なので、8.5MB の bundle 全体が 2 バイト表現で居座っていた。
+         * ASCII 化すると Latin-1(1 バイト/文字)で持てる。
+         *
+         * 実測(空アプリ / memory-infra detailed / 35s settle):
+         *   parkable_strings 20.57 → 12.49 MB / renderer 合計 69.55 → 61.80 MB
+         *
+         * ⚠ raw サイズは増える(1 文字 → 6 文字)が、**gzip 後はほぼ変わらない**
+         * (\\uXXXX 列は高圧縮)。単一 HTML の配布サイズは gz が支配する。
+         * 意味は完全に同一 ── JS の文字列リテラルとしての等価変換である。
+         */
+        ascii_only: true,
+      },
     },
   },
 });

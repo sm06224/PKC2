@@ -60,6 +60,14 @@ import {
   Tooltip, Legend, Title,
   type ChartConfiguration,
 } from 'chart.js';
+/**
+ * chart wrap → Chart インスタンス(2026-07-27)。
+ * `Chart.getChart(canvas)` は canvas が作り直されると引けないため、
+ * **破棄の責任を持てる側**(wrap 要素)に紐づける。WeakMap なので
+ * wrap が GC されればエントリも消える。
+ */
+const chartHandles = new WeakMap<HTMLElement, Chart>();
+
 Chart.register(
   CategoryScale, LinearScale, RadialLinearScale,
   BarController, BarElement,
@@ -320,9 +328,25 @@ function renderChart(doc: Document, body: SpreadsheetBody, chart: ChartConfig): 
         },
       };
       // 既存 chart instance があれば destroy(再描画 race 回避)
+      //
+      // 🔴 **canvas 側の照会だけでは足りない**(2026-07-27 の常駐棚卸し)。
+      // 再描画のたびに canvas 要素ごと作り直される経路では `Chart.getChart(canvas)`
+      // は常に undefined になり、**古いインスタンスが chart.js の module-level
+      // registry に残り続ける**(canvas バッキングストア + dataset + resize
+      // listener ごと)。上限が無いので**再描画回数に比例して線形に増える**。
+      // → wrap 側に自前のハンドルを持ち、そちらを必ず destroy する。
+      const prev = chartHandles.get(wrap);
+      if (prev) {
+        try {
+          prev.destroy();
+        } catch {
+          /* 既に破棄済み */
+        }
+        chartHandles.delete(wrap);
+      }
       const existing = Chart.getChart(canvas);
       if (existing) existing.destroy();
-      new Chart(ctx, cfg);
+      chartHandles.set(wrap, new Chart(ctx, cfg));
     } catch {
       // canvas 未対応環境(test 等)では silent skip
     }
