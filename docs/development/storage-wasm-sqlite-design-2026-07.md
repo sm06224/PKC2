@@ -94,6 +94,20 @@ CREATE TABLE assets     (cid TEXT, key TEXT, mime TEXT, size INTEGER,
 CREATE TABLE kv         (cid TEXT, k TEXT, v TEXT, PRIMARY KEY (cid, k));
 ```
 
+**実装時の精緻化 2 点(2026-07-27、P2 実装。正本 DDL は
+`src/adapter/platform/storage/sqlite/sqlite-schema.ts`)**:
+
+1. **全表に `ord` 列** ── Container の entries / revisions / relations は
+   **配列**で、順序はデータの一部(手動並べ替え / 履歴列 / 表示順)。
+   行単位 upsert で rowid が動いても順序が壊れないよう明示列で持つ
+2. **全表に `extra` JSON 列** ── データモデルの規約「additive optional field を
+   黙って落とさない」(Entry.tags / color_tag、Revision.bulk_id、
+   Relation.metadata、Meta.saved_searches …と**未来の additive 追加**)を、
+   固定列に無い残余フィールドの JSON 往復で守る。schema bump なしの
+   additive 互換 ── JSON が消えるのは「内部表現の丸ごと 1 record」であって、
+   残余フィールドの器としての JSON 列は正当(行の部分読み・行単位更新を
+   壊さない)
+
 **これで消えるもの(今日の実測と 1:1 対応)**:
 
 | 今日の問題 | sqlite での姿 |
@@ -147,7 +161,7 @@ lazy_entry_bodies(S1〜S4)・#1022 サイドカーの事故と同じ轍を踏ま
 |---|---|---|
 | P0 | 本 doc の裁定 | — |
 | P1 | ✅ **継続使用の計測ハーネス**(編集セッション N 分の RSS 時系列。boot 窓だけで判定しない ── user 指示⑤)+ 現行のベースライン取得 → **取得済み(下表)** | — |
-| P2 | sqlite3.wasm 静的 bundle + `SqliteContainerStore`(ContainerStore の別実装)。flag opt-in で read/write。**この時点から新規データは JSON 内部表現を持たない** | — |
+| P2 | ✅ **実装済み(2026-07-27)** sqlite3.wasm 静的 bundle + worker 常駐 + `SqliteContainerStore`(ContainerStore の別実装)。flag `storage.sqlite_backend` opt-in で read/write。**この時点から新規データは JSON 内部表現を持たない**。実機 pin: `tests/bench/sqlite-roundtrip.mjs`(移行→編集→再起動→OFF 併存→復帰の 5 局面) | — |
 | P3 | assets: sqlite 行(meta)+ Blob record(bytes) | #1042 |
 | P4 | revisions: COUNT / 要求時読み + zstd グループ圧縮 | #1041 |
 | P5 | 既定化 + 移行ゲート(バックアップ必須・旧データ非破壊) | — |
@@ -189,7 +203,13 @@ fixture: entries 3000(5.2MB)+ revisions 75,000(299.7MB)+ assets 400 × 512KB(200
    ⇒ **永続化 sqlite は worker に置く**(SAHPool + 自前 worker を Blob URL で起動 =
    静的 bundle と両立)。副産物として保存処理が main thread から完全に外れる
    (編集 churn +0.4GB の直列化コストも worker 側へ)。main thread 側は
-   postMessage RPC の薄い facade(ContainerStore 実装)になる
+   postMessage RPC の薄い facade(ContainerStore 実装)になる。
+   ✅ **P2 で実装・実機確認済み(2026-07-27)**: `?worker&inline` の worker に
+   glue + wasm を**1 部だけ**焼き込み(main 側は RPC のみ)、worker 内
+   SAHPool roundtrip 成立(77.6ms)・外部 fetch 0 件・遅延初期化コスト
+   main 側 +3.6MB(worker は使い捨て probe を terminate)。
+   実装: `sqlite-worker.ts` / `sqlite-client.ts` / `sqlite-store.ts` /
+   `sqlite-schema.ts`(行マッパ + 参照 diff → RowOp)
 2. sqlite ファイルの export(= .sqlite そのままの持ち出し)を製品機能にするか
 3. FTS5 / sqlite-vec は本 doc の範囲外(「機能を足さない」に抵触するため、
    拡張点だけ確保して凍結)

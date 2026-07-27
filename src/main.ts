@@ -184,14 +184,15 @@ async function boot(): Promise<void> {
   // can carry quota numbers without a Promise round-trip at click time.
   installDebugErrorCapture();
   void refreshStorageEstimate();
-  // P2 spike(wasm-sqlite 設計 §7、dev/storage-sqlite):静的 bundle した
-  // sqlite3.wasm の動作実証フック。**呼ばれるまで wasm の compile も
-  // 初期化も走らない**(遅延 singleton)。実ブラウザ検証は
-  // tests/bench/sqlite-spike.mjs がこの hook を叩く。
+  // P2(wasm-sqlite 設計 §7、dev/storage-sqlite):sqlite 動作実証フック。
+  // worker 常駐版(§8-1: SAHPool は worker 専用)── 使い捨て worker を起動し、
+  // :memory: CRUD / SAHPool roundtrip を worker 内で確かめて terminate する。
+  // **呼ばれるまで worker も wasm も一切 load しない**(dynamic import)。
+  // 実ブラウザ検証は tests/bench/sqlite-spike.mjs がこの hook を叩く。
   (window as unknown as Record<string, unknown>).__pkc2SqliteProbe = () =>
-    import('./adapter/platform/storage/sqlite/sqlite3-instance').then((m) => m.probeSqliteWasm());
+    import('./adapter/platform/storage/sqlite/sqlite-client').then((m) => m.probeSqliteWasm());
   (window as unknown as Record<string, unknown>).__pkc2SqlitePersistProbe = () =>
-    import('./adapter/platform/storage/sqlite/sqlite3-instance').then((m) => m.probeSqlitePersistence());
+    import('./adapter/platform/storage/sqlite/sqlite-client').then((m) => m.probeSqlitePersistence());
   const root = document.getElementById(SLOT.ROOT);
   if (!root) {
     console.error(`[PKC2] #${SLOT.ROOT} not found`);
@@ -679,7 +680,14 @@ async function boot(): Promise<void> {
   // set to 'opfs' and OPFS is usable (secure context — NOT file://), the
   // store is OPFS-backed, migrating the existing IDB default container
   // across once. Falls back to IDB safely otherwise.
-  const { store, fsaPending } = await createConfiguredStoreFromEnv();
+  const { store, fsaPending, backend, sqlite, migrated } = await createConfiguredStoreFromEnv();
+  // P2 計器用の印: bench / roundtrip harness が「本当に sqlite backend で
+  // 動いているか」を実行時に確かめる(harness が誤って IDB を測る事故防止)。
+  (window as unknown as Record<string, unknown>).__pkc2StorageInfo = {
+    backend,
+    sqlite: sqlite === true,
+    migrated,
+  };
   // #940: FSA 選択中に permission が prompt に落ちて IDB へ fallback した
   // boot では、silent に「新規コンテナ状態」で開いたように見せず、再接続
   // バナーを常駐表示する。ボタン click = user gesture で requestPermission

@@ -1,0 +1,529 @@
+/**
+ * sqlite worker 常駐ホスト(P2)── 永続化 sqlite の実行体。
+ *
+ * なぜ worker か(設計 doc §8-1、2026-07-27 実機確認):
+ *   - OPFS の `createSyncAccessHandle` は worker 専用。main thread での
+ *     SAHPool install は "Missing required OPFS APIs" で失敗する(実測)
+ *   - 副産物として、保存処理(直列化 + 書込)が main thread から完全に外れる
+ *
+ * 静的 bundle の作法(user 指示 2026-07-27「ビルドが静的であれば何も問題ない」):
+ *   - wasm バイナリは `?inline` で **この worker chunk にだけ**焼き込む。
+ *     main 側は glue も wasm も import しない(bundle 内に 1 部だけ)
+ *   - worker 自体は `?worker&inline` で bundle.js に焼き込まれ、Blob URL で
+ *     起動する ── 実行時 fetch ゼロ、単一 HTML 哲学と両立
+ *
+ * メモリ原則(user 指示 2026-07-27「ゼロコピー、生成とライフサイクル後の
+ * 速やかな破棄を徹底」):
+ *   - prepared statement は finally で必ず finalize
+ *   - 行データは transaction 適用後に参照を持たない(worker 側に model を
+ *     常駐させない ── DB ファイルが正本)
+ *   - probe 系は DB / VFS を必ず閉じ、痕跡を残さない
+ */
+import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
+import wasmDataUrl from './sqlite3.wasm.bin?inline';
+import {
+  DDL,
+  type ContainerRow,
+  type ContainerRows,
+  type EntryRow,
+  type RelationRow,
+  type RevisionRow,
+  type RowOp,
+} from './sqlite-schema';
+import type {
+  SqliteInitResult,
+  SqlitePersistenceProbeResult,
+  SqliteProbeResult,
+  SqliteRequest,
+  SqliteResponse,
+} from './sqlite-rpc';
+
+/** worker グローバル(DOM lib でコンパイルするための最小 cast)。 */
+const ctx = globalThis as unknown as {
+  postMessage(message: unknown): void;
+  onmessage: ((ev: { data: unknown }) => void) | null;
+  crossOriginIsolated?: boolean;
+};
+
+// ── sqlite3 module(遅延 singleton)──
+
+let sqlite3Promise: Promise<Sqlite3Static> | null = null;
+
+/** data URL → bytes(base64 部分だけ decode。fetch は使わない)。 */
+function wasmBytes(): Uint8Array {
+  const comma = wasmDataUrl.indexOf(',');
+  const b64 = wasmDataUrl.slice(comma + 1);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function getSqlite3(): Promise<Sqlite3Static> {
+  if (!sqlite3Promise) {
+    // 型注意: 公開型は `init(): Promise<Sqlite3Static>`(引数なし)だが、実装
+    // (dist/index.mjs:405)は Emscripten Module init オブジェクトを受け取り、
+    // `wasmBinary` があれば fetch せず instantiate に直行する。型が実装より
+    // 狭いだけなので、ここだけ明示的に橋を架ける(main thread 版と同じ作法)。
+    const init = sqlite3InitModule as unknown as (opts?: {
+      wasmBinary?: ArrayBuffer;
+      locateFile?: (f: string) => string;
+      print?: (s: string) => void;
+      printErr?: (s: string) => void;
+    }) => Promise<Sqlite3Static>;
+    sqlite3Promise = init({
+      wasmBinary: wasmBytes().buffer as ArrayBuffer,
+      // ⚠ wasmBinary があっても Emscripten は `findWasmBinary()` を評価し、
+      // bundle 内では `new URL(..., import.meta.url)` が throw する(2026-07-27
+      // 実測)。locateFile ダミーで URL 構築を回避(この path は読まれない)。
+      locateFile: (f: string) => f,
+      print: () => undefined,
+      printErr: (msg: string) => console.warn('[PKC2] sqlite3(worker):', msg),
+    });
+  }
+  return sqlite3Promise;
+}
+
+type OoDb = InstanceType<Sqlite3Static['oo1']['DB']>;
+type SahPoolUtil = {
+  OpfsSAHPoolDb: new (path: string) => OoDb;
+  removeVfs: () => Promise<boolean>;
+};
+
+function installSahPool(sqlite3: Sqlite3Static, name: string): Promise<SahPoolUtil> {
+  const s3 = sqlite3 as unknown as {
+    installOpfsSAHPoolVfs: (o: { name: string }) => Promise<SahPoolUtil>;
+  };
+  return s3.installOpfsSAHPoolVfs({ name });
+}
+
+// ── 常駐 DB ──
+
+let db: OoDb | null = null;
+let initInfo: SqliteInitResult | null = null;
+
+async function handleInit(dbName: string): Promise<SqliteInitResult> {
+  if (initInfo && db) return initInfo; // idempotent(再 init は既存を返す)
+  const t0 = performance.now();
+  const sqlite3 = await getSqlite3();
+  let vfs: SqliteInitResult['vfs'] = 'memory';
+  let error: string | undefined;
+  try {
+    const pool = await installSahPool(sqlite3, dbName);
+    db = new pool.OpfsSAHPoolDb('/pkc2.db');
+    vfs = 'sahpool';
+  } catch (err) {
+    // SAHPool 不成立(OPFS 不可環境 / 多重 tab lock)── :memory: に落として
+    // 「開ける」ことは保証するが、persistent=false を返す。client 側は
+    // これを **不成立として扱い IDB へ fallback** する(データを揮発 DB に
+    // 書き始めない ── 消失経路 S1〜S4 の教訓)。
+    error = String(err);
+    db = new sqlite3.oo1.DB(':memory:');
+  }
+  for (const sql of DDL) db.exec(sql);
+  initInfo = {
+    persistent: vfs === 'sahpool',
+    vfs,
+    version: sqlite3.version.libVersion,
+    ms: performance.now() - t0,
+    ...(error ? { error } : {}),
+  };
+  return initInfo;
+}
+
+function mustDb(): OoDb {
+  if (!db) throw new Error('sqlite worker: init が先(DB 未 open)');
+  return db;
+}
+
+// ── 書込(すべて 1 transaction)──
+
+interface WriteStmts {
+  meta: ReturnType<OoDb['prepare']>;
+  entry: ReturnType<OoDb['prepare']>;
+  entryOrd: ReturnType<OoDb['prepare']>;
+  entryDel: ReturnType<OoDb['prepare']>;
+  rev: ReturnType<OoDb['prepare']>;
+  revOrd: ReturnType<OoDb['prepare']>;
+  revDel: ReturnType<OoDb['prepare']>;
+  rel: ReturnType<OoDb['prepare']>;
+  relOrd: ReturnType<OoDb['prepare']>;
+  relDel: ReturnType<OoDb['prepare']>;
+}
+
+function prepareWriteStmts(d: OoDb): WriteStmts {
+  return {
+    meta: d.prepare(
+      `INSERT OR REPLACE INTO containers (cid,title,created_at,updated_at,schema_version,extra)
+       VALUES (?,?,?,?,?,?)`,
+    ),
+    entry: d.prepare(
+      `INSERT OR REPLACE INTO entries (cid,lid,title,archetype,created_at,updated_at,ord,body,extra)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    ),
+    entryOrd: d.prepare(`UPDATE entries SET ord=? WHERE cid=? AND lid=?`),
+    entryDel: d.prepare(`DELETE FROM entries WHERE cid=? AND lid=?`),
+    rev: d.prepare(
+      `INSERT OR REPLACE INTO revisions (cid,id,entry_lid,created_at,prev_rid,content_hash,ord,snapshot,extra)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    ),
+    revOrd: d.prepare(`UPDATE revisions SET ord=? WHERE cid=? AND id=?`),
+    revDel: d.prepare(`DELETE FROM revisions WHERE cid=? AND id=?`),
+    rel: d.prepare(
+      `INSERT OR REPLACE INTO relations (cid,id,from_lid,to_lid,kind,created_at,updated_at,ord,extra)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    ),
+    relOrd: d.prepare(`UPDATE relations SET ord=? WHERE cid=? AND id=?`),
+    relDel: d.prepare(`DELETE FROM relations WHERE cid=? AND id=?`),
+  };
+}
+
+function finalizeAll(stmts: WriteStmts): void {
+  for (const s of Object.values(stmts)) {
+    try {
+      s.finalize();
+    } catch {
+      /* finalize 失敗は握る(元例外を優先) */
+    }
+  }
+}
+
+function run(stmt: ReturnType<OoDb['prepare']>, bind: unknown[]): void {
+  stmt.bind(bind as never).stepReset();
+}
+
+function bindMeta(cid: string, r: ContainerRow): unknown[] {
+  return [cid, r.title, r.created_at, r.updated_at, r.schema_version, r.extra];
+}
+function bindEntry(cid: string, r: EntryRow): unknown[] {
+  return [cid, r.lid, r.title, r.archetype, r.created_at, r.updated_at, r.ord, r.body, r.extra];
+}
+function bindRev(cid: string, r: RevisionRow): unknown[] {
+  return [cid, r.id, r.entry_lid, r.created_at, r.prev_rid, r.content_hash, r.ord, r.snapshot, r.extra];
+}
+function bindRel(cid: string, r: RelationRow): unknown[] {
+  return [cid, r.id, r.from_lid, r.to_lid, r.kind, r.created_at, r.updated_at, r.ord, r.extra];
+}
+
+function setDefaultCidTx(d: OoDb, cid: string): void {
+  d.exec({
+    sql: `INSERT OR REPLACE INTO kv (cid,k,v) VALUES ('','__default__',?)`,
+    bind: [cid],
+  });
+}
+
+function inTransaction(d: OoDb, body: () => void): void {
+  d.exec('BEGIN IMMEDIATE');
+  try {
+    body();
+    d.exec('COMMIT');
+  } catch (err) {
+    try {
+      d.exec('ROLLBACK');
+    } catch {
+      /* rollback 失敗は元例外を優先 */
+    }
+    throw err;
+  }
+}
+
+function handleSaveFull(cid: string, rows: ContainerRows, setDefault: boolean): void {
+  const d = mustDb();
+  const stmts = prepareWriteStmts(d);
+  try {
+    inTransaction(d, () => {
+      d.exec({ sql: `DELETE FROM entries WHERE cid=?`, bind: [cid] });
+      d.exec({ sql: `DELETE FROM revisions WHERE cid=?`, bind: [cid] });
+      d.exec({ sql: `DELETE FROM relations WHERE cid=?`, bind: [cid] });
+      run(stmts.meta, bindMeta(cid, rows.container));
+      for (const e of rows.entries) run(stmts.entry, bindEntry(cid, e));
+      for (const r of rows.revisions) run(stmts.rev, bindRev(cid, r));
+      for (const r of rows.relations) run(stmts.rel, bindRel(cid, r));
+      if (setDefault) setDefaultCidTx(d, cid);
+    });
+  } finally {
+    finalizeAll(stmts);
+  }
+}
+
+function handleApplyOps(cid: string, ops: RowOp[], setDefault: boolean): void {
+  const d = mustDb();
+  const stmts = prepareWriteStmts(d);
+  try {
+    inTransaction(d, () => {
+      for (const op of ops) {
+        switch (op.t) {
+          case 'meta':
+            run(stmts.meta, bindMeta(cid, op.row));
+            break;
+          case 'entry-upsert':
+            run(stmts.entry, bindEntry(cid, op.row));
+            break;
+          case 'entry-ord':
+            run(stmts.entryOrd, [op.ord, cid, op.lid]);
+            break;
+          case 'entry-delete':
+            run(stmts.entryDel, [cid, op.lid]);
+            break;
+          case 'rev-upsert':
+            run(stmts.rev, bindRev(cid, op.row));
+            break;
+          case 'rev-ord':
+            run(stmts.revOrd, [op.ord, cid, op.id]);
+            break;
+          case 'rev-delete':
+            run(stmts.revDel, [cid, op.id]);
+            break;
+          case 'rel-upsert':
+            run(stmts.rel, bindRel(cid, op.row));
+            break;
+          case 'rel-ord':
+            run(stmts.relOrd, [op.ord, cid, op.id]);
+            break;
+          case 'rel-delete':
+            run(stmts.relDel, [cid, op.id]);
+            break;
+        }
+      }
+      if (setDefault) setDefaultCidTx(d, cid);
+    });
+  } finally {
+    finalizeAll(stmts);
+  }
+}
+
+// ── 読出 ──
+
+function selectRows<T>(d: OoDb, sql: string, bind: unknown[]): T[] {
+  const rows: T[] = [];
+  d.exec({ sql, bind: bind as never, rowMode: 'object', resultRows: rows as never });
+  return rows;
+}
+
+function handleLoadContainer(cid: string): ContainerRows | null {
+  const d = mustDb();
+  const containers = selectRows<ContainerRow>(
+    d,
+    `SELECT cid,title,created_at,updated_at,schema_version,extra FROM containers WHERE cid=?`,
+    [cid],
+  );
+  const container = containers[0];
+  if (!container) return null;
+  return {
+    container,
+    entries: selectRows<EntryRow>(
+      d,
+      `SELECT lid,title,archetype,created_at,updated_at,ord,body,extra
+       FROM entries WHERE cid=? ORDER BY ord`,
+      [cid],
+    ),
+    revisions: selectRows<RevisionRow>(
+      d,
+      `SELECT id,entry_lid,created_at,prev_rid,content_hash,ord,snapshot,extra
+       FROM revisions WHERE cid=? ORDER BY ord`,
+      [cid],
+    ),
+    relations: selectRows<RelationRow>(
+      d,
+      `SELECT id,from_lid,to_lid,kind,created_at,updated_at,ord,extra
+       FROM relations WHERE cid=? ORDER BY ord`,
+      [cid],
+    ),
+  };
+}
+
+function handleLoadBodies(cid: string, lids?: string[]): Record<string, string> {
+  const d = mustDb();
+  const out: Record<string, string> = {};
+  if (lids) {
+    const stmt = d.prepare(`SELECT body FROM entries WHERE cid=? AND lid=?`);
+    try {
+      for (const lid of lids) {
+        stmt.bind([cid, lid] as never);
+        if (stmt.step()) out[lid] = String(stmt.get(0) ?? '');
+        stmt.reset();
+      }
+    } finally {
+      stmt.finalize();
+    }
+  } else {
+    for (const row of selectRows<{ lid: string; body: string }>(
+      d,
+      `SELECT lid, body FROM entries WHERE cid=?`,
+      [cid],
+    )) {
+      out[row.lid] = row.body;
+    }
+  }
+  return out;
+}
+
+function handleDeleteContainer(cid: string): void {
+  const d = mustDb();
+  inTransaction(d, () => {
+    d.exec({ sql: `DELETE FROM entries WHERE cid=?`, bind: [cid] });
+    d.exec({ sql: `DELETE FROM revisions WHERE cid=?`, bind: [cid] });
+    d.exec({ sql: `DELETE FROM relations WHERE cid=?`, bind: [cid] });
+    d.exec({ sql: `DELETE FROM assets WHERE cid=?`, bind: [cid] });
+    d.exec({ sql: `DELETE FROM kv WHERE cid=?`, bind: [cid] });
+    d.exec({ sql: `DELETE FROM containers WHERE cid=?`, bind: [cid] });
+    d.exec({ sql: `DELETE FROM kv WHERE cid='' AND k='__default__' AND v=?`, bind: [cid] });
+  });
+}
+
+function handleClearAll(): void {
+  const d = mustDb();
+  inTransaction(d, () => {
+    for (const table of ['entries', 'revisions', 'relations', 'assets', 'kv', 'containers']) {
+      d.exec(`DELETE FROM ${table}`);
+    }
+  });
+}
+
+function kvGet(k: string): string | null {
+  const rows = selectRows<{ v: string }>(mustDb(), `SELECT v FROM kv WHERE cid='' AND k=?`, [k]);
+  return rows[0]?.v ?? null;
+}
+
+// ── probe(spike 実証用。実 DB に触らない)──
+
+async function handleProbe(): Promise<SqliteProbeResult> {
+  const t0 = performance.now();
+  try {
+    const sqlite3 = await getSqlite3();
+    const mem = new sqlite3.oo1.DB(':memory:');
+    try {
+      mem.exec('CREATE TABLE probe (k TEXT PRIMARY KEY, v TEXT)');
+      mem.exec({ sql: 'INSERT INTO probe (k, v) VALUES (?, ?)', bind: ['hello', 'sqlite'] });
+      const rows: unknown[] = [];
+      mem.exec({
+        sql: 'SELECT v FROM probe WHERE k = ?',
+        bind: ['hello'],
+        rowMode: 'array',
+        resultRows: rows as never,
+      });
+      const first = rows[0] as string[] | undefined;
+      return {
+        ok: Array.isArray(first) && first[0] === 'sqlite',
+        version: sqlite3.version.libVersion,
+        ms: performance.now() - t0,
+        context: 'worker',
+      };
+    } finally {
+      mem.close(); // 速やかな破棄
+    }
+  } catch (err) {
+    return { ok: false, version: '', ms: performance.now() - t0, context: 'worker', error: String(err) };
+  }
+}
+
+async function handleProbePersistence(): Promise<SqlitePersistenceProbeResult> {
+  const sqlite3 = await getSqlite3();
+  const out: SqlitePersistenceProbeResult = {
+    coi: ctx.crossOriginIsolated === true,
+    opfsVfsRegistered: !!sqlite3.capi.sqlite3_vfs_find('opfs'),
+    sahpool: { ok: false, ms: 0 },
+    context: 'worker',
+  };
+  const t0 = performance.now();
+  try {
+    const pool = await installSahPool(sqlite3, 'pkc2-p2-probe');
+    try {
+      const probeDb = new pool.OpfsSAHPoolDb('/probe.db');
+      try {
+        probeDb.exec('CREATE TABLE IF NOT EXISTS p (k TEXT PRIMARY KEY, v TEXT)');
+        probeDb.exec({ sql: 'INSERT OR REPLACE INTO p (k, v) VALUES (?, ?)', bind: ['k', 'persist'] });
+        const rows: unknown[] = [];
+        probeDb.exec({
+          sql: 'SELECT v FROM p WHERE k = ?',
+          bind: ['k'],
+          rowMode: 'array',
+          resultRows: rows as never,
+        });
+        const first = rows[0] as string[] | undefined;
+        out.sahpool = {
+          ok: true,
+          roundTrip: Array.isArray(first) && first[0] === 'persist',
+          ms: performance.now() - t0,
+        };
+      } finally {
+        probeDb.close(); // 速やかな破棄
+      }
+    } finally {
+      await pool.removeVfs().catch(() => undefined); // probe は痕跡を残さない
+    }
+  } catch (err) {
+    out.sahpool = { ok: false, ms: performance.now() - t0, error: String(err) };
+  }
+  return out;
+}
+
+// ── dispatcher ──
+
+async function handle(req: SqliteRequest): Promise<unknown> {
+  switch (req.op) {
+    case 'init':
+      return handleInit(req.dbName);
+    case 'probe':
+      return handleProbe();
+    case 'probePersistence':
+      return handleProbePersistence();
+    case 'saveFull':
+      handleSaveFull(req.cid, req.rows, req.setDefault);
+      return undefined;
+    case 'applyOps':
+      handleApplyOps(req.cid, req.ops, req.setDefault);
+      return undefined;
+    case 'loadContainer':
+      return handleLoadContainer(req.cid);
+    case 'loadBodies':
+      return handleLoadBodies(req.cid, req.lids);
+    case 'listContainers':
+      return selectRows<{ id: string; title: string }>(
+        mustDb(),
+        `SELECT cid AS id, title FROM containers`,
+        [],
+      );
+    case 'deleteContainer':
+      handleDeleteContainer(req.cid);
+      return undefined;
+    case 'clearAll':
+      handleClearAll();
+      return undefined;
+    case 'getDefaultCid':
+      return kvGet('__default__');
+    case 'setDefaultCid':
+      setDefaultCidTx(mustDb(), req.cid);
+      return undefined;
+    case 'kvGet':
+      return kvGet(req.k);
+    case 'kvSet':
+      mustDb().exec({ sql: `INSERT OR REPLACE INTO kv (cid,k,v) VALUES ('',?,?)`, bind: [req.k, req.v] });
+      return undefined;
+    case 'kvDelete':
+      mustDb().exec({ sql: `DELETE FROM kv WHERE cid='' AND k=?`, bind: [req.k] });
+      return undefined;
+    case 'kvList': {
+      // prefix range scan(LIKE の escape 問題を避ける)。'￿' 番兵は
+      // key が BMP 内の実用文字列(workspace: / __ 系)である前提で十分。
+      return selectRows<{ k: string; v: string }>(
+        mustDb(),
+        `SELECT k, v FROM kv WHERE cid='' AND k >= ? AND k < ?`,
+        [req.prefix, req.prefix + '￿'],
+      );
+    }
+  }
+}
+
+ctx.onmessage = (ev: { data: unknown }) => {
+  const req = ev.data as SqliteRequest;
+  void (async () => {
+    let res: SqliteResponse;
+    try {
+      res = { id: req.id, ok: true, result: await handle(req) };
+    } catch (err) {
+      res = { id: req.id, ok: false, error: String(err) };
+    }
+    ctx.postMessage(res);
+  })();
+};

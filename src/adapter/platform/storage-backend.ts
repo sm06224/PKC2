@@ -9,6 +9,30 @@ import { createOpfsAdapter, probeOpfsAvailable } from './storage/opfs-adapter';
 import { createFsaAdapter, verifyFsaPermission } from './storage/fsa-adapter';
 import { loadFsaHandle } from './storage/fsa-handle-store';
 import type { FsDirectoryHandle } from './storage/fs-directory-adapter';
+import { defineFlag } from '../flags';
+
+/**
+ * wasm-sqlite backend(P2、dev/storage-sqlite)── opt-in flag。
+ *
+ * ON のとき、構造データ(entries / revisions / relations / meta / workspace)を
+ * worker 常駐 sqlite(OPFS SAHPool)に置く `SqliteContainerStore` で IDB store を
+ * 包む。asset bytes は従来どおり IDB(ハイブリッド設計 ── 設計 doc §2)。
+ * 初回 ON 時に IDB → sqlite の**非破壊**一括移行が走る(IDB 側は消さない)。
+ *
+ * boot 時に store を作る flag なので、**container の `__flags__` では効かない**
+ * (container を読むには store が要る ── 鶏卵)。URL
+ * `?pkc-flag=storage.sqlite_backend=true` で指定する。requiresReload。
+ *
+ * ⚠ OFF に戻すと IDB 側は移行時点のデータに見える(消えてはいない ── sqlite
+ * 側の編集が同期されないだけ)。既定化と正式な行き来は P5 の移行ゲートで。
+ */
+export const sqliteBackendEnabled = defineFlag<boolean>('storage.sqlite_backend', false, {
+  category: 'perf',
+  description:
+    'wasm-sqlite storage backend(P2 開発中)。構造データを worker 常駐 sqlite(OPFS)へ。URL flag でのみ有効(boot 時解決)。⚠ ON 中の編集は OFF に戻すと見えない(sqlite 側に残る)',
+  tier: 0,
+  requiresReload: true,
+});
 
 /**
  * Storage backend selection (#771, FSA+OPFS 悲願).
@@ -63,6 +87,11 @@ export interface ConfiguredStoreDeps {
   loadFsaHandle?: () => Promise<unknown | null>;
   verifyFsaPermission?: (handle: unknown, requestIfNeeded: boolean) => Promise<boolean>;
   makeFsaAdapter?: (handle: unknown) => StorageAdapter;
+  // wasm-sqlite backend(P2)。Optional so existing callers/tests need no change.
+  sqliteEnabled?: boolean;
+  makeSqliteBackend?: (
+    inner: ContainerStore,
+  ) => Promise<{ store: ContainerStore; migrated: boolean } | null>;
 }
 
 export interface ConfiguredStoreResult {
@@ -71,6 +100,12 @@ export interface ConfiguredStoreResult {
   backend: StorageBackend;
   /** True when a one-time IDB→OPFS migration ran during this boot. */
   migrated: boolean;
+  /**
+   * P2: true when the store is the sqlite-backed implementation
+   * (`storage.sqlite_backend` flag ON + worker/SAHPool 成立)。bench 計器と
+   * デバッグ表示が「本当に sqlite で動いているか」を判定するための印。
+   */
+  sqlite?: boolean;
   /**
    * #940: FSA 選択中だが保存 handle の permission が boot 時 `'prompt'`
    * (Chromium は再起動後ほぼ必ずこうなる)で silent に IDB へ fallback
@@ -89,6 +124,24 @@ export interface ConfiguredStoreResult {
 export async function createConfiguredStore(
   deps: ConfiguredStoreDeps,
 ): Promise<ConfiguredStoreResult> {
+  const base = await resolveBaseStore(deps);
+  // P2: sqlite wrap は IDB backend のときだけ(OPFS/FSA を選んだ user の
+  // 「データはこの置き場に」という意思と、asset 委譲先の一貫性を守る)。
+  // 不成立(worker 不可 / SAHPool 不可)は base をそのまま返す = 安全 fallback。
+  if (base.backend === 'idb' && deps.sqliteEnabled && deps.makeSqliteBackend) {
+    try {
+      const sq = await deps.makeSqliteBackend(base.store);
+      if (sq) {
+        return { ...base, store: sq.store, migrated: base.migrated || sq.migrated, sqlite: true };
+      }
+    } catch (err) {
+      console.warn('[PKC2] sqlite backend 初期化失敗 — IDB を継続:', err);
+    }
+  }
+  return base;
+}
+
+async function resolveBaseStore(deps: ConfiguredStoreDeps): Promise<ConfiguredStoreResult> {
   if (deps.pref === 'opfs' && (await deps.probeOpfs())) {
     const opfsStore = createContainerStore(await deps.makeOpfsAdapter());
     const migrated = await migrateFromIdbIfEmpty(opfsStore, deps.makeIdbStore);
@@ -165,5 +218,10 @@ export function createConfiguredStoreFromEnv(): Promise<ConfiguredStoreResult> {
     loadFsaHandle,
     verifyFsaPermission,
     makeFsaAdapter: (handle) => createFsaAdapter(handle as FsDirectoryHandle),
+    sqliteEnabled: sqliteBackendEnabled(),
+    // dynamic import: flag OFF の boot では sqlite 系 module(worker/wasm)を
+    // 一切 load しない(遅延の徹底)。vitest も fake deps 経由なら触れない。
+    makeSqliteBackend: (inner) =>
+      import('./storage/sqlite/sqlite-store').then((m) => m.createSqliteBackend(inner)),
   });
 }

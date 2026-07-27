@@ -11,3 +11,11 @@ declare module '*.bin?inline' {
   const dataUrl: string;
   export default dataUrl;
 }
+
+// worker の inline 焼き込み(P2)── vite `?worker&inline` は worker script を
+// bundle 内に base64 で埋め、Blob URL から起動する constructor を返す。
+// 単一 HTML 哲学と両立する worker の唯一の形(実行時 fetch なし)。
+declare module '*?worker&inline' {
+  const workerFactory: new () => Worker;
+  export default workerFactory;
+}
