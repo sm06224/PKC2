@@ -291,6 +291,45 @@ P1 fixture で +0.31GB)を消す ② boot の revisions 全行転送(§7-c の 2
 逆転を確認(予測: 行転送消滅で ready は main 同等以下、settle は revisions 常駐分だけ
 main より下がる)。
 
+### 7-e. P4a 受け入れ計測 ── boot 軸の逆転を確認(2026-07-27)
+
+§7-d の受け入れ条件どおり、§7-c と同一計器・同一 fixture(292MB)・同一バッチの
+連続走行で再計測。**全軸で dev(sqlite)≤ main になった**:
+
+**軸 1: boot(boot-rss.mjs)**
+
+| 局面 | main | dev P2 時点(§7-c) | **dev P4a** |
+|---|---|---|---|
+| 初回 ready | 1.76s | 8.00s | 9.89s(移行込み・一度きり) |
+| 初回 peak / settle | 1.88 / 1.01 GB | 1.90 / 1.18 GB | 2.01 / **1.00 GB** |
+| 2 回目 ready | 1.86s | 3.07s | **1.99s(main 同等)** |
+| 2 回目 peak / settle | 1.35 / 1.00 GB | 1.60 / 1.16 GB | **1.17 / 0.97 GB(main 以下)** |
+
+- P2 時点の不利 2 点が両方消えた: 2 回目 ready +1.9s → **±0.1s**、
+  settle +150MB → **−30MB**。revisions 75k 行の postMessage 転送と
+  モデル常駐が boot から消えた構造効果(worker 側 sqlite 常駐を抱えたままで
+  main を下回る)
+- 移行 boot(初回のみ)は ~10s ── P5 の移行ゲートに進捗表示が必須
+
+**軸 2: 継続使用(sustained-use-rss.mjs、2 回目起動 + 5 分 ≒100 編集)**
+
+| | main | dev P4a |
+|---|---|---|
+| 序盤 5 点平均 | 1.30 GB | **1.15 GB** |
+| 終盤 5 点平均 | 1.31 GB | **1.26 GB** |
+
+- 編集中の水位も全点で dev が下。dev の増分 +114MB は編集した entry の
+  履歴 hydrate + 追記の常駐化(編集対象 20 entry の履歴に有界)
+- ⚠ main の水位が §7-c(1.53GB)と本走行(1.31GB)で異なる ── 走行間の
+  変動が 200MB 級あるため、**比較は同一バッチ内のみ有効**(計器の規律)
+
+**残る床(user 指摘 2026-07-27「まだ 1GB は大きく見える」)**: settle ~0.97GB の
+内訳は ① 計器固定費(browser/GPU/zygote ~0.5GB)② renderer の JS heap 以外
+~340MB(空アプリで renderer 356MB / JS heap 18MB ── コンパイル済みコード +
+DOM + compositor)。**storage 形式ではもう削れない領域**に入ったので、
+§8-4(renderer 内訳の実測)→ 単一 HTML 内遅延評価 / sidebar DOM 仮想化の
+判断へ進む(別レーン)。
+
 ## 8. 未確定(裁定・調査が要るもの)
 
 1. ✅ **実機確認済み(2026-07-27、tests/bench/sqlite-spike.mjs)**:
