@@ -135,7 +135,7 @@ const PRAGMAS: readonly string[] = [
   'PRAGMA synchronous = NORMAL',
 ];
 
-async function handleInit(dbName: string): Promise<SqliteInitResult> {
+async function handleInit(dbName: string, requirePersistent: boolean): Promise<SqliteInitResult> {
   if (initInfo && db) return initInfo; // idempotent(再 init は既存を返す)
   const t0 = performance.now();
   const sqlite3 = await getSqlite3();
@@ -161,10 +161,22 @@ async function handleInit(dbName: string): Promise<SqliteInitResult> {
     db = new poolUtil.OpfsSAHPoolDb('/pkc2.db');
     vfs = 'sahpool';
   } catch (err) {
-    // SAHPool 不成立(OPFS 不可環境 / 多重 tab lock)── :memory: に落として
-    // 「開ける」ことは保証するが、persistent=false を返す。client 側は
-    // これを **不成立として扱い IDB へ fallback** する(データを揮発 DB に
-    // 書き始めない ── 消失経路 S1〜S4 の教訓)。
+    // SAHPool 不成立(OPFS 不可環境 / 多重 tab lock)。
+    //
+    // 🔴 **requirePersistent なら :memory: を開かずに throw する**
+    // (2026-07-27、敵対的検証が検出)。揮発 DB を開いてしまうと、
+    // main 側に残った baseline から**差分 op だけが空 DB へ飛び**、
+    // 読みは null になる ── 初回 boot は caller が persistent=false を見て
+    // IDB へ落ちるので安全だが、**idle terminate からの再起動にはその判定が
+    // 無かった**。再起動では必ずこちらを通す。
+    if (requirePersistent) {
+      poolUtil = null;
+      db = null;
+      initInfo = null;
+      throw new Error('sqlite: 永続 VFS を再取得できない', { cause: err });
+    }
+    // 初回 boot: 「開ける」ことは保証しつつ persistent=false を返す。
+    // client 側がこれを不成立として扱い IDB へ fallback する。
     error = String(err);
     poolUtil = null;
     db = new sqlite3.oo1.DB(':memory:');
@@ -645,7 +657,7 @@ async function handleProbePersistence(): Promise<SqlitePersistenceProbeResult> {
 async function handle(req: SqliteRequest): Promise<unknown> {
   switch (req.op) {
     case 'init':
-      return handleInit(req.dbName);
+      return handleInit(req.dbName, req.requirePersistent === true);
     case 'close':
       await handleClose();
       return undefined;

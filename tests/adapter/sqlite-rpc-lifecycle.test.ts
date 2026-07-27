@@ -27,11 +27,24 @@ interface FakeWorker extends WorkerLike {
   terminated: boolean;
 }
 
-function makeFactory(opts: { persistent?: boolean; holdOp?: string } = {}) {
+function makeFactory(
+  opts: {
+    persistent?: boolean;
+    holdOp?: string;
+    /**
+     * n 番目(1 始まり)の worker の init 応答を差し替える。
+     * 「1 個目は永続 / 2 個目(= 再起動)は不成立」を作るために要る
+     * ── これが無いと再起動時のデータ消失経路を test で再現できない
+     * (2026-07-27、敵対的検証の指摘)。
+     */
+    initByIndex?: (n: number) => { persistent: boolean } | 'reject';
+  } = {},
+) {
   const workers: FakeWorker[] = [];
   let releaseHeld: (() => void) | null = null;
   const factory = (): FakeWorker => {
     const log: Array<SqliteRequestBody['op']> = [];
+    const index = workers.length + 1;
     const w: FakeWorker = {
       log,
       terminated: false,
@@ -43,9 +56,21 @@ function makeFactory(opts: { persistent?: boolean; holdOp?: string } = {}) {
           });
         }
         if (req.op === 'init') {
+          const override = opts.initByIndex?.(index);
+          if (override === 'reject') {
+            return Promise.reject(new Error('永続 VFS を再取得できない'));
+          }
+          // 本番の worker は requirePersistent が true のとき :memory: へ
+          // 落とさず throw する。fake もその契約を模す。
+          const persistent = override
+            ? override.persistent
+            : opts.persistent !== false;
+          if (!persistent && req.requirePersistent === true) {
+            return Promise.reject(new Error('永続 VFS を再取得できない'));
+          }
           return Promise.resolve({
-            persistent: opts.persistent !== false,
-            vfs: opts.persistent === false ? 'memory' : 'sahpool',
+            persistent,
+            vfs: persistent ? 'sahpool' : 'memory',
             version: 'fake',
             ms: 1,
           } as unknown as T);
@@ -121,6 +146,59 @@ describe('sqlite worker の破棄 lifecycle(L1)', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(workers[0]!.terminated).toBe(false);
     expect(rpc.alive()).toBe(true);
+  });
+
+  // ── 🔴 データ消失経路の pin(2026-07-27、常駐棚卸しの敵対的検証が検出)──
+
+  it('再起動で永続 VFS を取れないとき、書込を揮発 DB へ通さず reject する', async () => {
+    // 1 個目は永続、2 個目(再起動)は不成立 ── 実環境では多重 tab に
+    // SAH lock を取られた場合などに起きる。
+    const { factory, workers } = makeFactory({
+      initByIndex: (n) => (n === 1 ? { persistent: true } : { persistent: false }),
+    });
+    const rpc = __createManagedRpcForTest('db', { idleMs: 100, factory });
+
+    await rpc.call({ op: 'applyOps', cid: 'c1', ops: [], setDefault: false });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(rpc.alive()).toBe(false); // 畳まれた
+
+    // 再起動 ── 永続 VFS が取れないので **書込は通らない**
+    await expect(
+      rpc.call({ op: 'applyOps', cid: 'c1', ops: [], setDefault: false }),
+    ).rejects.toThrow(/永続 VFS/);
+    // 2 個目の worker には applyOps が 1 度も届いていない
+    expect(workers[1]!.log).not.toContain('applyOps');
+  });
+
+  it('init が reject しても詰まらない ── 次の呼び出しで作り直し、落ちた worker は terminate する', async () => {
+    let failNext = true;
+    const { factory, workers } = makeFactory({
+      initByIndex: () => (failNext ? 'reject' : { persistent: true }),
+    });
+    const rpc = __createManagedRpcForTest('db', { idleMs: 1_000, factory });
+
+    await expect(rpc.call({ op: 'getDefaultCid' })).rejects.toThrow();
+    // 落ちた worker は握らずに terminate されている(wasm ごと居座らせない)
+    expect(workers[0]!.terminated).toBe(true);
+    expect(rpc.alive()).toBe(false);
+
+    // 次の呼び出しは**新しい worker**を作る(rejected promise を返し続けない)
+    failNext = false;
+    await expect(rpc.call({ op: 'getDefaultCid' })).resolves.toBeUndefined();
+    expect(workers).toHaveLength(2);
+    expect(rpc.restarts()).toBe(2);
+  });
+
+  it('初回から永続でないときも書込は拒否する(caller の IDB fallback の二重防壁)', async () => {
+    const { factory, workers } = makeFactory({ persistent: false });
+    const rpc = __createManagedRpcForTest('db', { idleMs: 1_000, factory });
+    await expect(
+      rpc.call({ op: 'saveFull', cid: 'c1', rows: {} as never, setDefault: true }),
+    ).rejects.toThrow(/永続 VFS/);
+    // 読みは通す(空を返すだけで、データは失われない)
+    await expect(rpc.call({ op: 'getDefaultCid' })).resolves.toBeUndefined();
+    expect(workers[0]!.log).toContain('getDefaultCid');
+    expect(workers[0]!.log).not.toContain('saveFull');
   });
 
   it('dispose 後の呼び出しは reject し、worker を作り直さない', async () => {

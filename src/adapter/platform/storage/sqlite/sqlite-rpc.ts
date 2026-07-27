@@ -12,7 +12,22 @@ import type { ContainerRows, RowOp } from './sqlite-schema';
 
 /** リクエスト本体(id は client が付ける)。 */
 export type SqliteRequestBody =
-  | { op: 'init'; dbName: string }
+  | {
+      op: 'init';
+      dbName: string;
+      /**
+       * 🔴 true のとき、SAHPool が取れなければ **:memory: へ落とさず throw する**。
+       *
+       * idle terminate からの**再起動**では必ず true を渡す(2026-07-27、
+       * 常駐棚卸しの敵対的検証が検出したデータ消失経路)。初回 boot は
+       * `createSqliteBackend` が `persistent === false` を見て IDB へ落とすので
+       * 安全だが、**再起動経路にはその判定が無かった** ── 揮発 DB が開き、
+       * main 側に残った baseline から差分 op だけが空 DB へ飛び、読みは null に
+       * なる。多重 tab で SAH lock を取られた場合にも同じ経路を踏む
+       * (collapse は lock を手放すので、畳んだ隙に他 tab が取りうる)。
+       */
+      requirePersistent?: boolean;
+    }
   // 破棄 lifecycle(user 指示 2026-07-27「生成とライフサイクル後の速やかな破棄」):
   // close = DB と VFS を閉じ terminate 可能にする / shrinkMemory = 開いたまま解放
   | { op: 'close' }

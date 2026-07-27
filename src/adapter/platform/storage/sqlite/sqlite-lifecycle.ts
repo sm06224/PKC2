@@ -28,6 +28,16 @@ export interface WorkerLike {
  */
 export const DEFAULT_IDLE_MS = 30_000;
 
+/**
+ * storage を変更する op。永続 VFS が無いときに**通してはいけない**もの。
+ * 読みは(空を返すだけなので)通してよい ── 呼び元が「データが無い」と
+ * 誤認するリスクはあるが、書込を通すと**実データが揮発 DB に流れて失われる**。
+ */
+const WRITE_OPS: ReadonlySet<string> = new Set([
+  'saveFull', 'applyOps', 'setDefaultCid', 'deleteContainer', 'clearAll',
+  'kvSet', 'kvDelete', 'assetMetaSet',
+]);
+
 export interface ManagedSqliteRpc extends SqliteRpc {
   /** 実行中でなければ即座に畳む(test / 明示要求用)。 */
   collapseNow(): Promise<void>;
@@ -100,13 +110,44 @@ export function createManagedRpc(dbName: string, options: ManagedRpcOptions): Ma
 
   function ensure(): Promise<SqliteInitResult> {
     if (!raw) {
-      raw = factory();
+      const worker = factory();
+      raw = worker;
       restartCount++;
-      const worker = raw;
-      ready = worker.call<SqliteInitResult>({ op: 'init', dbName }).then((info) => {
-        if (info && info.persistent === false) collapsible = false;
-        return info;
-      });
+      // 🔴 **再起動では永続 VFS を必須にする**(2026-07-27、敵対的検証が検出)。
+      //
+      // 初回 boot は caller(createSqliteBackend)が `persistent === false` を
+      // 見て IDB へ落ちるので安全だが、**畳んだ後の再起動にはその判定が
+      // 無かった**。SAHPool を取れないまま :memory: が開くと、main 側に残った
+      // baseline から**差分 op だけが空 DB へ飛び**、読みは null になる
+      // ── 30 秒放置して再編集するだけで踏む。多重 tab でも同じ
+      //(collapse は SAH lock を手放すので、畳んだ隙に他 tab が取りうる)。
+      const isRestart = restartCount > 1;
+      ready = worker
+        .call<SqliteInitResult>({ op: 'init', dbName, requirePersistent: isRestart })
+        .then((info) => {
+          if (info && info.persistent === false) {
+            // 初回のみ到達しうる。畳まない(揮発 DB を閉じるとデータが消える)。
+            collapsible = false;
+          }
+          return info;
+        })
+        .catch((err: unknown) => {
+          // ⚠ **失敗した worker と rejected promise を握ったままにしない**
+          // (同じ検証が検出): `raw` が非 null のままだと以後の ensure() が
+          // 同じ rejected promise を返し続け、call() は inFlight にも
+          // armTimer にも到達しないので **二度と回復しない**。worker も
+          // terminate されず wasm ごと居座る。参照を落として次回に賭ける。
+          if (raw === worker) {
+            raw = null;
+            ready = null;
+          }
+          try {
+            worker.dispose();
+          } catch {
+            /* 既に死んでいる */
+          }
+          throw err;
+        });
     }
     return ready as Promise<SqliteInitResult>;
   }
@@ -119,6 +160,12 @@ export function createManagedRpc(dbName: string, options: ManagedRpcOptions): Ma
       // ensure の結果をそのまま返す(二重 init を worker へ送らない)。
       const info = await ensure();
       if (req.op === 'init') return info as unknown as T;
+      // 🔴 揮発 DB(:memory:)へ書き込ませない。初回 boot で persistent=false を
+      // 観測した場合、caller はこの RPC を捨てて IDB を継続する契約だが、
+      // その前に走った呼び出しや、契約を知らない将来の caller を二重に守る。
+      if (info && info.persistent === false && WRITE_OPS.has(req.op)) {
+        throw new Error('sqlite rpc: 永続 VFS が無いので書込を拒否した(IDB を使うこと)');
+      }
       const worker = raw;
       if (!worker) throw new Error('sqlite rpc: worker が失われた');
       inFlight++;
