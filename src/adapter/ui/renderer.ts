@@ -80,6 +80,7 @@ import { getFilterIndexes, getTodosByDate } from './filter-cache';
 import { shellStartupNoticeEnabled } from './startup-notice';
 import { start as profileStart } from '../../runtime/profile';
 import { computeRenderScope, findEntryBodyChangeLid, canReuseEntryList } from './render-scope';
+import { recordVisibleOrder } from './visible-order';
 import type { TreeNode } from '../../features/relation/tree';
 import type { RelationKind, Relation } from '../../core/model/relation';
 import { getPresenter } from './detail-presenter';
@@ -5028,6 +5029,11 @@ function renderSidebarImpl(
       ? memoizedBuildConnectednessSets(state.container, sharedLinkIndex ?? memoizedBuildLinkIndex(state.container))
       : null;
 
+    // L3-S2: この描画で並べた entry 行の lid を**描画順**で集める。
+    // 消費側(Shift+click 範囲選択 / ↑↓ ナビ)が DOM を走査して順序を
+    // 導出するのをやめるため ── 窓化すると DOM に無い行が出てくる。
+    const visibleLids: string[] = [];
+
     if (hasActiveFilter || !state.container) {
       // Flat mode when filters are active (tree doesn't make sense for search results).
       // PR #179: memoize per-entry rows so a search-keystroke that
@@ -5050,6 +5056,7 @@ function renderSidebarImpl(
       const sublocRowCap = searchSublocScanMaxRows();
       let sublocRowsScanned = 0;
       for (const entry of entries) {
+        visibleLids.push(entry.lid);
         list.appendChild(
           getOrCreateMemoizedEntryItem(
             entry,
@@ -5096,13 +5103,15 @@ function renderSidebarImpl(
         : sortTreeNodes(tree, state.sortKey, state.sortDirection);
       const endTreeLoop = profileStart('render:sidebar:tree-loop');
       for (const node of displayTree) {
-        renderTreeNode(node, list, state, backlinkCounts, connectedLids, connectednessSets);
+        renderTreeNode(node, list, state, backlinkCounts, connectedLids, connectednessSets, visibleLids);
       }
       endTreeLoop();
     }
     // B18: 今回描いた行以外の memo を捨てる(flat / tree どちらの枝を通っても
     // 1 回。枝ごとに書くと、モード切替で反対側の memo が残る)。
     pruneRowMemos();
+    // L3-S2/S1: 描画順を UL に記録(+ 論理行数 `data-pkc-row-count`)。
+    recordVisibleOrder(list, visibleLids);
     sidebar.appendChild(list);
   }
 
@@ -5608,6 +5617,8 @@ function renderTreeNode(
   backlinkCounts?: ReadonlyMap<string, number>,
   connectedLids?: ReadonlySet<string>,
   connectednessSets?: ConnectednessSets | null,
+  /** L3-S2: 描画順の収集先(折り畳まれた子は入らない = 画面の順序と一致)。 */
+  visibleLids?: string[],
 ): void {
   const isCollapsed =
     node.entry.archetype === 'folder' && state.collapsedFolders.includes(node.entry.lid);
@@ -5617,6 +5628,7 @@ function renderTreeNode(
   const derived = derivedRowFingerprint(
     node.entry, state, backlinkCounts, connectedLids, connectednessSets,
   );
+  visibleLids?.push(node.entry.lid);
   rowMemoTouched.add(node.entry);
   const memo = treeRowMemo.get(node.entry);
   let li: HTMLElement;
@@ -5650,7 +5662,7 @@ function renderTreeNode(
   // Skip rendering children when the folder is collapsed.
   if (isCollapsed) return;
   for (const child of node.children) {
-    renderTreeNode(child, parent, state, backlinkCounts, connectedLids, connectednessSets);
+    renderTreeNode(child, parent, state, backlinkCounts, connectedLids, connectednessSets, visibleLids);
   }
 }
 

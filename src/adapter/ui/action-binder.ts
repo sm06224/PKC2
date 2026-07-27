@@ -55,6 +55,7 @@ import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
+import { resolveVisibleOrder } from './visible-order';
 import { showInlinePrompt, showInlineConfirm, showInlineForm } from './inline-dialog';
 import { openFlagsJsonEditor } from './flags-json-editor';
 import { openCodeBlockEditor } from './code-block-editor';
@@ -1846,12 +1847,12 @@ export function bindActions(
               .map((el) => el.getAttribute('data-pkc-lid'))
               .filter((v): v is string => typeof v === 'string');
           } else {
+            // L3-S2: 描画側が記録した順序を使う(無ければ従来どおり DOM から
+            // 導出)。窓化すると DOM に無い行が出るため、DOM 導出のままだと
+            // anchor が窓外のとき indexOf が -1 → blocked() で**選択が
+            // 丸ごと無反応**になる(例外も出ない)。
             visibleOrder = sidebarRegion
-              ? Array.from(
-                  sidebarRegion.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
-                )
-                  .map((el) => el.getAttribute('data-pkc-lid'))
-                  .filter((v): v is string => typeof v === 'string')
+              ? resolveVisibleOrder(sidebarRegion, 'li.pkc-entry-item[data-pkc-lid]')
               : undefined;
           }
           suppressAutoScroll(lid);
@@ -6443,14 +6444,14 @@ export function bindActions(
 
       const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
       if (!sidebar) return;
-      const items = sidebar.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
-      if (items.length === 0) return;
+      // L3-S2: 同上。窓化すると窓の端で `currentIdx >= lids.length - 1` が
+      // 真になり、**リストの末尾でもないのに無言停止**する。
+      const order = resolveVisibleOrder(sidebar, '[data-pkc-action="select-entry"][data-pkc-lid]');
+      if (order.length === 0) return;
 
       // Validate against current container to guard against stale DOM
       const containerLids = new Set(state.container.entries.map((en) => en.lid));
-      const lids = Array.from(items)
-        .map((el) => el.getAttribute('data-pkc-lid')!)
-        .filter((lid) => containerLids.has(lid));
+      const lids = order.filter((lid) => containerLids.has(lid));
       if (lids.length === 0) return;
       const currentIdx = state.selectedLid ? lids.indexOf(state.selectedLid) : -1;
 
