@@ -19,3 +19,13 @@ bench-fixtures/c-*-rev*.json
 src/adapter/platform/storage/sqlite/sqlite3.wasm*.bin
 # P2: sqlite-wasm の worker チャンク(worker1 API は未使用。単一 HTML には載らない)
 dist/assets/
+
+# 調査時の使い捨てスクリプト(2026-07-27)。サブエージェントや手検証が repo ルートに
+# 作る一時ファイルが `git add -A` で紛れ込むのを止める ── 実際に 4 本が
+# aa9716aa に混入し、次の commit で削除する羽目になった。
+# **ルート直下のドット始まり .mjs / .cjs / .ts は成果物ではない**、を規約にする。
+/.*-tmp.mjs
+/.*-tmp.cjs
+/.*-tmp.ts
+/.*-probe.mjs
+/.*-probe.ts
