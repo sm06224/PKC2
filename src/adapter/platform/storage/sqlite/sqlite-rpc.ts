@@ -17,8 +17,15 @@ export type SqliteRequestBody =
   | { op: 'probePersistence' }
   | { op: 'saveFull'; cid: string; rows: ContainerRows; setDefault: boolean }
   | { op: 'applyOps'; cid: string; ops: RowOp[]; setDefault: boolean }
-  | { op: 'loadContainer'; cid: string }
+  | { op: 'loadContainer'; cid: string; skipRevisions?: boolean }
   | { op: 'loadBodies'; cid: string; lids?: string[] }
+  // P4a: revisions の COUNT / 部分読み(boot は行を運ばない)。
+  | { op: 'revCounts'; cid: string }
+  | { op: 'revsFor'; cid: string; entryLid: string }
+  | { op: 'revsAll'; cid: string }
+  // ゴミ箱 subset: 「active でない entry_lid の最新 revision」だけ。
+  // getRestoreCandidates(常時 render 経路)を全量常駐なしで成立させる。
+  | { op: 'revsTrashLatest'; cid: string }
   | { op: 'listContainers' }
   | { op: 'deleteContainer'; cid: string }
   | { op: 'clearAll' }

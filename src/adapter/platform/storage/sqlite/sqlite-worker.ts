@@ -301,7 +301,13 @@ function selectRows<T>(d: OoDb, sql: string, bind: unknown[]): T[] {
   return rows;
 }
 
-function handleLoadContainer(cid: string): ContainerRows | null {
+// P4a: revisions の並びは created_at を第一鍵にする。要求時読みの世界では
+// 常駐配列への追記 ord が保存済み行の ord と衝突しうる(部分常駐の配列 index を
+// そのまま ord にするため)。消費者は元々 created_at で解釈しており
+// (getEntryRevisions は created_at sort)、ord は同時刻の tiebreak に落とす。
+const REV_ORDER = 'ORDER BY created_at, ord';
+
+function handleLoadContainer(cid: string, skipRevisions: boolean): ContainerRows | null {
   const d = mustDb();
   const containers = selectRows<ContainerRow>(
     d,
@@ -318,12 +324,16 @@ function handleLoadContainer(cid: string): ContainerRows | null {
        FROM entries WHERE cid=? ORDER BY ord`,
       [cid],
     ),
-    revisions: selectRows<RevisionRow>(
-      d,
-      `SELECT id,entry_lid,created_at,prev_rid,content_hash,ord,snapshot,extra
-       FROM revisions WHERE cid=? ORDER BY ord`,
-      [cid],
-    ),
+    // P4a: boot(deferred)は revisions を運ばない ── §7-c で 2 回目 boot
+    // +1.9s の主因だった 75k 行の postMessage 転送がここで消える。
+    revisions: skipRevisions
+      ? []
+      : selectRows<RevisionRow>(
+          d,
+          `SELECT id,entry_lid,created_at,prev_rid,content_hash,ord,snapshot,extra
+           FROM revisions WHERE cid=? ${REV_ORDER}`,
+          [cid],
+        ),
     relations: selectRows<RelationRow>(
       d,
       `SELECT id,from_lid,to_lid,kind,created_at,updated_at,ord,extra
@@ -331,6 +341,60 @@ function handleLoadContainer(cid: string): ContainerRows | null {
       [cid],
     ),
   };
+}
+
+/** P4a: entry_lid → revision 件数(1 クエリ。行本体は運ばない)。 */
+function handleRevCounts(cid: string): Array<{ entry_lid: string; n: number }> {
+  return selectRows<{ entry_lid: string; n: number }>(
+    mustDb(),
+    `SELECT entry_lid, COUNT(*) AS n FROM revisions WHERE cid=? GROUP BY entry_lid`,
+    [cid],
+  );
+}
+
+function handleRevsFor(cid: string, entryLid: string): RevisionRow[] {
+  return selectRows<RevisionRow>(
+    mustDb(),
+    `SELECT id,entry_lid,created_at,prev_rid,content_hash,ord,snapshot,extra
+     FROM revisions WHERE cid=? AND entry_lid=? ${REV_ORDER}`,
+    [cid, entryLid],
+  );
+}
+
+function handleRevsAll(cid: string): RevisionRow[] {
+  return selectRows<RevisionRow>(
+    mustDb(),
+    `SELECT id,entry_lid,created_at,prev_rid,content_hash,ord,snapshot,extra
+     FROM revisions WHERE cid=? ${REV_ORDER}`,
+    [cid],
+  );
+}
+
+/**
+ * P4a: ゴミ箱 subset ── active でない entry_lid ごとの最新 revision。
+ * 同時刻の tie は JS 側で先勝ち(getRestoreCandidates の `>` 比較 =
+ * 先に見たものが勝つ、と同じ向き)にするため created_at DESC で返す。
+ */
+function handleRevsTrashLatest(cid: string): RevisionRow[] {
+  const rows = selectRows<RevisionRow>(
+    mustDb(),
+    `SELECT r.id,r.entry_lid,r.created_at,r.prev_rid,r.content_hash,r.ord,r.snapshot,r.extra
+     FROM revisions r
+     WHERE r.cid=? AND r.entry_lid NOT IN (SELECT lid FROM entries WHERE cid=?)
+       AND r.created_at = (
+         SELECT MAX(r2.created_at) FROM revisions r2
+         WHERE r2.cid=r.cid AND r2.entry_lid=r.entry_lid)
+     ORDER BY r.created_at DESC, r.ord`,
+    [cid, cid],
+  );
+  const seen = new Set<string>();
+  const out: RevisionRow[] = [];
+  for (const row of rows) {
+    if (seen.has(row.entry_lid)) continue;
+    seen.add(row.entry_lid);
+    out.push(row);
+  }
+  return out;
 }
 
 function handleLoadBodies(cid: string, lids?: string[]): Record<string, string> {
@@ -490,9 +554,17 @@ async function handle(req: SqliteRequest): Promise<unknown> {
       handleApplyOps(req.cid, req.ops, req.setDefault);
       return undefined;
     case 'loadContainer':
-      return handleLoadContainer(req.cid);
+      return handleLoadContainer(req.cid, req.skipRevisions === true);
     case 'loadBodies':
       return handleLoadBodies(req.cid, req.lids);
+    case 'revCounts':
+      return handleRevCounts(req.cid);
+    case 'revsFor':
+      return handleRevsFor(req.cid, req.entryLid);
+    case 'revsAll':
+      return handleRevsAll(req.cid);
+    case 'revsTrashLatest':
+      return handleRevsTrashLatest(req.cid);
     case 'listContainers':
       return selectRows<{ id: string; title: string }>(
         mustDb(),

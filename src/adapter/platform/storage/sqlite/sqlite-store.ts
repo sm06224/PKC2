@@ -22,11 +22,14 @@
 import type { Container } from '../../../../core/model/container';
 import type { AssetMetaIndex } from '../../../../features/asset/asset-meta';
 import { base64ToBlob, type ContainerStore, type ContainerSummary, type Workspace } from '../../idb-store';
+import type { Revision } from '../../../../core/model/container';
 import {
   containerToRows,
   diffContainerToOps,
   rowsToContainer,
+  rowToRevision,
   type ContainerRows,
+  type RevisionRow,
 } from './sqlite-schema';
 import type { AssetMetaRow, SqliteRpc } from './sqlite-rpc';
 
@@ -150,12 +153,71 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
       container: Container | null;
       bodiesDeferred: boolean;
       storedInline: boolean;
+      revisionsDeferred?: boolean;
     }> {
       const cid = await getDefaultCid();
-      const container = cid ? await loadStructured(cid) : null;
+      if (!cid) return { container: null, bodiesDeferred: false, storedInline: false };
+      // P4a(§7-d): boot は revisions を運ばない(COUNT + 要求時読み)。
+      // ただし **ゴミ箱 subset(削除済み entry の最新 revision)だけは常駐**させる
+      // ── getRestoreCandidates は常時 render 経路にあり、空だとゴミ箱が
+      // 消えて見えるため。subset は「削除済み entry 数」オーダーで小さい。
+      const rows = await rpc.call<ContainerRows | null>({
+        op: 'loadContainer',
+        cid,
+        skipRevisions: true,
+      });
+      if (!rows) return { container: null, bodiesDeferred: false, storedInline: false };
+      const trashRows = await rpc.call<RevisionRow[]>({ op: 'revsTrashLatest', cid });
+      const container = rowsToContainer(rows);
+      container.revisions = trashRows.map(rowToRevision);
+      // baseline = この部分常駐 container。参照 diff の削除判定は「baseline に
+      // あって next に無い key」だけなので、**未読の行が消えることは構造的に
+      // 無い**(§7-d の安全条件。test で pin: sqlite-store.test.ts)。
+      baselines.set(cid, container);
       // 行 → model → 行 は同一(mapper は決定的)なので storedInline=true:
       // 読んだそのままを書き戻しても diff は 0 行で、1 バイトも書かれない。
-      return { container, bodiesDeferred: false, storedInline: container !== null };
+      return {
+        container,
+        bodiesDeferred: false,
+        storedInline: true,
+        revisionsDeferred: true,
+      };
+    },
+
+    // ── P4a: revisions の要求時読み ──
+
+    async loadRevisionCounts(cid: string): Promise<Record<string, number>> {
+      const rows = await rpc.call<Array<{ entry_lid: string; n: number }>>({
+        op: 'revCounts',
+        cid,
+      });
+      const out: Record<string, number> = {};
+      for (const r of rows) out[r.entry_lid] = r.n;
+      return out;
+    },
+
+    async loadRevisionsFor(cid: string, entryLid: string): Promise<Revision[]> {
+      const rows = await rpc.call<RevisionRow[]>({ op: 'revsFor', cid, entryLid });
+      return rows.map(rowToRevision);
+    },
+
+    async loadAllRevisions(cid: string): Promise<Revision[]> {
+      const rows = await rpc.call<RevisionRow[]>({ op: 'revsAll', cid });
+      return rows.map(rowToRevision);
+    },
+
+    noteHydratedRevisions(cid: string, revisions: readonly Revision[]): void {
+      const baseline = baselines.get(cid);
+      if (!baseline || revisions.length === 0) return;
+      const existing = new Set(baseline.revisions.map((r) => r.id));
+      const added = revisions.filter((r) => !existing.has(r.id));
+      if (added.length === 0) return;
+      // reducer の merge と同じ規約(created_at の安定 sort)で並べ、baseline と
+      // state の行位置を揃える(ズレは無害な rev-ord op を生むだけだが減らす)。
+      const merged = [...baseline.revisions, ...added].sort((a, b) =>
+        a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
+      );
+      baselines.set(cid, { ...baseline, revisions: merged });
     },
 
     async loadBodies(containerId: string): Promise<Record<string, string>> {

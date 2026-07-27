@@ -1,4 +1,4 @@
-import type { Container } from '../model/container';
+import type { Container, Revision } from '../model/container';
 
 /**
  * PendingOfferRef: minimal reference for offer-related commands.
@@ -178,6 +178,13 @@ export type SystemCommand =
    * 適用する(boot 後にユーザーが書いた本文を上書きしない)。
    */
   | { type: 'SYS_BODIES_LOADED'; bodies: Record<string, string>; partial?: boolean }
+  /**
+   * P4a(wasm-sqlite §7-d): 要求時読みの revisions を常駐 set へ merge する。
+   * id で重複排除し、created_at の安定 sort で並べ直す(要求時読みの世界では
+   * created_at が第一鍵 ── worker の読み出しと同じ規約)。空配列は
+   * 「counts 到着の再 render 合図」として state 参照だけ更新する。
+   */
+  | { type: 'SYS_REVISIONS_HYDRATED'; revisions: Revision[] }
   | { type: 'SYS_INIT_ERROR'; error: string }
   /**
    * C11 §4.5 ④-1: ブラウザ保存フォールバック掲示で「閲覧のみ」を選んだ

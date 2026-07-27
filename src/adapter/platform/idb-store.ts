@@ -7,6 +7,7 @@ import { collectReferencedAssetKeys } from '../../features/asset/asset-scan';
 import type { AssetMetaIndex } from '../../features/asset/asset-meta';
 import { defineFlag } from '../flags';
 import { isBodyPendingGlobal } from './body-working-set';
+import { isRevisionResidencyActive } from './revision-residency';
 
 /**
  * #940 案 A(2026-07-20 user go「実装を続行しよう」): 本文・履歴を container
@@ -160,7 +161,32 @@ export interface ContainerStore {
     container: Container | null;
     bodiesDeferred: boolean;
     storedInline: boolean;
+    /**
+     * P4a(wasm-sqlite §7-d): revisions が要求時読みに deferred されているか。
+     * true のとき container.revisions は**常駐 working set**(ゴミ箱 subset +
+     * 以後の追記 + hydrate 済み分)であり全量ではない。caller(main.ts)は
+     * revision-residency manager を mount する責務を負う。旧実装は返さない
+     * (undefined = false)。
+     */
+    revisionsDeferred?: boolean;
   }>;
+
+  // ── P4a: revisions の要求時読み(optional ── sqlite 実装のみ提供)──
+  // 提供しない store では revisions は従来どおり全量常駐で、これらは呼ばれない。
+  /** entry_lid → revision 件数(行本体は運ばない)。 */
+  loadRevisionCounts?(cid: string): Promise<Record<string, number>>;
+  /** 指定 entry の revisions(created_at 昇順)。 */
+  loadRevisionsFor?(cid: string, entryLid: string): Promise<Revision[]>;
+  /** 全 revisions(export / ensureAll 用。created_at 昇順)。 */
+  loadAllRevisions?(cid: string): Promise<Revision[]>;
+  /**
+   * hydrate した revisions を参照 diff の baseline に**追加**する(sqlite 実装)。
+   * hydrate した行は storage 由来なので、これを怠ると次の保存が同一内容の行を
+   * 再 upsert する。⚠ **baseline を container ごと差し替えてはならない** ──
+   * 未保存の編集を含む state を「同期済み」と主張することになり、直後の保存が
+   * 0 diff に化けて編集が消える(lost write)。行の追加だけが安全。
+   */
+  noteHydratedRevisions?(cid: string, revisions: readonly Revision[]): void;
   /** #940 案 A 段階2: layout v2 の本文 record を一括で読む(lid → body)。 */
   loadBodies(containerId: string): Promise<Record<string, string>>;
   /** #940 案 A 段階3: 指定 lid の本文だけ読む(部分 hydrate)。 */
@@ -1835,7 +1861,25 @@ export async function hydrateForExport(container: Container): Promise<Container>
   // 移行前バックアップ ZIP もこの経路なので、**安全網そのものが壊れていた**。
   // regression test: tests/adapter/export-hydration-order.test.ts
   const withBodies = await hydratePendingBodiesForExport(container);
-  return hydrateReferencedAssets(activeExportStore, withBodies);
+  const withAssets = await hydrateReferencedAssets(activeExportStore, withBodies);
+  // P4a(wasm-sqlite §7-d): revisions が要求時読みのときは全量を戻してから
+  // 直列化する ── #1023(export が部分 view を直列化して添付が欠けた)の
+  // 轍を revisions で踏まないための barrier。asset 参照は revisions を
+  // 読まない(asset-scan.ts)ので、bodies → assets の順序制約とは独立。
+  return hydrateDeferredRevisionsForExport(withAssets);
+}
+
+/** P4a: deferred(sqlite)のときだけ全 revisions を store から戻す。 */
+async function hydrateDeferredRevisionsForExport(container: Container): Promise<Container> {
+  if (!activeExportStore?.loadAllRevisions) return container;
+  const cid = container.meta.container_id;
+  if (!isRevisionResidencyActive(cid)) return container;
+  const all = await activeExportStore.loadAllRevisions(cid);
+  // 常駐 set には boot 後の追記(まだ保存前かもしれない)が含まれうる ──
+  // store 側に無い id は常駐側を残す(union、id 重複は store 側優先)。
+  const ids = new Set(all.map((r) => r.id));
+  const extras = container.revisions.filter((r) => !ids.has(r.id));
+  return { ...container, revisions: extras.length ? [...all, ...extras] : all };
 }
 
 // ── Availability probe ──────────────────────

@@ -148,6 +148,60 @@ info = await boot(true);
 const metaAfterReload = await page.evaluate(() => window.__pkc2StoreDebug.loadAssetMeta('p3check'));
 check('meta 行が reload を跨いで永続する', JSON.stringify(metaAfterReload) === JSON.stringify({ 'a.bin': { size: 4, hash: 'feedfacefeedface' } }), JSON.stringify(metaAfterReload));
 
+console.log('■ G. P4a: revisions の COUNT + 要求時読み(deferred boot)');
+// SQLITE-EDIT-2 を編集して revision を作る(編集 = 直前状態の snapshot)
+{
+  const row = page.locator(`${ROW_SEL}`, { hasText: 'SQLITE-EDIT-2' }).first();
+  await row.click();
+  await page.waitForTimeout(200);
+  await page.locator('[data-pkc-action="begin-edit"]').first().click();
+  await page.waitForFunction(`document.querySelector('#pkc-root')?.getAttribute('data-pkc-phase') === 'editing'`, null, { timeout: 20000 });
+  await page.locator('[data-pkc-field="body"]').first().click();
+  await page.keyboard.type(' rev-making edit');
+  await page.locator('[data-pkc-action="commit-edit"]').first().click();
+  await page.waitForFunction(`document.querySelector('#pkc-root')?.getAttribute('data-pkc-phase') === 'ready'`, null, { timeout: 20000 });
+  await page.waitForTimeout(1800);
+}
+// counts が sqlite の行として読めるか(store 契約)
+const countsBefore = await page.evaluate(async () => {
+  const info = window.__pkc2StorageInfo;
+  const store = window.__pkc2StoreDebug;
+  const def = await store.loadDefaultMetaShallow();
+  return {
+    deferred: def.revisionsDeferred === true,
+    residentAtBoot: def.container ? def.container.revisions.length : -1,
+    counts: await store.loadRevisionCounts(def.container.meta.container_id),
+    sqlite: info && info.sqlite === true,
+  };
+});
+check('boot が revisionsDeferred を返す', countsBefore.deferred, JSON.stringify(countsBefore));
+check('COUNT 索引に編集の revision が載っている', Object.values(countsBefore.counts).reduce((a, b) => a + b, 0) >= 1, JSON.stringify(countsBefore.counts));
+
+// reload → 選択 → 履歴 pane が hydrate されて行が出る(要求時読みの実機動作)
+info = await boot(true);
+{
+  const row = page.locator(`${ROW_SEL}`, { hasText: 'SQLITE-EDIT-2' }).first();
+  await row.click();
+  await page.waitForTimeout(400);
+  const picker = page.locator('[data-pkc-region="revision-history"]');
+  const summaryText = await picker.locator('summary').first().textContent().catch(() => null);
+  check('履歴 pane の件数が deferred COUNT で表示される', summaryText !== null && /\(\d+\)/.test(summaryText), String(summaryText));
+  await picker.locator('summary').first().click();
+  await page.waitForFunction(
+    `(() => {
+      const p = document.querySelector('[data-pkc-region="revision-history"]');
+      if (!p) return false;
+      const loading = p.querySelector('[data-pkc-region="revision-history-loading"]');
+      const rows = p.querySelectorAll('[data-pkc-revision-id]');
+      return !loading && rows.length >= 1;
+    })()`,
+    null,
+    { timeout: 20000 },
+  );
+  const rowCount = await picker.locator('[data-pkc-revision-id]').count();
+  check('選択駆動の hydrate で履歴行が揃う(読み込み中行が消える)', rowCount >= 1, `rows=${rowCount}`);
+}
+
 if (pageErrors.length) {
   console.log(`⚠ pageerror ${pageErrors.length} 件:`);
   for (const e of pageErrors.slice(0, 5)) console.log(`   ${e}`);

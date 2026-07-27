@@ -96,6 +96,10 @@ import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml, containerHasLargeAsset } from '../platform/exporter';
 import { hydrateForExport, loadAssetDirect } from '../platform/idb-store';
+import {
+  ensureAllRevisionsResident,
+  needsRevisionBarrier,
+} from '../platform/revision-residency';
 import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
@@ -2345,8 +2349,13 @@ export function bindActions(
           okLabel: '完全に削除',
           danger: true,
           anchor: target,
-        }).then((ok) => {
-          if (ok) dispatcher.dispatch({ type: 'PURGE_TRASH' });
+        }).then(async (ok) => {
+          if (!ok) return;
+          // P4a(§7-d): purge は revisions を filter で削除する op。部分常駐の
+          // まま走ると未読の行が sqlite に残る(ghost)ため、全量 barrier を
+          // 先行させる(baseline も全量になり、diff が削除行を正しく出す)。
+          await ensureAllRevisionsResident();
+          dispatcher.dispatch({ type: 'PURGE_TRASH' });
         });
         break;
       }
@@ -2372,10 +2381,25 @@ export function bindActions(
         dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
         break;
       case 'confirm-import':
-        dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+        // P4a(§7-d): import は container を丸ごと組み替える ── 部分常駐の
+        // まま merge すると counts と常駐の整合が壊れるため全量 barrier を先行。
+        // barrier 不要(deferred 非活性 = 既定)なら従来どおり**同期** dispatch。
+        if (needsRevisionBarrier()) {
+          void ensureAllRevisionsResident().then(() => {
+            dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+          });
+        } else {
+          dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+        }
         break;
       case 'confirm-merge-import':
-        dispatcher.dispatch({ type: 'CONFIRM_MERGE_IMPORT', now: new Date().toISOString() });
+        if (needsRevisionBarrier()) {
+          void ensureAllRevisionsResident().then(() => {
+            dispatcher.dispatch({ type: 'CONFIRM_MERGE_IMPORT', now: new Date().toISOString() });
+          });
+        } else {
+          dispatcher.dispatch({ type: 'CONFIRM_MERGE_IMPORT', now: new Date().toISOString() });
+        }
         break;
       case 'set-import-mode': {
         const rawMode = target.getAttribute('data-pkc-mode');

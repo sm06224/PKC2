@@ -119,13 +119,47 @@ function createFakeRpc(): SqliteRpc & { calls: SqliteRequestBody[] } {
         case 'loadContainer': {
           const c = containers.get(req.cid);
           if (!c) return done(null);
+          const revRows = req.skipRevisions
+            ? []
+            : [...tableFor(revisions, req.cid).values()].sort(
+                (a, b) => a.created_at.localeCompare(b.created_at) || a.ord - b.ord,
+              );
           const rows: ContainerRows = {
             container: c,
             entries: sorted(tableFor(entries, req.cid)),
-            revisions: sorted(tableFor(revisions, req.cid)),
+            revisions: revRows,
             relations: sorted(tableFor(relations, req.cid)),
           };
           return done(rows);
+        }
+        case 'revCounts': {
+          const byLid = new Map<string, number>();
+          for (const r of tableFor(revisions, req.cid).values()) {
+            byLid.set(r.entry_lid, (byLid.get(r.entry_lid) ?? 0) + 1);
+          }
+          return done([...byLid.entries()].map(([entry_lid, n]) => ({ entry_lid, n })));
+        }
+        case 'revsFor':
+          return done(
+            [...tableFor(revisions, req.cid).values()]
+              .filter((r) => r.entry_lid === req.entryLid)
+              .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.ord - b.ord),
+          );
+        case 'revsAll':
+          return done(
+            [...tableFor(revisions, req.cid).values()].sort(
+              (a, b) => a.created_at.localeCompare(b.created_at) || a.ord - b.ord,
+            ),
+          );
+        case 'revsTrashLatest': {
+          const active = new Set(tableFor(entries, req.cid).keys());
+          const latest = new Map<string, RevisionRow>();
+          for (const r of tableFor(revisions, req.cid).values()) {
+            if (active.has(r.entry_lid)) continue;
+            const cur = latest.get(r.entry_lid);
+            if (!cur || r.created_at > cur.created_at) latest.set(r.entry_lid, r);
+          }
+          return done([...latest.values()]);
         }
         case 'loadBodies': {
           const out: Record<string, string> = {};
@@ -371,6 +405,91 @@ describe('SqliteContainerStore', () => {
     await store.saveAsset('c1', 'b.png', 'BBBB');
     expect(await inner.loadAssetBlob('c1', 'b.png')).toBeInstanceOf(Blob);
     expect(await store.loadAsset('c1', 'b.png')).toBe('BBBB');
+  });
+
+  it('P4a: deferred boot は revisions を運ばず、ゴミ箱 subset だけ常駐する', async () => {
+    const c = makeContainer();
+    // e2 を削除済みにする(revisions に e2 の履歴を 2 件残す)
+    const deletedRevs = [
+      { id: 'rd1', entry_lid: 'gone', snapshot: '{}', created_at: '2026-07-01T00:00:00Z' },
+      { id: 'rd2', entry_lid: 'gone', snapshot: '{}', created_at: '2026-07-02T00:00:00Z' },
+    ];
+    await store.save({ ...c, revisions: [...c.revisions, ...deletedRevs] });
+
+    const res = await store.loadDefaultMetaShallow();
+    expect(res.revisionsDeferred).toBe(true);
+    expect(res.storedInline).toBe(true);
+    // 常駐は「削除済み entry の最新 revision」だけ(r1 は active entry e1 の分なので来ない)
+    expect(res.container!.revisions.map((r) => r.id)).toEqual(['rd2']);
+
+    // COUNT / 部分読み / 全量読み
+    expect(await store.loadRevisionCounts!('c1')).toEqual({ e1: 1, gone: 2 });
+    expect((await store.loadRevisionsFor!('c1', 'gone')).map((r) => r.id)).toEqual(['rd1', 'rd2']);
+    expect((await store.loadAllRevisions!('c1')).length).toBe(3);
+  });
+
+  it('P4a pin: 部分常駐のまま save しても未読の revision 行は消えない', async () => {
+    const c = makeContainer();
+    const extraRevs = Array.from({ length: 5 }, (_, i) => ({
+      id: `rx${i}`,
+      entry_lid: 'e1',
+      snapshot: '{}',
+      created_at: `2026-07-0${i + 1}T01:00:00Z`,
+    }));
+    await store.save({ ...c, revisions: [...c.revisions, ...extraRevs] });
+
+    // 新 session(deferred boot)── 常駐 revisions は空(削除済み entry なし)
+    const store2 = createSqliteContainerStore(createMemoryStore(), rpc);
+    const res = await store2.loadDefaultMetaShallow();
+    expect(res.container!.revisions).toEqual([]);
+
+    // 編集 1 回(revision 追記)して save
+    const edited = { ...res.container!.entries[0]!, body: '編集後' };
+    const newRev = {
+      id: 'rnew',
+      entry_lid: 'e1',
+      snapshot: '{}',
+      created_at: '2026-07-09T00:00:00Z',
+    };
+    await store2.save({
+      ...res.container!,
+      entries: [edited, ...res.container!.entries.slice(1)],
+      revisions: [newRev],
+    });
+
+    // 🔴 §7-d の安全条件: rev-delete が 1 件も出ていない
+    const allOps = opsCalls(rpc).flatMap((c2) => c2.ops);
+    expect(allOps.filter((op) => op.t === 'rev-delete')).toEqual([]);
+    // sqlite 側は 既存 6 件 + 追記 1 件 = 7 件残っている
+    expect((await store2.loadAllRevisions!('c1')).length).toBe(7);
+  });
+
+  it('P4a: noteHydratedRevisions は hydrate 行の再 upsert を防ぎ、編集は検出し続ける', async () => {
+    const c = makeContainer();
+    const extraRevs = [
+      { id: 'rx1', entry_lid: 'e1', snapshot: '{}', created_at: '2026-07-03T00:00:00Z' },
+    ];
+    await store.save({ ...c, revisions: [...c.revisions, ...extraRevs] });
+
+    const store2 = createSqliteContainerStore(createMemoryStore(), rpc);
+    const res = await store2.loadDefaultMetaShallow();
+    const hydrated = await store2.loadRevisionsFor!('c1', 'e1');
+    // state 側の merge(reducer 相当)+ baseline へ行を追加
+    const merged = {
+      ...res.container!,
+      revisions: [...res.container!.revisions, ...hydrated],
+    };
+    store2.noteHydratedRevisions!('c1', hydrated);
+
+    const before = opsCalls(rpc).length;
+    const edited = { ...merged.entries[0]!, title: '改題' };
+    await store2.save({ ...merged, entries: [edited, ...merged.entries.slice(1)] });
+    const last = opsCalls(rpc).at(-1)!;
+    expect(opsCalls(rpc).length).toBe(before + 1);
+    // hydrate 済み行の rev-upsert は出ない ── 編集の entry-upsert だけ
+    expect(last.ops).toEqual([
+      expect.objectContaining({ t: 'entry-upsert', row: expect.objectContaining({ lid: 'e1' }) }),
+    ]);
   });
 
   it('delete は sqlite と inner の両方から消す(明示操作)', async () => {

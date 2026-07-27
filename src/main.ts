@@ -77,6 +77,7 @@ import {
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore, notePersistedBaseline } from './adapter/platform/persistence';
 import { mountBodyWorkingSet } from './adapter/platform/body-working-set';
+import { mountRevisionResidency } from './adapter/platform/revision-residency';
 import { registerExportStore } from './adapter/platform/idb-store';
 import { mountWorkingSet } from './adapter/platform/asset-working-set';
 import { mountAssetMetaIndex } from './adapter/platform/asset-meta-index';
@@ -1145,8 +1146,10 @@ async function boot(): Promise<void> {
     let idbContainer: Container | null = null;
     let bodiesDeferred: boolean | undefined;
     let storedInline = false;
+    let revisionsDeferred = false;
     try {
-      ({ container: idbContainer, bodiesDeferred, storedInline } = await loadFromStore(store));
+      ({ container: idbContainer, bodiesDeferred, storedInline, revisionsDeferred } =
+        await loadFromStore(store));
     } catch (storeErr) {
       console.warn('[PKC2] store load failed — booting without browser storage:', storeErr);
     }
@@ -1239,6 +1242,14 @@ async function boot(): Promise<void> {
         // (選択/編集は即時、全文系は barrier、保存は復元完了まで保留)。
         if (bodiesDeferred) {
           mountBodyWorkingSet(dispatcher, { store });
+        }
+        // P4a(wasm-sqlite §7-d): revisions の要求時読み。COUNT 索引 +
+        // 選択 entry の需要駆動 hydrate + export / purge の全量 barrier。
+        if (revisionsDeferred) {
+          mountRevisionResidency(dispatcher, {
+            store,
+            cid: container.meta.container_id,
+          });
         }
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);

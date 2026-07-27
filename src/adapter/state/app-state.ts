@@ -790,6 +790,28 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
       events: [{ type: 'BODIES_HYDRATED' }],
     };
   }
+  // P4a(wasm-sqlite §7-d): 要求時読みの revisions merge。SYS_BODIES_LOADED と
+  // 同型の phase 非依存 hydrate ── mutation ではないので SAVE_TRIGGERS 非対象の
+  // REVISIONS_HYDRATED を出す。id 重複は既存優先(hydrate が boot 後の追記を
+  // 上書きしない)。並びは created_at の安定 sort(要求時読みの世界の第一鍵。
+  // 同時刻は既存 → 追加の順が保たれる)。
+  if (action.type === 'SYS_REVISIONS_HYDRATED') {
+    if (!state.container) return { state, events: [] };
+    if (action.revisions.length === 0) {
+      // counts 到着の再 render 合図(state 参照だけ更新 ── container は不変)。
+      return { state: { ...state }, events: [{ type: 'REVISIONS_HYDRATED' }] };
+    }
+    const existing = new Set(state.container.revisions.map((r) => r.id));
+    const added = action.revisions.filter((r) => !existing.has(r.id));
+    if (added.length === 0) {
+      return { state: { ...state }, events: [{ type: 'REVISIONS_HYDRATED' }] };
+    }
+    const merged = [...state.container.revisions, ...added].sort((a, b) =>
+      a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
+    );
+    const container = { ...state.container, revisions: merged };
+    return { state: { ...state, container }, events: [{ type: 'REVISIONS_HYDRATED' }] };
+  }
   if (action.type === 'SET_WORKING_SET_ASSETS') {
     if (!state.container) return { state, events: [] };
     if (state.container.assets === action.assets) return { state, events: [] };

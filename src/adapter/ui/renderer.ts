@@ -45,7 +45,6 @@ import type { ImportPreviewRef, BatchImportPreviewInfo, BatchImportResultSummary
 import { BUILD_FEATURES, VERSION } from '../../runtime/release-meta';
 import { isContentModeEnabled, isRecordingEnabled } from '../../runtime/debug-flags';
 import {
-  getRevisionCount,
   getLatestRevision,
   getRestoreCandidates,
   getRevisionsByBulkId,
@@ -129,6 +128,10 @@ import { getResidentAssetMeta, getResidentAssetSizes } from '../platform/asset-m
 import { buildStorageProfile, formatBytes } from '../../features/asset/storage-profile';
 import type { StorageProfile } from '../../features/asset/storage-profile';
 import { getStorageBackendPref, type StorageBackend } from '../platform/storage-backend';
+import {
+  isRevisionHydrationPending,
+  revisionCountOf,
+} from '../platform/revision-residency';
 import { isOpfsSupported } from '../platform/storage/opfs-adapter';
 import { isFsaSupported } from '../platform/storage/fsa-adapter';
 import { renderMarkdown, renderMarkdownInline, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
@@ -5535,7 +5538,8 @@ function derivedRowFingerprint(
   connectednessSets?: ConnectednessSets | null,
 ): string {
   const lid = entry.lid;
-  const rev = state.container ? getRevisionCount(state.container, lid) : 0;
+  // P4a: deferred(sqlite)では COUNT 索引 + 追記数、それ以外は従来導出。
+  const rev = state.container ? revisionCountOf(state.container, lid) : 0;
   const back = backlinkCounts?.get(lid) ?? 0;
   const conn = connectedLids?.has(lid) ? 1 : 0;
   // ConnectednessSets は複数のバケツを持つ。どれに属するかが行の marker を決める。
@@ -5896,7 +5900,7 @@ function renderEntryItem(
 
   // History indicator
   if (state.container) {
-    const revCount = getRevisionCount(state.container, entry.lid);
+    const revCount = revisionCountOf(state.container, entry.lid);
     if (revCount > 0) {
       li.setAttribute('data-pkc-has-history', 'true');
       const revBadge = createElement('span', 'pkc-revision-badge');
@@ -9387,7 +9391,7 @@ function renderMetaPaneImpl(
   // (pgc-181 revision diff viewer flag が ON だと per-revision diff
   // compute が重くなる)。
   const endProfHistory = profileStart('meta:history');
-  const revCount = getRevisionCount(container, entry.lid);
+  const revCount = revisionCountOf(container, entry.lid);
   if (revCount > 0) {
     const latest = getLatestRevision(container, entry.lid);
     const revInfo = createElement('div', 'pkc-revision-info');
@@ -9459,8 +9463,16 @@ function renderMetaPaneImpl(
     const picker = createElement('details', 'pkc-revision-picker');
     picker.setAttribute('data-pkc-region', 'revision-history');
     const summary = createElement('summary', 'pkc-revision-picker-summary');
-    summary.textContent = `Revision history (${revsDesc.length})`;
+    // P4a: deferred 中は常駐分より総数が多いことがある ── 総数で表示し、
+    // 揃うまで「読み込み中」行を出す(選択駆動の hydrate が埋める)。
+    summary.textContent = `Revision history (${revCount})`;
     picker.appendChild(summary);
+    if (isRevisionHydrationPending(container, entry.lid)) {
+      const loading = createElement('div', 'pkc-revision-row pkc-revision-row-loading');
+      loading.setAttribute('data-pkc-region', 'revision-history-loading');
+      loading.textContent = `履歴を読み込み中… (${revsDesc.length}/${revCount})`;
+      picker.appendChild(loading);
+    }
 
     revsDesc.forEach((rev, idx) => {
       const row = createElement('div', 'pkc-revision-row');
