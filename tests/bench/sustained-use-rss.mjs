@@ -23,6 +23,7 @@ const { chromium } = require2('playwright');
 import http from 'node:http';
 import { createReadStream, existsSync, statSync, readFileSync, rmSync, readdirSync } from 'node:fs';
 import { join, normalize, extname, sep } from 'node:path';
+import { attachDomCounters, format as formatCounters, formatOne } from './lib/dom-counters.mjs';
 
 const ROOT = process.cwd();
 const argOf = (n, d) => {
@@ -159,6 +160,13 @@ async function editOnce(lid) {
   await page.waitForTimeout(1500); // 保存 debounce(300ms)を越える
 }
 
+// B1(2026-07-27): RSS だけだと「何が増えたのか」がわからない。DOM / listener /
+// worker の**個数**を併記する ── 編集セッションで増え続けるものの正体は、
+// 合算 RSS ではなくこちらに出る(RSS は共有ページの二重計上もあり分解に向かない)。
+const counters = await attachDomCounters(ctx, page);
+const countersFirst = await counters.read({ gc: true });
+console.log(`   計器(編集前): ${formatOne(countersFirst)}`);
+
 const samples = [];
 const t0 = Date.now();
 let edits = 0;
@@ -173,6 +181,8 @@ while (Date.now() - t0 < MINUTES * 60000) {
   }
 }
 
+const countersLast = await counters.read({ gc: true });
+
 const first5 = samples.slice(0, 5);
 const last5 = samples.slice(-5);
 const avg = (a, k) => a.reduce((s, x) => s + x[k], 0) / a.length;
@@ -182,6 +192,9 @@ console.log(`   序盤 5 点平均: 総RSS ${GB(avg(first5, 'total'))} GB / rend
 console.log(`   終盤 5 点平均: 総RSS ${GB(avg(last5, 'total'))} GB / renderer ${MBs(avg(last5, 'renderer'))} MB`);
 const growth = avg(last5, 'total') - avg(first5, 'total');
 console.log(`   増分: ${(growth / 1024).toFixed(0)} MB(${growth >= 0 ? '+' : ''}${(growth / avg(first5, 'total') * 100).toFixed(1)}%)`);
+console.log('');
+console.log('■ DOM / listener / worker の個数(強制 GC 後・編集前 → 編集後)');
+console.log(formatCounters(countersFirst, countersLast));
 console.log('');
 console.log('⚠ 総RSS は chromium 全プロセスの合算(隔離環境)。実機のタブ単体の見えとは基準が違う。');
 console.log('⚠ 向きと水位の比較用。走行をまたいだ絶対値の比較はしない。');

@@ -26,6 +26,7 @@ import { chromium } from 'playwright';
 import http from 'node:http';
 import { createReadStream, existsSync, statSync, readFileSync, rmSync } from 'node:fs';
 import { join, normalize, extname, sep } from 'node:path';
+import { attachDomCounters, formatOne } from './lib/dom-counters.mjs';
 
 const ROOT = process.cwd();
 const FIXTURE = process.env.RMH_FIXTURE ?? 'bench-fixtures/c-5000.json';
@@ -76,18 +77,12 @@ const ctx = await chromium.launchPersistentContext(prof, {
   viewport: { width: 1400, height: 950 },
 });
 const page = await ctx.newPage();
-const cdp = await ctx.newCDPSession(page);
-await cdp.send('Performance.enable');
-await cdp.send('HeapProfiler.enable');
-
-const heap = async () => {
-  // forced GC を 2 回。1 回では detached DOM の回収が間に合わないことがある。
-  await cdp.send('HeapProfiler.collectGarbage');
-  await cdp.send('HeapProfiler.collectGarbage');
-  await page.waitForTimeout(250);
-  const m = await cdp.send('Performance.getMetrics');
-  return m.metrics.find((x) => x.name === 'JSHeapUsedSize').value;
-};
+// B1(2026-07-27): **JS heap だけでは DOM 常駐が見えない**。行 memo が抱える
+// のは Node / LayoutObject(Blink 側)で、JS heap には参照しか出ない。
+// nodes / layoutObjects / listeners を併記する。
+const counters = await attachDomCounters(ctx, page);
+const sample = async () => counters.read({ gc: true });
+const heap = async () => (await sample()).jsHeapUsed;
 
 await page.goto(`${srv.origin}/dist/pkc2.html`);
 await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 180000 });
@@ -116,9 +111,11 @@ await page.waitForTimeout(1500);
 const search = page.locator('[data-pkc-field="search"]').first();
 const rows = async () => page.evaluate(`document.querySelectorAll('${ROW_SEL}').length`);
 
-const base = await heap();
+const baseSample = await sample();
+const base = baseSample.jsHeapUsed;
 console.log(`■ fixture ${FIXTURE} / ${CYCLES} サイクル`);
 console.log(`   baseline(boot 直後・全行描画): ${MB(base)} / 行 ${await rows()}`);
+console.log(`   baseline 計器: ${formatOne(baseSample)}`);
 console.log('');
 
 // 毎サイクル違う部分集合を描画させる(= memo に新しい行が積まれる)
@@ -130,10 +127,12 @@ for (let i = 0; i < CYCLES; i++) {
   const narrowed = await rows();
   await search.fill('');
   await page.waitForTimeout(400);
-  const h = await heap();
+  const s2 = await sample();
+  const h = s2.jsHeapUsed;
   samples.push(h);
   const d = h - base;
   console.log(`   cycle ${String(i + 1).padStart(2)}  q="${q}"  絞込 ${String(narrowed).padStart(5)} 行  heap ${MB(h)}  (baseline 比 ${d >= 0 ? '+' : ''}${MB(d)})`);
+  console.log(`             nodes ${Math.round(s2.nodes).toLocaleString('en-US')}(baseline 比 ${s2.nodes - baseSample.nodes >= 0 ? '+' : ''}${Math.round(s2.nodes - baseSample.nodes).toLocaleString('en-US')}) / layout ${Math.round(s2.layoutObjects).toLocaleString('en-US')} / listeners ${Math.round(s2.listeners).toLocaleString('en-US')}`);
 }
 
 await ctx.close();
