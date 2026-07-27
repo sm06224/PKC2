@@ -61,12 +61,38 @@ import {
   type ChartConfiguration,
 } from 'chart.js';
 /**
- * chart wrap → Chart インスタンス(2026-07-27)。
- * `Chart.getChart(canvas)` は canvas が作り直されると引けないため、
- * **破棄の責任を持てる側**(wrap 要素)に紐づける。WeakMap なので
- * wrap が GC されればエントリも消える。
+ * 生きている Chart インスタンスの集合(2026-07-27、常駐棚卸しの裏取りで訂正)。
+ *
+ * 🔴 **最初の修正(aa9716aa)は空振りだった**: `WeakMap<wrap, Chart>` にしたが、
+ * `renderChart` は呼ばれるたび **新しい figure** を作る(:247)ので `get` は
+ * 常に undefined になり、destroy は一度も走っていなかった。
+ * `Chart.getChart(canvas)` も canvas ごと作り直されるので同じく引けない。
+ *
+ * chart.js は module-level の `instances` object(chart.js:5606)に
+ * **生成時に登録し、`destroy()` の中でしか削除しない**(:6258)。到達しなければ
+ * canvas backing store・dataset・resize listener ごと**上限なく積む**。
+ *
+ * ∴ 「どの要素に紐づくか」ではなく **「まだ destroy していないもの」** を
+ * 直接持つ。再描画・領域再構築・presenter の unmount で全部畳む。
  */
-const chartHandles = new WeakMap<HTMLElement, Chart>();
+const liveCharts = new Set<Chart>();
+
+/** 生きている chart を全部破棄する(再描画 / 領域再構築 / unmount 時)。 */
+function destroyLiveCharts(): void {
+  for (const c of liveCharts) {
+    try {
+      c.destroy();
+    } catch {
+      /* 既に破棄済み */
+    }
+  }
+  liveCharts.clear();
+}
+
+/** 計器(bench harness が「本当に破棄されたか」を読む窓口)。 */
+export function __liveChartCount(): number {
+  return liveCharts.size;
+}
 
 Chart.register(
   CategoryScale, LinearScale, RadialLinearScale,
@@ -335,18 +361,14 @@ function renderChart(doc: Document, body: SpreadsheetBody, chart: ChartConfig): 
       // registry に残り続ける**(canvas バッキングストア + dataset + resize
       // listener ごと)。上限が無いので**再描画回数に比例して線形に増える**。
       // → wrap 側に自前のハンドルを持ち、そちらを必ず destroy する。
-      const prev = chartHandles.get(wrap);
-      if (prev) {
-        try {
-          prev.destroy();
-        } catch {
-          /* 既に破棄済み */
-        }
-        chartHandles.delete(wrap);
-      }
+      // canvas 側の照会も一応残す(同一 canvas に二重生成する経路の保険)。
       const existing = Chart.getChart(canvas);
-      if (existing) existing.destroy();
-      chartHandles.set(wrap, new Chart(ctx, cfg));
+      if (existing) {
+        existing.destroy();
+        liveCharts.delete(existing);
+      }
+      const instance = new Chart(ctx, cfg);
+      liveCharts.add(instance);
     } catch {
       // canvas 未対応環境(test 等)では silent skip
     }
@@ -493,6 +515,9 @@ function rebuildGrid(wrapper: HTMLElement, body: SpreadsheetBody, focusAt: { row
 }
 
 function rebuildChartsArea(wrapper: HTMLElement, body: SpreadsheetBody): void {
+  // 🔴 remove() だけでは chart.js の module-level registry から消えない
+  // (destroy() の中でしか delete しない)。**先に破棄する**。
+  destroyLiveCharts();
   const old = wrapper.querySelector('[data-pkc-region="spreadsheet-charts"]');
   if (old) old.remove();
   if (!body.charts || body.charts.length === 0) return;

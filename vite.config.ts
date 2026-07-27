@@ -17,13 +17,42 @@ function stripSqliteWorker1Promiser(): Plugin {
     enforce: 'pre',
     transform(code: string, id: string) {
       if (!id.includes('@sqlite.org/sqlite-wasm')) return null;
-      const pattern =
+      let out = code;
+      let touched = false;
+
+      const promiser =
         /new Worker\(new URL\("sqlite3-worker1\.mjs",\s*import\.meta\.url\),\s*\{[^}]*\}\)/;
-      if (!pattern.test(code)) return null;
-      return code.replace(
-        pattern,
-        '(() => { throw new Error("sqlite3 worker1 promiser is not bundled (PKC2 static build)"); })()',
-      );
+      if (promiser.test(out)) {
+        out = out.replace(
+          promiser,
+          '(() => { throw new Error("sqlite3 worker1 promiser is not bundled (PKC2 static build)"); })()',
+        );
+        touched = true;
+      }
+
+      /**
+       * 到達しない wasm URL を潰す(2026-07-27、常駐棚卸しで発見)。
+       *
+       * glue の `findWasmBinary()` は
+       *   `if (Module["locateFile"]) return locateFile("sqlite3.wasm");`
+       *   `return new URL("sqlite3.wasm", import.meta.url).href;`
+       * だが、PKC2 の唯一の初期化(sqlite-worker.ts)は **locateFile を常に渡す**
+       * ので下の行は**永久に評価されない**。にもかかわらず vite は
+       * `new URL(..., import.meta.url)` を見て sqlite3.wasm を data URL 化し、
+       * **1,153,004 文字の base64 を bundle に焼き込んでいた**(実測。生きている
+       * 側の `?inline` と合わせて同じ wasm が 2 部入っていた)。
+       * 到達しない枝なので、文字列ごと消す。
+       */
+      const deadUrl = /return new URL\("sqlite3\.wasm",\s*import\.meta\.url\)\.href;/;
+      if (deadUrl.test(out)) {
+        out = out.replace(
+          deadUrl,
+          'throw new Error("sqlite3.wasm URL lookup is unreachable (PKC2 always passes locateFile)");',
+        );
+        touched = true;
+      }
+
+      return touched ? out : null;
     },
   };
 }

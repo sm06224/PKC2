@@ -185,10 +185,33 @@ let theme_listener_attached = false;
 const pendingRoots = new Set<HTMLElement>();
 let themeAttrObserver: MutationObserver | null = null;
 
-/** detach された root を落とす。hydrate のたびに呼ぶ(O(登録数)、通常は数個)。 */
+/**
+ * 用済みの root を落とす。hydrate のたびに呼ぶ(O(登録数)、通常は数個)。
+ *
+ * 🔴 **`!isConnected` だけでは足りない**(2026-07-27、最初の修正が空振りしていた)。
+ * **閉じた window の document.body は `isConnected` が true のまま**である
+ * ── 実 Chromium で確認: popup を close した 800ms 後も
+ * `{ isConnected: true, closed: true, defaultViewIsNull: true }`。
+ * よって Viewer popup / entry-window を mermaid 付きで開くたびに、
+ * **閉じた Document が丸ごと上限なく積まれていた**。
+ * 閉じた window の判定は `ownerDocument.defaultView === null`。
+ */
 function prunePendingRoots(): void {
   for (const root of pendingRoots) {
-    if (!root.isConnected) pendingRoots.delete(root);
+    if (!root.isConnected) {
+      pendingRoots.delete(root);
+      continue;
+    }
+    // 別 document(popup / entry-window)に属していて、その window が閉じている
+    const view = root.ownerDocument?.defaultView ?? null;
+    if (view === null) {
+      pendingRoots.delete(root);
+      continue;
+    }
+    // window.closed が true(close 直後に defaultView が残っている実装差の保険)
+    if ((view as Window & { closed?: boolean }).closed === true) {
+      pendingRoots.delete(root);
+    }
   }
 }
 
