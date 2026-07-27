@@ -20,7 +20,6 @@ import {
   migrateFromInnerIfEmpty,
 } from '../../src/adapter/platform/storage/sqlite/sqlite-store';
 import {
-  rowsToContainer,
   type ContainerRow,
   type ContainerRows,
   type EntryRow,

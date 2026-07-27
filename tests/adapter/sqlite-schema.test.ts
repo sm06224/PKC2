@@ -58,7 +58,7 @@ describe('sqlite-schema mappers', () => {
     const entry = makeEntry({
       tags: ['a', 'b'],
       color_tag: 'red',
-      display_profile: 'explorer',
+      display_profile: { kind: 'explorer' },
     });
     const back = rowToEntry(entryToRow(entry, 3));
     expect(back).toEqual(entry);
