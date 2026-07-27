@@ -13,6 +13,7 @@ import type { Container, Revision } from '../../src/core/model/container';
 import type { Entry } from '../../src/core/model/record';
 import type { Relation } from '../../src/core/model/relation';
 import {
+  DDL,
   containerToRows,
   diffContainerToOps,
   entryToRow,
@@ -214,5 +215,63 @@ describe('sqlite-schema diff', () => {
     const next = { ...prev, meta: { ...prev.meta, title: '改名' } };
     const ops = diffContainerToOps(prev, next);
     expect(ops).toEqual([{ t: 'meta', row: expect.objectContaining({ title: '改名' }) }]);
+  });
+});
+
+/**
+ * DDL の規律(B3、2026-07-27)。
+ *
+ * 索引は**メモリの話**であって速度だけの話ではない: 索引が無いと ORDER BY が
+ * wasm リニアメモリに TEMP B-TREE を作り、`WebAssembly.Memory` は縮まないので
+ * **worker の寿命の間ずっと常駐する**(実測 5,000 行×20KB で +109MB)。
+ * なので「索引が張られていること」は性能 nice-to-have ではなく不変条件である。
+ *
+ * ここでは wasm を起動せずに済む静的性質だけを pin する
+ * (実際の query plan は `npx tsx tests/bench/sqlite-query-plan.mts` で確認)。
+ */
+describe('sqlite DDL の規律', () => {
+  const indexStmts = DDL.filter((s) => s.includes('CREATE INDEX'));
+  const nameOf = (s: string) => /CREATE INDEX IF NOT EXISTS (\w+)/.exec(s)?.[1] ?? '';
+  const tableOf = (s: string) => /ON (\w+)/.exec(s)?.[1] ?? '';
+
+  it('CREATE INDEX は対象表の CREATE TABLE より後に来る', () => {
+    // 順序が逆だと open 時に "no such table" で **DB が開かない**。
+    for (const stmt of indexStmts) {
+      const table = tableOf(stmt);
+      const tableAt = DDL.findIndex((s) => s.includes(`CREATE TABLE IF NOT EXISTS ${table} `));
+      expect(tableAt, `${nameOf(stmt)} の対象表 ${table} が DDL に無い`).toBeGreaterThanOrEqual(0);
+      expect(DDL.indexOf(stmt), `${nameOf(stmt)} が ${table} の定義より前`).toBeGreaterThan(tableAt);
+    }
+  });
+
+  it('ORDER BY を伴う hot query の索引が揃っている(TEMP B-TREE を作らせない)', () => {
+    const want = [
+      'entries (cid, ord)', // boot: entries ORDER BY ord
+      'relations (cid, ord)', // boot: relations ORDER BY ord
+      'revisions (cid, created_at, ord)', // revsAll
+      'revisions (cid, entry_lid, created_at, ord)', // revsFor / revCounts(covering)
+      'relations (cid, from_lid)', // グラフ探索(順方向)
+      'relations (cid, to_lid)', // グラフ探索(backlinks)
+    ];
+    const have = indexStmts.map((s) => s.slice(s.indexOf(' ON ') + 4).trim());
+    for (const w of want) expect(have).toContain(w);
+  });
+
+  it('索引を広げるときは旧名を DROP している(IF NOT EXISTS は定義を見ない)', () => {
+    // 🔴 `CREATE INDEX IF NOT EXISTS <既存と同名>` は **旧定義のまま素通りする**。
+    // 同名で列を足しても既存 DB には反映されず、「新規 DB だけ速い」差が残る。
+    // rev_by_entry は (cid, entry_lid) → (cid, entry_lid, created_at, ord) へ
+    // 広げたので、名前を変え、旧名を DROP する形で移行している。
+    expect(DDL).toContain('DROP INDEX IF EXISTS rev_by_entry');
+    expect(indexStmts.map(nameOf)).not.toContain('rev_by_entry');
+    // DROP は対象表の定義より後(表が無いと DROP も落ちる)
+    const dropAt = DDL.indexOf('DROP INDEX IF EXISTS rev_by_entry');
+    const revAt = DDL.findIndex((s) => s.includes('CREATE TABLE IF NOT EXISTS revisions '));
+    expect(dropAt).toBeGreaterThan(revAt);
+  });
+
+  it('索引名が重複していない', () => {
+    const names = indexStmts.map(nameOf);
+    expect(new Set(names).size).toBe(names.length);
   });
 });

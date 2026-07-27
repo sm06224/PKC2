@@ -39,7 +39,6 @@ export const DDL: readonly string[] = [
      created_at TEXT NOT NULL, prev_rid TEXT, content_hash TEXT,
      ord INTEGER NOT NULL, snapshot TEXT NOT NULL, extra TEXT,
      PRIMARY KEY (cid, id))`,
-  `CREATE INDEX IF NOT EXISTS rev_by_entry ON revisions (cid, entry_lid)`,
   `CREATE TABLE IF NOT EXISTS relations (
      cid TEXT NOT NULL, id TEXT NOT NULL, from_lid TEXT NOT NULL,
      to_lid TEXT NOT NULL, kind TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -53,6 +52,41 @@ export const DDL: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS kv (
      cid TEXT NOT NULL, k TEXT NOT NULL, v TEXT NOT NULL,
      PRIMARY KEY (cid, k))`,
+  // ── 索引(2026-07-27 追加。常駐棚卸しの実測が根拠)──
+  //
+  // 🔴 **索引が無いと ORDER BY が wasm リニアメモリに TEMP B-TREE を作り、
+  // それが二度と返らない**。WebAssembly.Memory は `grow` しかなく縮まないため、
+  // 一度伸びた分は worker の寿命の間ずっと常駐する
+  // (`PRAGMA shrink_memory` / `db.close()` / GC のいずれでも戻らないことを実測)。
+  // 出荷 wasm は SQLITE_TEMP_STORE=2 でコンパイルされており、sorter は必ず
+  // wasm 内に載る ── つまりブラウザ(SAHPool)でも同じ。
+  //
+  // 実測(同一 wasm、対照群は索引の有無だけ):
+  //   3,000 行×4KB   SELECT 前 29.00MB → 後 41.81MB(+12.81MB)/ 索引あり **+0.00MB**
+  //   5,000 行×20KB  150.13 → 259.50MB(+109.38MB)      / 索引あり **+0.00MB**
+  // EXPLAIN QUERY PLAN でも、下記 4 本を足すと boot の 4 クエリから
+  // `USE TEMP B-TREE FOR ORDER BY` が消えることを確認済み。
+  //
+  // ⚠ 既存 DB にも効く: DDL は open のたびに流れ、IF NOT EXISTS なので
+  //    次回起動時に自動で張られる(移行コードは要らない)。
+  //
+  // 🔴 **索引を「広げる」ときは名前を変えて、旧名を DROP する**(2026-07-27 に
+  //    自分の diff で踏みかけた)。`CREATE INDEX IF NOT EXISTS <同名>` は
+  //    **既存の索引の定義を見ない** ── 旧定義のまま静かに素通りするので、
+  //    この branch で既に DB を作った環境だけ狭い索引を持ち続け、
+  //    「新規 DB では速いが既存 DB では遅い」という再現しない差になる。
+  //    DROP + 別名なら DDL が毎回流れる性質だけで移行が完結する。
+  `DROP INDEX IF EXISTS rev_by_entry`, // 旧: (cid, entry_lid) ── 下の rev_by_entry_order に置換
+  `CREATE INDEX IF NOT EXISTS entry_by_ord ON entries (cid, ord)`,
+  `CREATE INDEX IF NOT EXISTS rel_by_ord ON relations (cid, ord)`,
+  `CREATE INDEX IF NOT EXISTS rev_by_order ON revisions (cid, created_at, ord)`,
+  // revsFor(選択 entry の履歴)は WHERE entry_lid + ORDER BY created_at,ord
+  // なので、entry_lid だけの索引では sort が残る。並び列まで含める。
+  `CREATE INDEX IF NOT EXISTS rev_by_entry_order ON revisions (cid, entry_lid, created_at, ord)`,
+  // グラフ探索用(2026-07-27 のグラフ PoC が根拠)。relations を辺として辿る
+  // クエリ(backlinks / k-hop / 部分木)は、この 2 本が無いと毎段で全表走査になる。
+  `CREATE INDEX IF NOT EXISTS rel_by_from ON relations (cid, from_lid)`,
+  `CREATE INDEX IF NOT EXISTS rel_by_to ON relations (cid, to_lid)`,
 ];
 
 // ── 行 shape(postMessage 越しに運ぶ JSON-serializable な形)──
