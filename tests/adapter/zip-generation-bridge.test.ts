@@ -84,7 +84,7 @@ describe('世代を越える橋: ZIP export → import が無損失', () => {
     // buildPackageZip → importFromZipBuffer が「ZIP に詰めて取り出す」最短経路
     // (exportContainerAsZip / importContainerFromZip は download / File を挟む)。
     const blob = buildPackageZip(src);
-    const result = await importFromZipBuffer(new Uint8Array(await blob.arrayBuffer()));
+    const result = await importFromZipBuffer(await blob.arrayBuffer());
 
     expect(result.ok, `unpack が失敗した: ${result.ok ? '' : result.error}`).toBe(true);
     if (!result.ok) return;
@@ -127,7 +127,7 @@ describe('世代を越える橋: ZIP export → import が無損失', () => {
   it('container_id は付け替わる(取り込み先で衝突させない)が、中身は同一', async () => {
     const src = makeRichContainer();
     const blob = buildPackageZip(src);
-    const result = await importFromZipBuffer(new Uint8Array(await blob.arrayBuffer()));
+    const result = await importFromZipBuffer(await blob.arrayBuffer());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // import 時に**意図的に変わる 2 つ**を除いて全一致を見る:
