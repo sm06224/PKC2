@@ -62,6 +62,7 @@ import {
 } from '../../core/model/system-settings-payload';
 import type { ProvenanceRelationData } from '../../features/import/conflict-detect';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
+import { isBodyPendingGlobal } from '../platform/body-working-set';
 import { getAncestorFolderLids, isDescendant } from '../../features/relation/tree';
 import { resolveAutoPlacementFolder, findSubfolder, findRootLevelFolder } from '../../features/relation/auto-placement';
 import { applyFilters } from '../../features/search/filter';
@@ -3929,6 +3930,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       for (const lid of selected) {
         const entry = container.entries.find((e) => e.lid === lid);
         if (!entry || entry.archetype !== 'todo') continue;
+        // 🔴 未読の本文は触らない(todo-body-guard.ts)。reducer は await
+        //    できないので、hydrate は dispatch 側で済ませてある。ここは
+        //    最後の砦 ── 未読を parse すると期日・アーカイブが消えるので、
+        //    **その 1 件だけ一括操作から漏らす**ほうを選ぶ。
+        if (isBodyPendingGlobal(container.meta.container_id, lid)) continue;
         const todo = parseTodoBody(entry.body);
         if (todo.status === action.status) continue;
         const updated = serializeTodoBody({ ...todo, status: action.status });
@@ -3952,6 +3958,8 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       for (const lid of selected) {
         const entry = container.entries.find((e) => e.lid === lid);
         if (!entry || entry.archetype !== 'todo') continue;
+        // 🔴 未読ガード(BULK_SET_STATUS と同じ理由)。
+        if (isBodyPendingGlobal(container.meta.container_id, lid)) continue;
         const todo = parseTodoBody(entry.body);
         if (todo.date === targetDate) continue;
         const updated = serializeTodoBody({ ...todo, date: targetDate });
