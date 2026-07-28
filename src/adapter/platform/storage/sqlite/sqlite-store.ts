@@ -26,6 +26,7 @@ import type { Revision } from '../../../../core/model/container';
 import {
   containerToRows,
   diffContainerToOps,
+  type RowOp,
   rowsToContainer,
   rowToRevision,
   type ContainerRows,
@@ -33,6 +34,7 @@ import {
 } from './sqlite-schema';
 import type { AssetMetaRow, SqliteInitResult, SqliteRpc } from './sqlite-rpc';
 import { isFileProtocol, setStorageEngineInfo } from '../storage-engine-info';
+import { isBodyPendingGlobal } from '../../body-working-set';
 
 const ACTIVE_WORKSPACE_KEY = '__active_workspace__';
 const WORKSPACE_PREFIX = 'workspace:';
@@ -56,6 +58,27 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
   const persistedAssets = new Map<string, Set<string>>();
   /** 保存の直列化 chain(baseline 更新を原子的に保つ)。 */
   let saveChain: Promise<void> = Promise.resolve();
+
+  /**
+   * 本文が未 hydrate か。正本は body-working-set の pending 集合。
+   * (mount されていない = deferred でない構成では常に false。)
+   */
+  const bodyPending = (cid: string, lid: string): boolean => isBodyPendingGlobal(cid, lid);
+
+  /** 空の baseline(saveFull を行 op へ落とすときの基準)。 */
+  const EMPTY_BASELINE: Container = {
+    meta: {
+      container_id: '',
+      title: '',
+      created_at: '',
+      updated_at: '',
+      schema_version: 1,
+    },
+    entries: [],
+    relations: [],
+    revisions: [],
+    assets: {},
+  };
 
   function persistedSetFor(cid: string): Set<string> {
     let s = persistedAssets.get(cid);
@@ -85,11 +108,34 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
     }
   }
 
+  /**
+   * 🔴 **読んでいない本文を書かない**(P4b の安全条件)。
+   *
+   * 本文を deferred read にすると、未 hydrate の entry はメモリ上で
+   * `body: ''` を持つ。その状態で普通に upsert すると **storage の実本文が
+   * 空で上書きされて消える** ── storage で最悪の事故であり、しかも
+   * 「保存は成功した」ように見える。
+   *
+   * 対処は「保存を止める」ではなく **「本文列だけ触らない op に変える」**。
+   * 止めると title / ord / tags の編集まで落ちてしまい、別の壊れ方をする。
+   *
+   * ⚠ 判定は body-working-set の pending 集合が正本(`isBodyPendingGlobal`)。
+   *    「body === '' なら未読」で代用してはいけない ── **本当に本文が空の
+   *    entry**(新規作成直後など)を未読と誤判定し、空にした編集が保存されなくなる。
+   */
+  function guardPendingBodies(cid: string, ops: readonly RowOp[]): RowOp[] {
+    return ops.map((op) => {
+      if (op.t !== 'entry-upsert') return op;
+      if (!bodyPending(cid, op.row.lid)) return op;
+      return { ...op, keepStoredBody: true };
+    });
+  }
+
   async function saveInternal(container: Container, baselineHint: Container | null): Promise<void> {
     const cid = container.meta.container_id;
     const baseline = baselines.get(cid) ?? baselineHint;
     if (baseline) {
-      const ops = diffContainerToOps(baseline, container);
+      const ops = guardPendingBodies(cid, diffContainerToOps(baseline, container));
       if (ops.length > 0) {
         await rpc.call({ op: 'applyOps', cid, ops, setDefault: true });
       } else {
@@ -97,7 +143,16 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
         await rpc.call({ op: 'setDefaultCid', cid });
       }
     } else {
-      await rpc.call({ op: 'saveFull', cid, rows: containerToRows(container), setDefault: true });
+      // 🔴 未読の本文がある状態で saveFull すると、**空の本文で全行を上書き**する。
+      //    baseline が無い(= 初回保存 / 移行直後)場面でも起こりうるので、
+      //    1 件でも未読があれば saveFull は使わず、行 op へ落として守る。
+      const pendingLids = container.entries.filter((e) => bodyPending(cid, e.lid));
+      if (pendingLids.length > 0) {
+        const ops = guardPendingBodies(cid, diffContainerToOps(EMPTY_BASELINE, container));
+        await rpc.call({ op: 'applyOps', cid, ops, setDefault: true });
+      } else {
+        await rpc.call({ op: 'saveFull', cid, rows: containerToRows(container), setDefault: true });
+      }
     }
     baselines.set(cid, container);
     await writeAssetsAdditive(container);
@@ -162,10 +217,14 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
       // ただし **ゴミ箱 subset(削除済み entry の最新 revision)だけは常駐**させる
       // ── getRestoreCandidates は常時 render 経路にあり、空だとゴミ箱が
       // 消えて見えるため。subset は「削除済み entry 数」オーダーで小さい。
+      // P4b: **本文も運ばない**。コンテナの中で最も重いのは本文であり、
+      // その瞬間に見えているのは 1 件だけである。`body: ''` = 未 hydrate は
+      // body-working-set(#940)の contract で、そちらが需要駆動で読む。
       const rows = await rpc.call<ContainerRows | null>({
         op: 'loadContainer',
         cid,
         skipRevisions: true,
+        skipBodies: true,
       });
       if (!rows) return { container: null, bodiesDeferred: false, storedInline: false };
       const trashRows = await rpc.call<RevisionRow[]>({ op: 'revsTrashLatest', cid });
@@ -179,7 +238,10 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
       // 読んだそのままを書き戻しても diff は 0 行で、1 バイトも書かれない。
       return {
         container,
-        bodiesDeferred: false,
+        bodiesDeferred: true,
+        // ⚠ 本文を運んでいないので、**この container を書き戻しても本文は
+        //    触らない**(guardPendingBodies)。storedInline の意味は
+        //    「読んだそのままを書き戻しても差分 0 行」で、ここは変わらない。
         storedInline: true,
         revisionsDeferred: true,
       };

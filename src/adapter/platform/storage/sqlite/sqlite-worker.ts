@@ -257,6 +257,8 @@ function mustDb(): OoDb {
 interface WriteStmts {
   meta: ReturnType<OoDb['prepare']>;
   entry: ReturnType<OoDb['prepare']>;
+  /** P4b: 本文を触らない entry 更新(未読の本文を空で潰さないため)。 */
+  entryNoBody: ReturnType<OoDb['prepare']>;
   entryOrd: ReturnType<OoDb['prepare']>;
   entryDel: ReturnType<OoDb['prepare']>;
   rev: ReturnType<OoDb['prepare']>;
@@ -278,6 +280,16 @@ function prepareWriteStmts(d: OoDb): WriteStmts {
        VALUES (?,?,?,?,?,?,?,?,?)`,
     ),
     entryOrd: d.prepare(`UPDATE entries SET ord=? WHERE cid=? AND lid=?`),
+    /**
+     * P4b: **本文を触らない** entry 更新。本文が未 hydrate(未読)の entry を
+     * 保存するときに使う ── `INSERT OR REPLACE` で書くと、メモリ上の空文字が
+     * **storage の実本文を上書きして消す**。これは storage で最悪の事故なので、
+     * 「読んでいない本文は書かない」を SQL の形で担保する。
+     */
+    entryNoBody: d.prepare(
+      `UPDATE entries SET title=?,archetype=?,created_at=?,updated_at=?,ord=?,extra=?
+       WHERE cid=? AND lid=?`,
+    ),
     entryDel: d.prepare(`DELETE FROM entries WHERE cid=? AND lid=?`),
     rev: d.prepare(
       `INSERT OR REPLACE INTO revisions (cid,id,entry_lid,created_at,prev_rid,content_hash,ord,snapshot,extra)
@@ -373,7 +385,15 @@ function handleApplyOps(cid: string, ops: RowOp[], setDefault: boolean): void {
             run(stmts.meta, bindMeta(cid, op.row));
             break;
           case 'entry-upsert':
-            run(stmts.entry, bindEntry(cid, op.row));
+            if (op.keepStoredBody === true) {
+              // 未読の本文を持つ行 ── body 列だけ据え置く(上のコメント参照)。
+              run(stmts.entryNoBody, [
+                op.row.title, op.row.archetype, op.row.created_at,
+                op.row.updated_at, op.row.ord, op.row.extra, cid, op.row.lid,
+              ]);
+            } else {
+              run(stmts.entry, bindEntry(cid, op.row));
+            }
             break;
           case 'entry-ord':
             run(stmts.entryOrd, [op.ord, cid, op.lid]);
@@ -422,7 +442,11 @@ function selectRows<T>(d: OoDb, sql: string, bind: unknown[]): T[] {
 // (getEntryRevisions は created_at sort)、ord は同時刻の tiebreak に落とす。
 const REV_ORDER = 'ORDER BY created_at, ord';
 
-function handleLoadContainer(cid: string, skipRevisions: boolean): ContainerRows | null {
+function handleLoadContainer(
+  cid: string,
+  skipRevisions: boolean,
+  skipBodies = false,
+): ContainerRows | null {
   const d = mustDb();
   const containers = selectRows<ContainerRow>(
     d,
@@ -433,10 +457,17 @@ function handleLoadContainer(cid: string, skipRevisions: boolean): ContainerRows
   if (!container) return null;
   return {
     container,
+    // P4b: `skipBodies` のとき **body 列を読まない**(空文字で返す)。
+    // 「boot で本文を全部運ぶ」のをやめる ── 本文はコンテナの中で最も重く、
+    // かつ**その瞬間に見えているのは 1 件だけ**である。空文字 = 未 hydrate は
+    // body-working-set(#940)の contract(そちらが需要駆動で読む)。
     entries: selectRows<EntryRow>(
       d,
-      `SELECT lid,title,archetype,created_at,updated_at,ord,body,extra
-       FROM entries WHERE cid=? ORDER BY ord`,
+      skipBodies
+        ? `SELECT lid,title,archetype,created_at,updated_at,ord,'' AS body,extra
+           FROM entries WHERE cid=? ORDER BY ord`
+        : `SELECT lid,title,archetype,created_at,updated_at,ord,body,extra
+           FROM entries WHERE cid=? ORDER BY ord`,
       [cid],
     ),
     // P4a: boot(deferred)は revisions を運ばない ── §7-c で 2 回目 boot
@@ -675,7 +706,7 @@ async function handle(req: SqliteRequest): Promise<unknown> {
       handleApplyOps(req.cid, req.ops, req.setDefault);
       return undefined;
     case 'loadContainer':
-      return handleLoadContainer(req.cid, req.skipRevisions === true);
+      return handleLoadContainer(req.cid, req.skipRevisions === true, req.skipBodies === true);
     case 'loadBodies':
       return handleLoadBodies(req.cid, req.lids);
     case 'revCounts':

@@ -132,6 +132,12 @@ async function run(label, url, isApp = false) {
   if (isApp) {
     await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 180000 }).catch(() => {});
     if (FIXTURE) {
+      // ⚠ **seed は flag なしの起動で行う**。flag つきで初回起動すると、
+      //    空の sqlite DB が既定として出来てしまい、あとから IDB を seed しても
+      //    `migrateFromInnerIfEmpty` が「もう中身がある」と見て移行せず、
+      //    **空のコンテナを測る**ことになる(2026-07-28 に踏んだ)。
+      await page.goto('http://127.0.0.1:45811/');
+      await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 180000 }).catch(() => {});
       // fixture を IDB へ入れて **2 回目起動**を測る(初回は索引構築の残渣が乗る)。
       const raw = readFileSync(FIXTURE, 'utf8');
       await page.evaluate(async (r) => {
@@ -174,7 +180,10 @@ console.log('■ PWA 相当(--app / headed / 拡張なし / 新規プロファ�
 console.log(`   settle ${SETTLE_S}s / 指標: PSS(按分)・USS(固有)・RSS は参考のみ`);
 
 const base = await run('about-blank', 'about:blank');
-const appUrl = `http://127.0.0.1:45811/${URL_FLAGS ? `?pkc-flag=${URL_FLAGS}` : ''}`;
+// 🔴 flag は **パラメータの反復**で渡す(`?pkc-flag=a=1&pkc-flag=b=1`)。
+// カンマ区切りは 1 個の値として扱われ、**どの flag も立たない**まま
+// 「効果なし」を測ることになる(2026-07-28 に実際に 2 回やった)。
+const appUrl = `http://127.0.0.1:45811/${URL_FLAGS ? '?' + URL_FLAGS.split(',').map((f) => `pkc-flag=${f}`).join('&') : ''}`;
 const app = await run(
   `pkc2(${FIXTURE ? FIXTURE.split('/').pop() : '空'}${URL_FLAGS ? ` / ${decodeURIComponent(URL_FLAGS)}` : ''})`,
   appUrl, true,

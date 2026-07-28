@@ -36,7 +36,17 @@ export type SqliteRequestBody =
   | { op: 'probePersistence' }
   | { op: 'saveFull'; cid: string; rows: ContainerRows; setDefault: boolean }
   | { op: 'applyOps'; cid: string; ops: RowOp[]; setDefault: boolean }
-  | { op: 'loadContainer'; cid: string; skipRevisions?: boolean }
+  | {
+      op: 'loadContainer';
+      cid: string;
+      skipRevisions?: boolean;
+      /**
+       * P4b: **本文を運ばない**(`body` は空文字で返る)。boot の常駐を
+       * 「今表示しているものだけ」にするための deferred read。
+       * 本文は `loadBodies` / `loadBodiesFor` で需要駆動に読む。
+       */
+      skipBodies?: boolean;
+    }
   | { op: 'loadBodies'; cid: string; lids?: string[] }
   // P4a: revisions の COUNT / 部分読み(boot は行を運ばない)。
   | { op: 'revCounts'; cid: string }

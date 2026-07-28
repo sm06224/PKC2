@@ -144,7 +144,19 @@ export interface ContainerRows {
 /** 行単位の書込 op(saveDiff → worker の 1 transaction で適用)。 */
 export type RowOp =
   | { t: 'meta'; row: ContainerRow }
-  | { t: 'entry-upsert'; row: EntryRow }
+  | {
+      t: 'entry-upsert';
+      row: EntryRow;
+      /**
+       * P4b: **storage 側の本文を据え置く**(body 列を書かない)。
+       *
+       * 本文を deferred read にすると、メモリ上の entry は未 hydrate のあいだ
+       * `body: ''` を持つ。それをそのまま `INSERT OR REPLACE` すると
+       * **実本文が空で上書きされて消える**。読んでいないものは書かない、を
+       * op の型で表明する(worker 側は UPDATE … (body を含まない) を使う)。
+       */
+      keepStoredBody?: boolean;
+    }
   | { t: 'entry-ord'; lid: string; ord: number }
   | { t: 'entry-delete'; lid: string }
   | { t: 'rev-upsert'; row: RevisionRow }

@@ -734,6 +734,31 @@ async function boot(): Promise<void> {
   // 実ブラウザ harness(tests/bench/sqlite-roundtrip.mjs)が store 契約を
   // 直接検証するためのデバッグ導線。製品 UI からは参照しない。
   (window as unknown as Record<string, unknown>).__pkc2StoreDebug = store;
+  /**
+   * P4b の計器: **本文が本当にメモリから外れているか**を実行時に数える窓口。
+   *
+   * これが無いと「deferred にした」「上限を付けた」と言いながら、実際には
+   * 全件常駐している状態を検出できない(実際 2026-07-28 に、boot で運ぶのを
+   * やめても idle backfill が全件読み戻していて**何も減っていなかった**)。
+   */
+  (window as unknown as Record<string, unknown>).__pkc2BodyResidency = () => {
+    const st = dispatcher.getState();
+    const entries = st.container?.entries ?? [];
+    let nonEmpty = 0;
+    let chars = 0;
+    for (const e of entries) {
+      if (e.body !== '') {
+        nonEmpty++;
+        chars += e.body.length;
+      }
+    }
+    return {
+      entries: entries.length,
+      bodiesResident: nonEmpty,
+      residentChars: chars,
+      bodiesPending: st.bodiesPending === true,
+    };
+  };
   // #940: FSA 選択中に permission が prompt に落ちて IDB へ fallback した
   // boot では、silent に「新規コンテナ状態」で開いたように見せず、再接続
   // バナーを常駐表示する。ボタン click = user gesture で requestPermission

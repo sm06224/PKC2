@@ -770,6 +770,29 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
   // updated_at and emits WORKING_SET_UPDATED (NOT a save trigger). A
   // no-op when there is no container (boot race) or the map is
   // reference-identical.
+  if (action.type === 'SYS_BODIES_EVICTED') {
+    // P4b: working set の上限を超えた本文を捨てる(storage 側が正本)。
+    // ⚠ **編集中の entry は絶対に捨てない**(下書きが消える)。呼び出し側でも
+    //    除外しているが、reducer 側でも守る ── ここが最後の砦である。
+    if (!state.container || action.lids.length === 0) return { state, events: [] };
+    const drop = new Set(action.lids.filter((lid) => lid !== state.editingLid));
+    if (drop.size === 0) return { state, events: [] };
+    let changed = false;
+    const entries = state.container.entries.map((e) => {
+      if (drop.has(e.lid) && e.body !== '') {
+        changed = true;
+        return { ...e, body: '' };
+      }
+      return e;
+    });
+    if (!changed) return { state, events: [] };
+    return {
+      // bodiesPending を立て直す ── 「未読がある」状態へ戻る。
+      state: { ...state, container: { ...state.container, entries }, bodiesPending: true },
+      events: [],
+    };
+  }
+
   if (action.type === 'SYS_BODIES_LOADED') {
     // #940 案 A 段階2: 本文 background 復元の merge。本文が '' の entry に
     // だけ適用(boot 後のユーザー編集を上書きしない)。イベントは

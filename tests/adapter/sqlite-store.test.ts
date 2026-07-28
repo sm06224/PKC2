@@ -12,7 +12,7 @@
  * 実 worker + 実 sqlite の検証は happy-dom では不可能(OPFS / Worker なし)
  * なので、実ブラウザ harness(tests/bench/sqlite-roundtrip.mjs)が担う。
  */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Container } from '../../src/core/model/container';
 import { createMemoryStore } from '../../src/adapter/platform/idb-store';
 import {
@@ -59,9 +59,18 @@ function createFakeRpc(): SqliteRpc & { calls: SqliteRequestBody[] } {
       case 'meta':
         containers.set(cid, op.row);
         break;
-      case 'entry-upsert':
-        tableFor(entries, cid).set(op.row.lid, op.row);
+      case 'entry-upsert': {
+        const t = tableFor(entries, cid);
+        if (op.keepStoredBody === true) {
+          // P4b: **本文列を触らない**(worker の entryNoBody 相当)。
+          // fake がここを模さないと「未読を上書きしない」pin が嘘になる。
+          const prev = t.get(op.row.lid);
+          t.set(op.row.lid, { ...op.row, body: prev ? prev.body : op.row.body });
+        } else {
+          t.set(op.row.lid, op.row);
+        }
         break;
+      }
       case 'entry-ord': {
         const row = tableFor(entries, cid).get(op.lid);
         if (row) row.ord = op.ord;
@@ -126,7 +135,10 @@ function createFakeRpc(): SqliteRpc & { calls: SqliteRequestBody[] } {
               );
           const rows: ContainerRows = {
             container: c,
-            entries: sorted(tableFor(entries, req.cid)),
+            // P4b: skipBodies は body を空文字で返す(worker の SQL と同じ意味論)。
+            entries: sorted(tableFor(entries, req.cid)).map((e) =>
+              req.skipBodies ? { ...e, body: '' } : e,
+            ),
             revisions: revRows,
             relations: sorted(tableFor(relations, req.cid)),
           };
@@ -326,12 +338,69 @@ describe('SqliteContainerStore', () => {
     ]);
   });
 
-  it('loadDefaultMetaShallow は storedInline=true / bodiesDeferred=false を返す', async () => {
+  it('loadDefaultMetaShallow は本文を運ばない(bodiesDeferred=true / body は空)', async () => {
+    // P4b: 本文はコンテナで最も重く、boot の瞬間に見えているのは 1 件だけ。
+    // 「実行時に不要な部分は storage 側に置いてメモリを解放する」(user 指摘
+    // 2026-07-28)の本体。空文字 = 未 hydrate は body-working-set の contract。
     await store.save(makeContainer());
     const res = await store.loadDefaultMetaShallow();
     expect(res.storedInline).toBe(true);
-    expect(res.bodiesDeferred).toBe(false);
+    expect(res.bodiesDeferred).toBe(true);
     expect(res.container?.meta.container_id).toBe('c1');
+    for (const e of res.container!.entries) expect(e.body).toBe('');
+  });
+
+  it('🔴 未読の本文を保存で上書きしない(空で潰さない)', async () => {
+    // 事故の形: deferred で `body: ''` を持つ entry をそのまま upsert すると
+    // storage の実本文が空で消える。しかも保存は成功したように見える。
+    const c = makeContainer();
+    c.entries[0]!.body = '守るべき本文';
+    await store.save(c);
+
+    const store2 = createSqliteContainerStore(createMemoryStore(), rpc);
+    const shallow = await store2.loadDefaultMetaShallow();
+    const loaded = shallow.container!;
+    expect(loaded.entries[0]!.body).toBe(''); // 未 hydrate
+
+    // body-working-set が「未読」と言っている状態を作る
+    const wsMod = await import('../../src/adapter/platform/body-working-set');
+    const spy = vi.spyOn(wsMod, 'isBodyPendingGlobal').mockReturnValue(true);
+    try {
+      // title だけ編集して保存(本文は未読のまま)
+      const edited = { ...loaded.entries[0]!, title: '改題' };
+      await store2.save({ ...loaded, entries: [edited, ...loaded.entries.slice(1)] });
+    } finally {
+      spy.mockRestore();
+    }
+
+    // 本文は storage 側に残っている / title の編集は反映されている
+    const store3 = createSqliteContainerStore(createMemoryStore(), rpc);
+    const back = await store3.loadDefaultShallow();
+    expect(back!.entries[0]!.body, '未読の本文が空で上書きされた').toBe('守るべき本文');
+    expect(back!.entries[0]!.title).toBe('改題');
+  });
+
+  it('未読がある状態では saveFull を使わない(全行を空本文で置換しない)', async () => {
+    const c = makeContainer();
+    c.entries[0]!.body = '守るべき本文';
+    await store.save(c);
+
+    const store2 = createSqliteContainerStore(createMemoryStore(), rpc);
+    const loaded = (await store2.loadDefaultMetaShallow()).container!;
+    const wsMod = await import('../../src/adapter/platform/body-working-set');
+    const spy = vi.spyOn(wsMod, 'isBodyPendingGlobal').mockReturnValue(true);
+    const fullBefore = fullCalls(rpc).length;
+    try {
+      // baseline を持たない新 store で保存 = 通常なら saveFull へ行く経路
+      const store3 = createSqliteContainerStore(createMemoryStore(), rpc);
+      await store3.save(loaded);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fullCalls(rpc).length, 'saveFull が走って本文が全消しされる').toBe(fullBefore);
+
+    const back = await createSqliteContainerStore(createMemoryStore(), rpc).loadDefaultShallow();
+    expect(back!.entries[0]!.body).toBe('守るべき本文');
   });
 
   it('assets は additive-only で inner へ、同一 key は 1 session 1 回だけ書く', async () => {

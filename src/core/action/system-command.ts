@@ -179,6 +179,19 @@ export type SystemCommand =
    */
   | { type: 'SYS_BODIES_LOADED'; bodies: Record<string, string>; partial?: boolean }
   /**
+   * P4b: hydrate 済み本文の**追い出し**(working set の上限超過分)。
+   *
+   * 「使っていない本文はメモリに置かない」を成立させるために要る ──
+   * deferred read で boot 時に運ばなくしても、idle backfill が全件を
+   * 読み戻すので**定常では何も減らなかった**(2026-07-28 実測)。
+   * 減らすには読んだものを**捨てる**しかない。
+   *
+   * mutation ではない(storage 側が正本のまま)ので SAVE_TRIGGERS には
+   * 入れない。追い出した lid は working set 側で pending に戻り、
+   * 保存ガード(`isBodyPending`)が空での上書きを止める。
+   */
+  | { type: 'SYS_BODIES_EVICTED'; lids: readonly string[] }
+  /**
    * P4a(wasm-sqlite §7-d): 要求時読みの revisions を常駐 set へ merge する。
    * id で重複排除し、created_at の安定 sort で並べ直す(要求時読みの世界では
    * created_at が第一鍵 ── worker の読み出しと同じ規約)。空配列は
