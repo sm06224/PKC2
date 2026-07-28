@@ -32,6 +32,7 @@ import {
   type RevisionRow,
 } from './sqlite-schema';
 import type { AssetMetaRow, SqliteInitResult, SqliteRpc } from './sqlite-rpc';
+import { setStorageEngineInfo } from '../storage-engine-info';
 
 const ACTIVE_WORKSPACE_KEY = '__active_workspace__';
 const WORKSPACE_PREFIX = 'workspace:';
@@ -459,6 +460,17 @@ export async function createSqliteBackend(
         // worker 版と同じ形の計器窓口(harness が backend を判別できる)。
         kind: 'desktop-host',
       };
+      // UI(Storage Profile ダイアログ)が「今どのエンジンか」を出すための情報。
+      // ⚠ devtools を開かないと確認できない状態は **user から見て「動いているか
+      //    わからない」**であり、それ自体が欠陥である(user 指摘 2026-07-28)。
+      setStorageEngineInfo({
+        kind: 'desktop-host',
+        vfs: 'native',
+        version: init.version,
+        persistent: init.persistent,
+        initMs: init.ms,
+        detail: hostInfo.dbPath,
+      });
       return { store, migrated, dispose: () => hostRpc.dispose() };
     } catch (err) {
       console.warn('[PKC2] desktop host storage 初期化失敗 — IDB を継続:', err);
@@ -480,6 +492,13 @@ export async function createSqliteBackend(
       rpc.dispose();
       return null;
     }
+    setStorageEngineInfo({
+      kind: 'wasm-sqlite',
+      vfs: init.vfs,
+      version: init.version,
+      persistent: init.persistent,
+      initMs: init.ms,
+    });
     const store = createSqliteContainerStore(inner, rpc);
     const migrated = await migrateFromInnerIfEmpty(store, inner, rpc);
     // 一括移行の直後は page cache が膨らんでいる ── 開いたまま解放する。

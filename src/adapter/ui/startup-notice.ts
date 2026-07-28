@@ -39,6 +39,16 @@ export interface StartupNotice {
  */
 export const STARTUP_NOTICES: readonly StartupNotice[] = [
   {
+    id: '2026-07-28-storage-engine-indicator',
+    date: '2026-07-28',
+    title: '保存先エンジンの表示を追加しました',
+    items: [
+      '📊 **Storage Profile**(シェルメニュー → データ管理)の先頭に、いま何で保存しているかを表示するようにしました。「IndexedDB(従来の保存先)」/「wasm-sqlite(OPFS・永続)」/「デスクトップ host の native sqlite」を、**sqlite のライブラリ版まで含めて**表示します',
+      'これまで保存先の切り替えは URL のフラグでしか行えず、**実際に切り替わったかを確かめる手段が開発者ツールしかありませんでした**。動いているか確認できないのは機能が入っていないのと同じ、というご指摘を受けての追加です',
+      '⚠ 永続化に失敗して**揮発モード**(閉じるとデータが消える状態)になっている場合は、赤字で警告を出します',
+    ],
+  },
+  {
     id: '2026-07-27-boot-memory-fixes',
     date: '2026-07-27',
     title: 'メモリ使用量の修正のお知らせ',

@@ -81,6 +81,7 @@ import { shellStartupNoticeEnabled } from './startup-notice';
 import { start as profileStart } from '../../runtime/profile';
 import { computeRenderScope, findEntryBodyChangeLid, canReuseEntryList } from './render-scope';
 import { recordVisibleOrder, getRecordedVisibleOrder } from './visible-order';
+import { describeStorageEngine, getStorageEngineInfo } from '../platform/storage/storage-engine-info';
 import {
   SIDEBAR_VIRTUAL_MIN_ROWS,
   applySpacers,
@@ -3131,6 +3132,39 @@ function renderShortcutHelp(): HTMLElement {
  * launch button is already gated out in that case, but the dialog
  * stays robust for programmatic callers).
  */
+/**
+ * 保存先エンジンの表示行。**sqlite のライブラリ版まで出す**のが要点 ──
+ * 「sqlite で動いている」と自称するだけなら簡単だが、実際に init が返した
+ * version / VFS を見せれば、動いていない状態と区別が付く。
+ */
+function renderStorageEngineRow(): HTMLElement {
+  const info = getStorageEngineInfo();
+  const row = createElement('div', 'pkc-storage-engine-row');
+  row.setAttribute('data-pkc-region', 'storage-engine');
+  row.setAttribute('data-pkc-storage-engine', info.kind);
+
+  const label = createElement('span', 'pkc-storage-engine-label');
+  label.textContent = '保存先エンジン';
+  row.appendChild(label);
+
+  const value = createElement('span', 'pkc-storage-engine-value');
+  value.textContent = describeStorageEngine(info);
+  row.appendChild(value);
+
+  // 永続化が成立していない = **データが残らない**。ここは目立たせる。
+  if (info.kind !== 'idb' && info.persistent === false) {
+    const warn = createElement('span', 'pkc-storage-engine-warn');
+    warn.textContent = '⚠ 揮発 — 閉じると消えます';
+    row.appendChild(warn);
+  }
+  if (info.detail) {
+    const detail = createElement('span', 'pkc-storage-engine-detail');
+    detail.textContent = info.detail;
+    row.appendChild(detail);
+  }
+  return row;
+}
+
 export function buildStorageProfileOverlay(
   container: Container | null,
   availableContainers: ReadonlyArray<{ id: string; title: string }> = [],
@@ -3148,6 +3182,13 @@ export function buildStorageProfileOverlay(
   // docs/development/storage-profile-footprint-scope.md.
   heading.textContent = 'Storage Profile — Assets';
   card.appendChild(heading);
+
+  // 🔴 「今どのエンジンで保存しているか」を最初に出す(user 指摘 2026-07-28
+  //    「wasm-sqlite で稼働してるかどうかわからんのやが?」)。flag で切り替わる
+  //    のに devtools を見ないと確認できない状態は、user から見れば
+  //    「動いているかわからない」= 入っていないのと大差ない。
+  //    事実は storage 層が確定したものを読むだけにする(UI 側で推測しない)。
+  card.appendChild(renderStorageEngineRow());
 
   const note = createElement('div', 'pkc-storage-profile-note');
   // Slice A: call out the asset-only scope up front so operators do
