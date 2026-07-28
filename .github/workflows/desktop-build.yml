@@ -1,0 +1,104 @@
+# PKC2 デスクトップ版(単一実行ファイル)のビルド ── L4
+#
+# 目的: `desktop/pkc2-host.ts` を Bun で **3 OS 分**の単一実行ファイルに
+# コンパイルし、**Actions の成果物として落とせる**ようにする。
+#
+# なぜ CI で作るのか(= なぜ生成物を毎回 commit しないのか):
+#   exe は 62〜114MB あり、git に入れると**履歴から消せない**。rebuild の
+#   たびに同じだけ増えるので、数回で repo が使いものにならなくなる。
+#   一方 user は「PR から実行ファイルを取りたい」── その両立がこの workflow。
+#   PR の Checks → この run → Artifacts から 3 OS 分を落とせる。
+#
+# ⚠ **署名していない**。Windows は SmartScreen、macOS は Gatekeeper に
+#    止まる(macOS は `xattr -d com.apple.quarantine <file>` が要る)。
+#    署名は法人適格性の壁があり未解決 ── `single-exe-bun-webview-2026-07-27.md` §6。
+#
+# ⚠ 中身のほとんどは Bun ランタイムで、PKC2 本体は 3.4MB(埋め込み HTML)。
+#    exe にしても **Chromium の固定費は減らない**(同 doc §2)。買っているのは
+#    native sqlite の実効能力と「user のブラウザと同居しない」配布形態である。
+
+name: Desktop build
+
+on:
+  # 手で叩く(release 前の確認など)
+  workflow_dispatch:
+  # デスクトップ関連を触った PR では自動で作る(取り違えを防ぐため、
+  # 触っていない PR では走らせない ── exe のビルドは重い)
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'src/adapter/platform/storage/sqlite/**'
+      - '.github/workflows/desktop-build.yml'
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: npm ci
+
+      # exe は dist/pkc2.html を**埋め込む**ので、先に単一 HTML を作る。
+      # ここを飛ばすと「古い HTML を焼いた exe」が出来て気づけない。
+      - name: Build single HTML
+        run: npm run build
+
+      - name: Cross-compile desktop executables
+        run: npm run build:desktop:all
+
+      - name: Verify the Linux build actually runs
+        # 「ビルドが通った」と「起動する」は別。host が名乗り、埋め込み HTML を
+        # 配り、native sqlite が永続で開くところまでを CI で見る。
+        run: |
+          chmod +x dist/pkc2-desktop-linux-x64
+          PKC2_DB="$RUNNER_TEMP/pkc2.db" PKC2_PORT=45791 \
+            ./dist/pkc2-desktop-linux-x64 --no-webview &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:45791/__pkc/host >/dev/null && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:45791/__pkc/host | tee /dev/stderr | grep -q 'pkc2-desktop'
+          curl -sf -X POST http://127.0.0.1:45791/__pkc/storage \
+            -H 'content-type: application/json' \
+            -d '{"op":"init","dbName":"pkc2-sqlite"}' | tee /dev/stderr | grep -q '"persistent":true'
+          bytes=$(curl -sf http://127.0.0.1:45791/ | wc -c)
+          echo "embedded HTML bytes: $bytes"
+          test "$bytes" -gt 1000000
+          pkill -f pkc2-desktop-linux-x64 || true
+
+      - name: Report sizes
+        run: ls -lh dist/pkc2-desktop-* | awk '{print $5, $9}'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkc2-desktop-windows-x64
+          path: dist/pkc2-desktop-windows-x64.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkc2-desktop-darwin-arm64
+          path: dist/pkc2-desktop-darwin-arm64
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkc2-desktop-linux-x64
+          path: dist/pkc2-desktop-linux-x64
+          if-no-files-found: error
