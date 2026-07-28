@@ -35,7 +35,7 @@ async function seed(page: Page): Promise<void> {
       relations: [], revisions: [], assets: {},
     };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = (): void => rej(req.error);
       req.onsuccess = (): void => {
         const db = req.result;

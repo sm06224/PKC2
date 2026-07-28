@@ -217,7 +217,7 @@ async function seedAppIdb(page: Page, n: number): Promise<void> {
       entries, relations: [], revisions: [], assets: {},
     };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onupgradeneeded = (): void => {
         const db = req.result;
         if (!db.objectStoreNames.contains('containers')) db.createObjectStore('containers');

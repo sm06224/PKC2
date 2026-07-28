@@ -104,7 +104,7 @@ async function seedIDB(
     // do NOT delete-then-recreate because main.ts is still holding a
     // connection — the deletion would block.
     const db = await new Promise<IDBDatabase>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onupgradeneeded = () => {
         const d = req.result;
         if (!d.objectStoreNames.contains('containers')) d.createObjectStore('containers');

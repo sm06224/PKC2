@@ -33,7 +33,7 @@ async function seedFixture(page: Page): Promise<void> {
   await page.evaluate(async (raw: string) => {
     const cont = JSON.parse(raw) as { meta: { container_id: string } };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = (): void => rej(req.error);
       req.onsuccess = (): void => {
         const db = req.result;
