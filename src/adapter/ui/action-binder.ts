@@ -9483,6 +9483,18 @@ export function bindActions(
 
   function handleResizeMouseMove(e: MouseEvent): void {
     if (!resizeTarget || !resizePane) return;
+    // 🔴 **ボタンが離れていたら drag を終える**(B12、2026-07-28)。
+    //
+    // `mouseup` は **window の外で離すと届かない**。届かないと drag 状態
+    // (resizeTarget / listener)が残り、次に mouse を動かしただけで
+    // **ボタンを押していないのにリサイズが続く**。メモリの話である以前に
+    // 操作の壊れ方であり、しかも「たまにしか起きない」ので報告されにくい。
+    // `MouseEvent.buttons === 0` は「今どのボタンも押されていない」なので、
+    // これを終了条件として扱う。
+    if (e.buttons === 0) {
+      handleResizeMouseUp();
+      return;
+    }
     const dx = e.clientX - resizeStartX;
     const newWidth = resizeTarget === 'left'
       ? Math.max(120, resizeStartWidth + dx)
@@ -9540,6 +9552,12 @@ export function bindActions(
 
   function handleSplitResizeMouseMove(e: MouseEvent): void {
     if (!splitResizeActive || !splitResizeWrapper) return;
+    // B12: window の外で離すと mouseup が来ない ── 押していないのに
+    // 分割幅が動き続けるのを止める(上の handleResizeMouseMove と同型)。
+    if (e.buttons === 0) {
+      handleSplitResizeMouseUp();
+      return;
+    }
     const wrapperWidth = splitResizeWrapper.getBoundingClientRect().width - 6; // subtract handle width
     const dx = e.clientX - splitResizeStartX;
     const totalFr = splitResizeStartFr[0] + splitResizeStartFr[1];
@@ -9599,6 +9617,11 @@ export function bindActions(
 
   function handleFilerColResizeMouseMove(e: MouseEvent): void {
     if (!filerColResizeActive || !filerColResizeTh) return;
+    // B12: 同上(window 外で離した drag を終わらせる)。
+    if (e.buttons === 0) {
+      handleFilerColResizeMouseUp();
+      return;
+    }
     const dx = e.clientX - filerColResizeStartX;
     const next = Math.max(40, Math.min(1500, filerColResizeStartW + dx));
     filerColResizeTh.style.width = `${next}px`;

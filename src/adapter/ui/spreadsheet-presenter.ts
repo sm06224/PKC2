@@ -1043,6 +1043,9 @@ function startColResize(wrapper: HTMLElement, colIdx: number, startX: number): v
   const body = readBodyState(wrapper);
   const startW = colWidthAt(body, colIdx);
   const onMove = (e: MouseEvent): void => {
+    // B12(2026-07-28): window の外で離すと `mouseup` が届かず、**押していない
+    // のに列幅が動き続ける**。`buttons === 0` を drag 終了として扱う。
+    if (e.buttons === 0) { onUp(e); return; }
     const dx = e.clientX - startX;
     const newW = Math.max(MIN_COL_WIDTH, startW + dx);
     applyColWidthLive(wrapper, colIdx, newW);
@@ -1097,6 +1100,8 @@ function startRowResize(wrapper: HTMLElement, rowIdx: number, startY: number): v
   const body = readBodyState(wrapper);
   const startH = rowHeightAt(body, rowIdx);
   const onMove = (e: MouseEvent): void => {
+    // B12: 同上(行高の drag)。
+    if (e.buttons === 0) { onUp(e); return; }
     const dy = e.clientY - startY;
     const newH = Math.max(MIN_ROW_HEIGHT, startH + dy);
     applyRowHeightLive(wrapper, rowIdx, newH);

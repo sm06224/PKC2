@@ -12921,6 +12921,9 @@ function makeDraggablePanel(panel: HTMLElement, handle: HTMLElement): void {
   }
 
   function onMouseMove(e: MouseEvent): void {
+    // B12: window の外で離した drag を終わらせる(押していないのに
+    // パネルが付いてくるのを止める)。
+    if (e.buttons === 0) { onMouseUp(); return; }
     panel.style.left = `${e.clientX - offsetX}px`;
     panel.style.top = `${e.clientY - offsetY}px`;
     panel.style.right = 'auto';
