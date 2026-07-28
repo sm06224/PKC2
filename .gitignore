@@ -31,8 +31,10 @@ dist/assets/
 /.*-probe.ts
 
 # L4: デスクトップ単一実行ファイルの **生 exe**(62〜114MB)は commit しない。
-# 配布用の xz 圧縮版だけを `dist/desktop/` に置く(user 要望「ブランチ pr に
+# 配布用の xz 圧縮版だけを `release-artifacts/` に置く(user 要望「ブランチ pr に
 # 含めてよ」2026-07-28)── 生の方まで入れると 1 回の rebuild で 274MB 増える。
+# ⚠ **dist/ の下に置いてはいけない**: `npm run build` は emptyOutDir なので
+#    dist/ を丸ごと消す ── 実際 1 度消して git checkout で戻した(2026-07-28)。
 dist/pkc2-desktop
 dist/pkc2-desktop.exe
 dist/pkc2-desktop-linux-x64

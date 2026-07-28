@@ -1,5 +1,8 @@
 # PKC2 デスクトップ版(単一実行ファイル)
 
+> ⚠ 置き場所が `dist/` **ではない**理由: `npm run build` は `emptyOutDir` で
+> dist/ を丸ごと消すため、置いておくと通常のビルドで消える(実際に踏んだ)。
+
 `desktop/pkc2-host.ts` を Bun でコンパイルした単一実行ファイル。**xz 圧縮**で置いてある
 (生 exe は 62〜114MB あり、git に入れると rebuild のたびに同じだけ増えて履歴から消せない)。
 
@@ -52,7 +55,7 @@ Windows は 7-Zip 等で展開して `.exe` を実行。
 ```bash
 npm run build              # dist/pkc2.html(exe に埋め込む)
 npm run build:desktop:all  # 3 OS 分
-cd dist && xz -T0 -9e -k -f pkc2-desktop-*   # 圧縮して dist/desktop/ へ
+cd dist && xz -T0 -9e -k -f pkc2-desktop-*   # 圧縮して ../release-artifacts/ へ移す
 ```
 
 CI(`.github/workflows/desktop-build.yml`)でも作られ、Actions の Artifacts から
