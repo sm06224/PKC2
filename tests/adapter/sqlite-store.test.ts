@@ -350,6 +350,32 @@ describe('SqliteContainerStore', () => {
     for (const e of res.container!.entries) expect(e.body).toBe('');
   });
 
+  it('🔴 追い出しは baseline からも本文を落とす(保存後も解放が効く)', async () => {
+    // 参照 diff の baseline は保存のたびに「現在の container」に差し替わる。
+    // state 側だけ本文を捨てても baseline が同じ文字列を掴んでいたら、
+    // **実運用(保存が頻繁に走る)では 1 バイトも解放されない**。
+    const c = makeContainer();
+    c.entries[0]!.body = '長い本文'.repeat(100);
+    await store.save(c); // ← baseline = hydrate 済み本文つき
+
+    const before = store as unknown as { noteBodiesEvicted?: (cid: string, lids: string[]) => void };
+    expect(typeof before.noteBodiesEvicted, 'store が追い出しを受け取れない').toBe('function');
+    before.noteBodiesEvicted!('c1', ['e1']);
+
+    // baseline が空になったので、同じ container を保存し直すと
+    // 「本文が変わった」と見なされる ── ただし未読ガードが効いていれば
+    // storage の実本文は据え置かれる(= 消えない)。
+    const wsMod = await import('../../src/adapter/platform/body-working-set');
+    const spy = vi.spyOn(wsMod, 'isBodyPendingGlobal').mockReturnValue(true);
+    try {
+      await store.save({ ...c, entries: [{ ...c.entries[0]!, body: '' }, ...c.entries.slice(1)] });
+    } finally {
+      spy.mockRestore();
+    }
+    const back = await createSqliteContainerStore(createMemoryStore(), rpc).loadDefaultShallow();
+    expect(back!.entries[0]!.body).toBe('長い本文'.repeat(100));
+  });
+
   it('🔴 未読の本文を保存で上書きしない(空で潰さない)', async () => {
     // 事故の形: deferred で `body: ''` を持つ entry をそのまま upsert すると
     // storage の実本文が空で消える。しかも保存は成功したように見える。
@@ -618,4 +644,5 @@ describe('migrateFromInnerIfEmpty(IDB → sqlite、非破壊)', () => {
     const store = createSqliteContainerStore(inner, rpc);
     expect(await migrateFromInnerIfEmpty(store, inner, rpc)).toBe(false);
   });
+
 });

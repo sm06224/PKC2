@@ -287,6 +287,31 @@ export function createSqliteContainerStore(inner: ContainerStore, rpc: SqliteRpc
       return rpc.call<Record<string, string>>({ op: 'loadBodies', cid: containerId });
     },
 
+    /**
+     * P4b: 追い出された本文を baseline からも落とす。
+     *
+     * baseline は「storage と同期済みの姿」だが、**本文列については
+     * 「読んでいない」も同じ扱いでよい** ── 未読の entry は
+     * `guardPendingBodies` が body 列を触らせないので、baseline の body が
+     * '' でも storage の実本文は安全である。逆にここを空にしないと、
+     * 保存のたびに baseline が hydrate 済み本文を掴み直し、**追い出しが
+     * 実運用で効かなくなる**。
+     */
+    noteBodiesEvicted(containerId: string, lids: readonly string[]): void {
+      const baseline = baselines.get(containerId);
+      if (!baseline || lids.length === 0) return;
+      const drop = new Set(lids);
+      let changed = false;
+      const entries = baseline.entries.map((e) => {
+        if (drop.has(e.lid) && e.body !== '') {
+          changed = true;
+          return { ...e, body: '' };
+        }
+        return e;
+      });
+      if (changed) baselines.set(containerId, { ...baseline, entries });
+    },
+
     async loadBodiesFor(
       containerId: string,
       lids: readonly string[],

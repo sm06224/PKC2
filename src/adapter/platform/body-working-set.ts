@@ -205,6 +205,10 @@ export function mountBodyWorkingSet(
     }
     if (victims.length > 0) {
       dispatcher.dispatch({ type: 'SYS_BODIES_EVICTED', lids: victims });
+      // 🔴 store の baseline からも落とす ── ここを忘れると、保存のたびに
+      //    baseline が hydrate 済み本文を掴み直し、**実運用では 1 バイトも
+      //    解放されない**(2026-07-28、B14 の点検で発見)。
+      if (cid) store.noteBodiesEvicted?.(cid, victims);
     }
   }
 

@@ -191,6 +191,17 @@ export interface ContainerStore {
   loadBodies(containerId: string): Promise<Record<string, string>>;
   /** #940 案 A 段階3: 指定 lid の本文だけ読む(部分 hydrate)。 */
   loadBodiesFor(containerId: string, lids: readonly string[]): Promise<Record<string, string>>;
+  /**
+   * P4b: 本文を**メモリから追い出した**ことを store に伝える(任意実装)。
+   *
+   * 🔴 これが無いと追い出しが効かない場面がある。参照 diff の store は
+   * 「最後に storage と同期した container」を baseline として掴んでおり、
+   * **保存のたびに baseline が現在の container(= hydrate 済み本文つき)に
+   * 差し替わる**。state 側から本文を捨てても baseline が同じ文字列を
+   * 掴んだままなので、**実運用(保存が頻繁に走る)では解放が起きない**。
+   * 追い出した lid は baseline 側でも空にする。
+   */
+  noteBodiesEvicted?(containerId: string, lids: readonly string[]): void;
   load(containerId: string): Promise<Container | null>;
   loadDefault(): Promise<Container | null>;
   /**
