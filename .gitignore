@@ -33,3 +33,4 @@ dist/assets/
 # L4: デスクトップ単一実行ファイル(102MB)は生成物 ── commit しない
 dist/pkc2-desktop
 dist/pkc2-desktop.exe
+dist/pkc2-desktop-*

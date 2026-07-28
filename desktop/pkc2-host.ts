@@ -269,6 +269,24 @@ const server = Bun.serve({
 });
 
 /**
+ * OS 既定のブラウザで開く(webview バインディングが無い環境の導線)。
+ * 失敗しても host は動き続ける ── URL を手で開けばよい。
+ */
+function openInSystemBrowser(url: string): void {
+  const cmd = process.platform === 'darwin'
+    ? ['open', url]
+    : process.platform === 'win32'
+      ? ['cmd', '/c', 'start', '', url]
+      : ['xdg-open', url];
+  try {
+    Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' });
+    console.log(`[pkc2-desktop] 既定のブラウザで開きました: ${url}`);
+  } catch {
+    console.log(`[pkc2-desktop] ブラウザを自動で開けません ── 手動で開いてください: ${url}`);
+  }
+}
+
+/**
  * 終了処理。**DB を明示的に close する**(user 指示「ライフサイクル後の
  * 速やかな破棄」)── ネイティブ sqlite は close で page cache ごと OS へ
  * 返す(実測 RSS 308.1 → 97.5MB)。wasm 版はここが worker terminate という
@@ -315,7 +333,10 @@ if (process.argv.includes('--print-stats')) {
       w.run();
       process.exit(0);
     }
-    console.log('[pkc2-desktop] webview バインディング未導入 ── 上記 URL をブラウザで開いてください');
+    // webview が無い環境では **OS 既定のブラウザで開く**。
+    // 「実行ファイルをダブルクリックしたら PKC2 が出る」を成立させるための
+    // 最低限の導線であり、webview の代替ではない(engine は user のブラウザ)。
+    openInSystemBrowser(origin);
   } catch (err) {
     console.log('[pkc2-desktop] webview 起動不可(URL を手動で開いてください):', String(err));
   }
