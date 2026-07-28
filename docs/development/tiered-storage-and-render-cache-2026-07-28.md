@@ -111,7 +111,38 @@ gzip → 展開 → `innerHTML` で作り直す時間:
 **キャッシュの単位はブロックであり、ブロックごとの長さ(spacer 用の高さ)を併せ持つ。**
 これはサイドバー窓化(L3-S3〜S5)で `data-pkc-row-count` + spacer が果たした役割と同型である。
 
-### 0-d. 幸い、ブロック境界の機構は**既にある**
+### 0-d. 🔴 その前に ── **P4a / P4b は既定の user に 1 バイトも届いていない**
+
+設計案の敵対的検証(3 案 × 4 レンズ)が出してきた指摘を、**自分で実機確認した**。
+
+`mountBodyWorkingSet` は `bodiesDeferred === true` のときだけ呼ばれ(`main.ts:1310`)、
+`bodiesDeferred = (__pkc_layout__ >= 2)`(`idb-store.ts:1403`)である。
+そして layout ≥ 2 を書くのは**退役した `lazy_entry_bodies`** だけ。
+既定 user の record は `__pkc_layout__ === undefined` なので **false** になる。
+
+実測(本文 20,000 字 × 500 件 = 1,000 万字。上限 200 万字を 5 倍超過):
+
+| 起動 | body working set | storage record |
+|---|---|---|
+| **既定(flag なし = IDB inline)** | 🔴 **mount されない** | `__pkc_layout__=null` / `entries[0].body` = 20,005 字が inline |
+| `storage.sqlite_backend=true` | ✅ mount される | 同上(移行前) |
+
+⇒ **P4b(本文 LRU 追い出し)も P4a(revisions の要求時読み)も、
+`storage.sqlite_backend` を自分で ON にした人にしか効いていない。**
+先の PR で報告した「app 取り分 451MB → 165MB(−63%)」は
+**sqlite backend 上の数字**であり、既定の user が今日得ているものではない。
+
+さらに言えば、user 指示④「container 丸ごと 1 JSON record への反対」は
+**今日の既定そのもの**である ── `reassembleSplit` は marker が無い record を
+そのまま Container として返す(`idb-store.ts:1222`)ので、
+boot で entries(本文込み)+ relations + revisions(snapshot 込み)が全量 heap に載る。
+
+**この事実が本 doc の段階順を決める**(§7):
+- **描画レーン(C2〜C4)は backend に依存しない** ── 今日の既定 user にそのまま効く
+- **storage レーン(ティア T2 等)は「既定 backend をどうするか」の裁定が先** ──
+  それが決まらないうちは、どんな層を積んでも既定 user には届かない
+
+### 0-e. 幸い、ブロック境界の機構は**既にある**
 
 `src/features/ast/render-html.ts` の `renderAstToHtml()` は AST のブロックを 1 個ずつ HTML 化して
 join しているだけで、`sourceLineAnchors` を有効にすると各ブロックに
@@ -163,9 +194,9 @@ user 提案の「実体化とソートに要るぶんだけ」を厳密にやる
 
 | 対象 | キャッシュ | 理由 |
 |---|---|---|
-| text / textlog の markdown 本文 | ✅ **主戦場** | 出力が (body, flags, theme, markup 版) の純関数。実測 −93% の余地 |
+| text / textlog の markdown 本文 | ✅ **主戦場** | 出力が (body, flags, theme, markup 版) の関数。実測 −93% の余地 |
 | todo / form / folder の body | △ 小さい | 元々ブロック数が少なく、賞金が無い |
-| spreadsheet | ❌ | セル編集で局所更新する機構が別にある。キャッシュは二重管理になる |
+| spreadsheet | ❌ **除外** | 🔴 view wrapper に**直付け listener**(`spreadsheet-presenter.ts:1975`)。HTML を差し戻すと **export / embed ボタンが無言で死ぬ**。委譲へ移す小 PR を先に着地させない限り対象にしない |
 | mermaid / chart | ③ の領域 | SVG / canvas は HTML キャッシュではなく**ラスタ**で扱う(§4) |
 | 添付プレビュー / 画像 | ③ の領域 | Blob と ObjectURL の所有権が絡む。HTML には入れない |
 
@@ -173,8 +204,17 @@ user 提案の「実体化とソートに要るぶんだけ」を厳密にやる
 
 `(container_id, lid, body_hash, markup_version, flags_digest, theme)`
 
-- `body_hash` ── 本文が 1 文字でも変われば別物。**内容ハッシュであり updated_at ではない**
-  (時刻キーは「変わっていないのに無効化」と「変わったのに当たる」の両方を起こす)
+🔴 **鍵は「入力」で作る。出力(HTML)のハッシュを使ってはならない。**
+`renderMarkdown` は純関数に見えて**非決定的**である ── `markdown-render.ts:250` と
+`html-sandbox.ts:53` が `Math.random()` で id を生成しており、
+**同じ入力から 2 回描いても HTML は一致しない**。出力ハッシュを鍵にすると常に miss し、
+素朴な DOM 突合(「キャッシュが正しいか比べる」型の test)は**偽陽性を出す**。
+
+- `body_hash` ── 本文が 1 文字でも変われば別物。**内容ハッシュであり updated_at ではない**。
+  ⚠ 時刻を鮮度印にできないことは実コードで確定している ──
+  `app-state.ts:1388` は `meta.entry_order` を書き換えるのに `updated_at` を bump していない
+  (`snapshotEntryOrder` 経路も同様)。**しかも bump 漏れしているのは #1022 で実際に消えた
+  `entry_order` そのもの**である
 - `markup_version` ── markdown 方言のビルド識別子。**ビルドが変わったら全無効化**。
   これが無いと、新しい記法を足したビルドで古い HTML が当たり続ける
 - `flags_digest` / `theme` ── 描画に効く flag(見出し番号・折りたたみ等)と配色
@@ -189,11 +229,30 @@ user 提案の「実体化とソートに要るぶんだけ」を厳密にやる
 ⚠ `content-visibility: auto` の未表示要素は**嘘の高さを返す**(サイドバーで実測 39px vs 真値 24.91px)。
 高さの記録はこの罠を踏む位置にあるので、**測る対象は必ず「今 viewport に入っているブロック」**にする。
 
-### 3-d. 置き場所
+### 3-d. 置き場所 ── **別 DB `pkc2-derived`**(初稿から訂正)
 
-🔴 **`containers` object store に別キーで入れてはならない。**
-#1022 のサイドカー事故(`__rel__:` / `__order__:`)と同型になる ── 旧ビルドが store を列挙したときに
-**キャッシュが幽霊 container として一覧に出る**。**専用の object store / 専用の sqlite 表**に置く。
+初稿では「専用の object store」と書いたが、**これは誤りだった**。敵対的検証が実コードで反証した:
+
+```
+idb-adapter.ts:25   const DB_VERSION = 3;
+idb-adapter.ts:35   const req = indexedDB.open(DB_NAME, DB_VERSION);
+idb-adapter.ts:112  req.onerror = () => reject(req.error);   ← VersionError の分岐が無い
+```
+
+`pkc2` に store を足すには DB_VERSION を 4 に上げる必要があり、そうすると
+**`open('pkc2', 3)` の旧 `pkc2.html` は VersionError で DB ごと開けず起動不能**になる。
+#1022(relations が 0 件に見える)より重い ── **アプリが起動しない**。
+
+⚠ この壊れ方は**今日この目で見た** ── smoke spec が `indexedDB.open('pkc2', 2)` と
+version をべた書きしていたせいで、53 test が `VersionError` で一律に死んでいた(本日の hotfix)。
+
+`containers` store への相乗りも駄目である。`listContainers`(`idb-store.ts:1586-1600`)は
+**既知 prefix の除外リスト方式で、残り全 key を `get` する**。相乗りすると旧ビルドは
+**container switcher を開くだけでキャッシュを全読み**する(コメント自身が過去の性能退行として警告している)。
+
+⇒ **別 DB `pkc2-derived`(version 1 固定)**に置く。
+前例あり: `fsa-handle-store.ts:15` が**まったく同じ理由**で `pkc2-fsa`(DB_VERSION=1)を切っている。
+sqlite backend のときは専用表でよい(同一 DB 内でも旧ビルドは sqlite を読まないため露出しない)。
 
 ## 4. 解像度適応(③への回答)
 
@@ -221,6 +280,8 @@ user 提案の「実体化とソートに要るぶんだけ」を厳密にやる
 | 復号 / parse 失敗 | 破棄して通常描画。⚠ **例外を握って黙らせない** ── `?pkc-debug=render-cache` で可視化 |
 | キー不一致(ビルド更新・flag 変更) | ミスと同じ |
 | quota 超過 | **T2 の cache から先に捨てる**。core record より必ず先 |
+| **blob URL の失効** | 🔴 `cleanupBlobUrls`(`action-binder.ts:11250`)が **render のたびに `data-pkc-blob-url` を全部 revoke** する。キャッシュした HTML に `blob:` を焼き込むと、差し戻した瞬間に**死んだ URL** になる。⇒ **キャッシュには `asset_key` を残し、差し戻し後に registry から引き直す**。`data:` base64 の焼き込み(`asset-resolver.ts`)も同じ理由で対象外にする |
+| **ブラウザによる無言の退避** | 🔴 `navigator.storage.persist()` は **repo 全体で 1 度も呼ばれていない**(`estimate()` と `getDirectory()` のみ)。したがって storage は best-effort で、退避単位は **DB ではなく origin** ── **アプリに通知は来ない**(次回起動で消えている)。「派生から先に捨てる」は**アプリが退避順を制御できる前提**だが、その前提は今日成立していない。⇒ T2 の cap を厳しく張り、**`persist()` を呼ぶかを裁定事項に上げる**(§10-6) |
 | OPFS 不可 | 既存 `storage-adapter` の seam で IDB へ。cache も同じ経路に乗る |
 | readonly container | T2 に書かない(T1 のみ) |
 | embed(iframe) | T2 を使わない |
@@ -242,9 +303,14 @@ user 提案の「実体化とソートに要るぶんだけ」を厳密にやる
 
 賞金の大きい順ではなく、**依存の順**に積む(§0-c の「④が先」)。
 
+🔴 **描画レーン(C2〜C4)を先に置く**。§0-d のとおり storage レーンは
+「既定 backend をどうするか」の裁定が済むまで**既定 user に 1 バイトも届かない**が、
+描画レーンは backend に依存せず**今日の既定 user にそのまま効く**。
+
 | 段階 | 内容 | 単独の賞金 |
 |---|---|---|
 | **C0** | 本 doc の裁定 | — |
+| **P0**(別 hotfix) | 🔴 **todo の read-modify-write に未読ガードを入れる**(§12-1)。本 doc の前提ではなく**独立した既存欠陥** | データ喪失窓を塞ぐ |
 | **C1** | 計器: center pane の long task / ブロック数 / (後に)hit 率。`center-render-repeat.mjs` を製品計器に格上げ | 0(ただし以降すべての前提) |
 | **C2** | `renderAstToHtml` を**ブロック配列**で返せるようにする(join を呼び出し側へ)。**挙動不変の前工事** | 0(L3-S2 と同じ性格 ── C3 を断念しても資産が残る) |
 | **C3** | **center pane のブロック窓化**(キャッシュ無し) | 2,000 → ~830 ms(**−59%**) |
@@ -296,8 +362,66 @@ user 提案の「実体化とソートに要るぶんだけ」を厳密にやる
 5. **この doc の段階を、いまの `dev/storage-sqlite` に積むか、別ブランチにするか**。
    - **推奨: 別レーン**。storage 移行(P2〜P5)と render cache は依存が無く、
      同じブランチに積むと 1 PR が高コスト化して着地しなくなる(50 PR 一本 stack の再演)
+6. 🔴 **既定 backend をどうするか**(§0-d で判明した最重要点)。
+   今日の既定は IDB の inline 1 JSON record で、**P4a / P4b は届いていない**。
+   選択肢は ⓐ sqlite を既定にする(P5。移行ゲート + バックアップが要る)
+   ⓑ IDB 側にも本文分離 layout を作り直す(退役した `lazy_entry_bodies` の再設計)
+   ⓒ 当面は sqlite opt-in のままにし、描画レーンだけ既定 user に届ける。
+   - **推奨: ⓒ を先に走らせ、ⓐ/ⓑ は別途裁定**。描画レーンは backend 非依存なので待つ必要がない
+7. **`navigator.storage.persist()` を呼ぶか**。今日は 1 度も呼んでおらず、
+   storage は best-effort・退避は origin 単位・**アプリに通知なし**。
+   派生層を永続化するなら先に効かせたいが、**Firefox では許可プロンプトが出る**
+   (user に見える変更)。
+   - **推奨: 別 PR で裁定**。派生層とは独立に、今日のデータ耐久性の話として扱う
 
 ---
+
+## 12. 検証で出た**既存の欠陥**(本設計とは独立。別 hotfix)
+
+設計案の敵対的検証(3 案 × 4 レンズ = 12 経路、うち 12 が refuted)は、
+案の欠陥だけでなく**今日そこにある欠陥**を 3 件掘り出した。いずれも自分で実コードを確認した。
+
+### 12-1. 🔴 todo の read-modify-write が未読の本文を掴む窓
+
+`parseTodoBody('')` は `JSON.parse('')` が throw → catch → `{ status:'open', description:'' }`
+(`todo-body.ts:36-38`)。`serializeTodoBody` は falsy なキーを書かない(`:42-51`)。
+⇒ **未読(`body === ''`)の todo を read-modify-write すると、期日・アーカイブ・説明文が消える。**
+
+この read-modify-write を行う経路は 5 箇所あり、**どれも未読ガードが無い**:
+
+| 経路 | 位置 |
+|---|---|
+| `toggle-todo-status` | `action-binder.ts:2829` |
+| `handleKanbanDrop` | `action-binder.ts:7527` |
+| `handleCalendarDrop` | `action-binder.ts:7629` |
+| `BULK_SET_STATUS` | `app-state.ts:3932`(**reducer 内 = 非同期 hydrate できない**) |
+| `BULK_SET_DATE` | `app-state.ts:3955` |
+
+未読ガード(`isBodyPendingGlobal`)は保存経路にはあるが(`idb-store.ts` / `sqlite-store.ts`)、
+**この 5 経路からは 1 度も呼ばれていない**。
+
+**窓が実在することは実機で確認した**(sqlite backend ON / 本文 4KB × todo 300 件):
+**boot 直後に未読が 236 件**(常駐 261,046 字)。つまり 236 件の todo が
+`body === ''` のまま state に載っている。
+
+**今日 user に届いていない理由は「安全だから」ではない** ── §0-d のとおり
+**既定では body working set が mount されないので未読が発生しない**だけである。
+`storage.sqlite_backend` を ON にした環境では窓が開いている。
+
+⚠ これは #1028(「読めなかった本文を空の本文として確定させない」)と**同型**で、
+あのときは `save()` 側だけを塞いだ。**同じ穴が todo の書込経路に残っていた。**
+
+### 12-2. `navigator.storage.persist()` が 1 度も呼ばれていない
+
+`src/` 全体で `navigator.storage` の使用は `estimate()` と `getDirectory()` のみ。
+storage は best-effort のままで、ブラウザの退避は **origin 単位・無通知**である。
+派生層の設計とは独立に、**今日のデータ耐久性の話**として扱うべき(§10-7)。
+
+### 12-3. `updated_at` が鮮度印として使えない
+
+`app-state.ts:1388` は `meta.entry_order` を書き換えるのに `updated_at` を bump していない
+(`snapshotEntryOrder` 経路も同様)。**bump 漏れしているのは #1022 で実際に消えた
+`entry_order` そのもの**である。派生層の鮮度判定に時刻を使う設計は成立しない(§3-b)。
 
 ## 11. 参照
 
