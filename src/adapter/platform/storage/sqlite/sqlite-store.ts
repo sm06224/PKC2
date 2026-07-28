@@ -32,7 +32,7 @@ import {
   type RevisionRow,
 } from './sqlite-schema';
 import type { AssetMetaRow, SqliteInitResult, SqliteRpc } from './sqlite-rpc';
-import { setStorageEngineInfo } from '../storage-engine-info';
+import { isFileProtocol, setStorageEngineInfo } from '../storage-engine-info';
 
 const ACTIVE_WORKSPACE_KEY = '__active_workspace__';
 const WORKSPACE_PREFIX = 'workspace:';
@@ -489,6 +489,14 @@ export async function createSqliteBackend(
       // :memory: に落ちた = 永続化できない。揮発 DB に書き始めるのは
       // データ消失経路(S1〜S4 の教訓)なので、使わずに畳む。
       console.warn('[PKC2] sqlite backend: SAHPool 不成立のため IDB を継続:', init.error);
+      // 🔴 **落ちた理由を UI へ渡す**。黙って IDB に戻ると、user からは
+      //    「flag の付け方が悪いのか / そもそも動かないのか」が区別できない。
+      setStorageEngineInfo({
+        kind: 'idb',
+        requestedButUnavailable: isFileProtocol()
+          ? 'wasm-sqlite を要求しましたが、file:// で開いているため OPFS が使えません(http/https で配信するか、デスクトップ版をお使いください)'
+          : `wasm-sqlite を要求しましたが OPFS を確保できませんでした(${init.error ?? '理由不明'})`,
+      });
       rpc.dispose();
       return null;
     }
@@ -512,6 +520,12 @@ export async function createSqliteBackend(
     return { store, migrated, dispose: () => rpc.dispose() };
   } catch (err) {
     console.warn('[PKC2] sqlite backend 初期化失敗 — IDB を継続:', err);
+    setStorageEngineInfo({
+      kind: 'idb',
+      requestedButUnavailable: isFileProtocol()
+        ? 'wasm-sqlite を要求しましたが、file:// で開いているため起動できません(http/https で配信するか、デスクトップ版をお使いください)'
+        : `wasm-sqlite の初期化に失敗しました(${String(err)})`,
+    });
     rpc.dispose();
     return null;
   }

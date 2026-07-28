@@ -3162,6 +3162,11 @@ function renderStorageEngineRow(): HTMLElement {
     detail.textContent = info.detail;
     row.appendChild(detail);
   }
+  // 要求したのに使えなかった場合は、**理由と対処**を出す。
+  // 「効いていない」と「そもそも動かない」を user が区別できるように。
+  if (info.requestedButUnavailable) {
+    row.setAttribute('data-pkc-storage-fallback', 'true');
+  }
   return row;
 }
 

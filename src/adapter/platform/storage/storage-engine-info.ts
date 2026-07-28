@@ -27,6 +27,24 @@ export interface StorageEngineInfo {
   initMs?: number;
   /** 補足(exe なら DB の実ファイルパスなど)。 */
   detail?: string;
+  /**
+   * **要求されたのに使えなかった**ときの理由(user 向けの日本語 1 行)。
+   *
+   * これが要る理由: flag を立てたのに黙って IDB に落ちると、user からは
+   * 「効いていないのか、そもそも動かないのか」が区別できない。実際
+   * `file://` で開くと OPFS が SecurityError で使えず、**フラグは効いて
+   * いるのに sqlite にならない**(2026-07-28 実測)── これを表示しないと
+   * 「フラグの付け方が悪いのか?」と延々に疑うことになる。
+   */
+  requestedButUnavailable?: string;
+}
+
+/**
+ * `file://` で開いているか。OPFS は file:// では使えない(origin が
+ * opaque なため SecurityError)ので、fallback 理由の説明に使う。
+ */
+export function isFileProtocol(): boolean {
+  return typeof location !== 'undefined' && location.protocol === 'file:';
 }
 
 /** 既定は IDB(sqlite backend が成立しなかったときはここに落ちる)。 */
@@ -64,6 +82,8 @@ export function describeStorageEngine(info: StorageEngineInfo = current): string
       return `デスクトップ host の native sqlite ${info.version ?? ''}`.trim();
     case 'idb':
     default:
-      return 'IndexedDB(従来の保存先)';
+      return info.requestedButUnavailable
+        ? `IndexedDB(従来の保存先)── ${info.requestedButUnavailable}`
+        : 'IndexedDB(従来の保存先)';
   }
 }

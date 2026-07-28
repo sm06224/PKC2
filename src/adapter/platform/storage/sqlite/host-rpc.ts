@@ -54,6 +54,12 @@ const PROBE_TIMEOUT_MS = 400;
  */
 export async function detectDesktopHost(): Promise<HostInfo | null> {
   if (typeof fetch !== 'function' || typeof AbortController !== 'function') return null;
+  // 🔴 http(s) 以外では**探しに行かない**。`file://` で probe すると
+  //    `file:///__pkc/host` への fetch が CORS エラーとして console に出て、
+  //    「何か壊れている」ように見える(2026-07-28 実測)。host は HTTP で
+  //    しか名乗らないので、そもそも行く意味が無い。
+  const proto = typeof location !== 'undefined' ? location.protocol : '';
+  if (proto !== 'http:' && proto !== 'https:') return null;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
   try {

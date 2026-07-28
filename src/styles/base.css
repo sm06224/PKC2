@@ -6817,6 +6817,15 @@ mark.pkc-search-mark {
   color: var(--c-accent, inherit);
 }
 
+/* 要求したのに使えなかった(黙って IDB に落ちた)= 気付けないと延々に悩む。 */
+.pkc-storage-engine-row[data-pkc-storage-fallback="true"] {
+  border-color: var(--c-danger, #c33);
+}
+
+.pkc-storage-engine-row[data-pkc-storage-fallback="true"] .pkc-storage-engine-value {
+  color: var(--c-danger, #c33);
+}
+
 /* 揮発 = データが残らない。ここだけは強く出す。 */
 .pkc-storage-engine-warn {
   color: var(--c-danger, #c33);
