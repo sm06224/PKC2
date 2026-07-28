@@ -598,7 +598,7 @@ export const shellLauncherUrlTilesEnabled = defineFlag<boolean>(
  */
 export const sidebarVirtualListEnabled = defineFlag<boolean>(
   'sidebar.virtual_list',
-  false,
+  true,
   {
     category: 'shell',
     description:

@@ -14,7 +14,11 @@
  *   3. スクロールで新しい行が出てくる / scrollHeight が全件ぶんある
  *   4. ↑↓ ナビが窓の外へ進める(無言停止しない)
  *   5. 窓の外の entry を選んでも、その行が画面に入る
- *   6. flag OFF なら全件 DOM(既定挙動が変わっていない)
+ *   6. **既定で窓化が効く**(S6、2026-07-28 に既定 ON へ)
+ *   7. flag を明示 OFF にすれば全件 DOM に戻せる(逃げ道が生きている)
+ *
+ * ⚠ 6 と 7 は**両方**要る。既定を変えた時に片側だけ pin していると、
+ *   「既定が効いているか」と「戻せるか」のどちらかが黙って壊れる。
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -59,7 +63,12 @@ async function seed(page: Page, count: number): Promise<void> {
   }, { cid: CID, n: count });
 }
 
+/**
+ * S6(2026-07-28)で **既定が ON** になったので、`FLAG_ON` は
+ * 「明示 ON」の意味しか持たない ── 既定の検証には使わない(素の `/` を使う)。
+ */
 const FLAG_ON = '/?pkc-flag=sidebar.virtual_list%3Dtrue';
+const FLAG_OFF = '/?pkc-flag=sidebar.virtual_list%3Dfalse';
 
 async function domRowCount(page: Page): Promise<number> {
   return page.evaluate(
@@ -162,13 +171,83 @@ test.describe('サイドバー窓化(L3-S5)', () => {
     expect(await domRowCount(page)).toBeLessThan(N / 2);
   });
 
-  test('窓化 OFF(既定): 全件 DOM のまま ── 既定挙動を変えていない', async ({ page }) => {
+  test('既定(flag 無し)で窓化が効く ── S6', async ({ page }) => {
     await seed(page, N);
     await page.goto('/');
     await page.waitForSelector('[data-pkc-region="entry-list"] li.pkc-entry-item', { timeout: 20_000 });
     await page.locator('[data-pkc-region="entry-list"] li.pkc-entry-item').first().click();
     await page.waitForTimeout(400);
-    expect(await domRowCount(page)).toBe(N);
+
+    expect(await logicalRowCount(page), 'S1 の論理行数が壊れている').toBe(N);
+    const inDom = await domRowCount(page);
+    expect(
+      inDom,
+      `既定で窓化が効いていない(DOM 行数 ${inDom} / 論理 ${N})── S6 の既定 ON が外れている`,
+    ).toBeLessThan(N / 2);
+    expect(inDom).toBeGreaterThan(0);
+  });
+
+  /**
+   * 窓化が**直した**挙動を pin する(S6、2026-07-28)。
+   *
+   * 選択が無い状態で ↓ を押すと先頭行が選ばれる。窓化 OFF ではこのとき
+   * **リストがスクロールせず、選んだ行が画面外に居座る**(実測:深く
+   * スクロールした状態で ↓ → 選択は先頭行、scrollTop は 1200 のまま)。
+   * L3-S5 が潰したかった「選んだのに見えない」そのものである。
+   * 窓化 ON は index から位置を計算して寄せるので、選択行が必ず見える。
+   *
+   * ⚠ この差は既存 spec(sidebar-scroll-multi-click scenario D)が
+   *   「drift」として弾いていた ── **正しい挙動を regression と読んでいた**。
+   */
+  test('既定: 選択が画面外へ移ったら、その行が見えるところまで寄る', async ({ page }) => {
+    await seed(page, N);
+    await page.goto('/');
+    await page.waitForSelector('[data-pkc-region="entry-list"] li.pkc-entry-item', { timeout: 20_000 });
+    await page.waitForTimeout(400);
+
+    // 深くスクロールしておく(先頭行は完全に画面外)。
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-pkc-region="entry-list"]') as HTMLElement;
+      el.scrollTop = 1200;
+      el.dispatchEvent(new Event('scroll'));
+    });
+    await page.waitForTimeout(300);
+    const before = await page.evaluate(
+      () => (document.querySelector('[data-pkc-region="entry-list"]') as HTMLElement).scrollTop,
+    );
+    expect(before, '前提: 深くスクロールできていない').toBeGreaterThan(500);
+
+    // 選択が無い状態から ↓ ── 先頭行が選ばれる。
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(400);
+
+    const after = await page.evaluate(() => {
+      const list = document.querySelector('[data-pkc-region="entry-list"]') as HTMLElement;
+      const sel = list.querySelector('[data-pkc-selected="true"][data-pkc-lid]') as HTMLElement | null;
+      if (!sel) return { scrollTop: list.scrollTop, present: false, inView: false };
+      const lr = list.getBoundingClientRect();
+      const sr = sel.getBoundingClientRect();
+      return {
+        scrollTop: list.scrollTop,
+        present: true,
+        inView: sr.top >= lr.top - 1 && sr.bottom <= lr.bottom + 1,
+      };
+    });
+    expect(after.present, '選択行が DOM に居ない').toBe(true);
+    expect(after.inView, '選択行が画面外のまま ── 「選んだのに見えない」').toBe(true);
+    expect(after.scrollTop, '選択行へ寄っていない').toBeLessThan(before);
+  });
+
+  test('明示 OFF: 全件 DOM に戻せる ── 逃げ道が生きている', async ({ page }) => {
+    await seed(page, N);
+    await page.goto(FLAG_OFF);
+    await page.waitForSelector('[data-pkc-region="entry-list"] li.pkc-entry-item', { timeout: 20_000 });
+    await page.locator('[data-pkc-region="entry-list"] li.pkc-entry-item').first().click();
+    await page.waitForTimeout(400);
+    expect(
+      await domRowCount(page),
+      '`?pkc-flag=sidebar.virtual_list=false` で窓化を切れない(戻し道が死んでいる)',
+    ).toBe(N);
     expect(await logicalRowCount(page)).toBe(N);
   });
 });
