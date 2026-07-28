@@ -29,3 +29,7 @@ dist/assets/
 /.*-tmp.ts
 /.*-probe.mjs
 /.*-probe.ts
+
+# L4: デスクトップ単一実行ファイル(102MB)は生成物 ── commit しない
+dist/pkc2-desktop
+dist/pkc2-desktop.exe

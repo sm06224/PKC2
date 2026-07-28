@@ -214,12 +214,36 @@ function handle(req: SqliteRequestBody): unknown {
 
 const html = await Bun.file(htmlAsset).text();
 
+/** 埋め込み HTML と storage を供給する host。**127.0.0.1 のみ**に bind する。 */
+const HOST_VERSION = '1';
+
 const server = Bun.serve({
   port: Number(process.env.PKC2_PORT ?? 0),
   hostname: '127.0.0.1',
   async fetch(req) {
     const url = new URL(req.url);
-    if (url.pathname === '/__storage' && req.method === 'POST') {
+    const selfOrigin = `http://127.0.0.1:${server.port}`;
+
+    /**
+     * 🔴 **同一 origin からのみ storage を触らせる**。
+     *
+     * host は localhost で HTTP を話すので、**別の localhost ページ**(他の
+     * 開発サーバ、悪意あるローカルページ)からも到達しうる。ブラウザは
+     * cross-origin の fetch に必ず `Origin` を付けるので、
+     * 「Origin が無い(same-origin ナビゲーション)か、自分と一致する」
+     * だけを通す。これが無いと**他人のページが user の DB を読める**。
+     */
+    const origin = req.headers.get('origin');
+    const sameOrigin = origin === null || origin === selfOrigin;
+
+    // host の名乗り(page 側の `detectDesktopHost` が読む)。
+    if (url.pathname === '/__pkc/host') {
+      if (!sameOrigin) return new Response('forbidden', { status: 403 });
+      return Response.json({ product: 'pkc2-desktop', version: HOST_VERSION, dbPath: DB_PATH });
+    }
+
+    if (url.pathname === '/__pkc/storage' && req.method === 'POST') {
+      if (!sameOrigin) return new Response('forbidden', { status: 403 });
       try {
         const body = (await req.json()) as SqliteRequestBody;
         return Response.json({ ok: true, result: handle(body) ?? null });
@@ -227,13 +251,42 @@ const server = Bun.serve({
         return Response.json({ ok: false, error: String(err) }, { status: 500 });
       }
     }
+
     if (url.pathname === '/__stats') {
       const m = process.memoryUsage();
       return Response.json({ rssMB: +(m.rss / 1048576).toFixed(1), heapMB: +(m.heapUsed / 1048576).toFixed(1), dbPath: DB_PATH });
     }
+
+    // 終了(harness / webview の window close から叩く)。
+    if (url.pathname === '/__pkc/quit' && req.method === 'POST') {
+      if (!sameOrigin) return new Response('forbidden', { status: 403 });
+      queueMicrotask(() => shutdown(0));
+      return Response.json({ ok: true });
+    }
+
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
   },
 });
+
+/**
+ * 終了処理。**DB を明示的に close する**(user 指示「ライフサイクル後の
+ * 速やかな破棄」)── ネイティブ sqlite は close で page cache ごと OS へ
+ * 返す(実測 RSS 308.1 → 97.5MB)。wasm 版はここが worker terminate という
+ * 重い手段でしか成立しなかった部分である。
+ */
+function shutdown(code: number): never {
+  try {
+    db?.close();
+  } catch {
+    /* 既に閉じている */
+  }
+  db = null;
+  process.exit(code);
+}
+
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, () => shutdown(0));
+}
 
 const origin = `http://127.0.0.1:${server.port}`;
 console.log(`[pkc2-desktop] serving ${origin}  (db: ${DB_PATH})`);

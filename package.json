@@ -30,6 +30,7 @@
   "scripts": {
     "dev": "vite",
     "build:bundle": "node build/scripts/copy-sqlite-wasm.cjs && vite build",
+    "build:desktop": "bun build --compile desktop/pkc2-host.ts --outfile dist/pkc2-desktop",
     "build:release": "tsx build/release-builder.ts",
     "build:manual": "tsx build/manual-builder.ts",
     "build": "npm run build:bundle && npm run build:release",

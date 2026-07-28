@@ -1,4 +1,8 @@
-# サイドバー DOM 仮想化 ── 実装計画(doc-first・user 裁定待ち)
+# サイドバー DOM 仮想化 ── 実装計画 + 実装状況
+
+> ✅ **2026-07-27:user が全項目に GO**。S1〜S5 を実装し、flag
+> `sidebar.virtual_list`(既定 OFF)で有効になる。**S6(既定 ON)は保留** ──
+> 全 smoke を ON で通す実験がまだ完了していない(§7 を見ること)。
 
 > 「仮想化も積む」(user 指示 2026-07-27)
 > 「効果が小さいからやらないではなく、積み上げた先に価値があるなら小さかろうが
@@ -98,3 +102,38 @@ content-visibility の除去とセットになる。
 - メモリ内訳の実測: `storage-wasm-sqlite-design-2026-07.md` §8-4
 - 計測規律: `.claude/skills/perf-measurement/SKILL.md`
 - parity test の書き方: `docs/development/visual-state-parity-testing.md`
+
+## 7. 実装状況(2026-07-27)
+
+| 段階 | 状態 | 実体 |
+|---|---|---|
+| S1 論理行数の計器 | ✅ | `data-pkc-row-count`(`visible-order.ts`) |
+| S2 可視行順序の正本 | ✅ | `visible-order.ts`(`WeakMap<UL, string[]>`)+ 消費側 2 箇所 |
+| S3 行高の一様化 | ✅ | `.pkc-entry-move-btn` の CSS(**選択で 1px ずれるバグの修正**) |
+| S4/S5 窓化 | ✅ | `sidebar-window.ts` + renderer の後処理。flag 既定 OFF |
+| S6 既定 ON | ⏸ 保留 | 全 smoke を flag ON で通す実験が未完 |
+
+### 賞金(entries=3000・同一ビルド・flag だけが違う対照群)
+
+```
+DOM 行数        3,000 → 40
+nodes          27,651 → 1,013
+layoutObjects   4,069 → 708
+jsHeapUsed        8.3 → 7.3 MB    ← JS heap では 1MB しか動かない
+renderer 合計    81.8 → 64.4 MB   ← allocator 内訳(2 系統目)
+  blink_gc       22.4 → 4.3 MB
+```
+
+### §2 の 6 箇所への実際の対応
+
+1・2(範囲選択 / ↑↓ ナビ)は S2 で解消。3・5・6 は**窓の中の行だけを対象に
+すればよい**形(窓外の行は次に窓へ入るとき新しい state で描かれる)。4
+(ensure-visible)は **DOM を見ずに論理 index × 単位行高で scroll する**形に
+変えた ── 窓化中は「DOM に居ない」と「居るが表示範囲外」の両方が起きる。
+
+### 実装で判明した、doc に無かった落とし穴
+
+- **spacer より先に行を remove すると scrollTop がクランプされる**(内容高が
+  一瞬縮む)。spacer を先に伸ばす
+- **scroll 継続性の復元(同期 + rAF + 200ms)が ensure-visible を必ず打ち消す**。
+  ensure-visible が動かした描画では entry-list を復元対象から外す

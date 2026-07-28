@@ -438,6 +438,35 @@ export async function migrateFromInnerIfEmpty(
 export async function createSqliteBackend(
   inner: ContainerStore,
 ): Promise<SqliteBackendResult | null> {
+  // L4: **デスクトップ host が居ればそちらを正本にする**(exe 版)。
+  // 差し替えるのは transport だけ ── schema も op 語彙も共通のまま。
+  // 居なければ従来の worker(wasm + OPFS SAHPool)。
+  const { detectDesktopHost, createHostSqliteRpc } = await import('./host-rpc');
+  const hostInfo = await detectDesktopHost();
+  if (hostInfo) {
+    const hostRpc = createHostSqliteRpc();
+    try {
+      const init = await hostRpc.call<SqliteInitResult>({ op: 'init', dbName: 'pkc2-sqlite' });
+      if (!init.persistent) {
+        console.warn('[PKC2] desktop host が永続 DB を返さない — IDB を継続');
+        hostRpc.dispose();
+        return null;
+      }
+      const store = createSqliteContainerStore(inner, hostRpc);
+      const migrated = await migrateFromInnerIfEmpty(store, inner, hostRpc);
+      (globalThis as unknown as Record<string, unknown>).__pkc2StorageHost = {
+        ...hostInfo,
+        // worker 版と同じ形の計器窓口(harness が backend を判別できる)。
+        kind: 'desktop-host',
+      };
+      return { store, migrated, dispose: () => hostRpc.dispose() };
+    } catch (err) {
+      console.warn('[PKC2] desktop host storage 初期化失敗 — IDB を継続:', err);
+      hostRpc.dispose();
+      return null;
+    }
+  }
+
   const { createManagedSqliteRpc } = await import('./sqlite-client');
   // 破棄 lifecycle 付き RPC(user 指示 2026-07-27): idle が続けば worker ごと
   // 畳み、次の操作で透過的に作り直す。init は最初の call が面倒を見る。

@@ -725,6 +725,11 @@ async function boot(): Promise<void> {
     backend,
     sqlite: sqlite === true,
     migrated,
+    // L4: sqlite の実体が **exe の host プロセス**か **worker(wasm+OPFS)**か。
+    // 両者は同じ op 語彙で動くので、計器が区別できないと「どちらを測ったのか
+    // わからないベンチ」になる。
+    host:
+      (globalThis as unknown as Record<string, unknown>).__pkc2StorageHost !== undefined,
   };
   // 実ブラウザ harness(tests/bench/sqlite-roundtrip.mjs)が store 契約を
   // 直接検証するためのデバッグ導線。製品 UI からは参照しない。

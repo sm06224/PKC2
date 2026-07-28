@@ -1,4 +1,8 @@
-# 単一 exe 版(Bun + webview)── 設計 doc(実装しない・user 裁定待ち)
+# 単一 exe 版(Bun + webview)── 設計 doc + 実装状況
+
+> ✅ **2026-07-27:user が全項目に GO**(「私は全てに GO を出した。出してないのは
+> main 着地だけ」)。§7 の裁定事項は GO として扱い、**案 B(host DB が正本)**で
+> 実装した。実装済みの範囲と、**まだ実装していない範囲**は §10 を見ること。
 
 > 「chrome 系の天使の取り分が大きいのは変わらん。だから、Bun による webview を
 >  使用した単一 exe 版も併せてリリースしたい」(user 指示 2026-07-27)
@@ -148,3 +152,35 @@ webview バインディングは本環境に WebKitGTK が無く未検証。
 - spike: `desktop/pkc2-host.ts`
 - storage 設計: `storage-wasm-sqlite-design-2026-07.md`(§8-4 に allocator 内訳)
 - 計測規律: `.claude/skills/perf-measurement/SKILL.md`
+
+## 10. 実装状況(2026-07-27、user GO を受けて)
+
+### 実装した
+
+| 部位 | 実体 | 検証 |
+|---|---|---|
+| host プロセス | `desktop/pkc2-host.ts`(bun:sqlite・単一 exe 102.7MB) | `tests/bench/desktop-host-roundtrip.mjs` 全 14 チェック |
+| page → host の transport | `src/adapter/platform/storage/sqlite/host-rpc.ts` | `tests/adapter/host-rpc.test.ts` 7 件 |
+| backend 選択 | `createSqliteBackend` が host を検出したらそちらを正本に | `tests/bench/desktop-host-e2e.mjs`(UI で作った entry が host の実ファイルに入り、**host 再起動後も残る**) |
+| 同一 origin 強制 | host が `Origin` を検査(別 origin は 403) | roundtrip §C |
+| 速やかな破棄 | SIGINT/SIGTERM/`/__pkc/quit` で `db.close()` | ── |
+| build | `npm run build:desktop` | 実行ファイルを起動して確認済み |
+
+**schema と RPC 語彙は 1 行も fork していない**(`sqlite-schema.ts` / `sqlite-rpc.ts` を
+そのまま使う)。roundtrip harness は「同じ op・同じ行形」で検証しており、写しを
+作った瞬間に落ちる。実際、実装中に `revCounts` の戻り形で fork を疑う失敗が出たが、
+確認すると **worker 版と同一の行形**が正しく、誤っていたのは harness の期待値だった。
+
+### 実装していない(意図的)
+
+- **webview バインディング**。本環境に WebKitGTK が無く**検証できない**ため、
+  exe は「HTTP で配って URL を出す」ところまで。webview は環境がある側で足す
+- **クロスビルド / 署名 / 更新導線**(§6 の壁は技術ではなく法人適格性)
+- ブラウザ版 ⇄ exe 版の**データ統合**(同じ user が両方使ったときの分岐)。
+  現状は別の DB(ブラウザ = OPFS / exe = ~/.pkc2/pkc2.db)で、**移行導線は無い**
+
+### §2 の「得られないもの」は変わっていない
+
+exe にしても **Windows の WebView2 は Chromium** であり、engine の床は動かない。
+実装したのは §2「得られるもの」側 ── native sqlite の実効能力(`db.close()` が
+即座に OS へ返す / WAL / mmap)と、**user のブラウザと同居しない**配布形態である。
