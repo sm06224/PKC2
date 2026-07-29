@@ -153,3 +153,100 @@ describe('C3-c: 窓化の指揮', () => {
     expect(added - removed, 'listener が積み上がっている').toBe(1);
   });
 });
+
+describe('C3-d: 畳んだ見出しが窓の描き替えを生き延びる', () => {
+  /** 見出し + 段落 5 個 × N 節。閾値を越える量。 */
+  function sectioned(sections = 30): string[] {
+    const out: string[] = [];
+    for (let s = 0; s < sections; s += 1) {
+      out.push(`<h2>節 ${s}</h2>`);
+      for (let i = 0; i < 5; i += 1) out.push(`<p>本文 ${s}-${i}</p>`);
+    }
+    return out;
+  }
+
+  /** 最初の <details> を畳んで toggle を発火(native と同じ形にする)。 */
+  function collapseFirst(host: HTMLElement): HTMLDetailsElement {
+    const d = host.querySelector('details.pkc-heading-fold') as HTMLDetailsElement;
+    d.open = false;
+    d.dispatchEvent(new Event('toggle')); // happy-dom は自動で飛ばさない
+    return d;
+  }
+
+  it('🔴 畳んだ状態が scroll 後も残る(applyHeadingFold は毎回 open で作る)', () => {
+    const { root, scroller, host } = mount({ scrollerHeight: 480 });
+    registerCenterBlockHost(host, sectioned(), applyHeadingFold);
+    finalizeCenterBlockWindows(root);
+
+    collapseFirst(host);
+    expect(
+      (host.querySelector('details.pkc-heading-fold') as HTMLDetailsElement).open,
+      '畳めていない(前提が崩れている)',
+    ).toBe(false);
+
+    // 少しスクロールして窓を描き替える
+    scroller.scrollTop = 200;
+    scroller.dispatchEvent(new Event('scroll'));
+
+    const first = host.querySelector('details.pkc-heading-fold') as HTMLDetailsElement | null;
+    if (first && first.querySelector('summary')?.textContent === '節 0') {
+      expect(first.open, '窓の描き替えで畳みが開いた').toBe(false);
+    }
+  });
+
+  it('🔴 畳んだセクションの中身は DOM に入れない(見えないものに払わない)', () => {
+    const { root, host } = mount({ scrollerHeight: 480 });
+    registerCenterBlockHost(host, sectioned(), applyHeadingFold);
+    finalizeCenterBlockWindows(root);
+    const before = host.querySelectorAll('p').length;
+    expect(before, '前提: 本文が入っていない').toBeGreaterThan(0);
+
+    collapseFirst(host);
+    expect(
+      host.textContent,
+      '畳んだセクションの本文がまだ DOM に居る',
+    ).not.toContain('本文 0-0');
+    expect(host.textContent, '見出し自身まで消えた').toContain('節 0');
+  });
+
+  it('🔴 畳むと総高が縮む(spacer が嘘をつかない)', () => {
+    const { root, host } = mount({ scrollerHeight: 480 });
+    registerCenterBlockHost(host, sectioned(), applyHeadingFold);
+    finalizeCenterBlockWindows(root);
+    const before = parseFloat(host.style.minHeight);
+
+    collapseFirst(host);
+    const after = parseFloat(host.style.minHeight);
+    expect(after, `畳んでも総高が変わらない(${before} → ${after})`).toBeLessThan(before);
+  });
+
+  it('開き直すと中身が戻る', () => {
+    const { root, host } = mount({ scrollerHeight: 480 });
+    registerCenterBlockHost(host, sectioned(), applyHeadingFold);
+    finalizeCenterBlockWindows(root);
+    collapseFirst(host);
+    expect(host.textContent).not.toContain('本文 0-0');
+
+    // ⚠ 畳んだ時点で窓を描き替えているので、**その時掴んだ `<details>` は
+    //   もう DOM に居ない**。user がクリックするのは描き直された後の要素。
+    //   古い参照に対する toggle は(意図どおり)無視される。
+    const fresh = [...host.querySelectorAll('details.pkc-heading-fold')]
+      .find((d) => d.querySelector('summary')?.textContent === '節 0') as HTMLDetailsElement;
+    expect(fresh, '畳んだ見出しが画面から消えている').toBeTruthy();
+    fresh.open = true;
+    fresh.dispatchEvent(new Event('toggle'));
+    expect(host.textContent, '開き直しても本文が戻らない').toContain('本文 0-0');
+  });
+
+  it('復元の往復で無限に描き直さない(open を書き戻しても収束する)', () => {
+    const { root, host } = mount({ scrollerHeight: 480 });
+    registerCenterBlockHost(host, sectioned(), applyHeadingFold);
+    finalizeCenterBlockWindows(root);
+    collapseFirst(host);
+    // 復元由来の toggle をもう一度流しても、状態が同じなら何も起きない
+    const before = host.innerHTML;
+    const d = host.querySelector('details.pkc-heading-fold') as HTMLDetailsElement;
+    d.dispatchEvent(new Event('toggle'));
+    expect(host.innerHTML, '同じ状態の toggle で描き直している').toBe(before);
+  });
+});

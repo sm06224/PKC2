@@ -62,6 +62,14 @@ export interface BlockMetrics {
   readonly heights: readonly (number | null)[];
   /** 未測定ブロックに使う推定高。実測の中央値、無ければ既定値。 */
   readonly estimate: number;
+  /**
+   * 畳んだ見出しの中に隠れているブロック(C3-d)。**高さ 0 として扱う**。
+   *
+   * これが無いと、user が `<details>` を畳んだ瞬間に「累積オフセットは
+   * 全ブロックぶんあるのに画面は縮んでいる」状態になり、窓の index と
+   * 画面が食い違う ── 例外も test failure も出ない壊れ方をする。
+   */
+  readonly hidden: ReadonlySet<number>;
 }
 
 /** 全ブロック未測定の状態を作る。 */
@@ -70,6 +78,7 @@ export function makeBlockMetrics(count: number): BlockMetrics {
     count: Math.max(0, count),
     heights: new Array<number | null>(Math.max(0, count)).fill(null),
     estimate: CENTER_BLOCK_DEFAULT_ESTIMATE,
+    hidden: new Set<number>(),
   };
 }
 
@@ -103,16 +112,18 @@ export function withMeasured(
     count: metrics.count,
     heights,
     estimate: median(known) ?? CENTER_BLOCK_DEFAULT_ESTIMATE,
+    hidden: metrics.hidden,
   };
 }
 
-/** 幅が変わった等で全部測り直すとき。件数は保つ。 */
+/** 幅が変わった等で全部測り直すとき。件数と畳み状態は保つ。 */
 export function invalidateMeasurements(metrics: BlockMetrics): BlockMetrics {
-  return makeBlockMetrics(metrics.count);
+  return { ...makeBlockMetrics(metrics.count), hidden: metrics.hidden };
 }
 
-/** index のブロックの高さ(実測が無ければ推定)。 */
+/** index のブロックの高さ(畳まれていれば 0、実測が無ければ推定)。 */
 export function heightOf(metrics: BlockMetrics, index: number): number {
+  if (metrics.hidden.has(index)) return 0;
   return metrics.heights[index] ?? metrics.estimate;
 }
 
@@ -212,4 +223,64 @@ export function scrollOffsetForBlock(
     return Math.max(0, bottom - viewportHeight);
   }
   return null; // 既に見えている ── 動かさない(震え防止)
+}
+
+/**
+ * ブロックが見出しなら 1〜6、そうでなければ 0(C3-d、2026-07-28)。
+ *
+ * ブロック HTML の**先頭タグ**だけを見る。本文中に出てくる `<h2>`
+ * (表の中など)を拾わないよう、必ず先頭に錨を打つ。
+ */
+export function headingLevelOfBlock(html: string): number {
+  const m = /^\s*<h([1-6])[\s>]/i.exec(html);
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * ブロック配列の見出し構造(C3-d)。
+ *
+ * `applyHeadingFold` は「次の同レベル以上の見出しまで」を 1 セクションにする。
+ * **同じ判定をブロック配列の上でやる** ── ここがズレると、畳んだセクションと
+ * 隠すブロックが食い違い、窓の index と画面が静かに食い違う
+ * (サイドバー窓化の `flattenDisplayTree` と同じ規律)。
+ */
+export interface BlockOutline {
+  /** 各ブロックの見出しレベル(0 = 見出しでない)。 */
+  readonly levels: readonly number[];
+}
+
+export function computeBlockOutline(blocks: readonly string[]): BlockOutline {
+  return { levels: blocks.map(headingLevelOfBlock) };
+}
+
+/**
+ * 畳まれた見出し(block index の集合)から、**隠れるブロック**を出す。
+ *
+ * 見出し自身は隠れない(`<summary>` として残る)。入れ子の見出しは、
+ * 外側が畳まれていれば一緒に隠れる。
+ */
+export function hiddenBlocks(
+  outline: BlockOutline,
+  collapsed: ReadonlySet<number>,
+): Set<number> {
+  const hidden = new Set<number>();
+  const { levels } = outline;
+  for (const head of collapsed) {
+    const level = levels[head] ?? 0;
+    if (level === 0) continue; // 見出しでない index は無視(壊れた入力)
+    for (let i = head + 1; i < levels.length; i += 1) {
+      const l = levels[i]!;
+      if (l > 0 && l <= level) break; // 同レベル以上の見出し = セクションの終わり
+      hidden.add(i);
+    }
+  }
+  return hidden;
+}
+
+/** 隠れているブロックを差し替えた metrics(高さは保持 ── 開いたら戻る)。 */
+export function withHidden(
+  metrics: BlockMetrics,
+  hidden: ReadonlySet<number>,
+): BlockMetrics {
+  return { ...metrics, hidden };
 }

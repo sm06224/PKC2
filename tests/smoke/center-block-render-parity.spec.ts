@@ -237,3 +237,50 @@ test('C3: 既定では flag が OFF(opt-in である)', async ({ page }) => {
   // 計器が無い環境では null。その場合は「ON になっていない」ことだけ見る。
   expect(value === null || value === false, `既定で ON になっている(${String(value)})`).toBe(true);
 });
+
+test('C3-d: 畳んだ見出しはスクロールしても開かない', async ({ page }) => {
+  await seed(page, makeBody());
+  await open(page, ON);
+
+  // 先頭の見出しセクションを畳む(native <details> のクリック)
+  const summary = page.locator('.pkc-md-rendered summary.pkc-heading-fold-summary').first();
+  await expect(summary).toBeVisible();
+  const label = ((await summary.textContent()) ?? '').trim();
+  await summary.click();
+  await page.waitForTimeout(200);
+
+  const collapsedNow = await page.evaluate((t) => {
+    const d = [...document.querySelectorAll('details.pkc-heading-fold')]
+      .find((x) => (x.querySelector('summary')?.textContent ?? '').trim() === t);
+    return d ? !(d as HTMLDetailsElement).open : null;
+  }, label);
+  expect(collapsedNow, '前提: 畳めていない').toBe(true);
+
+  // 🔴 **窓が実際に描き替わったこと**を確かめてから畳みを見る。
+  //   少ししか動かないと窓が据え置きになり、この test は何も pin しなくなる。
+  const before = await page.evaluate(
+    () => document.querySelector('.pkc-md-rendered')?.innerHTML ?? '',
+  );
+  await page.evaluate(() => {
+    const s = document.querySelector('.pkc-center-content');
+    if (s) s.scrollTop = s.clientHeight * 3;
+  });
+  await page.waitForTimeout(400);
+  const moved = await page.evaluate(
+    () => document.querySelector('.pkc-md-rendered')?.innerHTML ?? '',
+  );
+  expect(moved, '前提: スクロールしても窓が描き替わっていない').not.toBe(before);
+
+  await page.evaluate(() => {
+    const s = document.querySelector('.pkc-center-content');
+    if (s) s.scrollTop = 0;
+  });
+  await page.waitForTimeout(400);
+
+  const stillCollapsed = await page.evaluate((t) => {
+    const d = [...document.querySelectorAll('details.pkc-heading-fold')]
+      .find((x) => (x.querySelector('summary')?.textContent ?? '').trim() === t);
+    return d ? !(d as HTMLDetailsElement).open : null;
+  }, label);
+  expect(stillCollapsed, '窓の描き替えで畳みが開いた').toBe(true);
+});

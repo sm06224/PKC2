@@ -383,13 +383,43 @@ pin: `tests/adapter/center-block-dom.test.ts`(fold 後も引ける / spacer の�
 `tests/smoke/center-block-render-parity.spec.ts`(実ブラウザ ── 末尾到達 /
 scroll が飛ばない / 先頭の中身一致)。
 
-### 7-d. C3 の既知の穴(既定 ON の前に塞ぐ)
+### 7-d'. C3-d ── 畳んだ見出しと窓化は**必ずセットで**入れる(着地済み)
 
-1. **`<details>` の開閉状態が窓の描き替えで戻る**。fold 状態は元々 runtime のみ
-   (再 render でリセット)だが、窓化は**スクロールで再 render を増やす**ので
-   「畳んだのに開く」が起きやすくなる。畳んだ見出しの記録と復元が要る
-2. **畳んだセクションの中の高さを推定のままにしている**。`measureVisibleBlockHeights`
-   は見えないものを測らないので嘘は入らないが、spacer は過大になる
+C3-c 直後に残った穴 1・2 は、**片方だけ直すと壊れる**関係にあった。
+
+- `applyHeadingFold` は毎回 `details.open = true` で作り直すので、窓を描き替える
+  たびに「畳んだのに開く」(穴 1)
+- ではと畳み状態を保つと、今度は**累積オフセットが嘘になる** ── 畳んだセクションは
+  画面上 0px なのに metrics は全ブロックぶんの高さを持ったまま。窓の index と画面が
+  食い違い、**例外も test failure も出ない**(穴 2)
+- **穴 1 が穴 2 を隠していた**。畳みが毎回開いていたので、嘘のオフセットが表に
+  出る時間が無かった。1 だけ直すと 2 が露見する
+
+よって C3-d は次を一体で入れた:
+
+1. `computeBlockOutline` / `hiddenBlocks` ── **ブロック配列の上で** `applyHeadingFold`
+   と同じセクション判定をする(「次の同レベル以上の見出しまで」)。ここがズレると
+   畳んだ範囲と隠すブロックが食い違う(サイドバーの `flattenDisplayTree` と同じ規律)
+2. `BlockMetrics.hidden` ── 隠れたブロックは**高さ 0**。実測値は捨てないので
+   開き直せば戻る
+3. 畳まれたセクションの中身は**そもそも DOM に入れない**(見えないものに払わない)
+4. `toggle` は**バブルしない**ので capture で拾う。復元で `open` を書き戻すと
+   `toggle` が非同期に飛ぶが、ハンドラは「今の open と記録が同じなら何もしない」
+   ので往復しても収束する
+
+pin: `tests/adapter/center-block-window.test.ts`(セクション判定 / 高さ 0 / 開き直し)、
+`tests/adapter/center-block-controller.test.ts`(畳みが scroll を生き延びる /
+中身を入れない / 総高が縮む / 往復が収束する)、
+`tests/smoke/center-block-render-parity.spec.ts`(実ブラウザ ── **窓が実際に
+描き替わったことを確かめてから**畳みを見る)。
+
+⚠ pin の効きは**外して確認済み**:復元を消すと 2 件、`hidden` の反映を消すと
+3 件が落ちる。
+
+### 7-d. C3 の残る穴(既定 ON の前に塞ぐ)
+
+1. ~~`<details>` の開閉状態が窓の描き替えで戻る~~ → **C3-d で解決**(§7-d')
+2. ~~畳んだセクションの中の高さが推定のまま~~ → **C3-d で解決**(§7-d')
 3. **窓に入るたび mermaid を描き直す**。`hydrate` は窓の描き替えごとに走る
    ── C4(ブロック単位 render cache)がそのまま効く場所
 4. 🔴 **ブロック HTML の配列を host に持ち続けている**(= 実質 T1 キャッシュ)。

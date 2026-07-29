@@ -12,14 +12,18 @@ import { describe, expect, it } from 'vitest';
 import {
   CENTER_BLOCK_DEFAULT_ESTIMATE,
   CENTER_BLOCK_MIN_BLOCKS,
+  computeBlockOutline,
   computeBlockWindow,
   cumulativeOffsets,
+  headingLevelOfBlock,
   heightOf,
+  hiddenBlocks,
   invalidateMeasurements,
   makeBlockMetrics,
   scrollOffsetForBlock,
   shouldWindowBlocks,
   totalHeight,
+  withHidden,
   withMeasured,
 } from '@adapter/ui/center-block-window';
 
@@ -159,5 +163,83 @@ describe('C3-a: 発動条件', () => {
     expect(shouldWindowBlocks(CENTER_BLOCK_MIN_BLOCKS - 1)).toBe(false);
     expect(shouldWindowBlocks(CENTER_BLOCK_MIN_BLOCKS)).toBe(true);
     expect(shouldWindowBlocks(0)).toBe(false);
+  });
+});
+
+describe('C3-d: 畳んだ見出しの扱い', () => {
+  const BLOCKS = [
+    '<h1>タイトル</h1>',   // 0
+    '<p>前書き</p>',        // 1
+    '<h2>節 A</h2>',        // 2
+    '<p>A-1</p>',           // 3
+    '<h3>小節 A-a</h3>',    // 4
+    '<p>A-a-1</p>',         // 5
+    '<h2>節 B</h2>',        // 6
+    '<p>B-1</p>',           // 7
+  ];
+
+  it('見出しレベルはブロック HTML の先頭タグだけで決める', () => {
+    expect(headingLevelOfBlock('<h2>x</h2>')).toBe(2);
+    expect(headingLevelOfBlock('  <h6 id="a">x</h6>')).toBe(6);
+    expect(headingLevelOfBlock('<p>x</p>')).toBe(0);
+    // 🔴 本文中の <h2>(表の中など)を見出しと誤認しない
+    expect(headingLevelOfBlock('<table><tr><td><h2>x</h2></td></tr></table>')).toBe(0);
+    expect(headingLevelOfBlock('<h7>x</h7>')).toBe(0);
+  });
+
+  it('セクションは「次の同レベル以上の見出しまで」(fold と同じ判定)', () => {
+    const outline = computeBlockOutline(BLOCKS);
+    // h2「節 A」を畳む → A-1 / 小節 A-a / A-a-1 が隠れる。節 B は隠れない
+    expect([...hiddenBlocks(outline, new Set([2]))].sort((a, b) => a - b)).toEqual([3, 4, 5]);
+    // h3「小節 A-a」を畳む → A-a-1 だけ
+    expect([...hiddenBlocks(outline, new Set([4]))]).toEqual([5]);
+    // h1 を畳む → 以降すべて
+    expect([...hiddenBlocks(outline, new Set([0]))].sort((a, b) => a - b))
+      .toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('見出しでない index を渡しても壊れない', () => {
+    const outline = computeBlockOutline(BLOCKS);
+    expect(hiddenBlocks(outline, new Set([1, 99])).size).toBe(0);
+  });
+
+  it('🔴 隠れたブロックは高さ 0 ── 累積オフセットが画面と一致する', () => {
+    const outline = computeBlockOutline(BLOCKS);
+    let m = makeBlockMetrics(BLOCKS.length);
+    m = withMeasured(m, new Map([[3, 100], [4, 100], [5, 100]]));
+    const openTotal = totalHeight(m);
+    m = withHidden(m, hiddenBlocks(outline, new Set([2])));
+    expect(totalHeight(m), '畳んでも総高が変わっていない').toBe(openTotal - 300);
+    expect(heightOf(m, 3)).toBe(0);
+    expect(heightOf(m, 2), '見出し自身は隠れない(summary として残る)').not.toBe(0);
+  });
+
+  it('開き直すと実測値が戻る(捨てていない)', () => {
+    const outline = computeBlockOutline(BLOCKS);
+    let m = withMeasured(makeBlockMetrics(BLOCKS.length), new Map([[3, 100]]));
+    m = withHidden(m, hiddenBlocks(outline, new Set([2])));
+    expect(heightOf(m, 3)).toBe(0);
+    m = withHidden(m, hiddenBlocks(outline, new Set()));
+    expect(heightOf(m, 3), '開き直しても高さを測り直させている').toBe(100);
+  });
+
+  it('畳んだぶんは窓の計算からも外れる', () => {
+    const outline = computeBlockOutline(BLOCKS);
+    let m = withMeasured(
+      makeBlockMetrics(BLOCKS.length),
+      new Map([[0, 40], [1, 40], [2, 40], [3, 1000], [4, 40], [5, 1000], [6, 40], [7, 40]]),
+    );
+    const openEnd = computeBlockWindow({ metrics: m, scrollTop: 0, viewportHeight: 200, overscan: 0 }).end;
+    m = withHidden(m, hiddenBlocks(outline, new Set([2])));
+    const foldedEnd = computeBlockWindow({ metrics: m, scrollTop: 0, viewportHeight: 200, overscan: 0 }).end;
+    expect(openEnd, '前提: 開いていれば大きなブロックで窓が止まる').toBeLessThan(BLOCKS.length);
+    expect(foldedEnd, '畳んでも窓が伸びていない ── 画面に穴があく').toBeGreaterThan(openEnd);
+  });
+
+  it('測り直しても畳み状態は保つ(幅変更などで消えない)', () => {
+    const outline = computeBlockOutline(BLOCKS);
+    let m = withHidden(makeBlockMetrics(BLOCKS.length), hiddenBlocks(outline, new Set([2])));
+    m = invalidateMeasurements(m);
+    expect(heightOf(m, 3), '再計測で畳み状態が飛んだ').toBe(0);
   });
 });
