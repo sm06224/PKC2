@@ -14,8 +14,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
-  MERMAID_RASTER_MAX_AREA,
   MERMAID_RASTER_MIN_ELEMENTS,
+  fitsInViewport,
   isRasterUpToDate,
   rasterizeMermaidWrap,
 } from '@adapter/ui/mermaid-raster';
@@ -86,22 +86,61 @@ describe('C6-a: 変換する条件', () => {
     expect(await rasterizeMermaidWrap(wrap)).toBe(false);
   });
 
-  it('🔴 面積が上限を超える図は変換しない(ラスタのほうがメモリを食う)', async () => {
-    // 実測: 260×6310(1.64M 画素)は blink_gc −1.7 に対し cc +4.5 で差引 +2.8MB。
-    // 「大きい図こそ効きそう」は直感の罠 ── 面積で切る。
+  /**
+   * 🔴 **「false が返る」では pin にならない**(2026-07-29、ガードチェックで発覚)。
+   *
+   * happy-dom には canvas が無いので、足切りが有っても無くても `false` が返る
+   * ── 足切りを丸ごと消しても 13 件全部 pass した。**空振りの pin** である。
+   *
+   * そこで**観測点を変える**:足切りで弾かれたなら **canvas を作らない**。
+   * `document.createElement('canvas')` が呼ばれたかどうかで経路を見分ける。
+   */
+  function canvasCreations(fn: () => Promise<unknown>): Promise<number> {
+    let n = 0;
+    const spy = vi.spyOn(document, 'createElement').mockImplementation(
+      ((tag: string) => {
+        if (tag === 'canvas') n += 1;
+        return Document.prototype.createElement.call(document, tag);
+      }) as never,
+    );
+    return fn().then(() => { spy.mockRestore(); return n; });
+  }
+
+  it('🔴 viewport に収まらない図は canvas すら作らない(= 足切りが効いている)', async () => {
+    // 実測: 260×6310 は縮小しても SVG を下回らない(中間 decode が内在サイズ)。
     const wrap = wrapWith(heavy, 260, 6310);
-    expect(260 * 6310, '前提: 上限を超える fixture になっていない').toBeGreaterThan(MERMAID_RASTER_MAX_AREA);
-    expect(await rasterizeMermaidWrap(wrap), '巨大な図を変換しようとした').toBe(false);
+    const n = await canvasCreations(() => rasterizeMermaidWrap(wrap));
+    expect(n, '巨大な図で変換処理に入っている(足切りが効いていない)').toBe(0);
     expect(wrap.querySelector('svg'), 'SVG が残っていない').not.toBeNull();
   });
 
-  it('上限内の図は変換に入る(happy-dom では canvas が無いので false で返る)', async () => {
+  it('viewport に収まる図は変換処理に入る(canvas を作る)', async () => {
     const wrap = wrapWith(heavy, 800, 600);
-    expect(800 * 600).toBeLessThan(MERMAID_RASTER_MAX_AREA);
-    // ここで見たいのは「足切りで弾かれていない」こと。canvas が無いので結果は
-    // false だが、**SVG が残っている**ことと合わせて経路に入ったと判断する。
-    expect(await rasterizeMermaidWrap(wrap)).toBe(false);
-    expect(wrap.querySelector('svg')).not.toBeNull();
+    const n = await canvasCreations(() => rasterizeMermaidWrap(wrap));
+    expect(n, '収まる図なのに変換処理へ入っていない').toBeGreaterThan(0);
+  });
+});
+
+describe('C6-a: 損得の境界は「viewport に収まるか」', () => {
+  it('収まる図は true', () => {
+    expect(fitsInViewport(800, 600, 1400, 900)).toBe(true);
+    expect(fitsInViewport(1400, 900, 1400, 900), 'ちょうど 1 画面が false になっている').toBe(true);
+  });
+
+  it('🔴 収まらない図は false', () => {
+    expect(fitsInViewport(260, 6310, 1400, 900), '縦に長い図を通してしまう').toBe(false);
+    expect(fitsInViewport(4000, 3000, 1400, 900)).toBe(false);
+  });
+
+  it('🔴 viewport が測れないなら false(測れないものを変換しない)', () => {
+    expect(fitsInViewport(100, 100, 0, 0)).toBe(false);
+    expect(fitsInViewport(100, 100, 1400, 0)).toBe(false);
+  });
+
+  it('判定は面積の絶対値ではない ── 大きい画面なら大きい図も通る', () => {
+    // 同じ図が、狭い画面では false・広い画面では true になる
+    expect(fitsInViewport(1600, 1000, 1400, 900)).toBe(false);
+    expect(fitsInViewport(1600, 1000, 2560, 1440)).toBe(true);
   });
 });
 

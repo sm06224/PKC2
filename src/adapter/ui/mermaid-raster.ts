@@ -35,29 +35,58 @@
 export const MERMAID_RASTER_MIN_ELEMENTS = 200;
 
 /**
- * 🔴 **ラスタ化してよい表示面積の上限(画素)**。これを超える図は SVG のまま。
+ * 🔴 **ラスタ化してよいのは viewport に収まる図だけ**(2026-07-29、実測で確定)。
  *
- * ## なぜ要るか(実測。初稿の「メモリは減らない」を撤回した理由)
+ * ## 損得の境界は「面積の絶対値」ではなく「viewport に収まるか」
  *
- * ラスタ化の収支は**図の形で符号が変わる**。3 回反復の中央値:
+ * 決め手は **SVG が既に「見えている分だけ焼く」機構を持っている**ことである。
+ * compositor は SVG を**可視タイルだけ**ラスタする。ラスタ化はその機構を
+ * **捨てて全体を焼く**行為なので:
  *
- * | 図 | 表示画素 | blink_gc | cc | 差引 |
- * |---|---|---|---|---|
- * | 縦長 260×6310 | 1.64M | −1.7 MB | **+4.5 MB** | **+2.8 MB(損)** |
- * | 横長 866×6 | 0.01M | −2.0 MB | ±0.0 MB | **−2.0 MB(得)** |
+ * - 図が viewport **より大きい** → SVG の利点が効く。ラスタは必ず負ける
+ * - 図が viewport **に収まる** → 「見えている分」= 「全体」で SVG の利点が消え、
+ *   DOM が減るぶんラスタが勝つ(実測 blink_gc −1.8MB / 要素 898 → 13)
  *
- * 機構: **`<img>` は図全体の展開後ビットマップを持つ**が、SVG は compositor が
- * 見えているタイルだけラスタする。よって **cc の増分は画素面積にほぼ比例**し
- * (実測 ≒ 2.7 B/画素)、**blink_gc の節約(≒ 2MB)は要素数で決まり面積に依らない**。
+ * ## 縮小してもダメだった(user 提起②への回答)
  *
- * 損益分岐は 2MB ÷ 2.7 B/画素 ≒ **0.74M 画素**。安全側に倒して **0.5M 画素**
- * (例 1000×500 / 800×620)を上限にする ── 画面に収まる図はほぼ入り、
- * 「縦に延々と続く図」だけが除外される。
+ * 「canvas を定めずに無制限にレスポンシブさせるからメモリを食う」という診断は
+ * **正しい**。上限画素を振ると renderer USS は単調に下がる:
  *
- * ⚠ この値は**実測から出した**ものであって理屈だけの値ではない。
- *   変えるときは `tests/bench/mermaid-raster-probe.mjs` を回し直すこと。
+ * | ラスタ寸法 | renderer USS(svg 比) |
+ * |---|---|
+ * | 260×6310(内在) | +18.2 MB |
+ * | 144×3483 | +7.7 MB |
+ * | 72×1742 | +6.4 MB |
+ * | 36×871 | **+5.1 MB** |
+ *
+ * **しかしどこまで縮めても SVG を下回らない。** 理由は 2 つ:
+ *   1. 出力を縮めても **中間の `img.decode()` は SVG の内在サイズのまま**
+ *      展開する(この実装も含め、縮小は `drawImage` の段でしか効かない)
+ *   2. PNG blob / canvas / エンコードの固定費が乗る
+ *
+ * ⇒ **大きい図はラスタ化しない**。縮小して延命する道は無い。
+ *
+ * ## 倍率
+ *
+ * 1.0 = 「viewport に収まる図だけ」。1 画面に収まらない図は、そもそも
+ * user がスクロールして見るものであり、SVG のタイル描画が正しい。
  */
-export const MERMAID_RASTER_MAX_AREA = 500_000;
+export const MERMAID_RASTER_VIEWPORT_FACTOR = 1;
+
+/**
+ * ラスタ化してよいか(純関数)。viewport が測れなければ **false**
+ * ── 測れないものを変換しない(この製品の計測規律と同じ向き)。
+ */
+export function fitsInViewport(
+  cssW: number,
+  cssH: number,
+  viewW: number,
+  viewH: number,
+  factor = MERMAID_RASTER_VIEWPORT_FACTOR,
+): boolean {
+  if (!(viewW > 0) || !(viewH > 0)) return false;
+  return cssW * cssH <= viewW * viewH * factor;
+}
 
 /**
  * `<img>` に付ける印。
@@ -95,9 +124,9 @@ export async function rasterizeMermaidWrap(wrap: HTMLElement): Promise<boolean> 
   if (!(cssW > 0) || !(cssH > 0)) return false;
   if (isRasterUpToDate(wrap, cssW)) return true;
   if (svg.querySelectorAll('*').length < MERMAID_RASTER_MIN_ELEMENTS) return false;
-  // 🔴 面積で足切りする。超える図は**ラスタ化しないほうがメモリが少ない**
-  //   (上の表を参照)。「大きい図こそ効きそう」は直感の罠だった。
-  if (cssW * cssH > MERMAID_RASTER_MAX_AREA) return false;
+  // 🔴 viewport に収まる図だけ変換する。超える図は SVG のタイル描画のほうが
+  //   軽い(上の doc を参照)。「大きい図こそ効きそう」は直感の罠だった。
+  if (!fitsInViewport(cssW, cssH, view.innerWidth, view.innerHeight)) return false;
 
   const scale = view.devicePixelRatio || 1;
 
