@@ -23,22 +23,33 @@
  * 🔴 1 試行 = 1 ブラウザ、腕は交互、最初と最後に同じ腕を置いてドリフトを出す
  *    (C6-a で「1 ブラウザで順に回して累積を見ていた」失敗を踏んだため)。
  *
- * ## 🔴 現状:**未完成**。contact sheet を開く経路がまだ当たっていない
+ * ## 🔴 現状:**この環境では測れない**(原因は特定済み)
  *
- * 2 回試して 2 回とも `表示された画像 0 枚` = **腕が無効**のまま。
- * `?pkc-filer=contact-sheet` も `__pkc2Dispatch` も view-mode ボタンの実クリックも
- * 効いていない。**この状態の数字は使ってはいけない**(renderer USS の差 28.8MB は
- * 画像の decode ではなく asset バイト列の差でしかない)。
+ * 3 回「経路が違うのだろう」と当て推量で直して 3 回とも `表示された画像 0 枚`。
+ * 4 回目に**推測をやめて画面の中身を dump** したら、一発で分かった:
  *
- * 観測点(`shown === 0` なら「この腕は無効」と印字)がそれを検出している。
- * **次にやること**は数字を増やすことではなく、**contact sheet を開く正しい導線を
- * 特定すること**:
- *   - `tests/smoke/contact-sheet-object-fit-parity.spec.ts` が実際に開けている
- *     ので、その seed と操作をそのまま持ってくる(推測しない)
- *   - profile の auto-detect(画像 7 割)が effective になる条件も要確認
+ *     phase=ready viewMode=null sidebarRows=5 folderRow=1
+ *     filerGrid=1 filerCards=4 thumbs=4
+ *     gridClass="pkc-filer-grid pkc-filer-grid-contact-sheet" scopeLid="fld"
  *
- * ⚠ **当て推量で経路を変えて数字だけ眺める、を繰り返さない。**
- *   本セッションで最も高くついた失敗がそれだった。
+ * **contact sheet は正しく開いていた。** 導線は最初から合っていた。
+ * 0 だったのは `.pkc-filer-card-thumb` の中に `img` が**生成されない**から
+ * ── `pickImageAssetForEntry` が null を返し、アイコンの fallback
+ * (`pkc-filer-card-thumb-fallback`)になっている。
+ *
+ * つまり **IDB に inline で入れた `container.assets` が描画時に解決されない**。
+ * そして重要なのは、これが**この branch の問題ではない**こと:
+ * `tests/smoke/contact-sheet-object-fit-parity.spec.ts` は
+ * **main でも dev でも落ちている**(既存 39 件の失敗のひとつ)。
+ * 本 probe はその根本原因を独立に再現しただけである。
+ *
+ * ⇒ **C6-b の計測は、この既存の失敗を先に解くまで成立しない。**
+ *    順序は「画像が出ない既存問題の hotfix」→「C6-b の計測」→「実装」。
+ *    CLAUDE.md PR 運用 3(既存問題は別 hotfix)に従い、本 branch では触らない。
+ *
+ * ⚠ **教訓**: 3 回目の空振りの前に dump すべきだった。
+ *   「経路が違うのだろう」は仮説であって、確かめずに直し続けたのが誤り。
+ *   **観測点が 0 を返したら、次の一手は修正ではなく観察。**
  *
  * 使い方: node tests/bench/contact-sheet-thumb-probe.mjs [--images=40] [--px=1600] [--repeat=2]
  */
@@ -104,7 +115,7 @@ async function trial(arm) {
   try {
     const ctx = await b.newContext({ viewport: { width: 1400, height: 900 } });
     const page = await ctx.newPage();
-    await page.goto(URL_);
+    await page.goto(`${URL_}?pkc-flag=sidebar.mode=tree`);
     await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 120000 });
     await page.waitForTimeout(800);
 
@@ -138,7 +149,16 @@ async function trial(arm) {
         return cv.toDataURL('image/png');
       }
       const assets = {};
-      const entries = [];
+      const T0 = '2026-07-01T00:00:00.000Z';
+      // 🔴 contact-sheet は **フォルダの frontmatter `display_profile_kind`** で
+      //   決まり、中身は **structural relation** でぶら下げる。
+      //   root に平置きしても開かない(初稿の 0 枚の原因)。
+      const entries = [{
+        lid: 'fld', title: '写真フォルダ', archetype: 'folder',
+        body: '---\ndisplay_profile_kind: contact-sheet\n---\n',
+        created_at: T0, updated_at: T0,
+      }];
+      const relations = [];
       let fullBytes = 0; let usedBytes = 0;
       for (let i = 0; i < n; i += 1) {
         const orig = makePng(px, i + 1);
@@ -151,20 +171,26 @@ async function trial(arm) {
         assets[key] = use.slice(use.indexOf(',') + 1);
         entries.push({
           lid: `img${i}`, title: `写真 ${i}`, archetype: 'attachment',
-          body: JSON.stringify({ mime: 'image/png', asset_key: key, name: `p${i}.png` }),
-          created_at: '2026-07-01T00:00:00.000Z', updated_at: '2026-07-01T00:00:00.000Z',
+          body: JSON.stringify({ mime: 'image/png', asset_key: key, name: `p${i}.png`, size: 100 }),
+          created_at: T0, updated_at: T0,
+        });
+        relations.push({
+          id: `r${i}`, from: 'fld', to: `img${i}`, kind: 'structural',
+          created_at: T0, updated_at: T0,
         });
       }
       const T = '2026-07-01T00:00:00.000Z';
       const cont = {
         meta: { container_id: 'cs', title: 'cs', created_at: T, updated_at: T, schema_version: 1 },
-        entries, relations: [], revisions: [], assets,
+        entries, relations, revisions: [], assets,
       };
       const db = await new Promise((res, rej) => { const rq = indexedDB.open('pkc2'); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
       await new Promise((res, rej) => {
-        const t = db.transaction(['containers'], 'readwrite');
-        const s = t.objectStore('containers'); s.clear();
-        s.put(cont, 'cs'); s.put('cs', '__default__');
+        const t = db.transaction(['containers', 'assets'], 'readwrite');
+        t.objectStore('containers').clear();
+        t.objectStore('assets').clear();
+        t.objectStore('containers').put(cont, 'cs');
+        t.objectStore('containers').put('cs', '__default__');
         t.oncomplete = () => res(); t.onerror = () => rej(t.error);
       });
       db.close();
@@ -177,21 +203,42 @@ async function trial(arm) {
     //   実際の導線は **view-mode ボタンを実クリック**である。
     //   profile は auto-detect(画像が 7 割以上なら contact-sheet)なので、
     //   全件画像の fixture なら自動で contact-sheet になる。
-    await page.goto(URL_);
+    await page.goto(`${URL_}?pkc-flag=sidebar.mode=tree`);
     await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 120000 });
-    await page.waitForTimeout(600);
-    const btn = page.locator('[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]').first();
-    if (await btn.count() > 0) {
-      await btn.click();
-    } else {
-      // ボタンが見つからない構成では keymap(Alt+4 = filer)へ落ちる
-      await page.keyboard.press('Alt+4');
-    }
-    await page.waitForTimeout(1200);
+    // フォルダを選んで scope に入る → filer タブへ(smoke spec と同じ導線)
+    const row = page.locator('[data-pkc-region="entry-list"] li.pkc-entry-item[data-pkc-lid="fld"]').first();
+    await row.waitFor({ state: 'visible', timeout: 30000 });
+    await row.click();
+    await page.waitForTimeout(400);
+    await page.locator('button[data-pkc-action="set-view-mode"][data-pkc-view-mode="filer"]').first().click();
+    await page.locator('[data-pkc-region="filer-grid"]').first()
+      .waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(1500);
     // 観測点:画像が実際に出ているか(出ていなければこの腕は無効)
     const shown = await page.evaluate(
       () => document.querySelectorAll('.pkc-filer-card-thumb img').length,
     );
+    if (shown === 0) {
+      // 🔴 **推測で経路を変えない。画面の中身を出す。**
+      const dump = await page.evaluate(() => {
+        const root = document.getElementById('pkc-root');
+        const q = (sel) => document.querySelectorAll(sel).length;
+        return {
+          phase: root?.getAttribute('data-pkc-phase'),
+          viewMode: root?.getAttribute('data-pkc-view-mode'),
+          sidebarRows: q('[data-pkc-region="entry-list"] li.pkc-entry-item'),
+          folderRow: q('[data-pkc-region="entry-list"] li[data-pkc-lid="fld"]'),
+          filerGrid: q('[data-pkc-region="filer-grid"]'),
+          filerCards: q('.pkc-filer-card'),
+          thumbs: q('.pkc-filer-card-thumb'),
+          filerEmpty: document.querySelector('[data-pkc-region="filer-empty"]')?.textContent ?? null,
+          gridClass: document.querySelector('[data-pkc-region="filer-grid"]')?.className ?? null,
+          scopeLid: document.querySelector('.pkc-filer')?.getAttribute('data-pkc-filer-scope-lid') ?? null,
+          entryCount: (() => { try { return document.querySelectorAll('[data-pkc-lid]').length; } catch { return -1; } })(),
+        };
+      });
+      console.log(`   [診断 ${arm}]`, JSON.stringify(dump));
+    }
     await page.waitForTimeout(2500);
     return { info, shown, mem: processMemory() };
   } finally {
