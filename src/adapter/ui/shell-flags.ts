@@ -646,6 +646,29 @@ export const centerBlockWindowEnabled = defineFlag<boolean>(
  *   窓化していないと支配的なのは DOM 構築で、描画を再利用しても減らない。
  *   よって本 flag は**窓化経路にだけ**効かせている。単独 ON は no-op。
  */
+/**
+ * C6-a(2026-07-29):mermaid を**表示サイズのラスタ**にする。既定 OFF。
+ *
+ * 描画済み SVG(ノード 60 の図で 885 要素)を PNG 1 枚の `<img>` に差し替える。
+ * doc §4 の③「モニタや描画エリアサイズに適したレンダリング」の mermaid 版。
+ *
+ * 🔴 **見た目は変わらない**。当初「`<foreignObject>` があるとラスタ化できない」
+ *   と判断したが、実測で切り分けたら原因は **Blob URL** だった
+ *   ── Data URL なら foreignObject 入りのまま通り、ラベルの文字も描ける
+ *   (除去版との画素差 2.58%)。`htmlLabels: false` は不要。
+ *
+ * ⚠ 失敗したら SVG のまま残る(図が消えることは無い)。
+ */
+export const mermaidRasterEnabled = defineFlag<boolean>(
+  'center.mermaid_raster',
+  false,
+  {
+    category: 'shell',
+    description:
+      'mermaid の図を表示サイズの画像に変換して表示する(見た目は不変)。既定 OFF・opt-in',
+  },
+);
+
 export const centerRenderCacheEnabled = defineFlag<boolean>(
   'center.render_cache',
   true,

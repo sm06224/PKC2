@@ -121,55 +121,125 @@ console.log(`   <image>           ${shape.images}`);
 console.log(`   直列化サイズ      ${(shape.serializedBytes / 1024).toFixed(1)} KB`);
 console.log(`   表示サイズ        ${shape.cssW}×${shape.cssH} css px (dpr ${shape.dpr})`);
 
-// 実際に描いてみる(成立性は「理屈」ではなく「描けたか」で判定する)
-const raster = await page.evaluate(async () => {
+// ② 実際に描いてみる。**3 通り試す**(2026-07-29、user 経由の他エージェント
+//    調査を受けて)。原因の診断(foreignObject)は一致したが、
+//    「Blob URL ではなく **Data URL** なら通る」という主張は未検証なので、
+//    **変数を 1 つずつ変えて**確かめる:
+//      (a) Blob URL / foreignObject あり  ← 最初に測った形
+//      (b) **Data URL** / foreignObject あり  ← 主張の直接検証
+//      (c) Data URL / **foreignObject を除去**  ← `htmlLabels:false` の近似
+//    (c) が通れば「foreignObject が原因」が確定し、A 案の実現可能性が立つ。
+async function tryRaster(page, mode) {
+  return page.evaluate(async (m) => {
+    const svg = document.querySelector('.pkc-mermaid-rendered svg');
+    if (!svg) return { mode: m, ok: false, reason: 'no svg' };
+    const r = svg.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('width', String(Math.max(1, Math.round(r.width))));
+    clone.setAttribute('height', String(Math.max(1, Math.round(r.height))));
+    if (m === 'data-nofo') {
+      // foreignObject を落とす(中の文字は消えるが、汚染の原因切り分けが目的)
+      for (const fo of Array.from(clone.querySelectorAll('foreignObject'))) fo.remove();
+    }
+    const xml = new XMLSerializer().serializeToString(clone);
+    const url = m === 'blob'
+      ? URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }))
+      : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(r.width * dpr));
+      cv.height = Math.max(1, Math.round(r.height * dpr));
+      const g = cv.getContext('2d');
+      g.drawImage(img, 0, 0, cv.width, cv.height);
+      let nonBlank = 0; let sampled = 0;
+      let readErr = '';
+      try {
+        const d = g.getImageData(0, 0, cv.width, cv.height).data;
+        for (let i = 0; i < d.length; i += 4 * 97) {
+          sampled += 1;
+          if (d[i + 3] !== 0 && !(d[i] > 250 && d[i + 1] > 250 && d[i + 2] > 250)) nonBlank += 1;
+        }
+      } catch (e) { readErr = String(e && e.message ? e.message : e); }
+      let pngBytes = -1; let exportErr = '';
+      try {
+        const blob = await new Promise((res, rej) => {
+          try { cv.toBlob((b) => res(b)); } catch (e) { rej(e); }
+        });
+        pngBytes = blob ? blob.size : -1;
+      } catch (e) { exportErr = String(e && e.message ? e.message : e); }
+      return {
+        mode: m, ok: !readErr && !exportErr, readErr, exportErr,
+        nonBlank, sampled, pngBytes, canvasW: cv.width, canvasH: cv.height,
+      };
+    } catch (e) {
+      return { mode: m, ok: false, reason: String(e && e.message ? e.message : e) };
+    } finally {
+      if (m === 'blob') URL.revokeObjectURL(url);
+    }
+  }, mode);
+}
+
+console.log('\n【② 実際に描けたか(3 通り)】');
+for (const [label, mode] of [
+  ['(a) Blob URL / foreignObject あり', 'blob'],
+  ['(b) Data URL / foreignObject あり', 'data'],
+  ['(c) Data URL / foreignObject 除去', 'data-nofo'],
+]) {
+  const res = await tryRaster(page, mode);
+  if (res.reason) { console.log(`   ${label.padEnd(36)} 🔴 ${res.reason}`); continue; }
+  const ratio = res.sampled ? (res.nonBlank / res.sampled) : 0;
+  const verdict = res.ok
+    ? `✅ 通る  PNG ${(res.pngBytes / 1024).toFixed(1)} KB / 非白 ${(ratio * 100).toFixed(1)}%`
+    : `🔴 遮断  ${(res.readErr || res.exportErr).slice(0, 60)}`;
+  console.log(`   ${label.padEnd(36)} ${verdict}`);
+}
+console.log('   ⚠ (c) は foreignObject を落としているので**文字が消えている**。');
+console.log('     見たいのは「汚染の原因が foreignObject か」であって見た目ではない。');
+
+// 🔴 **「通った」と「中身が正しい」は別**。PNG のバイト数が違うだけでは
+//    「(b) にラベルの文字が描けている」証明にならない。(b) と (c) を
+//    画素で比べ、**差分が foreignObject のラベル領域に出ている**ことを見る。
+const diff = await page.evaluate(async () => {
   const svg = document.querySelector('.pkc-mermaid-rendered svg');
-  if (!svg) return { ok: false, reason: 'no svg' };
+  if (!svg) return null;
   const r = svg.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const clone = svg.cloneNode(true);
-  clone.setAttribute('width', String(Math.max(1, Math.round(r.width))));
-  clone.setAttribute('height', String(Math.max(1, Math.round(r.height))));
-  const xml = new XMLSerializer().serializeToString(clone);
-  const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
-  try {
+  const w = Math.max(1, Math.round(r.width));
+  const h = Math.max(1, Math.round(r.height));
+  async function draw(strip) {
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('width', String(w));
+    clone.setAttribute('height', String(h));
+    if (strip) for (const fo of Array.from(clone.querySelectorAll('foreignObject'))) fo.remove();
+    const xml = new XMLSerializer().serializeToString(clone);
     const img = new Image();
-    img.src = url;
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
     await img.decode();
     const cv = document.createElement('canvas');
-    cv.width = Math.max(1, Math.round(r.width * dpr));
-    cv.height = Math.max(1, Math.round(r.height * dpr));
+    cv.width = w; cv.height = h;
     const g = cv.getContext('2d');
-    g.drawImage(img, 0, 0, cv.width, cv.height);
-    // 🔴 白紙判定:描けたつもりで真っ白、が最悪(silent fail)。画素を見る。
-    const d = g.getImageData(0, 0, cv.width, cv.height).data;
-    let nonBlank = 0;
-    for (let i = 0; i < d.length; i += 4 * 97) {
-      if (d[i + 3] !== 0 && !(d[i] > 250 && d[i + 1] > 250 && d[i + 2] > 250)) nonBlank += 1;
-    }
-    let pngBytes = -1;
-    try {
-      const blob = await new Promise((res) => cv.toBlob(res, 'image/png'));
-      pngBytes = blob ? blob.size : -1;
-    } catch (e) { pngBytes = -2; }
-    return {
-      ok: true, nonBlankSamples: nonBlank, sampled: Math.floor(d.length / (4 * 97)),
-      pngBytes, canvasW: cv.width, canvasH: cv.height,
-    };
-  } catch (e) {
-    return { ok: false, reason: String(e && e.message ? e.message : e) };
-  } finally {
-    URL.revokeObjectURL(url);
+    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+    g.drawImage(img, 0, 0, w, h);
+    return g.getImageData(0, 0, w, h).data;
   }
+  const withFo = await draw(false);
+  const noFo = await draw(true);
+  let differing = 0;
+  const total = withFo.length / 4;
+  for (let i = 0; i < withFo.length; i += 4) {
+    if (Math.abs(withFo[i] - noFo[i]) > 16
+      || Math.abs(withFo[i + 1] - noFo[i + 1]) > 16
+      || Math.abs(withFo[i + 2] - noFo[i + 2]) > 16) differing += 1;
+  }
+  return { differing, total, w, h };
 });
-console.log('\n【② 実際に描けたか】');
-if (!raster.ok) {
-  console.log(`   🔴 描けない: ${raster.reason}`);
-} else {
-  const ratio = raster.sampled ? (raster.nonBlankSamples / raster.sampled) : 0;
-  console.log(`   canvas            ${raster.canvasW}×${raster.canvasH}`);
-  console.log(`   PNG               ${(raster.pngBytes / 1024).toFixed(1)} KB`);
-  console.log(`   非白画素の割合    ${(ratio * 100).toFixed(1)}%  ${ratio < 0.005 ? '🔴 ← ほぼ白紙。描けたつもりで中身が無い' : '(中身あり)'}`);
+if (diff) {
+  const pct = (diff.differing / diff.total) * 100;
+  console.log(`   (b) と (c) の画素差   ${pct.toFixed(2)}%  `
+    + `${pct < 0.05 ? '🔴 ← ほぼ同じ = ラベルが描けていない疑い' : '✅ foreignObject の中身が描けている'}`);
 }
 
 // ── ③ **今日の** mermaid 1 枚のコスト ───────────────────────
@@ -273,6 +343,46 @@ console.log(
   `   ${'JS heap'.padEnd(17)} ${(off.jsHeap / 1048576).toFixed(1).padStart(9)} MB `
   + `${(on.jsHeap / 1048576).toFixed(1).padStart(11)} MB ${((on.jsHeap - off.jsHeap) / 1048576).toFixed(1).padStart(8)} MB`,
 );
+// ── ④ 製品経路(flag ON)で本当に置き換わり、軽くなるか ────────
+console.log('\n【④ 製品経路: center.mermaid_raster=true】');
+async function openWith(query) {
+  await page.goto(URL_ + query);
+  await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 120000 });
+  await page.locator('[data-pkc-region="entry-list"] [data-pkc-lid="M"]').first().click();
+  await page.waitForTimeout(3000);
+  return page.evaluate(() => {
+    const wrap = document.querySelector('.pkc-mermaid-rendered');
+    const svg = wrap?.querySelector('svg') ?? null;
+    const img = wrap?.querySelector('img[data-pkc-mermaid-raster]') ?? null;
+    return {
+      svg: !!svg, img: !!img,
+      srcKept: wrap?.getAttribute('data-pkc-mermaid-src') ? true : false,
+      domElements: document.querySelectorAll('.pkc-md-rendered *').length,
+    };
+  });
+}
+const offView = await openWith('');
+const offMem = await breakdown();
+const onView = await openWith('?pkc-flag=center.mermaid_raster%3Dtrue');
+const onMem = await breakdown();
+console.log(`   既定    svg=${offView.svg} img=${offView.img} 本文要素=${offView.domElements} source保持=${offView.srcKept}`);
+console.log(`   raster  svg=${onView.svg} img=${onView.img} 本文要素=${onView.domElements} source保持=${onView.srcKept}`
+  + `${onView.img ? '' : '  🔴 置き換わっていない ── この腕は無効'}`);
+console.log('   allocator            既定          raster           差');
+for (const k of ['v8', 'blink_gc', 'partition_alloc', 'malloc', 'skia', 'cc']) {
+  const b = offMem.allocators[k] ?? 0;
+  const a = onMem.allocators[k] ?? 0;
+  if (b === 0 && a === 0) continue;
+  console.log(
+    `   ${k.padEnd(17)} ${(b / 1048576).toFixed(1).padStart(9)} MB ${(a / 1048576).toFixed(1).padStart(11)} MB `
+    + `${((a - b) / 1048576).toFixed(1).padStart(8)} MB`,
+  );
+}
+console.log(
+  `   ${'JS heap'.padEnd(17)} ${(offMem.jsHeap / 1048576).toFixed(1).padStart(9)} MB `
+  + `${(onMem.jsHeap / 1048576).toFixed(1).padStart(11)} MB ${((onMem.jsHeap - offMem.jsHeap) / 1048576).toFixed(1).padStart(8)} MB`,
+);
+
 console.log('\n   ⚠ JS heap 単独で「減った / 減らない」を言わない(2026-07-27 の反省)。');
 console.log('   ⚠ 差が誤差の範囲なら「効果なし」ではなく**未確定** ── 計測タスクとして残す。');
 console.log('   ⚠ norender 側は mermaid module 自体を読み込まないので、差には');

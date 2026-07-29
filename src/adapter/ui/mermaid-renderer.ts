@@ -27,6 +27,20 @@
 import { isWcagAutoShiftEnabled, getWcagTargetRatio } from './wcag-runtime';
 import { applyWcagToMermaidSvg } from '../../features/theme/wcag-svg-resolver';
 import { registerIdleDisposable } from '../platform/idle-dispose';
+import { mermaidRasterEnabled } from './shell-flags';
+import { rasterizeMermaidWrap } from './mermaid-raster';
+
+/**
+ * C6-a:描画済み wrapper を**表示サイズのラスタ**へ落とす(flag OFF で no-op)。
+ *
+ * ⚠ **WCAG shift の後に呼ぶ** ── shift は生きた SVG の computed color を読んで
+ *   色を差し替えるので、先にラスタ化すると shift が効かない絵が焼き付く。
+ * ⚠ fire-and-forget。失敗しても SVG がそのまま残るので、待つ必要が無い。
+ */
+function rasterizeIfEnabled(wrap: HTMLElement): void {
+  if (!mermaidRasterEnabled()) return;
+  void rasterizeMermaidWrap(wrap);
+}
 
 /**
  * 2026-07-04 user 要望「mermaid にも WCAG 改善レンダリング」:inject 済み
@@ -340,6 +354,7 @@ export async function hydrateMermaidPlaceholders(root: HTMLElement): Promise<voi
     // cache には shift 前の SVG を保持し、inject のたびに適用する
     // (targetRatio / 背景が変わっても cache が汚れない)。
     applyMermaidWcag(wrap);
+    rasterizeIfEnabled(wrap);
   }
   if (cacheMisses.length === 0) return; // 全 hit:mermaid 本体 import 不要
   const { default: mermaid } = await loadMermaid();
@@ -365,6 +380,7 @@ export async function hydrateMermaidPlaceholders(root: HTMLElement): Promise<voi
       ph.replaceWith(wrap);
       host?.setAttribute('data-pkc-render-ready', '');
       applyMermaidWcag(wrap);
+      rasterizeIfEnabled(wrap);
     } catch (err) {
       // parse error 等。source を残しつつ error 表示。
       const msg = err instanceof Error ? err.message : String(err);
