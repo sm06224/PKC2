@@ -607,11 +607,10 @@ export const sidebarVirtualListEnabled = defineFlag<boolean>(
 );
 
 /**
- * C3(2026-07-28):center pane の本文を**ブロック単位**で描く。既定 OFF。
+ * C3(2026-07-28):center pane の本文を**ブロック単位**で描き、窓化する。既定 OFF。
  *
- * ON でも、本スライス(C3-b)では**全ブロックを入れる** ── 窓化はまだしない。
- * 目的は「ブロック配列経由で描いても出力が 1 バイトも変わらない」ことを
- * 実機で確かめる前工事である(サイドバー窓化の S4 と同じ位置づけ)。
+ * C3-c 時点で**実際に一部だけ入れる**(実測: 初回描画 long task 1,376 → 302ms、
+ * 常駐要素 20,178 → 211)。C3-d で畳んだ見出しとの両立まで入っている。
  *
  * ⚠ ブロック数が `CENTER_BLOCK_MIN_BLOCKS` 未満なら、ON でも従来経路のまま
  *   (小さい本文では窓化に意味が無く、分割のコストだけが乗る)。
@@ -622,7 +621,39 @@ export const centerBlockWindowEnabled = defineFlag<boolean>(
   {
     category: 'shell',
     description:
-      '中央ペインの本文をブロック単位で描く(将来の窓化の前工事)。既定 OFF・opt-in',
+      '中央ペインの本文をブロック単位で描いて窓化する。既定 OFF・opt-in',
+  },
+);
+
+/**
+ * C4(2026-07-28):**描画結果(ブロック HTML)をメモリに持ち回す**。既定 OFF。
+ *
+ * user 提起「参照のみの場合は前回のレンダリング結果を使いまわせるはず」への
+ * 実装。`center-render-repeat.mjs` の実測では、**同じ entry を開き直しても
+ * 毎回まるごと描き直していた**(再利用ゼロ)ので、ここに賞金がある。
+ *
+ * ティア設計の **T1(メモリ)**。捨てても正しい ── 捨てれば描き直すだけ。
+ * T2(永続)へ上げるかは §9 の裁定待ちで、本 flag とは別問題。
+ *
+ * ⚠ **キーの取りこぼしが唯一の危険**。key が不完全だと「編集したのに
+ *   古い描画が出る」という、例外も test failure も出ない壊れ方をする。
+ *   よって key には**描画に効く入力を全部**入れ、`source` は文字列ごと比較する。
+ *
+ * 🔴 **`center.block_window` と併用しないと何も買えない**(実測)。
+ *   A↔B 交互・本文 120KB の long task:
+ *     既定 2,226ms / **cache のみ 2,286ms(+3% = 買えていない)** /
+ *     窓化のみ 216ms / **cache + 窓化 98ms**
+ *   窓化していないと支配的なのは DOM 構築で、描画を再利用しても減らない。
+ *   よって本 flag は**窓化経路にだけ**効かせている。単独 ON は no-op。
+ */
+export const centerRenderCacheEnabled = defineFlag<boolean>(
+  'center.render_cache',
+  false,
+  {
+    category: 'shell',
+    description:
+      '中央ペインの描画結果をメモリに持ち回して再利用する(T1 キャッシュ)。'
+      + '`center.block_window` と併用したときだけ効く。既定 OFF・opt-in',
   },
 );
 

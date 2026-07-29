@@ -1,8 +1,9 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, renderMarkdownBlocks, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
-import { centerBlockWindowEnabled } from './shell-flags';
+import { centerBlockWindowEnabled, centerRenderCacheEnabled } from './shell-flags';
 import { shouldWindowBlocks } from './center-block-window';
 import { registerCenterBlockHost } from './center-block-controller';
+import { cachedRenderBlocks } from './center-block-cache';
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import {
   extractDocumentGlobals,
@@ -167,17 +168,47 @@ const textPresenter: DetailPresenter = {
         applyHeadingFold(host);
       };
 
+      // C4(2026-07-28):描画結果をメモリに持ち回す(T1)。
+      //
+      // key に入れるのは「出力に効く入力」全部 ── `source`(frontmatter strip
+      // と asset 解決の**後**)と `mdOptions`。`source` はハッシュにせず
+      // **文字列そのもの**を比較する(衝突は「本文が化ける」に直結する)。
+      // ⚠ `hydrate` の結果はキャッシュしない ── transclusion / card は
+      //   **他 entry の現在値**に依存するので、持ち回すと古い引用が出る。
+      const fingerprint = centerRenderCacheEnabled()
+        ? JSON.stringify([
+          mdOptions.currentContainerId ?? null,
+          mdOptions.vars ?? null,
+          mdOptions.headingNumber ?? null,
+          mdOptions.sourceLineAnchors,
+        ])
+        : '';
+      const blocksOf = (): readonly string[] => (
+        centerRenderCacheEnabled()
+          ? cachedRenderBlocks(entry.lid, source, fingerprint,
+            () => renderMarkdownBlocks(source, mdOptions))
+          : renderMarkdownBlocks(source, mdOptions)
+      );
+
       // C3-c: flag ON かつブロック数が閾値以上なら**窓化**する。
       // ここではまだ attach されていない(= scroller の高さも scrollTop も
       // 分からない)ので、控えめな初回窓だけ入れて指揮を待つ。確定は
       // renderer 末尾の `finalizeCenterBlockWindows`。
       if (centerBlockWindowEnabled()) {
-        const blocks = renderMarkdownBlocks(source, mdOptions);
+        const blocks = blocksOf();
         if (shouldWindowBlocks(blocks.length)) {
           registerCenterBlockHost(body, blocks, hydrate);
           return body;
         }
       }
+      // 🔴 **窓化していない経路には cache を効かせない**(2026-07-28、実測で決定)。
+      //
+      // A↔B を交互に開く実測(`center-render-cache-gain.mjs`、本文 120KB):
+      //   既定 2,226ms / cache のみ 2,286ms(**+3% = 買えていない**、hit 10 件)
+      //   窓化のみ 216ms / cache + 窓化 **98ms**
+      // 窓化していないと支配的なのは **DOM 構築**であって markdown 描画では
+      // ないので、描画を再利用しても何も減らない。それどころか分割 + join の
+      // ぶんだけ余計に働く。よってここは従来どおり `renderMarkdown` を呼ぶ。
       body.innerHTML = renderMarkdown(source, mdOptions);
       hydrate(body);
       return body;
