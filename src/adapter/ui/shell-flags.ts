@@ -617,11 +617,11 @@ export const sidebarVirtualListEnabled = defineFlag<boolean>(
  */
 export const centerBlockWindowEnabled = defineFlag<boolean>(
   'center.block_window',
-  false,
+  true,
   {
     category: 'shell',
     description:
-      '中央ペインの本文をブロック単位で描いて窓化する。既定 OFF・opt-in',
+      '中央ペインの本文をブロック単位で描いて窓化する。既定 ON(オプトアウト)',
   },
 );
 
@@ -648,12 +648,12 @@ export const centerBlockWindowEnabled = defineFlag<boolean>(
  */
 export const centerRenderCacheEnabled = defineFlag<boolean>(
   'center.render_cache',
-  false,
+  true,
   {
     category: 'shell',
     description:
       '中央ペインの描画結果をメモリに持ち回して再利用する(T1 キャッシュ)。'
-      + '`center.block_window` と併用したときだけ効く。既定 OFF・opt-in',
+      + '`center.block_window` と併用したときだけ効く。既定 ON(オプトアウト)',
   },
 );
 

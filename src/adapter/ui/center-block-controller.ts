@@ -56,6 +56,7 @@ import {
   cumulativeOffsets,
   hiddenBlocks,
   makeBlockMetrics,
+  scrollOffsetForBlock,
   totalHeight,
   withHidden,
   withMeasured,
@@ -87,6 +88,11 @@ interface CenterBlockContext {
   placement: BlockPlacement;
   /** 描いた見出し要素 → block index(toggle からの逆引き)。 */
   headingIndex: Map<HTMLElement, number>;
+  /**
+   * 指定ブロックを窓に入れる(attach 後にだけ立つ)。
+   * `revealCenterBlock` から使う ── 詳細はそちらの doc。
+   */
+  revealBlock?: (index: number) => boolean;
 }
 
 type BlockHost = HTMLElement & { __pkcBlockCtx?: CenterBlockContext };
@@ -94,6 +100,17 @@ type BlockScroller = HTMLElement & { __pkcBlockCleanup?: () => void };
 
 /** 窓化中の host に立てる印。`pending` = 指揮待ち、`on` = 指揮済み。 */
 const MARK = 'data-pkc-block-window';
+
+/**
+ * 窓を描き替えたことを外へ知らせる event(bubbles)。
+ *
+ * 🔴 **render cycle でしか走らない後処理**(`populateAttachmentPreviews` /
+ * `populateInlineAssetPreviews`)は、窓化すると**スクロールで入ってきた
+ * ブロックに届かない**。PDF / 音声 / 動画の inline プレビューが、下の方の
+ * ブロックだけ無言で出ない ── 例外も test failure も出ない壊れ方である。
+ * main.ts がこの event を拾って後処理を回し直す。
+ */
+export const BLOCK_WINDOW_PAINTED = 'pkc:block-window-painted';
 
 /**
  * 窓の内側だけを描く。**順序が命**(fold → 畳み状態の復元 → spacer)。
@@ -107,6 +124,11 @@ function paintWindow(
   range: BlockWindowRange,
   scroller: HTMLElement | null,
 ): void {
+  // 🔴 窓の外へ出る DOM が持っている Blob URL を先に返す。
+  //   `cleanupBlobUrls`(action-binder)は render cycle でしか走らないので、
+  //   窓を描き替えるたびに revoke されない URL が積み上がる ── スクロール
+  //   するほどメモリが増える、という本 branch の目的と正反対の漏れになる。
+  revokeBlobUrls(host);
   const keepScrollTop = scroller?.scrollTop ?? null;
   const offsets = cumulativeOffsets(ctx.metrics);
   const topPx = offsets[range.start] ?? 0;
@@ -125,6 +147,24 @@ function paintWindow(
   ctx.range = range;
   if (scroller && keepScrollTop !== null && scroller.scrollTop !== keepScrollTop) {
     scroller.scrollTop = keepScrollTop;
+  }
+  // attach 前(presenter の初回窓)は誰も聞いていないので飛ばさない。
+  if (host.isConnected) {
+    host.dispatchEvent(new CustomEvent(BLOCK_WINDOW_PAINTED, { bubbles: true }));
+  }
+}
+
+/**
+ * host 配下の Blob URL を返す(`cleanupBlobUrls` と同じ contract)。
+ *
+ * action-binder から import しない ── あちらは巨大で、描画の内側から
+ * 引き込むと依存が絡む。5 行の走査なので**同じ 3 行を書く**
+ * (CLAUDE.md Invariant 6:早すぎる共通化より 3 行の重複)。
+ */
+function revokeBlobUrls(host: HTMLElement): void {
+  for (const el of host.querySelectorAll<HTMLElement>('[data-pkc-blob-url]')) {
+    const url = el.getAttribute('data-pkc-blob-url');
+    if (url) URL.revokeObjectURL(url);
   }
 }
 
@@ -152,11 +192,15 @@ function restoreCollapsed(
 
 /** 窓化をやめて全ブロックを入れ直す(保険 / 発動条件を満たさない場合)。 */
 function paintAll(host: BlockHost, ctx: CenterBlockContext): void {
+  revokeBlobUrls(host);
   fillBlocks(host, ctx.blocks);
   ctx.hydrate(host);
   applyBlockMinHeight(host, null);
   host.removeAttribute(MARK);
   host.__pkcBlockCtx = undefined;
+  if (host.isConnected) {
+    host.dispatchEvent(new CustomEvent(BLOCK_WINDOW_PAINTED, { bubbles: true }));
+  }
 }
 
 /**
@@ -244,13 +288,36 @@ export function finalizeCenterBlockWindows(root: HTMLElement): void {
     scroller.__pkcBlockCleanup = undefined;
     host.setAttribute(MARK, 'on');
 
-    /** 見えているぶんの実測を取り込み、床を引き直す。 */
+    /**
+     * 見えているぶんの実測を取り込み、spacer と床を引き直す。
+     *
+     * 🔴 **取り込んだら scrollTop を補正する**(C3-f、実測で発覚)。
+     *
+     * 窓の上には「まだ測っていないブロック」が推定高(既定 48px)で積まれて
+     * いる。実測が入るとその合計が変わり、**同じ scrollTop なのに画面の内容が
+     * 上下にずれる**。実害は「見出しを狙って押したら 3 ブロック下が反応した」
+     * ── 実測では Ctrl+click の着地が source line 75 → 84 にずれた。
+     * 例外は出ないので、押し間違いにしか見えない。
+     *
+     * 窓の先頭ブロックの上端が動いたぶんだけ `scrollTop` をずらすと、
+     * **画面に映っている内容が固定される**(位置ではなく内容を保つ)。
+     */
     const settle = (): void => {
+      const beforeTop = cumulativeOffsets(ctx.metrics)[ctx.range.start] ?? 0;
       ctx.metrics = withMeasured(
         ctx.metrics,
         shift(measureVisibleBlockHeights(host, scroller, ctx.placement), ctx.range.start),
       );
+      const offsets = cumulativeOffsets(ctx.metrics);
+      const afterTop = offsets[ctx.range.start] ?? 0;
+      // 高さ表が変わった = 窓の位置も変わる。spacer を引き直す。
+      applyBlockSpacers(
+        host,
+        afterTop,
+        (offsets[ctx.metrics.count] ?? 0) - (offsets[ctx.range.end] ?? 0),
+      );
       applyBlockMinHeight(host, totalHeight(ctx.metrics));
+      if (afterTop !== beforeTop) scroller.scrollTop += afterTop - beforeTop;
     };
     /** いまの scroll 位置に合う窓へ寄せる(同じなら何もしない)。 */
     const sync = (force: boolean): void => {
@@ -289,6 +356,27 @@ export function finalizeCenterBlockWindows(root: HTMLElement): void {
       ctx.metrics = withHidden(ctx.metrics, hiddenBlocks(ctx.outline, ctx.collapsed));
       sync(true); // 高さが変わったので窓を必ず引き直す
     };
+    // 🔴 窓の外の要素を「探して scrollIntoView」できないことへの出口(C3-e)。
+    //   `location-nav` の deep link(`#heading`)は `querySelector` で探すので、
+    //   窓化すると**深い見出しが見つからず無言で何も起きない**。位置を計算して
+    //   scroll し、窓を描き直してから返す。
+    ctx.revealBlock = (index: number): boolean => {
+      if (index < 0 || index >= ctx.metrics.count) return false;
+      // 畳んだセクションの中なら開く ── 開かずに scroll しても見えない。
+      if (ctx.metrics.hidden.has(index)) {
+        for (const head of [...ctx.collapsed]) {
+          if (hiddenBlocks(ctx.outline, new Set([head])).has(index)) ctx.collapsed.delete(head);
+        }
+        ctx.metrics = withHidden(ctx.metrics, hiddenBlocks(ctx.outline, ctx.collapsed));
+      }
+      const offset = scrollOffsetForBlock(
+        ctx.metrics, index, scroller.clientHeight, scroller.scrollTop,
+      );
+      if (offset !== null) scroller.scrollTop = offset;
+      sync(true);
+      return true;
+    };
+
     scroller.addEventListener('scroll', onScroll, { passive: true });
     host.addEventListener('toggle', onToggle, true);
     scroller.__pkcBlockCleanup = () => {
@@ -297,6 +385,33 @@ export function finalizeCenterBlockWindows(root: HTMLElement): void {
       scroller.__pkcBlockCleanup = undefined;
     };
   }
+}
+
+/**
+ * 窓の外にあるブロックを DOM に載せる(C3-e)。
+ *
+ * 窓化すると「その要素を `querySelector` で探して `scrollIntoView`」が成立しない
+ * ── 窓の外の要素は**存在しない**ので、探した側は null を受け取って
+ * **無言で何もしない**。deep link(`pkc://…#heading`)や検索ジャンプが
+ * 「押しても何も起きない」形で壊れる、例外の出ない事故になる。
+ *
+ * 呼び出し側は「探して見つからなかったら reveal して探し直す」でよい。
+ *
+ * @param match ブロックの **HTML 文字列**に対する述語(例: `id="..."` を含むか)
+ * @returns 載せられたら true(呼び出し側は再度 `querySelector` する)
+ */
+export function revealCenterBlock(
+  root: HTMLElement,
+  match: (blockHtml: string) => boolean,
+): boolean {
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>(`[${MARK}]`))) {
+    const ctx = (el as BlockHost).__pkcBlockCtx;
+    if (!ctx?.revealBlock) continue;
+    const index = ctx.blocks.findIndex(match);
+    if (index < 0) continue;
+    return ctx.revealBlock(index);
+  }
+  return false;
 }
 
 /** 窓ローカルの index を全体の index へ寄せる。 */

@@ -11,6 +11,7 @@ import {
 } from './runtime/debug-flags';
 import { createDispatcher } from './adapter/state/dispatcher';
 import { render, didEnsureVisibleScrollEntryList } from './adapter/ui/renderer';
+import { BLOCK_WINDOW_PAINTED } from './adapter/ui/center-block-controller';
 import { computeRenderScope } from './adapter/ui/render-scope';
 import { getFilterIndexes } from './adapter/ui/filter-cache';
 import type { AppState } from './adapter/state/app-state';
@@ -472,6 +473,19 @@ async function boot(): Promise<void> {
     renderOnState(dispatcher.getState()),
   );
   dispatcher.onState(() => coalescedRender());
+
+  // C3(2026-07-29、既定 ON 昇格に合わせて追加):中央ペインの窓を描き替えた
+  // ときは**後処理を回し直す**。
+  //
+  // 🔴 `populateAttachmentPreviews` / `populateInlineAssetPreviews` は
+  //   render cycle でしか走らないので、窓化するとスクロールで入ってきた
+  //   ブロックに届かない ── PDF / 音声 / 動画の inline プレビューが
+  //   「下のほうのブロックだけ無言で出ない」形で欠ける(例外も test failure
+  //   も出ない)。窓の描き替えは render とは独立に起きるので、event で拾う。
+  root.addEventListener(BLOCK_WINDOW_PAINTED, () => {
+    populateAttachmentPreviews(root, dispatcher);
+    populateInlineAssetPreviews(root, dispatcher);
+  });
 
   // 2a-A4. Collapsed-folder persistence (viewer-local). Writes
   // through to localStorage whenever `state.collapsedFolders`

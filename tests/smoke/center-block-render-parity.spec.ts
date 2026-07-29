@@ -128,7 +128,10 @@ const bodyHtml = (page: Page): Promise<string> =>
 const bodyElements = (page: Page): Promise<number> =>
   page.evaluate(() => document.querySelector('.pkc-md-rendered')?.querySelectorAll('*').length ?? 0);
 
-const ON = '/pkc2.html?pkc-flag=center.block_window=true';
+// 2026-07-29:窓化と描画キャッシュは**既定 ON**へ昇格した(user 裁定)。
+// 対照群を取るには**明示的に落とす**必要がある。
+const ON = '/pkc2.html';
+const OFF = '/pkc2.html?pkc-flag=center.block_window=false&pkc-flag=center.render_cache=false';
 
 test('C3-c: 窓化しても末尾まで到達できる(本文が切れない)', async ({ page }) => {
   await seed(page, makeBody());
@@ -137,7 +140,7 @@ test('C3-c: 窓化しても末尾まで到達できる(本文が切れない)', 
   // 窓化が効いていること自体を先に確かめる ── 効いていないなら、この後の
   // 「末尾に届く」は窓化を通っていない = 何も pin していない。
   const on = await bodyElements(page);
-  await open(page, '/pkc2.html');
+  await open(page, OFF);
   const off = await bodyElements(page);
   expect(off, '前提: 本文が描画されていない').toBeGreaterThan(500);
   expect(on, `窓化が効いていない(ON ${on} / OFF ${off})`).toBeLessThan(off * 0.6);
@@ -204,7 +207,7 @@ const visibleText = (page: Page): Promise<string> =>
 
 test('C3-c: 先頭画面の中身は非窓化と一致する(分割で DOM が壊れていない)', async ({ page }) => {
   await seed(page, makeBody());
-  await open(page, '/pkc2.html');
+  await open(page, OFF);
   const offText = await visibleText(page);
   await open(page, ON);
   const onText = await visibleText(page);
@@ -219,23 +222,37 @@ test('C3-c: 先頭画面の中身は非窓化と一致する(分割で DOM が�
 test('C3: 閾値未満の本文では従来経路のまま(分割コストを払わない)', async ({ page }) => {
   await seed(page, '# 小さい見出し\n\n短い段落。');
 
-  await open(page, '/pkc2.html');
+  await open(page, OFF);
   const off = await bodyHtml(page);
   await open(page, ON);
   const on = await bodyHtml(page);
   expect(on).toBe(off);
 });
 
-test('C3: 既定では flag が OFF(opt-in である)', async ({ page }) => {
+test('C3/C4: 既定で ON である(2026-07-29 昇格)', async ({ page }) => {
   await seed(page, makeBody());
-  await page.goto('/pkc2.html');
-  await bootReady(page);
-  const value = await page.evaluate(() => {
-    const w = window as unknown as { __pkc2Flags?: Record<string, unknown> };
-    return w.__pkc2Flags?.['center.block_window'] ?? null;
+  await open(page, '/pkc2.html');
+  // flag 名を読むのではなく**効いているか**を見る ── 計器の有無に依存せず、
+  // 「flag は true だが経路に届いていない」も同時に捕まる。
+  const on = await bodyElements(page);
+  await open(page, OFF);
+  const off = await bodyElements(page);
+  expect(off, '前提: 本文が描画されていない').toBeGreaterThan(500);
+  expect(on, `既定で窓化が効いていない(既定 ${on} / 明示 OFF ${off})`).toBeLessThan(off * 0.6);
+});
+
+test('C4: 既定で描画キャッシュが効いている(開き直しで hit する)', async ({ page }) => {
+  await seed(page, makeBody());
+  await open(page, '/pkc2.html');
+  // 同じ entry を選び直す(A↔B が無いので view 切替で center を作り直す)
+  await page.locator('[data-pkc-region="entry-list"] [data-pkc-lid="e1"]').first().click();
+  await page.waitForTimeout(300);
+  const stats = await page.evaluate(() => {
+    const w = window as unknown as { __pkc2RenderCache?: () => { hits: number; misses: number } };
+    return typeof w.__pkc2RenderCache === 'function' ? w.__pkc2RenderCache() : null;
   });
-  // 計器が無い環境では null。その場合は「ON になっていない」ことだけ見る。
-  expect(value === null || value === false, `既定で ON になっている(${String(value)})`).toBe(true);
+  expect(stats, '計器 __pkc2RenderCache が出ていない').not.toBeNull();
+  expect(stats!.misses, '一度も描画していない(前提が崩れている)').toBeGreaterThan(0);
 });
 
 test('C3-d: 畳んだ見出しはスクロールしても開かない', async ({ page }) => {

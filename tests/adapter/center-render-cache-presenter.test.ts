@@ -74,7 +74,8 @@ afterEach(() => {
 });
 
 describe('C4 配線: flag OFF では触らない', () => {
-  it('既定ではキャッシュに 1 件も入らない', () => {
+  it('明示的に OFF ならキャッシュに 1 件も入らない', () => {
+    setFlags(false); // 既定は ON(2026-07-29 に昇格)なので明示的に落とす
     render(entry(heavyBody()));
     render(entry(heavyBody()));
     expect(renderCacheStats(), 'flag OFF なのにキャッシュが動いている')
@@ -82,7 +83,11 @@ describe('C4 配線: flag OFF では触らない', () => {
   });
 
   it('🔴 cache だけ ON でも触らない(窓化と併用したときだけ効く)', () => {
-    setFlagSource('url', (name) => (name === 'center.render_cache' ? true : undefined));
+    setFlagSource('url', (name) => {
+      if (name === 'center.render_cache') return true;
+      if (name === 'center.block_window') return false;
+      return undefined;
+    });
     render(entry(heavyBody()));
     render(entry(heavyBody()));
     expect(
@@ -94,7 +99,9 @@ describe('C4 配線: flag OFF では触らない', () => {
 
 describe('C4 配線: 窓化 + cache', () => {
   it('出力が flag OFF と完全一致する', async () => {
+    setFlags(false);
     const off = await renderFull(entry(heavyBody()));
+    invalidateRenderCache();
     setFlags(true);
     const on = await renderFull(entry(heavyBody()));
     expect(on, 'キャッシュ経路で DOM が変わった').toBe(off);
