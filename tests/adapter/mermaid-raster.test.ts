@@ -14,6 +14,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
+  MERMAID_RASTER_MAX_AREA,
   MERMAID_RASTER_MIN_ELEMENTS,
   isRasterUpToDate,
   rasterizeMermaidWrap,
@@ -83,6 +84,24 @@ describe('C6-a: 変換する条件', () => {
   it('小さい図は変換しない(元から軽く、変換の意味が無い)', async () => {
     const wrap = wrapWith('<rect/><rect/>');
     expect(await rasterizeMermaidWrap(wrap)).toBe(false);
+  });
+
+  it('🔴 面積が上限を超える図は変換しない(ラスタのほうがメモリを食う)', async () => {
+    // 実測: 260×6310(1.64M 画素)は blink_gc −1.7 に対し cc +4.5 で差引 +2.8MB。
+    // 「大きい図こそ効きそう」は直感の罠 ── 面積で切る。
+    const wrap = wrapWith(heavy, 260, 6310);
+    expect(260 * 6310, '前提: 上限を超える fixture になっていない').toBeGreaterThan(MERMAID_RASTER_MAX_AREA);
+    expect(await rasterizeMermaidWrap(wrap), '巨大な図を変換しようとした').toBe(false);
+    expect(wrap.querySelector('svg'), 'SVG が残っていない').not.toBeNull();
+  });
+
+  it('上限内の図は変換に入る(happy-dom では canvas が無いので false で返る)', async () => {
+    const wrap = wrapWith(heavy, 800, 600);
+    expect(800 * 600).toBeLessThan(MERMAID_RASTER_MAX_AREA);
+    // ここで見たいのは「足切りで弾かれていない」こと。canvas が無いので結果は
+    // false だが、**SVG が残っている**ことと合わせて経路に入ったと判断する。
+    expect(await rasterizeMermaidWrap(wrap)).toBe(false);
+    expect(wrap.querySelector('svg')).not.toBeNull();
   });
 });
 

@@ -343,45 +343,92 @@ console.log(
   `   ${'JS heap'.padEnd(17)} ${(off.jsHeap / 1048576).toFixed(1).padStart(9)} MB `
   + `${(on.jsHeap / 1048576).toFixed(1).padStart(11)} MB ${((on.jsHeap - off.jsHeap) / 1048576).toFixed(1).padStart(8)} MB`,
 );
-// ── ④ 製品経路(flag ON)で本当に置き換わり、軽くなるか ────────
-console.log('\n【④ 製品経路: center.mermaid_raster=true】');
+// ── ④ 製品経路(flag ON)── **3 回叩いて並べる**(2026-07-29 の反省)
+//
+// 🔴 cc は実行間で ±1.2MB ぶれる。**1 回の測定で「増えた」と書いてはいけない**
+//    (`perf-measurement` skill の「反復は同じコマンドを 3 回」を自分で破った)。
+// 🔴 さらに**図の形を 2 種類**測る。仮説は「`<img>` は図**全体**の展開後
+//    ビットマップを持つが、SVG は compositor が**見えているタイルだけ**
+//    ラスタする」── これが正しければ **cc の増分は図の画素面積に比例**し、
+//    画面に収まる図では増えないはずである。機構を切り分けずに
+//    「ラスタ化は損」と一般化しない。
+console.log('\n【④ 製品経路: center.mermaid_raster(3 回 × 図の形 2 種)】');
 async function openWith(query) {
   await page.goto(URL_ + query);
   await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 120000 });
   await page.locator('[data-pkc-region="entry-list"] [data-pkc-lid="M"]').first().click();
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(2500);
   return page.evaluate(() => {
     const wrap = document.querySelector('.pkc-mermaid-rendered');
-    const svg = wrap?.querySelector('svg') ?? null;
     const img = wrap?.querySelector('img[data-pkc-mermaid-raster]') ?? null;
+    const svg = wrap?.querySelector('svg') ?? null;
+    const box = (img || svg)?.getBoundingClientRect();
     return {
       svg: !!svg, img: !!img,
-      srcKept: wrap?.getAttribute('data-pkc-mermaid-src') ? true : false,
+      w: box ? Math.round(box.width) : 0, h: box ? Math.round(box.height) : 0,
       domElements: document.querySelectorAll('.pkc-md-rendered *').length,
     };
   });
 }
-const offView = await openWith('');
-const offMem = await breakdown();
-const onView = await openWith('?pkc-flag=center.mermaid_raster%3Dtrue');
-const onMem = await breakdown();
-console.log(`   既定    svg=${offView.svg} img=${offView.img} 本文要素=${offView.domElements} source保持=${offView.srcKept}`);
-console.log(`   raster  svg=${onView.svg} img=${onView.img} 本文要素=${onView.domElements} source保持=${onView.srcKept}`
-  + `${onView.img ? '' : '  🔴 置き換わっていない ── この腕は無効'}`);
-console.log('   allocator            既定          raster           差');
-for (const k of ['v8', 'blink_gc', 'partition_alloc', 'malloc', 'skia', 'cc']) {
-  const b = offMem.allocators[k] ?? 0;
-  const a = onMem.allocators[k] ?? 0;
-  if (b === 0 && a === 0) continue;
-  console.log(
-    `   ${k.padEnd(17)} ${(b / 1048576).toFixed(1).padStart(9)} MB ${(a / 1048576).toFixed(1).padStart(11)} MB `
-    + `${((a - b) / 1048576).toFixed(1).padStart(8)} MB`,
-  );
+async function seedShape(src) {
+  await page.goto(URL_);
+  await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 120000 });
+  await page.waitForTimeout(600);
+  await page.evaluate(async (d) => {
+    const T = '2026-07-01T00:00:00.000Z';
+    const cont = {
+      meta: { container_id: 'mraster', title: 'mr', created_at: T, updated_at: T, schema_version: 1 },
+      entries: [{ lid: 'M', title: 'Mermaid', archetype: 'text', body: '# 図\n\n```mermaid\n' + d + '\n```\n', created_at: T, updated_at: T }],
+      relations: [], revisions: [], assets: {},
+    };
+    const db = await new Promise((res, rej) => { const rq = indexedDB.open('pkc2'); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+    await new Promise((res, rej) => {
+      const t = db.transaction(['containers'], 'readwrite');
+      const s = t.objectStore('containers'); s.clear();
+      s.put(cont, 'mraster'); s.put('mraster', '__default__');
+      t.oncomplete = () => res(); t.onerror = () => rej(t.error);
+    });
+    db.close();
+  }, src);
 }
-console.log(
-  `   ${'JS heap'.padEnd(17)} ${(offMem.jsHeap / 1048576).toFixed(1).padStart(9)} MB `
-  + `${(onMem.jsHeap / 1048576).toFixed(1).padStart(11)} MB ${((onMem.jsHeap - offMem.jsHeap) / 1048576).toFixed(1).padStart(8)} MB`,
-);
+/** 横に広がる = 画面に収まりやすい形(縦長の対照)。 */
+function wideDiagram(n) {
+  const lines = ['graph LR'];
+  for (let i = 0; i < n; i += 1) lines.push(`  N${i}["ノード ${i}"] --> N${i + 1}["ノード ${i + 1}"]`);
+  return lines.join('\n');
+}
+const SHAPES = [
+  ['縦長 (graph TD)', diagram(NODES)],
+  ['横長 (graph LR)', wideDiagram(NODES)],
+];
+const REPEATS = 3;
+for (const [shapeName, src] of SHAPES) {
+  await seedShape(src);
+  const rows = [];
+  for (let r = 0; r < REPEATS; r += 1) {
+    const v0 = await openWith('');
+    const m0 = await breakdown();
+    const v1 = await openWith('?pkc-flag=center.mermaid_raster%3Dtrue');
+    const m1 = await breakdown();
+    rows.push({ v0, m0, v1, m1 });
+  }
+  const last = rows[rows.length - 1];
+  const px = last.v1.w * last.v1.h;
+  console.log(`\n   ── ${shapeName}:表示 ${last.v1.w}×${last.v1.h} = ${(px / 1e6).toFixed(2)}M 画素`
+    + ` / 展開後 ≒ ${(px * 4 / 1048576).toFixed(1)} MB`);
+  console.log(`      本文 DOM 要素   既定 ${last.v0.domElements} → raster ${last.v1.domElements}`
+    + `  (置換 ${last.v1.img ? 'OK' : '🔴 されていない'})`);
+  for (const k of ['blink_gc', 'cc', 'partition_alloc', 'malloc']) {
+    const diffs = rows.map((x) => ((x.m1.allocators[k] ?? 0) - (x.m0.allocators[k] ?? 0)) / 1048576);
+    const sorted = [...diffs].sort((a, b) => a - b);
+    console.log(`      ${k.padEnd(16)} 差 ${diffs.map((d) => d.toFixed(1).padStart(6)).join(' /')}`
+      + `   中央値 ${sorted[1].toFixed(1)} MB`);
+  }
+  const jsd = rows.map((x) => (x.m1.jsHeap - x.m0.jsHeap) / 1048576);
+  console.log(`      ${'JS heap'.padEnd(16)} 差 ${jsd.map((d) => d.toFixed(1).padStart(6)).join(' /')}`);
+}
+console.log('\n   ⚠ 3 回の差を並べて中央値で読む。1 回の値で「増えた / 減った」を書かない。');
+console.log('   ⚠ 縦長で増えて横長で増えないなら、機構は「img は図全体を展開して持つ」で確定。');
 
 console.log('\n   ⚠ JS heap 単独で「減った / 減らない」を言わない(2026-07-27 の反省)。');
 console.log('   ⚠ 差が誤差の範囲なら「効果なし」ではなく**未確定** ── 計測タスクとして残す。');

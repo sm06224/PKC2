@@ -34,8 +34,30 @@
 /** ラスタ化を試みる最小の SVG 要素数(これ未満は元から軽く、変換の意味が無い)。 */
 export const MERMAID_RASTER_MIN_ELEMENTS = 200;
 
-/** 生成した PNG の上限(px)。巨大な図で canvas 自体が重くなるのを避ける。 */
-const MAX_RASTER_PIXELS = 16_000_000;
+/**
+ * 🔴 **ラスタ化してよい表示面積の上限(画素)**。これを超える図は SVG のまま。
+ *
+ * ## なぜ要るか(実測。初稿の「メモリは減らない」を撤回した理由)
+ *
+ * ラスタ化の収支は**図の形で符号が変わる**。3 回反復の中央値:
+ *
+ * | 図 | 表示画素 | blink_gc | cc | 差引 |
+ * |---|---|---|---|---|
+ * | 縦長 260×6310 | 1.64M | −1.7 MB | **+4.5 MB** | **+2.8 MB(損)** |
+ * | 横長 866×6 | 0.01M | −2.0 MB | ±0.0 MB | **−2.0 MB(得)** |
+ *
+ * 機構: **`<img>` は図全体の展開後ビットマップを持つ**が、SVG は compositor が
+ * 見えているタイルだけラスタする。よって **cc の増分は画素面積にほぼ比例**し
+ * (実測 ≒ 2.7 B/画素)、**blink_gc の節約(≒ 2MB)は要素数で決まり面積に依らない**。
+ *
+ * 損益分岐は 2MB ÷ 2.7 B/画素 ≒ **0.74M 画素**。安全側に倒して **0.5M 画素**
+ * (例 1000×500 / 800×620)を上限にする ── 画面に収まる図はほぼ入り、
+ * 「縦に延々と続く図」だけが除外される。
+ *
+ * ⚠ この値は**実測から出した**ものであって理屈だけの値ではない。
+ *   変えるときは `tests/bench/mermaid-raster-probe.mjs` を回し直すこと。
+ */
+export const MERMAID_RASTER_MAX_AREA = 500_000;
 
 /**
  * `<img>` に付ける印。
@@ -73,12 +95,11 @@ export async function rasterizeMermaidWrap(wrap: HTMLElement): Promise<boolean> 
   if (!(cssW > 0) || !(cssH > 0)) return false;
   if (isRasterUpToDate(wrap, cssW)) return true;
   if (svg.querySelectorAll('*').length < MERMAID_RASTER_MIN_ELEMENTS) return false;
+  // 🔴 面積で足切りする。超える図は**ラスタ化しないほうがメモリが少ない**
+  //   (上の表を参照)。「大きい図こそ効きそう」は直感の罠だった。
+  if (cssW * cssH > MERMAID_RASTER_MAX_AREA) return false;
 
-  const dpr = view.devicePixelRatio || 1;
-  let scale = dpr;
-  if (cssW * cssH * scale * scale > MAX_RASTER_PIXELS) {
-    scale = Math.max(1, Math.sqrt(MAX_RASTER_PIXELS / (cssW * cssH)));
-  }
+  const scale = view.devicePixelRatio || 1;
 
   let objectUrl: string | null = null;
   try {
