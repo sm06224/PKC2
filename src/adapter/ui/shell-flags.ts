@@ -606,6 +606,26 @@ export const sidebarVirtualListEnabled = defineFlag<boolean>(
   },
 );
 
+/**
+ * C3(2026-07-28):center pane の本文を**ブロック単位**で描く。既定 OFF。
+ *
+ * ON でも、本スライス(C3-b)では**全ブロックを入れる** ── 窓化はまだしない。
+ * 目的は「ブロック配列経由で描いても出力が 1 バイトも変わらない」ことを
+ * 実機で確かめる前工事である(サイドバー窓化の S4 と同じ位置づけ)。
+ *
+ * ⚠ ブロック数が `CENTER_BLOCK_MIN_BLOCKS` 未満なら、ON でも従来経路のまま
+ *   (小さい本文では窓化に意味が無く、分割のコストだけが乗る)。
+ */
+export const centerBlockWindowEnabled = defineFlag<boolean>(
+  'center.block_window',
+  false,
+  {
+    category: 'shell',
+    description:
+      '中央ペインの本文をブロック単位で描く(将来の窓化の前工事)。既定 OFF・opt-in',
+  },
+);
+
 export const shellCompactEntryLabelsEnabled = defineFlag<boolean>(
   'shell.compact_entry_labels',
   false,

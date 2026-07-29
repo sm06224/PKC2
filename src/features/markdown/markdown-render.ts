@@ -3973,10 +3973,84 @@ export function renderMarkdownBlocks(
 ): string[] {
   const html = renderMarkdown(text, { ...opts, blockBoundaries: true });
   if (html === '') return [];
-  const parts = html.split(BLOCK_BOUNDARY_MARKER);
-  // 先頭は目印より前の残り(通常は空)。空要素は落とすが、
-  // **join したときに元へ戻る**ことは test 側で担保する。
-  return parts.filter((p) => p !== '');
+  return splitAtBalancedMarkers(html, BLOCK_BOUNDARY_MARKER);
+}
+
+/** タグを閉じない要素(ここで深さを数えない)。 */
+const VOID_ELEMENTS: ReadonlySet<string> = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+  'link', 'meta', 'param', 'source', 'track', 'wbr',
+]);
+
+/**
+ * 目印で切る。ただし **HTML が閉じている位置でだけ**切る。
+ *
+ * 🔴 これが無いと要素を割る(2026-07-28、実機の parity で発覚)。
+ *
+ * 目印は markdown のトップレベル token 境界に入るが、**後処理が範囲を跨いで
+ * 包む**ものがある(`:::details` / `:::section` / `:::quote` / `:::if` …)。
+ * 包まれた結果、目印が `<details>` の内側に来る。そこで切って
+ * `insertAdjacentHTML` で個別に入れると、**パーサが閉じていない `<details>` を
+ * 勝手に閉じ**、中身が外へ出る:
+ *
+ *   正: <details><summary>s</summary><p>中身</p></details>
+ *   誤: <details><summary>s</summary></details><p>中身</p>
+ *
+ * ⚠ 当初 doc に「包まれたら 1 ブロックにまとまる(粗くなるだけ)」と書いたが
+ *   **誤り**だった。目印は吸収されず、要素を割る。
+ *
+ * よって深さを数え、**深さ 0 の目印だけ**を分割点にする。深さ 1 以上の目印は
+ * 単に取り除く(その範囲は 1 ブロックとして扱われる = 粗くなるだけ)。
+ *
+ * 前提: markdown-it は本文の `<` を必ず escape するので、`<` はタグの開始しか
+ * 意味しない。よって単純な走査で数えられる。
+ */
+export function splitAtBalancedMarkers(html: string, marker: string): string[] {
+  const blocks: string[] = [];
+  let current = '';
+  let depth = 0;
+  let i = 0;
+
+  while (i < html.length) {
+    if (html.startsWith(marker, i)) {
+      // 深さ 0 のときだけ切る。目印そのものは出力しない。
+      if (depth === 0 && current !== '') {
+        blocks.push(current);
+        current = '';
+      }
+      i += marker.length;
+      continue;
+    }
+    if (html.startsWith('<!--', i)) {
+      const end = html.indexOf('-->', i);
+      const stop = end === -1 ? html.length : end + 3;
+      current += html.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (html[i] === '<') {
+      const close = html.indexOf('>', i);
+      if (close === -1) { current += html.slice(i); break; }
+      const tag = html.slice(i, close + 1);
+      const m = /^<(\/?)([a-zA-Z][a-zA-Z0-9-]*)/.exec(tag);
+      if (m) {
+        const isClose = m[1] === '/';
+        const name = m[2]!.toLowerCase();
+        const selfClosing = /\/\s*>$/.test(tag);
+        if (!VOID_ELEMENTS.has(name) && !selfClosing) {
+          depth += isClose ? -1 : 1;
+          if (depth < 0) depth = 0; // 壊れた HTML でも負にしない
+        }
+      }
+      current += tag;
+      i = close + 1;
+      continue;
+    }
+    current += html[i];
+    i += 1;
+  }
+  if (current !== '') blocks.push(current);
+  return blocks;
 }
 
 export function renderMarkdown(

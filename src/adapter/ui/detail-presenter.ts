@@ -1,5 +1,8 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
-import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { renderMarkdown, renderMarkdownBlocks, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { centerBlockWindowEnabled } from './shell-flags';
+import { shouldWindowBlocks } from './center-block-window';
+import { fillBlocks, type BlockPlacement } from './center-block-dom';
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import {
   extractDocumentGlobals,
@@ -105,7 +108,7 @@ const textPresenter: DetailPresenter = {
     if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
-      body.innerHTML = renderMarkdown(source, {
+      const mdOptions = {
         currentContainerId,
         vars,
         headingNumber: extractHeadingNumberConfig(entry.body),
@@ -116,7 +119,23 @@ const textPresenter: DetailPresenter = {
         // 加算して textarea 行へ換算する。data-pkc-* 属性が増えるだけで
         // 見た目・挙動への影響はない。
         sourceLineAnchors: true,
-      });
+      };
+      // C3-b: flag ON かつブロック数が閾値以上なら**ブロック配列**で入れる。
+      // ⚠ この段階では**全ブロックを入れる**(窓化はまだしない)。狙いは
+      //   「配列経由で描いても出力が 1 バイトも変わらない」ことを実機で
+      //   確かめること ── サイドバー窓化の S4(scaffold)と同じ位置づけ。
+      //   `renderMarkdownBlocks(...).join('') === renderMarkdown(...)` は
+      //   vitest 側で pin 済み(markdown-block-boundaries.test.ts)。
+      let placement: BlockPlacement | null = null;
+      if (centerBlockWindowEnabled()) {
+        const blocks = renderMarkdownBlocks(source, mdOptions);
+        if (shouldWindowBlocks(blocks.length)) {
+          placement = fillBlocks(body, blocks);
+        }
+      }
+      if (!placement) {
+        body.innerHTML = renderMarkdown(source, mdOptions);
+      }
       // PR-2A:document globals を data-pkc-* + dir attr で root に反映
       for (const [k, v] of Object.entries(globalsToDataAttrs(globals))) {
         body.setAttribute(k, v);
