@@ -536,7 +536,7 @@ scroll 補正の 9 件。効きは外して確認済み ── どれを消し�
 ⚠ 既定 ON なので **user-facing**。`STARTUP_NOTICES` に掲載済み
 (CLAUDE.md PR 運用 6)。
 
-### 7-h. 全 smoke(261 spec)を回した結果 ── **43 件中 39 件は昇格と無関係**
+### 7-h. 全 smoke(261 spec)を回した結果 ── **本 branch は smoke を 1 件も壊していない**
 
 既定 ON にしたうえで full smoke(Tier-B)を回すと **43 failed / 331 passed**。
 数だけ見ると昇格が壊したように見えるが、**同じ spec 群を flag OFF のビルドで
@@ -557,6 +557,33 @@ scroll 補正の 9 件。効きは外して確認済み ── どれを消し�
 ⚠ **「43 件落ちた」を昇格の結果として報告してはいけなかった。**
 対照群(flag OFF の同じ spec 群)を取るまで、どれが自分の責任かは分からない。
 C4 で「窓化のみ」を対照群に足したのと同じ話である。
+
+#### さらに main と比べた ── **この branch は smoke を 1 件も壊していない**
+
+「branch に元からある失敗」で止めず、`origin/main` の worktree(dist は
+commit 済みなのでビルド不要)で**同じ 31 spec ファイル**を回した:
+
+| ビルド | failed | passed |
+|---|---|---|
+| **main** | **48** | 27 |
+| branch(flag OFF) | 41 | 34 |
+| branch(flag ON) | 43(うち本物 1) | ─ |
+
+**branch で落ちて main で通る spec は 0 件**(集合として `branch ⊂ main`)。
+つまり本 branch は smoke を 1 件も壊しておらず、むしろ 7 件直している。
+
+失敗要因の内訳も別物だった:
+
+| ビルド | 最多要因 |
+|---|---|
+| main | **`VersionError: requested version (2) < existing (3)`× 24** |
+| branch | element not found / toBeVisible 失敗 / timeout(VersionError は **0**) |
+
+main 側の 24 件は **spec が IDB version を 2 で決め打ちしている** rot で、
+本 branch では既に直っている(セッション前半の修正)。残る ~39 件は
+右クリック contextmenu が出ない・popup が開かない・属性名の食い違いなど
+**main から続く既存の失敗**で、本設計とは独立。CLAUDE.md PR 運用 3
+(既存問題は別 hotfix)に従い、**本 branch では触らない**。
 
 ---
 
