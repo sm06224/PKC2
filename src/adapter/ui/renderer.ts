@@ -82,6 +82,7 @@ import { start as profileStart } from '../../runtime/profile';
 import { computeRenderScope, findEntryBodyChangeLid, canReuseEntryList } from './render-scope';
 import { recordVisibleOrder, getRecordedVisibleOrder } from './visible-order';
 import { describeStorageEngine, getStorageEngineInfo } from '../platform/storage/storage-engine-info';
+import { finalizeCenterBlockWindows } from './center-block-controller';
 import {
   SIDEBAR_VIRTUAL_MIN_ROWS,
   applySpacers,
@@ -655,6 +656,11 @@ export function render(state: AppState, root: HTMLElement, prev: AppState | null
   // **scrollSelectedSidebarNodeIntoView より前**に呼ぶ ── 窓を確定してから
   // 「選択行が見えているか」を判定しないと、直後に窓が動いてずれる。
   finalizeSidebarWindow(root, state);
+  // C3-c: center pane のブロック窓化も attach 後に確定する(scroller の高さと
+  // scrollTop は attach 前に分からない)。**center の scroll 復元より後**に
+  // 呼ぶ ── 復元前の scrollTop で窓を決めると、直後に scroll が戻って
+  // 「見ていた場所が空」になる。
+  finalizeCenterBlockWindows(root);
 
   scrollSelectedSidebarNodeIntoView(state, root);
 
@@ -901,6 +907,8 @@ function replaceSelectionRegions(state: AppState, root: HTMLElement): void {
 
   // 3. Center pane — full swap.
   replaceCenterRegion(state, root);
+  // C3-c: swap 直後に窓化を確定する(この経路も presenter を通る)。
+  finalizeCenterBlockWindows(root);
 
   // 4. Meta pane — appear / disappear / replace reconciliation.
   reconcileMetaPane(state, root);

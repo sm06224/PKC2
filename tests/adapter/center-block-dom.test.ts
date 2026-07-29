@@ -14,7 +14,9 @@
  *   (rect が全部 0)。実機の smoke で pin する。
  */
 import { describe, expect, it } from 'vitest';
+import { applyHeadingFold } from '@features/markdown/heading-fold';
 import {
+  applyBlockMinHeight,
   applyBlockSpacers,
   elementsOfBlock,
   fillBlocks,
@@ -43,7 +45,7 @@ describe('C3-b: ブロックを DOM へ入れる', () => {
   it('配置の記録: 各ブロックの要素が index から引ける', () => {
     const h = host();
     const p = fillBlocks(h, ['<h2>A</h2>', '<p>B</p>', '<p>C</p>']);
-    expect(p.ranges.length).toBe(3);
+    expect(p.elements.length).toBe(3);
     expect(elementsOfBlock(h, p, 0)[0]?.tagName).toBe('H2');
     expect(elementsOfBlock(h, p, 1)[0]?.textContent).toBe('B');
     expect(elementsOfBlock(h, p, 2)[0]?.textContent).toBe('C');
@@ -124,5 +126,56 @@ describe('C3-b: 高さ計測は「測れないなら測らない」', () => {
     const scroller = document.createElement('div');
     // happy-dom は rect が全部 0 ── これは「測れない」状態そのもの
     expect(measureVisibleBlockHeights(h, scroller, p).size).toBe(0);
+  });
+});
+
+describe('C3-c: 配置は applyHeadingFold の DOM 再構成を生き延びる', () => {
+  it('🔴 fold で <details> の中へ移されても、ブロック index から要素が引ける', () => {
+    const h = host();
+    const p = fillBlocks(h, ['<h2>見出し</h2>', '<p>本文 A</p>', '<p>本文 B</p>']);
+    // fold 前: top-level の子は 3 個
+    expect(h.children.length).toBe(3);
+    applyHeadingFold(h);
+    // fold 後: top-level の子は <details> 1 個だけ ── 子 index は全部嘘になる
+    expect(h.children.length, 'fold が効いていない(前提が崩れている)').toBe(1);
+    expect(h.firstElementChild?.tagName).toBe('DETAILS');
+    // それでも要素参照なので引ける
+    expect(elementsOfBlock(h, p, 0)[0]?.tagName).toBe('H2');
+    expect(elementsOfBlock(h, p, 1)[0]?.textContent).toBe('本文 A');
+    expect(elementsOfBlock(h, p, 2)[0]?.textContent).toBe('本文 B');
+  });
+
+  it('🔴 spacer は fold の後に置く ── 先に置くとセクションへ吸い込まれる', () => {
+    const before = host();
+    fillBlocks(before, ['<h2>見出し</h2>', '<p>本文</p>']);
+    applyBlockSpacers(before, 100, 200); // ← わざと fold の前に置く
+    applyHeadingFold(before);
+    const bottom = before.querySelector('[data-pkc-block-spacer="bottom"]');
+    expect(
+      bottom?.parentElement === before,
+      '前提の確認: fold 前に置いた spacer は <details> の内側へ移動する',
+    ).toBe(false);
+
+    const after = host();
+    fillBlocks(after, ['<h2>見出し</h2>', '<p>本文</p>']);
+    applyHeadingFold(after);
+    applyBlockSpacers(after, 100, 200); // ← 正しい順序
+    expect(
+      (after.firstElementChild as HTMLElement).getAttribute('data-pkc-block-spacer'),
+    ).toBe('top');
+    expect(
+      (after.lastElementChild as HTMLElement).getAttribute('data-pkc-block-spacer'),
+    ).toBe('bottom');
+  });
+
+  it('min-height は innerHTML の書き換えで消えない(scroll 範囲の床)', () => {
+    const h = host();
+    fillBlocks(h, ['<p>A</p>']);
+    applyBlockMinHeight(h, 12_345.6);
+    expect(h.style.minHeight).toBe('12346px');
+    fillBlocks(h, ['<p>B</p>', '<p>C</p>']); // innerHTML = '' を経由する
+    expect(h.style.minHeight, '再描画で床が外れている').toBe('12346px');
+    applyBlockMinHeight(h, null);
+    expect(h.style.minHeight).toBe('');
   });
 });

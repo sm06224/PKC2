@@ -1,6 +1,5 @@
 /**
- * C3-b(2026-07-28):中央ペインをブロック配列経由で描いても**出力が変わらない**
- * ことを実ブラウザで pin する。
+ * C3(2026-07-28):中央ペインのブロック窓化を実ブラウザで pin する。
  *
  * ## なぜ実ブラウザが要るか
  *
@@ -11,18 +10,23 @@
  *   「その文字列群を `insertAdjacentHTML` で 1 個ずつ入れた結果の DOM」
  *
  * であり、両者は同じとは限らない ── HTML パーサは**タグの補完**をするので、
- * 分割した位置によっては `<table>` の途中で切れて `<tbody>` が勝手に閉じる、
- * といった形で**結合結果が元と違う DOM になりうる**。
- * 文字列で等しくても DOM で等しいとは限らないので、ここで見る。
+ * 分割した位置によっては `:::details` の中身が `<details>` の外へ出る
+ * (C3-b で実際に踏んだ)。そして窓化そのものは happy-dom では検証できない
+ * (rect が全部 0 で、構造的に窓化しない経路へ落ちる)。
  *
- * ## 見るもの
+ * ## 見るもの(C3-c)
  *
- * flag ON / OFF で **同じ entry の `innerHTML` が完全一致**すること。
- * 一致しなければ C3 は挙動不変ではなく、窓化の効果と表示崩れの切り分けが
- * できなくなる。
+ * 1. **本文が切れない** ── 末尾までスクロールすると最後の見出しに届く。
+ *    窓化の事故はこの形で出る(例外も test failure も出ない)
+ * 2. **要素が実際に減っている** ── 減っていなければ窓化は「入っていない」
+ * 3. **scroll 位置が飛ばない** ── 窓の描き替えで先頭へ戻らない
+ * 4. **閾値未満は従来経路のまま**(innerHTML が完全一致)
+ * 5. **既定は OFF**
  */
 import { test, expect, type Page } from '@playwright/test';
 import { bootReady } from './_helpers/boot-ready';
+
+const UNITS = 12;
 
 /** 分割で壊れやすい構文を全部入れた本文(閾値 40 ブロックを超える量)。 */
 function makeBody(): string {
@@ -51,13 +55,39 @@ function makeBody(): string {
     '',
   ].join('\n');
   let out = '';
-  for (let i = 0; i < 12; i += 1) out += unit.replace(/\$\{i\}/g, String(i));
+  for (let i = 0; i < UNITS; i += 1) out += unit.replace(/\$\{i\}/g, String(i));
   return out;
 }
 
 async function seed(page: Page, body: string): Promise<void> {
   await page.goto('/pkc2.html');
   await bootReady(page);
+  // ⚠ 初回 boot の debounce 保存(CONTAINER_LOADED trigger)が commit する
+  //   前に seed すると、遅れて来た保存が `__default__` を上書きし、空の
+  //   container で再 boot する ── 症状は「entry 行がいつまでも出ない」
+  //   (click が 60s で timeout)。固定 wait ではなく**初回保存の commit**
+  //   を実測で待つ。他 spec(asset-object-url-parity 等)と同じ作法。
+  await expect.poll(
+    () => page.evaluate(
+      () => new Promise<boolean>((res) => {
+        const req = indexedDB.open('pkc2');
+        req.onerror = (): void => res(false);
+        req.onsuccess = (): void => {
+          const db = req.result;
+          try {
+            const tx = db.transaction(['containers'], 'readonly');
+            const get = tx.objectStore('containers').get('__default__');
+            get.onsuccess = (): void => { db.close(); res(get.result != null); };
+            get.onerror = (): void => { db.close(); res(false); };
+          } catch {
+            db.close();
+            res(false);
+          }
+        };
+      }),
+    ),
+    { timeout: 20_000 },
+  ).toBe(true);
   await page.evaluate(async (b) => {
     const T = '2026-07-01T00:00:00.000Z';
     const cont = {
@@ -83,39 +113,120 @@ async function seed(page: Page, body: string): Promise<void> {
   }, body);
 }
 
-async function renderedHtml(page: Page, url: string): Promise<string> {
+/** entry を開いて hydrator が落ち着くまで待つ。 */
+async function open(page: Page, url: string): Promise<void> {
   await page.goto(url);
   await bootReady(page);
   await page.locator('[data-pkc-region="entry-list"] [data-pkc-lid="e1"]').first().click();
   await expect(page.locator('.pkc-md-rendered').first()).toBeVisible();
-  // hydrator(mermaid / card / code edit ボタン)が落ち着くまで待つ
   await page.waitForTimeout(700);
-  return page.evaluate(
-    () => document.querySelector('.pkc-md-rendered')?.innerHTML ?? '',
-  );
 }
 
-test('C3-b: ブロック配列で描いても innerHTML が完全一致する', async ({ page }) => {
-  const body = makeBody();
-  await seed(page, body);
+const bodyHtml = (page: Page): Promise<string> =>
+  page.evaluate(() => document.querySelector('.pkc-md-rendered')?.innerHTML ?? '');
 
-  const off = await renderedHtml(page, '/pkc2.html');
-  const on = await renderedHtml(page, '/pkc2.html?pkc-flag=center.block_window=true');
+const bodyElements = (page: Page): Promise<number> =>
+  page.evaluate(() => document.querySelector('.pkc-md-rendered')?.querySelectorAll('*').length ?? 0);
 
-  expect(off.length, '前提: 本文が描画されていない').toBeGreaterThan(1000);
-  expect(on, 'ブロック配列経由で DOM が変わった ── C3 は挙動不変でなければならない')
-    .toBe(off);
+const ON = '/pkc2.html?pkc-flag=center.block_window=true';
+
+test('C3-c: 窓化しても末尾まで到達できる(本文が切れない)', async ({ page }) => {
+  await seed(page, makeBody());
+  await open(page, ON);
+
+  // 窓化が効いていること自体を先に確かめる ── 効いていないなら、この後の
+  // 「末尾に届く」は窓化を通っていない = 何も pin していない。
+  const on = await bodyElements(page);
+  await open(page, '/pkc2.html');
+  const off = await bodyElements(page);
+  expect(off, '前提: 本文が描画されていない').toBeGreaterThan(500);
+  expect(on, `窓化が効いていない(ON ${on} / OFF ${off})`).toBeLessThan(off * 0.6);
+
+  // 末尾までスクロールして最後の見出しに届くか。窓化の事故はここで出る。
+  await open(page, ON);
+  const last = `見出し ${UNITS - 1}`;
+  for (let i = 0; i < 60; i += 1) {
+    const found = await page.evaluate(
+      (t) => (document.querySelector('.pkc-md-rendered')?.textContent ?? '').includes(t),
+      last,
+    );
+    if (found) break;
+    await page.evaluate(() => {
+      const s = document.querySelector('.pkc-center-content');
+      if (s) s.scrollTop += s.clientHeight;
+    });
+    await page.waitForTimeout(60);
+  }
+  const text = await page.evaluate(
+    () => document.querySelector('.pkc-md-rendered')?.textContent ?? '',
+  );
+  expect(text, `末尾(${last})まで到達できない ── 窓が途中で止まっている`).toContain(last);
 });
 
-test('C3-b: 閾値未満の本文では従来経路のまま(分割コストを払わない)', async ({ page }) => {
+test('C3-c: スクロールしても先頭へ飛ばない', async ({ page }) => {
+  await seed(page, makeBody());
+  await open(page, ON);
+
+  // 「1500px へ飛ばす」を固定値で assert しない ── 実際に取りうる最大値は
+  // viewport とフォントで変わる。**狙った位置に留まったか**だけを見る。
+  const want = await page.evaluate(() => {
+    const s = document.querySelector('.pkc-center-content') as HTMLElement | null;
+    if (!s) return -1;
+    const target = Math.min(1500, Math.max(0, s.scrollHeight - s.clientHeight));
+    s.scrollTop = target;
+    return target;
+  });
+  expect(want, '前提: スクロールできるだけの高さが無い').toBeGreaterThan(500);
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(
+    () => document.querySelector('.pkc-center-content')?.scrollTop ?? -1,
+  );
+  expect(
+    Math.abs(after - want),
+    `窓の描き替えで scroll が動いた(${want} → ${after})`,
+  ).toBeLessThan(40);
+});
+
+/**
+ * ⚠ **空白は比べない**(2026-07-28 に実測で判明)。
+ *
+ * `applyHeadingFold` は `container.children`(= 要素ノードだけ)を `<details>`
+ * へ移すので、**ブロック間の改行テキストノードは元の場所に取り残される**。
+ * 結果、host の先頭に改行が「入れたブロック数ぶん」溜まる ── 窓化すると
+ * 入れるブロックが減るので**改行の数だけが変わる**(OFF 60 個 / ON 20 個)。
+ * CSS 上は畳まれて見えないが、`textContent` の生比較は必ず落ちる。
+ * 見たいのは**中身の並び**なので、空白は畳んでから比べる。
+ */
+const visibleText = (page: Page): Promise<string> =>
+  page.evaluate(() =>
+    (document.querySelector('.pkc-md-rendered')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+  );
+
+test('C3-c: 先頭画面の中身は非窓化と一致する(分割で DOM が壊れていない)', async ({ page }) => {
+  await seed(page, makeBody());
+  await open(page, '/pkc2.html');
+  const offText = await visibleText(page);
+  await open(page, ON);
+  const onText = await visibleText(page);
+  expect(onText.length, '窓の中身が空').toBeGreaterThan(100);
+  expect(onText.length, '窓化が効いていない(全部入っている)').toBeLessThan(offText.length);
+  expect(
+    offText.startsWith(onText),
+    '窓の中身が非窓化の先頭と食い違う ── 分割で DOM が壊れている',
+  ).toBe(true);
+});
+
+test('C3: 閾値未満の本文では従来経路のまま(分割コストを払わない)', async ({ page }) => {
   await seed(page, '# 小さい見出し\n\n短い段落。');
 
-  const off = await renderedHtml(page, '/pkc2.html');
-  const on = await renderedHtml(page, '/pkc2.html?pkc-flag=center.block_window=true');
+  await open(page, '/pkc2.html');
+  const off = await bodyHtml(page);
+  await open(page, ON);
+  const on = await bodyHtml(page);
   expect(on).toBe(off);
 });
 
-test('C3-b: 既定では flag が OFF(opt-in である)', async ({ page }) => {
+test('C3: 既定では flag が OFF(opt-in である)', async ({ page }) => {
   await seed(page, makeBody());
   await page.goto('/pkc2.html');
   await bootReady(page);

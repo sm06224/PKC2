@@ -2,7 +2,7 @@ import type { ArchetypeId, Entry } from '../../core/model/record';
 import { renderMarkdown, renderMarkdownBlocks, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
 import { centerBlockWindowEnabled } from './shell-flags';
 import { shouldWindowBlocks } from './center-block-window';
-import { fillBlocks, type BlockPlacement } from './center-block-dom';
+import { registerCenterBlockHost } from './center-block-controller';
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import {
   extractDocumentGlobals,
@@ -120,22 +120,6 @@ const textPresenter: DetailPresenter = {
         // 見た目・挙動への影響はない。
         sourceLineAnchors: true,
       };
-      // C3-b: flag ON かつブロック数が閾値以上なら**ブロック配列**で入れる。
-      // ⚠ この段階では**全ブロックを入れる**(窓化はまだしない)。狙いは
-      //   「配列経由で描いても出力が 1 バイトも変わらない」ことを実機で
-      //   確かめること ── サイドバー窓化の S4(scaffold)と同じ位置づけ。
-      //   `renderMarkdownBlocks(...).join('') === renderMarkdown(...)` は
-      //   vitest 側で pin 済み(markdown-block-boundaries.test.ts)。
-      let placement: BlockPlacement | null = null;
-      if (centerBlockWindowEnabled()) {
-        const blocks = renderMarkdownBlocks(source, mdOptions);
-        if (shouldWindowBlocks(blocks.length)) {
-          placement = fillBlocks(body, blocks);
-        }
-      }
-      if (!placement) {
-        body.innerHTML = renderMarkdown(source, mdOptions);
-      }
       // PR-2A:document globals を data-pkc-* + dir attr で root に反映
       for (const [k, v] of Object.entries(globalsToDataAttrs(globals))) {
         body.setAttribute(k, v);
@@ -143,37 +127,59 @@ const textPresenter: DetailPresenter = {
       if (globals.direction === 'rtl' || globals.direction === 'ltr') {
         body.setAttribute('dir', globals.direction);
       }
-      // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
-      // markdown renderer. Guarded by `entries` being supplied so
-      // tests / callers without container context still work.
-      if (entries) {
-        expandTransclusions(body, {
-          entries,
-          assets,
-          mimeByKey,
-          nameByKey,
-          hostLid: entry.lid,
-        });
-        // Slice 5.0 (Card minimal chrome): hydrate `.pkc-card-placeholder`
-        // emits from the renderer. Runs after transclusion so a card-link
-        // inside a transcluded body is still picked up.
-        hydrateCardPlaceholders(body, {
-          entries,
-          currentContainerId: currentContainerId ?? '',
-        });
+      /**
+       * 挿入後の後処理。**窓を描き替えるたびに走る**(C3-c)ので、
+       * 「1 回だけ」を前提にした処理をここへ足さないこと。
+       */
+      const hydrate = (host: HTMLElement): void => {
+        // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
+        // markdown renderer. Guarded by `entries` being supplied so
+        // tests / callers without container context still work.
+        if (entries) {
+          expandTransclusions(host, {
+            entries,
+            assets,
+            mimeByKey,
+            nameByKey,
+            hostLid: entry.lid,
+          });
+          // Slice 5.0 (Card minimal chrome): hydrate `.pkc-card-placeholder`
+          // emits from the renderer. Runs after transclusion so a card-link
+          // inside a transcluded body is still picked up.
+          hydrateCardPlaceholders(host, {
+            entries,
+            currentContainerId: currentContainerId ?? '',
+          });
+        }
+        // pgc-203 wave-α' polish #24:built-in mermaid hydration(S1 center)。
+        // placeholder 0 件で early return、lazy import('mermaid')。
+        // fire-and-forget(非同期、戻り値 promise は無視 ── render 完了は
+        // 次 frame 以降に visible に)。常時有効(flag は 2026-07-24 撤去)。
+        void hydrateMermaidPlaceholders(host);
+        // code-edit-lite-design-2026-07 §4:S1 限定の ✎(コードブロック編集)
+        // 後注入。features 層 markup に足すと S2/S4 で死にボタンになるため
+        // adapter 層で S1 だけに付ける。
+        injectCodeBlockEditButtons(host);
+        // 領域 6:top-level 見出しを native <details> で畳めるよう再構成。
+        // 純 DOM 操作のため entries 有無に依らず無条件で適用する。
+        // ⚠ **これが top-level の子を `<details>` の中へ移す** ── 以降
+        //   「何番目の子か」で位置を持つ処理は成立しない(C3-c の設計変更)。
+        applyHeadingFold(host);
+      };
+
+      // C3-c: flag ON かつブロック数が閾値以上なら**窓化**する。
+      // ここではまだ attach されていない(= scroller の高さも scrollTop も
+      // 分からない)ので、控えめな初回窓だけ入れて指揮を待つ。確定は
+      // renderer 末尾の `finalizeCenterBlockWindows`。
+      if (centerBlockWindowEnabled()) {
+        const blocks = renderMarkdownBlocks(source, mdOptions);
+        if (shouldWindowBlocks(blocks.length)) {
+          registerCenterBlockHost(body, blocks, hydrate);
+          return body;
+        }
       }
-      // pgc-203 wave-α' polish #24:built-in mermaid hydration(S1 center)。
-      // placeholder 0 件で early return、lazy import('mermaid')。
-      // fire-and-forget(非同期、戻り値 promise は無視 ── render 完了は
-      // 次 frame 以降に visible に)。常時有効(flag は 2026-07-24 撤去)。
-      void hydrateMermaidPlaceholders(body);
-      // code-edit-lite-design-2026-07 §4:S1 限定の ✎(コードブロック編集)
-      // 後注入。features 層 markup に足すと S2/S4 で死にボタンになるため
-      // adapter 層で S1 だけに付ける。
-      injectCodeBlockEditButtons(body);
-      // 領域 6:top-level 見出しを native <details> で畳めるよう再構成。
-      // 純 DOM 操作のため entries 有無に依らず無条件で適用する。
-      applyHeadingFold(body);
+      body.innerHTML = renderMarkdown(source, mdOptions);
+      hydrate(body);
       return body;
     }
 

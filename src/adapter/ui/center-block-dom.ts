@@ -25,9 +25,29 @@
  * 実測として持つより安全である。
  */
 
-/** ブロック index → host の子要素の範囲 `[start, end)`。 */
+/**
+ * ブロック index → そのブロックが生んだ**要素ノードそのもの**。
+ *
+ * 🔴 **子要素の index ではなく参照で持つ**(C3-c、2026-07-28 に設計変更)。
+ *
+ * 当初は `[start, end)` の index 範囲で持っていたが、挿入後に走る
+ * `applyHeadingFold` が **top-level の子を `<details>` の中へ移動する**ため、
+ * index は挿入した瞬間から嘘になる。実測(probe):
+ *
+ * | 本文の形 | markdown ブロック | fold 後の top-level 子 |
+ * |---|---|---|
+ * | `##` だけ 40 節 | 240 | 40 |
+ * | 先頭に `#` が 1 個 | 241 | **1** |
+ * | 見出しなし | 80 | 80 |
+ * | `##`/`###` 混在 | 240 | 14 |
+ *
+ * 「先頭に `#` タイトルが 1 個」は**ごく普通の文書**で、そこでは fold 後の
+ * top-level 子が 1 個 = 全要素の 100% になる。つまり **fold 後の階層で
+ * 窓化しても何も買えない**。よって窓化の単位は markdown ブロックのままとし、
+ * fold で移動されても壊れない**要素参照**で位置を持つ。
+ */
 export interface BlockPlacement {
-  readonly ranges: readonly (readonly [number, number])[];
+  readonly elements: readonly (readonly HTMLElement[])[];
 }
 
 /**
@@ -41,11 +61,16 @@ export interface BlockPlacement {
  */
 export function fillBlocks(host: HTMLElement, blocks: readonly string[]): BlockPlacement {
   host.innerHTML = '';
-  const ranges: Array<readonly [number, number]> = [];
+  const elements: Array<readonly HTMLElement[]> = [];
   for (const block of blocks) {
     const before = host.childNodes.length;
     host.insertAdjacentHTML('beforeend', block);
-    ranges.push([before, host.childNodes.length] as const);
+    const own: HTMLElement[] = [];
+    for (let i = before; i < host.childNodes.length; i += 1) {
+      const node = host.childNodes[i];
+      if (node instanceof HTMLElement) own.push(node);
+    }
+    elements.push(own);
   }
   // 🔴 **隣接テキストノードを結合する**(2026-07-28、実機の parity で発覚)。
   //
@@ -60,27 +85,24 @@ export function fillBlocks(host: HTMLElement, blocks: readonly string[]): BlockP
   //
   // `normalize()` は隣接テキストノードを 1 個に畳む ── 単一 parse と同じ形に戻る。
   host.normalize();
-  return { ranges };
+  return { elements };
 }
 
 /**
- * 指定ブロックが生んだ要素のうち、**要素ノード**だけを返す
- * (テキストノードは高さを持たないので測定対象外)。
+ * 指定ブロックが生んだ要素のうち、**まだ DOM に繋がっているもの**を返す。
+ *
+ * `applyHeadingFold` は要素を `<details>` の中へ**移動**するだけなので
+ * 参照は生き続ける。一方 `expandTransclusions` などは placeholder を
+ * **置換**することがあるので、外れた参照は捨てる(高さを測れない)。
  */
 export function elementsOfBlock(
   host: HTMLElement,
   placement: BlockPlacement,
   index: number,
 ): HTMLElement[] {
-  const range = placement.ranges[index];
-  if (!range) return [];
-  const out: HTMLElement[] = [];
-  const [start, end] = range;
-  for (let i = start; i < end && i < host.childNodes.length; i += 1) {
-    const node = host.childNodes[i];
-    if (node instanceof HTMLElement) out.push(node);
-  }
-  return out;
+  const own = placement.elements[index];
+  if (!own) return [];
+  return own.filter((el) => host.contains(el));
 }
 
 /**
@@ -100,7 +122,7 @@ export function measureVisibleBlockHeights(
   // viewport の高さが 0(display:none 直後など)では何も測れない。
   if (!(view.height > 0)) return out;
 
-  for (let i = 0; i < placement.ranges.length; i += 1) {
+  for (let i = 0; i < placement.elements.length; i += 1) {
     const elements = elementsOfBlock(host, placement, i);
     if (elements.length === 0) continue;
     const first = elements[0]!.getBoundingClientRect();
@@ -133,6 +155,15 @@ function makeBlockSpacer(doc: Document, position: 'top' | 'bottom'): HTMLElement
  *
  * scrollbar の長さと scrollTop の意味を「全ブロックあるとき」と同じに保つのが目的。
  * これが無いと、窓を描き替えるたびに scroll 位置が飛ぶ。
+ *
+ * 🔴 **必ず `applyHeadingFold` の後に呼ぶ**(C3-c)。fold は「見出し以外の
+ * top-level 子」を直前の `<details>` の中へ移すので、**先に置いた spacer は
+ * セクションの内側へ吸い込まれる**。そうなると spacer が畳んだ時に消え、
+ * scroll 範囲が突然縮む(しかも例外は出ない)。
+ *
+ * ⚠ spacer だけでは再描画中の一瞬の高さ崩れは防げない ── `fillBlocks` が
+ * 中身を一度空にするため。そこは host の `min-height`(= 全ブロックの推定
+ * 総高)で押さえる。`applyBlockMinHeight` を参照。
  */
 export function applyBlockSpacers(
   host: HTMLElement,
@@ -153,4 +184,19 @@ export function applyBlockSpacers(
     host.appendChild(bottom);
   }
   bottom.style.height = `${Math.max(0, bottomPx)}px`;
+}
+
+/**
+ * 再描画中に scroll 範囲が潰れないよう、host に**推定総高の床**を敷く。
+ *
+ * サイドバー窓化(L3-S5)では「spacer を先に伸ばしてから行を入れ替える」で
+ * 足りた。本文では足りない ── `fillBlocks` が `innerHTML = ''` で **spacer ごと**
+ * 消すためで、その一瞬に内容高が 0 になり、browser が `scrollTop` を
+ * max(=0) へクランプする。実害は「スクロールすると先頭へ飛ぶ」。
+ *
+ * inline style の `min-height` は `innerHTML` の書き換えでは消えないので、
+ * 窓化している間ずっと床として効き続ける。窓化をやめるときは空文字で外す。
+ */
+export function applyBlockMinHeight(host: HTMLElement, totalPx: number | null): void {
+  host.style.minHeight = totalPx === null ? '' : `${Math.max(0, Math.round(totalPx))}px`;
 }
