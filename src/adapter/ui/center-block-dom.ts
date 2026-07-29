@@ -106,11 +106,32 @@ export function elementsOfBlock(
 }
 
 /**
- * **いま viewport に入っているブロックだけ**の高さを測る。
+ * **いま viewport に入っているブロックだけ**の**送り幅(pitch)**を測る。
+ *
+ * 🔴 **返すのは「インクの高さ」ではない**(2026-07-29、user 実機報告から実測)。
+ *
+ * もとは `last.bottom - first.top` を返していた。これはブロックが**塗る**
+ * 範囲であって、**次のブロックまでの距離ではない** ── 間のマージンが落ちる。
+ * 累積オフセットと総高はこの値を足し上げて作るので、落ちたマージンが
+ * そのまま総高の不足になる。実測(360 ブロックの本文):
+ *
+ * | 量 | 値 |
+ * |---|---|
+ * | インク高の平均 × 360 | 10,728 |
+ * | 素で全部入れたときの真値 | **13,032** |
+ * | 不足 | 2,304(= マージン ~6.4px × 360) |
+ *
+ * scroll 範囲が真値より 18% 短いので、下端まで回すとブラウザが `scrollTop` を
+ * クランプする。**総和が合う量を測る**── すなわち
+ * 「**次のブロックの上端 − このブロックの上端**」。これを足し上げると
+ * 定義上ちょうど文書の高さになる。
+ *
+ * 窓の最後のブロックだけは「次」が無いのでインク高で代用する
+ * (overscan の外側なので画面には影響しない)。
  *
  * @param host      ブロックを入れた要素
  * @param scroller  スクロールする祖先(viewport を決める要素)
- * @returns ブロック index → 高さ(px)。**測れなかったものは含めない**
+ * @returns ブロック index → 送り幅(px)。**測れなかったものは含めない**
  */
 export function measureVisibleBlockHeights(
   host: HTMLElement,
@@ -122,17 +143,25 @@ export function measureVisibleBlockHeights(
   // viewport の高さが 0(display:none 直後など)では何も測れない。
   if (!(view.height > 0)) return out;
 
+  // 先に「中身のあるブロック」の上端・下端を集める。送り幅は隣との差なので、
+  // 1 個ずつ独立には決まらない ── 畳んで空になったブロックは飛ばす。
+  const spans: Array<{ index: number; top: number; bottom: number }> = [];
   for (let i = 0; i < placement.elements.length; i += 1) {
     const elements = elementsOfBlock(host, placement, i);
     if (elements.length === 0) continue;
     const first = elements[0]!.getBoundingClientRect();
     const last = elements[elements.length - 1]!.getBoundingClientRect();
+    spans.push({ index: i, top: first.top, bottom: last.bottom });
+  }
+
+  for (let s = 0; s < spans.length; s += 1) {
+    const cur = spans[s]!;
     // viewport と交差しているものだけ ── 交差していない要素の rect は
     // `content-visibility: auto` 下で嘘をつく。
-    const intersects = last.bottom >= view.top && first.top <= view.bottom;
-    if (!intersects) continue;
-    const height = last.bottom - first.top;
-    if (height > 0) out.set(i, height);
+    if (!(cur.bottom >= view.top && cur.top <= view.bottom)) continue;
+    const next = spans[s + 1];
+    const pitch = next ? next.top - cur.top : cur.bottom - cur.top;
+    if (pitch > 0) out.set(cur.index, pitch);
   }
   return out;
 }

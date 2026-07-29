@@ -181,12 +181,23 @@ test('C3-c: 窓化しても末尾まで到達できる(本文が切れない)', 
  *
  * ⇒ pin するのは「1 回代入して動かないこと」ではなく
  *   **「ホイールを回し続けても scrollHeight が安定していること」**。
+ *
+ * ## 原因と修正(2026-07-29 同日)
+ *
+ * `center-block-metrics-probe.mjs` で metrics の内側を覗いて 2 件見つけた。
+ * どちらも「壊れているように見えない書き方」だった:
+ *
+ * 1. **推定高に中央値を使っていた。** ブロック高は二峰性(~21px と ~40px)で、
+ *    中央値はその谷に乗るので実測が 1 個増えるだけで 21 ↔ 29.4 を飛び移る。
+ *    未測定 ~100 ブロックに一斉に効くので総高が 2,300px 往復していた。
+ *    **平均は同じ実行で 29.6〜30.0**(1.3% 幅)。総和の不偏推定量は平均。
+ * 2. **「送り幅」ではなく「インクの高さ」を測っていた。**
+ *    `last.bottom - first.top` はブロック間マージンを落とすので、
+ *    足し上げた総和が構造的に足りない(実測 10,728 vs 真値 13,032)。
+ *
+ * 修正後の同じ実行:**12,849〜13,003**(真値 12,953 を挟む、振れ幅 154px)。
  */
 test('🔴 C3-c: ホイール連打で scrollHeight が呼吸しない', async ({ page }) => {
-  // 🔴 **現在この欠陥は未修正**。`test.fail()` で「落ちるのが既知」と宣言する
-  //   ── skip にすると存在ごと忘れる。直ったら「予期せず pass」で CI が教える。
-  //   これが直るまで `center.block_window` の既定 ON は戻さない。
-  test.fail();
   await seed(page, makeBody());
   await open(page, ON);
   const box = await page.locator('.pkc-center-content').first().boundingBox();
@@ -215,6 +226,47 @@ test('🔴 C3-c: ホイール連打で scrollHeight が呼吸しない', async (
     `scrollHeight が ${Math.min(...heights)}〜${Math.max(...heights)} で揺れている`
     + ' ── 連続操作でクランプが起きて先頭へ飛ぶ',
   ).toBeLessThan(200);
+});
+
+/**
+ * 🔴 **総高が「安定して間違っている」のを捕まえる pin**(2026-07-29)。
+ *
+ * 上の「呼吸しない」だけでは足りない ── 推定を凍結すれば揺れは止まるが、
+ * **真値より 18% 短いまま安定する**という直し方でも通ってしまう。それでは
+ * 下端でクランプが起き続けるので、user の症状は消えない。
+ *
+ * よって **窓化 OFF の `scrollHeight`(= 真値)と突き合わせる**。
+ * 実測の欠陥は「インクの高さを足していたのでブロック間マージンが落ちた」で、
+ * 10,728 vs 13,032 = **18% 不足**だった。修正後は 0.6% 以内。
+ * 閾値 3% は「マージンを落とす」型の退行を確実に弾き、フォント差程度は許す幅。
+ */
+test('🔴 C3-c: 窓化した scrollHeight が真値(窓化 OFF)と一致する', async ({ page }) => {
+  await seed(page, makeBody());
+
+  await open(page, OFF);
+  const truth = await page.evaluate(
+    () => document.querySelector('.pkc-center-content')?.scrollHeight ?? 0,
+  );
+  expect(truth, '窓化 OFF で本文が出ていない').toBeGreaterThan(1000);
+
+  await open(page, ON);
+  // 推定が実測へ寄るまで少し回す(先頭だけでは未測定ブロックが多すぎる)。
+  const box = await page.locator('.pkc-center-content').first().boundingBox();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  for (let i = 0; i < 4; i += 1) {
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(120);
+  }
+  const windowed = await page.evaluate(
+    () => document.querySelector('.pkc-center-content')?.scrollHeight ?? 0,
+  );
+
+  const off = Math.abs(windowed - truth) / truth;
+  expect(
+    off,
+    `窓化 ${windowed} vs 真値 ${truth}(${(off * 100).toFixed(1)}% ずれ)`
+    + ' ── 送り幅ではなくインク高を足していないか',
+  ).toBeLessThan(0.03);
 });
 
 test('C3-c: スクロールしても先頭へ飛ばない', async ({ page }) => {

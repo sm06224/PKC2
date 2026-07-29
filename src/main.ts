@@ -51,6 +51,7 @@ import { registerBuiltinKeymaps } from './adapter/ui/keymap-binder';
 import { wireTabStrip, restoreTabState } from './adapter/ui/tab-strip';
 import { mountStartupNotice } from './adapter/ui/startup-notice';
 import { mountAssetDebugOverlay } from './adapter/ui/asset-debug-overlay';
+import { mountRenderLoopDebugOverlay } from './adapter/ui/render-loop-debug-overlay';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
@@ -248,6 +249,11 @@ async function boot(): Promise<void> {
   // closure so its internal `lastTicket` survives between ticks.
   const locationNavTracker = createLocationNavTracker();
 
+  // `?pkc-debug=render-loop`(2026-07-29):再描画ループ診断の観測点。
+  // renderer を書き換えずに回数を数えられるよう、hook を 1 本だけ通す。
+  // debug flag が無ければ登録者ゼロ = 空配列の for ループだけで no-op。
+  const renderHooks: Array<() => void> = [];
+
   // #938 R11: render subscriber 本体。従来は onState に直接渡していた
   // closure を named function に切り出し、下の coalescing wrapper 経由で
   // 登録する(flag OFF では従来どおり dispatch ごと同期実行)。
@@ -413,6 +419,7 @@ async function boot(): Promise<void> {
     cleanupBlobUrls(root);
 
     render(state, root, prevRenderState);
+    for (const hook of renderHooks) hook();
 
     // PR-2T(2026-05-12):render 後の inline color に WCAG resolver を適用。
     // `theme.wcag_auto_shift` flag が OFF なら no-op、ON なら同系色 shift。
@@ -820,6 +827,9 @@ async function boot(): Promise<void> {
   // #956: `?pkc-debug=assets` 診断 overlay(user 報告切り分け用)。
   // debug flag が無ければ完全 no-op。
   mountAssetDebugOverlay(dispatcher, store);
+  // 2026-07-29: `?pkc-debug=render-loop` 再描画ループ診断(user 実機報告
+  // 「ランチャーが暴走」の切り分け ── 手元で再現しないので観測点を渡す)。
+  mountRenderLoopDebugOverlay(dispatcher, root, (hook) => renderHooks.push(hook));
   // 段階4 (#868): resident asset-metadata index so storage profile /
   // guardrails / orphan count / paste dedupe report on the FULL store, not
   // just the resident working-set. Memory-safe backfill + persisted index.
