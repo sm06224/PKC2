@@ -617,7 +617,11 @@ export const sidebarVirtualListEnabled = defineFlag<boolean>(
  */
 export const centerBlockWindowEnabled = defineFlag<boolean>(
   'center.block_window',
-  true,
+  // 🔴 2026-07-29:既定 ON にした直後、実機で **center pane が使えなくなった**
+  //   (「スクロールする → 描画範囲生成 → スクロールがトップに戻る」の無限ループ、
+  //   ファイラーも巻き添え)。**既定 OFF へ差し戻す**。
+  //   原因が特定でき、実操作(ホイール連打)の parity test が付くまで戻さない。
+  false,
   {
     category: 'shell',
     description:
@@ -671,7 +675,8 @@ export const mermaidRasterEnabled = defineFlag<boolean>(
 
 export const centerRenderCacheEnabled = defineFlag<boolean>(
   'center.render_cache',
-  true,
+  // 窓化と併用したときだけ効く flag なので、窓化の差し戻しに合わせて OFF。
+  false,
   {
     category: 'shell',
     description:

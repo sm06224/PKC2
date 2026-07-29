@@ -128,10 +128,10 @@ const bodyHtml = (page: Page): Promise<string> =>
 const bodyElements = (page: Page): Promise<number> =>
   page.evaluate(() => document.querySelector('.pkc-md-rendered')?.querySelectorAll('*').length ?? 0);
 
-// 2026-07-29:窓化と描画キャッシュは**既定 ON**へ昇格した(user 裁定)。
-// 対照群を取るには**明示的に落とす**必要がある。
-const ON = '/pkc2.html';
-const OFF = '/pkc2.html?pkc-flag=center.block_window=false&pkc-flag=center.render_cache=false';
+// 2026-07-29:既定 ON へ昇格 → **同日に差し戻し**(実機で center pane が
+// 使えなくなった)。opt-in に戻ったので、ON 側は明示的に立てる。
+const ON = '/pkc2.html?pkc-flag=center.block_window=true&pkc-flag=center.render_cache=true';
+const OFF = '/pkc2.html';
 
 test('C3-c: 窓化しても末尾まで到達できる(本文が切れない)', async ({ page }) => {
   await seed(page, makeBody());
@@ -164,6 +164,57 @@ test('C3-c: 窓化しても末尾まで到達できる(本文が切れない)', 
     () => document.querySelector('.pkc-md-rendered')?.textContent ?? '',
   );
   expect(text, `末尾(${last})まで到達できない ── 窓が途中で止まっている`).toContain(last);
+});
+
+/**
+ * 🔴 **これが 2026-07-29 の実機事故を捕まえる pin**(後付け)。
+ *
+ * 既定 ON にした直後、user 実機で「スクロールする → 描画範囲生成 →
+ * トップに戻る」の無限ループになり center pane が使えなくなった。
+ * 既存の「scroll が飛ばない」test は **`scrollTop = N` を 1 回代入する**
+ * だけだったので**素通りした** ── user はホイールを何度も回す。
+ *
+ * 実測(ホイール 20 回):窓化 OFF の `scrollHeight` は 12,953 で一定なのに、
+ * 窓化 ON は **8,417〜11,131 で揺れ続け、しかも真値より ~1,800px 短い**。
+ * スクロール範囲が呼吸するので、連続操作ではブラウザが `scrollTop` を
+ * クランプして先頭側へ飛ぶ。
+ *
+ * ⇒ pin するのは「1 回代入して動かないこと」ではなく
+ *   **「ホイールを回し続けても scrollHeight が安定していること」**。
+ */
+test('🔴 C3-c: ホイール連打で scrollHeight が呼吸しない', async ({ page }) => {
+  // 🔴 **現在この欠陥は未修正**。`test.fail()` で「落ちるのが既知」と宣言する
+  //   ── skip にすると存在ごと忘れる。直ったら「予期せず pass」で CI が教える。
+  //   これが直るまで `center.block_window` の既定 ON は戻さない。
+  test.fail();
+  await seed(page, makeBody());
+  await open(page, ON);
+  const box = await page.locator('.pkc-center-content').first().boundingBox();
+  expect(box, 'center pane が無い').not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+
+  const heights: number[] = [];
+  const tops: number[] = [];
+  for (let i = 0; i < 12; i += 1) {
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(120);
+    const st = await page.evaluate(() => {
+      const s = document.querySelector('.pkc-center-content');
+      return s ? { top: Math.round(s.scrollTop), h: Math.round(s.scrollHeight) } : null;
+    });
+    if (st) { heights.push(st.h); tops.push(st.top); }
+  }
+  // 先頭へ戻っていないこと(逆行ゼロ)
+  for (let i = 1; i < tops.length; i += 1) {
+    expect(tops[i]!, `スクロールが逆行した: ${tops.join(' → ')}`).toBeGreaterThanOrEqual(tops[i - 1]! - 5);
+  }
+  // スクロール範囲が呼吸していないこと
+  const spread = Math.max(...heights) - Math.min(...heights);
+  expect(
+    spread,
+    `scrollHeight が ${Math.min(...heights)}〜${Math.max(...heights)} で揺れている`
+    + ' ── 連続操作でクランプが起きて先頭へ飛ぶ',
+  ).toBeLessThan(200);
 });
 
 test('C3-c: スクロールしても先頭へ飛ばない', async ({ page }) => {
@@ -229,30 +280,16 @@ test('C3: 閾値未満の本文では従来経路のまま(分割コストを払
   expect(on).toBe(off);
 });
 
-test('C3/C4: 既定で ON である(2026-07-29 昇格)', async ({ page }) => {
+test('🔴 C3/C4 は既定 OFF である(2026-07-29 差し戻し)', async ({ page }) => {
+  // 既定 ON にした直後、実機で center pane が使えなくなった(スクロールが
+  // トップへ戻り続ける)。**原因が特定でき実操作の parity が付くまで既定 OFF**。
   await seed(page, makeBody());
   await open(page, '/pkc2.html');
-  // flag 名を読むのではなく**効いているか**を見る ── 計器の有無に依存せず、
-  // 「flag は true だが経路に届いていない」も同時に捕まる。
+  const def = await bodyElements(page);
+  await open(page, ON);
   const on = await bodyElements(page);
-  await open(page, OFF);
-  const off = await bodyElements(page);
-  expect(off, '前提: 本文が描画されていない').toBeGreaterThan(500);
-  expect(on, `既定で窓化が効いていない(既定 ${on} / 明示 OFF ${off})`).toBeLessThan(off * 0.6);
-});
-
-test('C4: 既定で描画キャッシュが効いている(開き直しで hit する)', async ({ page }) => {
-  await seed(page, makeBody());
-  await open(page, '/pkc2.html');
-  // 同じ entry を選び直す(A↔B が無いので view 切替で center を作り直す)
-  await page.locator('[data-pkc-region="entry-list"] [data-pkc-lid="e1"]').first().click();
-  await page.waitForTimeout(300);
-  const stats = await page.evaluate(() => {
-    const w = window as unknown as { __pkc2RenderCache?: () => { hits: number; misses: number } };
-    return typeof w.__pkc2RenderCache === 'function' ? w.__pkc2RenderCache() : null;
-  });
-  expect(stats, '計器 __pkc2RenderCache が出ていない').not.toBeNull();
-  expect(stats!.misses, '一度も描画していない(前提が崩れている)').toBeGreaterThan(0);
+  expect(def, '前提: 本文が描画されていない').toBeGreaterThan(500);
+  expect(on, `明示 ON で窓化が効いていない(既定 ${def} / ON ${on})`).toBeLessThan(def * 0.6);
 });
 
 test('C3-d: 畳んだ見出しはスクロールしても開かない', async ({ page }) => {
