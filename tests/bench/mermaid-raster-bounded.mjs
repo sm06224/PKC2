@@ -27,6 +27,22 @@
  * | img-capped | **上限画素まで縮小**して PNG 化、CSS で表示サイズへ拡大 |
  * | canvas | `<canvas>` を DOM に残す(加速 2D canvas = GPU テクスチャを狙う) |
  *
+ * ## 🔴 腕ごとに**ブラウザを立て直す**(初稿の失敗)
+ *
+ * 初稿は 1 つのブラウザで svg → img-full → img-capped → canvas と順に回した。
+ * 結果は合計 USS が **797 → 844 → 864 → 870 MB と実行順に単調増加**した
+ * ── これは腕の性質ではなく**累積**を見ている。対照群は「測りたい操作以外を
+ * 全部同じにしたもの」であって、「前の腕の残骸が乗ったもの」ではない。
+ *
+ * よって **1 試行 = 1 ブラウザ**にし、さらに **腕を交互に回す**(A,B,C,D,A,B,C,D)。
+ * 最初と最後に同じ腕を置いて **ドリフト量**も出す ── それより小さい差は未確定。
+ *
+ * ## ⚠ この環境で GPU の話ができるか先に確かめる
+ *
+ * headless の Chromium は SwiftShader(ソフトウェア GL)で動くことがある。
+ * その場合「GPU メモリへオフロード」は**この計器では検証できない**。
+ * WebGL の renderer 文字列を印字して、まずそこを明示する。
+ *
  * 使い方: node tests/bench/mermaid-raster-bounded.mjs [--nodes=60] [--cap=1000000] [--repeat=3]
  */
 import { createRequire } from 'node:module';
@@ -84,13 +100,16 @@ function processMemory() {
   return out;
 }
 
-const browser = await chromium.launch({
+const LAUNCH = {
   executablePath: process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   // GPU を無効にすると①の検証にならない。既定(有効)のまま測る。
   args: ['--no-sandbox'],
-});
-const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-const page = await ctx.newPage();
+};
+async function newBrowser() {
+  const b = await chromium.launch(LAUNCH);
+  const c = await b.newContext({ viewport: { width: 1400, height: 900 } });
+  return { b, page: await c.newPage() };
+}
 
 function diagram(n) {
   const lines = ['graph TD'];
@@ -98,10 +117,12 @@ function diagram(n) {
   return lines.join('\n');
 }
 
-await page.goto(URL_);
-await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 120000 });
-await page.waitForTimeout(1000);
-await page.evaluate(async (src) => {
+/** seed は 1 回だけ(IDB は profile 共有ではないので trial ごとに要る)。 */
+async function seed(page) {
+  await page.goto(URL_);
+  await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 120000 });
+  await page.waitForTimeout(800);
+  await page.evaluate(async (src) => {
   const T = '2026-07-01T00:00:00.000Z';
   const cont = {
     meta: { container_id: 'mrb', title: 'mrb', created_at: T, updated_at: T, schema_version: 1 },
@@ -115,11 +136,15 @@ await page.evaluate(async (src) => {
     s.put(cont, 'mrb'); s.put('mrb', '__default__');
     t.oncomplete = () => res(); t.onerror = () => rej(t.error);
   });
-  db.close();
-}, diagram(NODES));
+    db.close();
+  }, diagram(NODES));
+}
 
-/** 1 試行:reload → 図を開く → 指定の腕へ変換 → 落ち着かせて計測。 */
+/** 1 試行 = **1 ブラウザ**。立ち上げ → seed → 図を開く → 腕へ変換 → 計測 → 落とす。 */
 async function trial(arm, cap) {
+  const { b, page } = await newBrowser();
+  try {
+  await seed(page);
   await page.goto(URL_);
   await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 120000 });
   await page.locator('[data-pkc-region="entry-list"] [data-pkc-lid="M"]').first().click();
@@ -139,7 +164,7 @@ async function trial(arm, cap) {
 
     // 上限画素まで縮小する倍率(img-full / canvas は 1 倍)
     const area = cssW * cssH;
-    const scale = a === 'img-capped' && area > c ? Math.sqrt(c / area) : 1;
+    const scale = c > 0 && area > c ? Math.sqrt(c / area) : 1;
     const rw = Math.max(1, Math.round(cssW * scale));
     const rh = Math.max(1, Math.round(cssH * scale));
 
@@ -178,19 +203,43 @@ async function trial(arm, cap) {
   // 合成が落ち着くまで待ってから読む(GPU 側は遅れて確保される)
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await page.waitForTimeout(2500);
-  return { info, mem: processMemory() };
+  const gl = await page.evaluate(() => {
+    try {
+      const cv = document.createElement('canvas');
+      const g = cv.getContext('webgl');
+      const ext = g && g.getExtension('WEBGL_debug_renderer_info');
+      return ext ? String(g.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : 'n/a';
+    } catch { return 'n/a'; }
+  });
+  return { info, gl, mem: processMemory() };
+  } finally {
+    await b.close();
+    await new Promise((r) => setTimeout(r, 1200)); // プロセスが消えるのを待つ
+  }
 }
 
-const ARMS = ['svg', 'img-full', 'img-capped', 'canvas'];
-console.log(`■ mermaid ラスタの常駐:GPU まで含めて測る(ノード ${NODES} / 上限 ${(CAP / 1e6).toFixed(1)}M 画素 / ${REPEAT} 回)\n`);
+// 🔴 上限を**振る**。初稿は 1.0M(元が 1.64M)で、ほとんど縮んでおらず
+//    「canvas を定めれば減るのか」の検証になっていなかった。
+const CAPS = [
+  ['svg', 0],
+  ['img-full', 0],
+  ['img-500k', 500_000],
+  ['img-125k', 125_000],
+  ['img-31k', 31_250],
+  ['canvas', 0],
+];
+const ARMS = CAPS.map(([a]) => a);
+const CAP_OF = Object.fromEntries(CAPS);
+console.log(`■ mermaid ラスタの常駐:GPU まで含めて測る(ノード ${NODES} / ${REPEAT} 回 / 1 試行 = 1 ブラウザ)\n`);
 console.log('   ⚠ RSS 合計は使わない(共有ページの二重計上)。PSS と USS で読む。\n');
 
-const results = {};
-for (const arm of ARMS) {
-  const runs = [];
-  for (let i = 0; i < REPEAT; i += 1) runs.push(await trial(arm, CAP));
-  results[arm] = runs;
+// 🔴 **交互に回す**。腕ごとにまとめて回すと、順序の効果と腕の効果が分離できない。
+const results = Object.fromEntries(ARMS.map((a) => [a, []]));
+for (let i = 0; i < REPEAT; i += 1) {
+  for (const arm of ARMS) results[arm].push(await trial(arm, CAP_OF[arm]));
 }
+// ドリフト測定: 最後にもう一度 svg を測り、初回との差を「未確定の幅」とする。
+const drift = await trial('svg', 0);
 
 const med = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 const first = results.svg[0].info;
@@ -217,8 +266,13 @@ for (const arm of ARMS.slice(1)) {
   const v = med(results[arm].map((r) => Object.values(r.mem).reduce((a, x) => a + x.uss, 0) / 1024));
   console.log(`     ${arm.padEnd(12)} ${(v - base).toFixed(1).padStart(7)} MB`);
 }
-console.log('\n   ⚠ 「renderer が減った」だけで良しとしない。**合計**で見る。');
-console.log('   ⚠ 3 回の中央値。プロセス常駐は数 MB ぶれるので、その幅より小さい差は未確定。');
+const svgFirst = Object.values(results.svg[0].mem).reduce((a, x) => a + x.uss, 0) / 1024;
+const svgLast = Object.values(drift.mem).reduce((a, x) => a + x.uss, 0) / 1024;
+console.log(`\n   ドリフト(同じ svg 腕を最初と最後): ${svgFirst.toFixed(1)} → ${svgLast.toFixed(1)} MB `
+  + `= ${Math.abs(svgLast - svgFirst).toFixed(1)} MB`);
+console.log(`   🔴 **この幅より小さい差は未確定**として扱う。`);
+console.log(`\n   WebGL renderer: ${results.svg[0].gl}`);
+console.log('   ⚠ SwiftShader 等のソフトウェア GL なら、GPU メモリの話はこの環境では検証できない。');
+console.log('   ⚠ 「renderer が減った」だけで良しとしない。**合計**で見る。');
 
-await browser.close();
 server.close();
