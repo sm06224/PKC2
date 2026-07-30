@@ -1,5 +1,7 @@
 # Development Docs — Issue Index
 
+> **2026-07-30 追記**: **PKC3 メジャーバージョンアップ設計** = [`pkc3-major-upgrade-design-2026-07.md`](./pkc3-major-upgrade-design-2026-07.md)(user 指示 2026-07-30: storage 刷新 / 可搬式埋め込み・export・PKC-Markdown 維持 / 依存受容 + SBOM / GitHub Pages dev・product / flags 15 個予算と設定分離)。P0 = 裁定待ち。
+>
 > **2026-07-26 追記**: 直近セッションの状態・成果・**棄却済みの案**・宿題は [`session-handoff-2026-07-26.md`](./session-handoff-2026-07-26.md)(ストレージ性能の実測と着地、監査 S1〜S4 の封鎖、lazy_entry_bodies 退役)。性能の話を始める前に §3「やらないと決めたこと」を読むこと。
 >
 > **2026-07-24 追記**: その前のセッションの成果・残件・教訓は [`session-handoff-2026-07-24.md`](./session-handoff-2026-07-24.md)(storage v3 P0〜P2 完了・マニュアル刷新期の申し送り)。
