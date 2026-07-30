@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # 視覚監査 before/after の比較 HTML を作る(playwright-visual skill)。
 #
-#   ./scripts/visual-compare.sh <baseline-commit>
+#   ./scripts/visual-compare.sh <baseline-commit> [capture-spec] [report-spec]
 #
 # baseline commit の build を worktree で作り、dist を差し替えながら
 # 同じ操作を 2 回撮って canvas absdiff の比較表を書き出す。
 #   出力: test-results/compare/visual-audit-before-after.html(自己完結 HTML)
 set -euo pipefail
 
-BASE_REF="${1:?usage: visual-compare.sh <baseline-commit>}"
+BASE_REF="${1:?usage: visual-compare.sh <baseline-commit> [capture-spec] [report-spec]}"
+CAPTURE_SPEC="${2:-audit-compare-capture}"
+REPORT_SPEC="${3:-audit-compare-report}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${TMPDIR:-/tmp}/pkc2-visual-baseline"
 cd "$ROOT"
@@ -31,15 +33,15 @@ echo "==> before 撮影"
 rm -rf test-results/compare
 cp "$WORK-before.html" dist/pkc2.html
 PKC_SHOT_DIR=test-results/compare/before \
-  npx playwright test --config=tests/smoke/playwright.demo.config.ts audit-compare-capture
+  npx playwright test --config=tests/smoke/playwright.demo.config.ts "$CAPTURE_SPEC"
 
 echo "==> after 撮影"
 cp "$WORK-after.html" dist/pkc2.html
 PKC_SHOT_DIR=test-results/compare/after \
-  npx playwright test --config=tests/smoke/playwright.demo.config.ts audit-compare-capture
+  npx playwright test --config=tests/smoke/playwright.demo.config.ts "$CAPTURE_SPEC"
 
 echo "==> 比較 HTML 生成"
-npx playwright test --config=tests/smoke/playwright.demo.config.ts audit-compare-report
+npx playwright test --config=tests/smoke/playwright.demo.config.ts "$REPORT_SPEC"
 
 git worktree remove --force "$WORK" 2>/dev/null || true
 rm -f "$WORK-before.html" "$WORK-after.html"

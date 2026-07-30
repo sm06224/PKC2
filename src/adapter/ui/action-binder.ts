@@ -13,6 +13,7 @@ import type { Entry } from '../../core/model/record';
 import { getPresenter } from './detail-presenter';
 import { runDebugReportDump } from './debug-report-button';
 import { parseTodoBody, serializeTodoBody } from './todo-presenter';
+import { withTodoBodies } from './todo-body-guard';
 import { toggleSubtaskAt } from '../../features/todo/todo-subtask';
 import { setTextlogSearchQuery, toggleTextlogImportanceOnly } from './textlog-presenter';
 import { parseTextlogBody, serializeTextlogBody, appendLogEntry } from './textlog-presenter';
@@ -55,6 +56,7 @@ import { processFileViaWorker } from './attach-worker-client';
 import { showAttachProgress } from './attach-progress';
 import { renderColorPickerPopover } from './color-picker';
 import { showToast } from './toast';
+import { resolveVisibleOrder } from './visible-order';
 import { showInlinePrompt, showInlineConfirm, showInlineForm } from './inline-dialog';
 import { openFlagsJsonEditor } from './flags-json-editor';
 import { openCodeBlockEditor } from './code-block-editor';
@@ -96,6 +98,10 @@ import { buildMixedContainerBundle } from '../platform/mixed-bundle';
 import { triggerZipDownload } from '../platform/zip-package';
 import { exportContainerAsHtml, containerHasLargeAsset } from '../platform/exporter';
 import { hydrateForExport, loadAssetDirect } from '../platform/idb-store';
+import {
+  ensureAllRevisionsResident,
+  needsRevisionBarrier,
+} from '../platform/revision-residency';
 import { buildSystemOnlyContainer } from '../../features/auto-fill/system-only-container';
 import { buildSubsetContainer } from '../../features/container/build-subset';
 import { resolveAutoPlacementFolder, getSubfolderNameForArchetype } from '../../features/relation/auto-placement';
@@ -1842,12 +1848,12 @@ export function bindActions(
               .map((el) => el.getAttribute('data-pkc-lid'))
               .filter((v): v is string => typeof v === 'string');
           } else {
+            // L3-S2: 描画側が記録した順序を使う(無ければ従来どおり DOM から
+            // 導出)。窓化すると DOM に無い行が出るため、DOM 導出のままだと
+            // anchor が窓外のとき indexOf が -1 → blocked() で**選択が
+            // 丸ごと無反応**になる(例外も出ない)。
             visibleOrder = sidebarRegion
-              ? Array.from(
-                  sidebarRegion.querySelectorAll<HTMLElement>('li.pkc-entry-item[data-pkc-lid]'),
-                )
-                  .map((el) => el.getAttribute('data-pkc-lid'))
-                  .filter((v): v is string => typeof v === 'string')
+              ? resolveVisibleOrder(sidebarRegion, 'li.pkc-entry-item[data-pkc-lid]')
               : undefined;
           }
           suppressAutoScroll(lid);
@@ -2345,8 +2351,13 @@ export function bindActions(
           okLabel: '完全に削除',
           danger: true,
           anchor: target,
-        }).then((ok) => {
-          if (ok) dispatcher.dispatch({ type: 'PURGE_TRASH' });
+        }).then(async (ok) => {
+          if (!ok) return;
+          // P4a(§7-d): purge は revisions を filter で削除する op。部分常駐の
+          // まま走ると未読の行が sqlite に残る(ghost)ため、全量 barrier を
+          // 先行させる(baseline も全量になり、diff が削除行を正しく出す)。
+          await ensureAllRevisionsResident();
+          dispatcher.dispatch({ type: 'PURGE_TRASH' });
         });
         break;
       }
@@ -2369,13 +2380,32 @@ export function bindActions(
         dispatcher.dispatch({ type: 'CLEAR_MULTI_SELECT' });
         break;
       case 'bulk-clear-date':
-        dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+        // 🔴 未読ガード(todo-body-guard.ts)。reducer は await できないので
+        //    **dispatch の前に** hydrate しておく(reducer 側は最後の砦)。
+        withTodoBodies(dispatcher, dispatcher.getState().multiSelectedLids, () => {
+          dispatcher.dispatch({ type: 'BULK_SET_DATE', date: null });
+        });
         break;
       case 'confirm-import':
-        dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+        // P4a(§7-d): import は container を丸ごと組み替える ── 部分常駐の
+        // まま merge すると counts と常駐の整合が壊れるため全量 barrier を先行。
+        // barrier 不要(deferred 非活性 = 既定)なら従来どおり**同期** dispatch。
+        if (needsRevisionBarrier()) {
+          void ensureAllRevisionsResident().then(() => {
+            dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+          });
+        } else {
+          dispatcher.dispatch({ type: 'CONFIRM_IMPORT' });
+        }
         break;
       case 'confirm-merge-import':
-        dispatcher.dispatch({ type: 'CONFIRM_MERGE_IMPORT', now: new Date().toISOString() });
+        if (needsRevisionBarrier()) {
+          void ensureAllRevisionsResident().then(() => {
+            dispatcher.dispatch({ type: 'CONFIRM_MERGE_IMPORT', now: new Date().toISOString() });
+          });
+        } else {
+          dispatcher.dispatch({ type: 'CONFIRM_MERGE_IMPORT', now: new Date().toISOString() });
+        }
         break;
       case 'set-import-mode': {
         const rawMode = target.getAttribute('data-pkc-mode');
@@ -2798,16 +2828,20 @@ export function bindActions(
       }
       case 'toggle-todo-status': {
         if (!lid) break;
-        const state = dispatcher.getState();
-        const entry = state.container?.entries.find((e) => e.lid === lid);
-        if (!entry) break;
-        const todo = parseTodoBody(entry.body);
-        const toggled = serializeTodoBody({
-          ...todo,
-          status: todo.status === 'done' ? 'open' : 'done',
-        });
-        preserveCenterPaneScroll(() => {
-          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+        // 🔴 未読の本文を read-modify-write すると期日・アーカイブが消える
+        //    (todo-body-guard.ts)。読めるまで書かない。
+        withTodoBodies(dispatcher, [lid], () => {
+          const state = dispatcher.getState();
+          const entry = state.container?.entries.find((e) => e.lid === lid);
+          if (!entry) return;
+          const todo = parseTodoBody(entry.body);
+          const toggled = serializeTodoBody({
+            ...todo,
+            status: todo.status === 'done' ? 'open' : 'done',
+          });
+          preserveCenterPaneScroll(() => {
+            dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: toggled });
+          });
         });
         break;
       }
@@ -2825,16 +2859,21 @@ export function bindActions(
         const idxRaw = target.getAttribute('data-pkc-task-index');
         const idx = idxRaw === null ? NaN : Number.parseInt(idxRaw, 10);
         if (!Number.isInteger(idx)) break;
-        const st = dispatcher.getState();
-        if (st.readonly) break;
-        const entry = st.container?.entries.find((x) => x.lid === lid);
-        if (!entry || entry.archetype !== 'todo') break;
-        const todo = parseTodoBody(entry.body);
-        const newDesc = toggleSubtaskAt(todo.description, idx);
-        if (newDesc === todo.description) break;
-        const newBody = serializeTodoBody({ ...todo, description: newDesc });
-        preserveCenterPaneScroll(() => {
-          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: newBody });
+        if (dispatcher.getState().readonly) break;
+        // 🔴 未読ガード(todo-body-guard.ts)。subtask は description を
+        //    書き戻すので、未読のまま通すと description ごと消える。
+        withTodoBodies(dispatcher, [lid], () => {
+          const st = dispatcher.getState();
+          if (st.readonly) return;
+          const entry = st.container?.entries.find((x) => x.lid === lid);
+          if (!entry || entry.archetype !== 'todo') return;
+          const todo = parseTodoBody(entry.body);
+          const newDesc = toggleSubtaskAt(todo.description, idx);
+          if (newDesc === todo.description) return;
+          const newBody = serializeTodoBody({ ...todo, description: newDesc });
+          preserveCenterPaneScroll(() => {
+            dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: newBody });
+          });
         });
         break;
       }
@@ -6419,14 +6458,14 @@ export function bindActions(
 
       const sidebar = root.querySelector('[data-pkc-region="sidebar"]');
       if (!sidebar) return;
-      const items = sidebar.querySelectorAll<HTMLElement>('[data-pkc-action="select-entry"][data-pkc-lid]');
-      if (items.length === 0) return;
+      // L3-S2: 同上。窓化すると窓の端で `currentIdx >= lids.length - 1` が
+      // 真になり、**リストの末尾でもないのに無言停止**する。
+      const order = resolveVisibleOrder(sidebar, '[data-pkc-action="select-entry"][data-pkc-lid]');
+      if (order.length === 0) return;
 
       // Validate against current container to guard against stale DOM
       const containerLids = new Set(state.container.entries.map((en) => en.lid));
-      const lids = Array.from(items)
-        .map((el) => el.getAttribute('data-pkc-lid')!)
-        .filter((lid) => containerLids.has(lid));
+      const lids = order.filter((lid) => containerLids.has(lid));
       if (lids.length === 0) return;
       const currentIdx = state.selectedLid ? lids.indexOf(state.selectedLid) : -1;
 
@@ -6468,16 +6507,24 @@ export function bindActions(
       }
       const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
       if (!entry || entry.archetype !== 'todo') return;
-      const todo = parseTodoBody(entry.body);
-      const currentIdx = KANBAN_COLUMNS.findIndex((c) => c.status === todo.status);
-      if (currentIdx < 0) return;
-      const targetIdx = e.key === 'ArrowRight' ? currentIdx + 1 : currentIdx - 1;
-      if (targetIdx < 0 || targetIdx >= KANBAN_COLUMNS.length) return;
-      const targetStatus = KANBAN_COLUMNS[targetIdx]!.status;
-      if (todo.status === targetStatus) return;
-      const updated = serializeTodoBody({ ...todo, status: targetStatus });
+      // ⚠ `preventDefault` は**同期のうちに**呼ぶ(await の後では手遅れ)。
       e.preventDefault();
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: state.selectedLid, body: updated });
+      const kbLid = state.selectedLid;
+      // 🔴 未読ガード(todo-body-guard.ts)。
+      withTodoBodies(dispatcher, [kbLid], () => {
+        const st = dispatcher.getState();
+        const en = st.container?.entries.find((x) => x.lid === kbLid);
+        if (!en || en.archetype !== 'todo') return;
+        const todo = parseTodoBody(en.body);
+        const currentIdx = KANBAN_COLUMNS.findIndex((c) => c.status === todo.status);
+        if (currentIdx < 0) return;
+        const targetIdx = e.key === 'ArrowRight' ? currentIdx + 1 : currentIdx - 1;
+        if (targetIdx < 0 || targetIdx >= KANBAN_COLUMNS.length) return;
+        const targetStatus = KANBAN_COLUMNS[targetIdx]!.status;
+        if (todo.status === targetStatus) return;
+        const updated = serializeTodoBody({ ...todo, status: targetStatus });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: kbLid, body: updated });
+      });
       return;
     }
 
@@ -6696,13 +6743,21 @@ export function bindActions(
       }
       const entry = state.container.entries.find((en) => en.lid === state.selectedLid);
       if (!entry || entry.archetype !== 'todo') return;
-      const todo = parseTodoBody(entry.body);
-      const toggled = serializeTodoBody({
-        ...todo,
-        status: todo.status === 'done' ? 'open' : 'done',
-      });
+      // ⚠ `preventDefault` は**同期のうちに**呼ぶ(await の後では手遅れ)。
       e.preventDefault();
-      dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: state.selectedLid, body: toggled });
+      const spaceLid = state.selectedLid;
+      // 🔴 未読ガード(todo-body-guard.ts)。
+      withTodoBodies(dispatcher, [spaceLid], () => {
+        const st = dispatcher.getState();
+        const en = st.container?.entries.find((x) => x.lid === spaceLid);
+        if (!en || en.archetype !== 'todo') return;
+        const todo = parseTodoBody(en.body);
+        const toggled = serializeTodoBody({
+          ...todo,
+          status: todo.status === 'done' ? 'open' : 'done',
+        });
+        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid: spaceLid, body: toggled });
+      });
       return;
     }
 
@@ -7191,7 +7246,10 @@ export function bindActions(
     if (action === 'bulk-set-status') {
       const val = (target as HTMLSelectElement).value;
       if (val === 'open' || val === 'done') {
-        dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: val });
+        // 🔴 未読ガード(todo-body-guard.ts)。
+        withTodoBodies(dispatcher, dispatcher.getState().multiSelectedLids, () => {
+          dispatcher.dispatch({ type: 'BULK_SET_STATUS', status: val });
+        });
       }
     }
 
@@ -7199,7 +7257,10 @@ export function bindActions(
     if (action === 'bulk-set-date') {
       const val = (target as HTMLInputElement).value;
       if (val) {
-        dispatcher.dispatch({ type: 'BULK_SET_DATE', date: val });
+        // 🔴 未読ガード(todo-body-guard.ts)。
+        withTodoBodies(dispatcher, dispatcher.getState().multiSelectedLids, () => {
+          dispatcher.dispatch({ type: 'BULK_SET_DATE', date: val });
+        });
       }
     }
 
@@ -7499,13 +7560,18 @@ export function bindActions(
       const entry = state.container.entries.find((e) => e.lid === lid);
       if (!entry) return;
 
-      const todo = parseTodoBody(entry.body);
-
-      // Only update if status actually changes
-      if (todo.status !== targetStatus) {
-        const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
-      }
+      // 🔴 未読ガード(todo-body-guard.ts)。drop は status しか変えないが、
+      //    未読のまま書き戻すと期日・アーカイブ・説明文が道連れになる。
+      withTodoBodies(dispatcher, [lid], () => {
+        const en = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+        if (!en) return;
+        const todo = parseTodoBody(en.body);
+        // Only update if status actually changes
+        if (todo.status !== targetStatus) {
+          const updated = serializeTodoBody({ ...todo, status: targetStatus as 'open' | 'done' });
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        }
+      });
     }
 
     // Select the dragged entry
@@ -7601,13 +7667,17 @@ export function bindActions(
       const entry = state.container.entries.find((e) => e.lid === lid);
       if (!entry) return;
 
-      const todo = parseTodoBody(entry.body);
-
-      // Only update if date actually changes
-      if (todo.date !== targetDate) {
-        const updated = serializeTodoBody({ ...todo, date: targetDate });
-        dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
-      }
+      // 🔴 未読ガード(todo-body-guard.ts)。
+      withTodoBodies(dispatcher, [lid], () => {
+        const en = dispatcher.getState().container?.entries.find((e) => e.lid === lid);
+        if (!en) return;
+        const todo = parseTodoBody(en.body);
+        // Only update if date actually changes
+        if (todo.date !== targetDate) {
+          const updated = serializeTodoBody({ ...todo, date: targetDate });
+          dispatcher.dispatch({ type: 'QUICK_UPDATE_ENTRY', lid, body: updated });
+        }
+      });
     }
 
     // Select the dragged entry
@@ -9458,6 +9528,18 @@ export function bindActions(
 
   function handleResizeMouseMove(e: MouseEvent): void {
     if (!resizeTarget || !resizePane) return;
+    // 🔴 **ボタンが離れていたら drag を終える**(B12、2026-07-28)。
+    //
+    // `mouseup` は **window の外で離すと届かない**。届かないと drag 状態
+    // (resizeTarget / listener)が残り、次に mouse を動かしただけで
+    // **ボタンを押していないのにリサイズが続く**。メモリの話である以前に
+    // 操作の壊れ方であり、しかも「たまにしか起きない」ので報告されにくい。
+    // `MouseEvent.buttons === 0` は「今どのボタンも押されていない」なので、
+    // これを終了条件として扱う。
+    if (e.buttons === 0) {
+      handleResizeMouseUp();
+      return;
+    }
     const dx = e.clientX - resizeStartX;
     const newWidth = resizeTarget === 'left'
       ? Math.max(120, resizeStartWidth + dx)
@@ -9515,6 +9597,12 @@ export function bindActions(
 
   function handleSplitResizeMouseMove(e: MouseEvent): void {
     if (!splitResizeActive || !splitResizeWrapper) return;
+    // B12: window の外で離すと mouseup が来ない ── 押していないのに
+    // 分割幅が動き続けるのを止める(上の handleResizeMouseMove と同型)。
+    if (e.buttons === 0) {
+      handleSplitResizeMouseUp();
+      return;
+    }
     const wrapperWidth = splitResizeWrapper.getBoundingClientRect().width - 6; // subtract handle width
     const dx = e.clientX - splitResizeStartX;
     const totalFr = splitResizeStartFr[0] + splitResizeStartFr[1];
@@ -9574,6 +9662,11 @@ export function bindActions(
 
   function handleFilerColResizeMouseMove(e: MouseEvent): void {
     if (!filerColResizeActive || !filerColResizeTh) return;
+    // B12: 同上(window 外で離した drag を終わらせる)。
+    if (e.buttons === 0) {
+      handleFilerColResizeMouseUp();
+      return;
+    }
     const dx = e.clientX - filerColResizeStartX;
     const next = Math.max(40, Math.min(1500, filerColResizeStartW + dx));
     filerColResizeTh.style.width = `${next}px`;

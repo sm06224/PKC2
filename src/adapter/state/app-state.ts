@@ -62,6 +62,7 @@ import {
 } from '../../core/model/system-settings-payload';
 import type { ProvenanceRelationData } from '../../features/import/conflict-detect';
 import { parseTodoBody, serializeTodoBody } from '../../features/todo/todo-body';
+import { isBodyPendingGlobal } from '../platform/body-working-set';
 import { getAncestorFolderLids, isDescendant } from '../../features/relation/tree';
 import { resolveAutoPlacementFolder, findSubfolder, findRootLevelFolder } from '../../features/relation/auto-placement';
 import { applyFilters } from '../../features/search/filter';
@@ -770,6 +771,29 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
   // updated_at and emits WORKING_SET_UPDATED (NOT a save trigger). A
   // no-op when there is no container (boot race) or the map is
   // reference-identical.
+  if (action.type === 'SYS_BODIES_EVICTED') {
+    // P4b: working set の上限を超えた本文を捨てる(storage 側が正本)。
+    // ⚠ **編集中の entry は絶対に捨てない**(下書きが消える)。呼び出し側でも
+    //    除外しているが、reducer 側でも守る ── ここが最後の砦である。
+    if (!state.container || action.lids.length === 0) return { state, events: [] };
+    const drop = new Set(action.lids.filter((lid) => lid !== state.editingLid));
+    if (drop.size === 0) return { state, events: [] };
+    let changed = false;
+    const entries = state.container.entries.map((e) => {
+      if (drop.has(e.lid) && e.body !== '') {
+        changed = true;
+        return { ...e, body: '' };
+      }
+      return e;
+    });
+    if (!changed) return { state, events: [] };
+    return {
+      // bodiesPending を立て直す ── 「未読がある」状態へ戻る。
+      state: { ...state, container: { ...state.container, entries }, bodiesPending: true },
+      events: [],
+    };
+  }
+
   if (action.type === 'SYS_BODIES_LOADED') {
     // #940 案 A 段階2: 本文 background 復元の merge。本文が '' の entry に
     // だけ適用(boot 後のユーザー編集を上書きしない)。イベントは
@@ -789,6 +813,28 @@ export function reduce(state: AppState, action: Dispatchable): ReduceResult {
       state: { ...state, container, bodiesPending: action.partial === true ? state.bodiesPending : false },
       events: [{ type: 'BODIES_HYDRATED' }],
     };
+  }
+  // P4a(wasm-sqlite §7-d): 要求時読みの revisions merge。SYS_BODIES_LOADED と
+  // 同型の phase 非依存 hydrate ── mutation ではないので SAVE_TRIGGERS 非対象の
+  // REVISIONS_HYDRATED を出す。id 重複は既存優先(hydrate が boot 後の追記を
+  // 上書きしない)。並びは created_at の安定 sort(要求時読みの世界の第一鍵。
+  // 同時刻は既存 → 追加の順が保たれる)。
+  if (action.type === 'SYS_REVISIONS_HYDRATED') {
+    if (!state.container) return { state, events: [] };
+    if (action.revisions.length === 0) {
+      // counts 到着の再 render 合図(state 参照だけ更新 ── container は不変)。
+      return { state: { ...state }, events: [{ type: 'REVISIONS_HYDRATED' }] };
+    }
+    const existing = new Set(state.container.revisions.map((r) => r.id));
+    const added = action.revisions.filter((r) => !existing.has(r.id));
+    if (added.length === 0) {
+      return { state: { ...state }, events: [{ type: 'REVISIONS_HYDRATED' }] };
+    }
+    const merged = [...state.container.revisions, ...added].sort((a, b) =>
+      a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
+    );
+    const container = { ...state.container, revisions: merged };
+    return { state: { ...state, container }, events: [{ type: 'REVISIONS_HYDRATED' }] };
   }
   if (action.type === 'SET_WORKING_SET_ASSETS') {
     if (!state.container) return { state, events: [] };
@@ -3884,6 +3930,11 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       for (const lid of selected) {
         const entry = container.entries.find((e) => e.lid === lid);
         if (!entry || entry.archetype !== 'todo') continue;
+        // 🔴 未読の本文は触らない(todo-body-guard.ts)。reducer は await
+        //    できないので、hydrate は dispatch 側で済ませてある。ここは
+        //    最後の砦 ── 未読を parse すると期日・アーカイブが消えるので、
+        //    **その 1 件だけ一括操作から漏らす**ほうを選ぶ。
+        if (isBodyPendingGlobal(container.meta.container_id, lid)) continue;
         const todo = parseTodoBody(entry.body);
         if (todo.status === action.status) continue;
         const updated = serializeTodoBody({ ...todo, status: action.status });
@@ -3907,6 +3958,8 @@ function reduceReady(state: AppState, action: Dispatchable): ReduceResult {
       for (const lid of selected) {
         const entry = container.entries.find((e) => e.lid === lid);
         if (!entry || entry.archetype !== 'todo') continue;
+        // 🔴 未読ガード(BULK_SET_STATUS と同じ理由)。
+        if (isBodyPendingGlobal(container.meta.container_id, lid)) continue;
         const todo = parseTodoBody(entry.body);
         if (todo.date === targetDate) continue;
         const updated = serializeTodoBody({ ...todo, date: targetDate });

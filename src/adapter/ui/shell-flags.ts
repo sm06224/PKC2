@@ -584,6 +584,107 @@ export const shellLauncherUrlTilesEnabled = defineFlag<boolean>(
 // #932(2026-07-17、user 要望):左ペイン / タブでエントリ名が表示しきれ
 // ないケースへの opt-in 対策。ON で entry list とタブのエントリ名を小さい
 // 字 + 2 行折り返しで表示する(全文はツールチップで常時参照可)。
+/**
+ * L3-S4/S5(2026-07-27):サイドバー行の**窓化**(仮想化)。既定 OFF。
+ *
+ * ON でも、次を**両方**満たしたときだけ発動する(片方でも欠けたら全件描画へ
+ * 自動 fallback ── happy-dom は高さが全部 0、小 N では窓化の意味が無い):
+ *   ① 単位行高が実測できる(> 0)
+ *   ② 論理行数 >= `SIDEBAR_VIRTUAL_MIN_ROWS`
+ * さらに **検索中(sub-location 行が混ざる場面)では発動しない** ── 1 entry =
+ * 1 行の等質なリストでないと窓の index 計算が成立しないため。
+ *
+ * ⚠ 既定 ON にするのは別判断(数字が出てから)。
+ */
+export const sidebarVirtualListEnabled = defineFlag<boolean>(
+  'sidebar.virtual_list',
+  true,
+  {
+    category: 'shell',
+    description:
+      '左ペインの行を可視範囲だけ DOM に置く(仮想化)。大量エントリでの DOM 常駐と行生成コストを削る。opt-in',
+  },
+);
+
+/**
+ * C3(2026-07-28):center pane の本文を**ブロック単位**で描き、窓化する。既定 OFF。
+ *
+ * C3-c 時点で**実際に一部だけ入れる**(実測: 初回描画 long task 1,376 → 302ms、
+ * 常駐要素 20,178 → 211)。C3-d で畳んだ見出しとの両立まで入っている。
+ *
+ * ⚠ ブロック数が `CENTER_BLOCK_MIN_BLOCKS` 未満なら、ON でも従来経路のまま
+ *   (小さい本文では窓化に意味が無く、分割のコストだけが乗る)。
+ */
+export const centerBlockWindowEnabled = defineFlag<boolean>(
+  'center.block_window',
+  // 🔴 2026-07-29:既定 ON にした直後、実機で **center pane が使えなくなった**
+  //   (「スクロールする → 描画範囲生成 → スクロールがトップに戻る」の無限ループ、
+  //   ファイラーも巻き添え)。**既定 OFF へ差し戻す**。
+  //   原因が特定でき、実操作(ホイール連打)の parity test が付くまで戻さない。
+  false,
+  {
+    category: 'shell',
+    description:
+      '中央ペインの本文をブロック単位で描いて窓化する。既定 ON(オプトアウト)',
+  },
+);
+
+/**
+ * C4(2026-07-28):**描画結果(ブロック HTML)をメモリに持ち回す**。既定 OFF。
+ *
+ * user 提起「参照のみの場合は前回のレンダリング結果を使いまわせるはず」への
+ * 実装。`center-render-repeat.mjs` の実測では、**同じ entry を開き直しても
+ * 毎回まるごと描き直していた**(再利用ゼロ)ので、ここに賞金がある。
+ *
+ * ティア設計の **T1(メモリ)**。捨てても正しい ── 捨てれば描き直すだけ。
+ * T2(永続)へ上げるかは §9 の裁定待ちで、本 flag とは別問題。
+ *
+ * ⚠ **キーの取りこぼしが唯一の危険**。key が不完全だと「編集したのに
+ *   古い描画が出る」という、例外も test failure も出ない壊れ方をする。
+ *   よって key には**描画に効く入力を全部**入れ、`source` は文字列ごと比較する。
+ *
+ * 🔴 **`center.block_window` と併用しないと何も買えない**(実測)。
+ *   A↔B 交互・本文 120KB の long task:
+ *     既定 2,226ms / **cache のみ 2,286ms(+3% = 買えていない)** /
+ *     窓化のみ 216ms / **cache + 窓化 98ms**
+ *   窓化していないと支配的なのは DOM 構築で、描画を再利用しても減らない。
+ *   よって本 flag は**窓化経路にだけ**効かせている。単独 ON は no-op。
+ */
+/**
+ * C6-a(2026-07-29):mermaid を**表示サイズのラスタ**にする。既定 OFF。
+ *
+ * 描画済み SVG(ノード 60 の図で 885 要素)を PNG 1 枚の `<img>` に差し替える。
+ * doc §4 の③「モニタや描画エリアサイズに適したレンダリング」の mermaid 版。
+ *
+ * 🔴 **見た目は変わらない**。当初「`<foreignObject>` があるとラスタ化できない」
+ *   と判断したが、実測で切り分けたら原因は **Blob URL** だった
+ *   ── Data URL なら foreignObject 入りのまま通り、ラベルの文字も描ける
+ *   (除去版との画素差 2.58%)。`htmlLabels: false` は不要。
+ *
+ * ⚠ 失敗したら SVG のまま残る(図が消えることは無い)。
+ */
+export const mermaidRasterEnabled = defineFlag<boolean>(
+  'center.mermaid_raster',
+  false,
+  {
+    category: 'shell',
+    description:
+      'mermaid の図を表示サイズの画像に変換して表示する(見た目は不変)。既定 OFF・opt-in',
+  },
+);
+
+export const centerRenderCacheEnabled = defineFlag<boolean>(
+  'center.render_cache',
+  // 窓化と併用したときだけ効く flag なので、窓化の差し戻しに合わせて OFF。
+  false,
+  {
+    category: 'shell',
+    description:
+      '中央ペインの描画結果をメモリに持ち回して再利用する(T1 キャッシュ)。'
+      + '`center.block_window` と併用したときだけ効く。既定 ON(オプトアウト)',
+  },
+);
+
 export const shellCompactEntryLabelsEnabled = defineFlag<boolean>(
   'shell.compact_entry_labels',
   false,

@@ -79,6 +79,15 @@ export async function readPkcData(): Promise<PkcDataResult | null> {
     console.warn('[PKC2] pkc-data JSON parse failed, ignoring:', err);
     return null;
   }
+  // 2026-07-27 常駐削減: **parse した後、この textContent を読む者はいない**。
+  //
+  // 読み手は本関数だけで(`readPkcData` の呼び出しは main.ts:1149 の 1 箇所)、
+  // export は live container から `#pkc-data` を**作り直す**(exporter.ts:256)ので
+  // ここを空にしても書き出しは壊れない。一方、エクスポート済み HTML では
+  // container 全体の JSON が **DOM テキストとして永久常駐**していた
+  // (実成果物のマニュアル HTML では 2,606,202 文字 = ファイルの 48.5%)。
+  // 要素自体は残す ── 構造契約(runtime/contract.ts の SLOT)を保つため。
+  if (dataEl) dataEl.textContent = '';
   if (!data.container) return null;
 
   // Note: system-only pkc-data payloads (no user content) are NOT

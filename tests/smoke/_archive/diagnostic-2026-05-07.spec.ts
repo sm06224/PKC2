@@ -62,7 +62,7 @@ async function seedManyEntries(page: Page): Promise<void> {
       assets: {},
     };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = (): void => rej(req.error);
       req.onsuccess = (): void => {
         const db = req.result;
@@ -382,7 +382,7 @@ test('D-14 time-proximity graph node overlap audit', async ({ page }) => {
       entries, relations: [], revisions: [], assets: {},
     };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = () => rej(req.error);
       req.onsuccess = () => {
         const db = req.result;
@@ -530,7 +530,7 @@ test('D-13 popup split sync + caret indicator with REALISTIC long markdown', asy
       relations: [], revisions: [], assets: {},
     };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = () => rej(req.error);
       req.onsuccess = () => {
         const db = req.result;
@@ -822,7 +822,7 @@ test('D-10 inline calc real keyboard test (regression)', async ({ page }) => {
       relations: [], revisions: [], assets: {},
     };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = () => rej(req.error);
       req.onsuccess = () => {
         const db = req.result;
@@ -976,7 +976,7 @@ test('D-09 filer row alignment with mixed length names (regression)', async ({ p
       entries, relations: [], revisions: [], assets: {},
     };
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = (): void => rej(req.error);
       req.onsuccess = (): void => {
         const db = req.result;
@@ -1125,7 +1125,7 @@ test('D-08 filer bulk tag/color application preserves other fields (PR-Δ5)', as
 
   const preState = await page.evaluate((lids) => {
     return new Promise<Array<unknown>>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = () => rej(req.error);
       req.onsuccess = () => {
         const db = req.result;
@@ -1156,7 +1156,7 @@ test('D-08 filer bulk tag/color application preserves other fields (PR-Δ5)', as
   // Capture post-bulk container state for the same 2 lids.
   const postState = await page.evaluate((lids) => {
     return new Promise<Array<unknown>>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = () => rej(req.error);
       req.onsuccess = () => {
         const db = req.result;

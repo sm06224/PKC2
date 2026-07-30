@@ -1,5 +1,9 @@
 import type { ArchetypeId, Entry } from '../../core/model/record';
-import { renderMarkdown, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { renderMarkdown, renderMarkdownBlocks, hasMarkdownSyntax } from '../../features/markdown/markdown-render';
+import { centerBlockWindowEnabled, centerRenderCacheEnabled } from './shell-flags';
+import { shouldWindowBlocks } from './center-block-window';
+import { registerCenterBlockHost } from './center-block-controller';
+import { cachedRenderBlocks } from './center-block-cache';
 import { parseFrontmatter, extractVars } from '../../features/markdown/frontmatter';
 import {
   extractDocumentGlobals,
@@ -105,7 +109,7 @@ const textPresenter: DetailPresenter = {
     if (hasMarkdownSyntax(source)) {
       const body = document.createElement('div');
       body.className = 'pkc-view-body pkc-md-rendered';
-      body.innerHTML = renderMarkdown(source, {
+      const mdOptions = {
         currentContainerId,
         vars,
         headingNumber: extractHeadingNumberConfig(entry.body),
@@ -116,7 +120,7 @@ const textPresenter: DetailPresenter = {
         // 加算して textarea 行へ換算する。data-pkc-* 属性が増えるだけで
         // 見た目・挙動への影響はない。
         sourceLineAnchors: true,
-      });
+      };
       // PR-2A:document globals を data-pkc-* + dir attr で root に反映
       for (const [k, v] of Object.entries(globalsToDataAttrs(globals))) {
         body.setAttribute(k, v);
@@ -124,37 +128,89 @@ const textPresenter: DetailPresenter = {
       if (globals.direction === 'rtl' || globals.direction === 'ltr') {
         body.setAttribute('dir', globals.direction);
       }
-      // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
-      // markdown renderer. Guarded by `entries` being supplied so
-      // tests / callers without container context still work.
-      if (entries) {
-        expandTransclusions(body, {
-          entries,
-          assets,
-          mimeByKey,
-          nameByKey,
-          hostLid: entry.lid,
-        });
-        // Slice 5.0 (Card minimal chrome): hydrate `.pkc-card-placeholder`
-        // emits from the renderer. Runs after transclusion so a card-link
-        // inside a transcluded body is still picked up.
-        hydrateCardPlaceholders(body, {
-          entries,
-          currentContainerId: currentContainerId ?? '',
-        });
+      /**
+       * 挿入後の後処理。**窓を描き替えるたびに走る**(C3-c)ので、
+       * 「1 回だけ」を前提にした処理をここへ足さないこと。
+       */
+      const hydrate = (host: HTMLElement): void => {
+        // Slice 5-B: expand `![](entry:...)` placeholders emitted by the
+        // markdown renderer. Guarded by `entries` being supplied so
+        // tests / callers without container context still work.
+        if (entries) {
+          expandTransclusions(host, {
+            entries,
+            assets,
+            mimeByKey,
+            nameByKey,
+            hostLid: entry.lid,
+          });
+          // Slice 5.0 (Card minimal chrome): hydrate `.pkc-card-placeholder`
+          // emits from the renderer. Runs after transclusion so a card-link
+          // inside a transcluded body is still picked up.
+          hydrateCardPlaceholders(host, {
+            entries,
+            currentContainerId: currentContainerId ?? '',
+          });
+        }
+        // pgc-203 wave-α' polish #24:built-in mermaid hydration(S1 center)。
+        // placeholder 0 件で early return、lazy import('mermaid')。
+        // fire-and-forget(非同期、戻り値 promise は無視 ── render 完了は
+        // 次 frame 以降に visible に)。常時有効(flag は 2026-07-24 撤去)。
+        void hydrateMermaidPlaceholders(host);
+        // code-edit-lite-design-2026-07 §4:S1 限定の ✎(コードブロック編集)
+        // 後注入。features 層 markup に足すと S2/S4 で死にボタンになるため
+        // adapter 層で S1 だけに付ける。
+        injectCodeBlockEditButtons(host);
+        // 領域 6:top-level 見出しを native <details> で畳めるよう再構成。
+        // 純 DOM 操作のため entries 有無に依らず無条件で適用する。
+        // ⚠ **これが top-level の子を `<details>` の中へ移す** ── 以降
+        //   「何番目の子か」で位置を持つ処理は成立しない(C3-c の設計変更)。
+        applyHeadingFold(host);
+      };
+
+      // C4(2026-07-28):描画結果をメモリに持ち回す(T1)。
+      //
+      // key に入れるのは「出力に効く入力」全部 ── `source`(frontmatter strip
+      // と asset 解決の**後**)と `mdOptions`。`source` はハッシュにせず
+      // **文字列そのもの**を比較する(衝突は「本文が化ける」に直結する)。
+      // ⚠ `hydrate` の結果はキャッシュしない ── transclusion / card は
+      //   **他 entry の現在値**に依存するので、持ち回すと古い引用が出る。
+      const fingerprint = centerRenderCacheEnabled()
+        ? JSON.stringify([
+          mdOptions.currentContainerId ?? null,
+          mdOptions.vars ?? null,
+          mdOptions.headingNumber ?? null,
+          mdOptions.sourceLineAnchors,
+        ])
+        : '';
+      const blocksOf = (): readonly string[] => (
+        centerRenderCacheEnabled()
+          ? cachedRenderBlocks(entry.lid, source, fingerprint,
+            () => renderMarkdownBlocks(source, mdOptions))
+          : renderMarkdownBlocks(source, mdOptions)
+      );
+
+      // C3-c: flag ON かつブロック数が閾値以上なら**窓化**する。
+      // ここではまだ attach されていない(= scroller の高さも scrollTop も
+      // 分からない)ので、控えめな初回窓だけ入れて指揮を待つ。確定は
+      // renderer 末尾の `finalizeCenterBlockWindows`。
+      if (centerBlockWindowEnabled()) {
+        const blocks = blocksOf();
+        if (shouldWindowBlocks(blocks.length)) {
+          registerCenterBlockHost(body, blocks, hydrate);
+          return body;
+        }
       }
-      // pgc-203 wave-α' polish #24:built-in mermaid hydration(S1 center)。
-      // placeholder 0 件で early return、lazy import('mermaid')。
-      // fire-and-forget(非同期、戻り値 promise は無視 ── render 完了は
-      // 次 frame 以降に visible に)。常時有効(flag は 2026-07-24 撤去)。
-      void hydrateMermaidPlaceholders(body);
-      // code-edit-lite-design-2026-07 §4:S1 限定の ✎(コードブロック編集)
-      // 後注入。features 層 markup に足すと S2/S4 で死にボタンになるため
-      // adapter 層で S1 だけに付ける。
-      injectCodeBlockEditButtons(body);
-      // 領域 6:top-level 見出しを native <details> で畳めるよう再構成。
-      // 純 DOM 操作のため entries 有無に依らず無条件で適用する。
-      applyHeadingFold(body);
+      // 🔴 **窓化していない経路には cache を効かせない**(2026-07-28、実測で決定)。
+      //
+      // A↔B を交互に開く実測(`center-render-cache-gain.mjs`、本文 120KB):
+      //   既定 2,226ms / cache のみ 2,286ms(**+3% = 買えていない**、hit 10 件)
+      //   窓化のみ 216ms / cache + 窓化 **98ms**
+      // 窓化していないと支配的なのは **DOM 構築**であって markdown 描画では
+      // ないので、描画を再利用しても何も減らない。それどころか分割 + join の
+      // ぶんだけ余計に働く。よってここは従来どおり `renderMarkdown` を呼ぶ。
+      body.innerHTML = renderMarkdown(source, mdOptions);
+      hydrate(body);
       return body;
     }
 

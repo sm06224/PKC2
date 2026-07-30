@@ -194,7 +194,20 @@ const BUDGETS = [
   //   「重い dep を 1 つ誤って入れた」は依然として即座に検知できる幅を保つ。
   //   ⚠ 引き上げても **撤廃はしない**(2026-07-07 と同じ理由 ── 本体を
   //   PKC-extension へ外だしする分水嶺の regression signal として残す)。
-  { file: 'dist/bundle.js', maxBytes: 6144 * 1024 },  // 6.0 MB (was 5.75 MB、2026-07-26 tripwire 化を明確にして bump)
+  // 2026-07-27(dev/storage-sqlite、user 指示「私は依存をなくして欲しいと
+  //   言っただけで、完全になくせとは言っていない。ビルドが静的であれば
+  //   何も問題ない」):sqlite3.wasm 848KB を base64 で静的 bundle(+~1.13MB)。
+  //   6.0 → **7.5 MB** に bump。headroom ~360KB で「重い dep の誤取込」は
+  //   引き続き検知できる。撤廃はしない。
+  //   実測(build 後): +2,503KB = wasm の base64 1,130KB + sqlite3 の JS グルー
+  //   (oo1 API / OPFS VFS / worker 糊)~1,370KB。7.5MB の見積りは wasm 分しか
+  //   数えておらず不足だったため 9.0MB へ。headroom ~860KB。
+  //   P2 worker 常駐化(2026-07-27 同日): glue + wasm を `?worker&inline` の
+  //   worker chunk に**1 部だけ**移設(main 側は RPC のみ)。inline worker の
+  //   再 base64 化(×1.33)込みで 8,505KB(残量 711KB / 7.7%)── 二重埋め込み
+  //   (main + worker で +2.9MB)を避ける構成が成立している証拠でもあるので、
+  //   ここが 9MB に近づいたら glue の重複を疑うこと。
+  { file: 'dist/bundle.js', maxBytes: 9216 * 1024 },  // 9.0 MB (was 6.0 MB、2026-07-27 sqlite3.wasm + JS グルー静的焼き込み)
   { file: 'dist/bundle.css', maxBytes: 512 * 1024 },  // 0.5 MB (was 130 KB)
 ];
 

@@ -26,6 +26,8 @@ export interface BodyWorkingSetHandle {
   isPending(cid: string, lid: string): boolean;
   /** pending 数(UI 表示 / test 用)。 */
   pendingCount(): number;
+  /** 常駐している本文の文字数(P4b の計器)。 */
+  residentChars(): number;
   dispose(): void;
 }
 
@@ -45,6 +47,28 @@ export function isBodyPendingGlobal(cid: string, lid: string): boolean {
  */
 const MAX_HYDRATE_ATTEMPTS = 2;
 
+/**
+ * 🔴 hydrate 済み本文の上限(文字数)。**P4b の本体はこれである。**
+ *
+ * 2026-07-28 の実測で判明したこと: boot で本文を運ばないようにしても、
+ * `scheduleIdleBackfill` が 200ms ごとに 32 件ずつ読み戻し、**最終的に
+ * 全件常駐へ収束する**設計だったため、定常のメモリは 1 バイトも減らなかった
+ * (本文 16MB の container で USS +451.1MB → +449.8MB = 誤差)。
+ *
+ * user 指摘(2026-07-28)「実行時に不要な部分はブラウザストレージ側に
+ * 切り離してメモリを解放できるはずだ」── そのとおりで、**読んだものを
+ * 捨てない限り解放は起きない**。
+ *
+ * 上限は「直近に見たものが十分入る」大きさにする。2M 文字 ≒ 4MB(UTF-16)で、
+ * 4,000 文字の記事なら 500 件ぶん ── 通常の閲覧で追い出しは起きず、
+ * 巨大 container でだけ効く。
+ *
+ * ⚠ 最初 8M 文字にしたが、**検証 fixture がちょうど 8M 文字**で追い出しが
+ *    1 度も起きず「効果なし」と読みかけた(2026-07-28)。上限の検証は
+ *    **上限より明確に大きい入力**で行うこと。
+ */
+const BODY_CACHE_LIMIT_CHARS = 2_000_000;
+
 export function mountBodyWorkingSet(
   dispatcher: Dispatcher,
   options: { store: ContainerStore },
@@ -63,6 +87,12 @@ export function mountBodyWorkingSet(
   const attempts = new Map<string, number>();
   let running: Promise<void> = Promise.resolve();
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * hydrate 済み lid → 本文の文字数。**挿入順 = LRU 順**として使う
+   * (Map の反復は挿入順。再アクセス時は delete → set で末尾へ回す)。
+   */
+  const resident = new Map<string, number>();
+  let residentChars = 0;
 
   function initFromState(): void {
     const st = dispatcher.getState();
@@ -71,6 +101,8 @@ export function mountBodyWorkingSet(
     pending.clear();
     unreadable.clear();
     attempts.clear();
+    resident.clear();
+    residentChars = 0;
     for (const e of st.container.entries) {
       // meta-first boot 直後: body '' = 未 hydrate(v2 の contract)。
       if (e.body === '') pending.add(e.lid);
@@ -126,6 +158,14 @@ export function mountBodyWorkingSet(
       bodies,
       partial: pending.size > 0,
     });
+    for (const [lid, body] of Object.entries(bodies)) {
+      if (typeof body !== 'string') continue;
+      if (resident.has(lid)) residentChars -= resident.get(lid)!;
+      resident.delete(lid);
+      resident.set(lid, body.length); // 末尾 = 最近使った
+      residentChars += body.length;
+    }
+    evictOverLimit();
     scheduleIdleBackfill();
   }
 
@@ -142,8 +182,44 @@ export function mountBodyWorkingSet(
     return ensure([...pending].filter((l) => !unreadable.has(l)));
   }
 
-  // idle backfill: 少しずつ全 hydrate へ収束させる(1 batch 32 件)。
+  /**
+   * 上限を超えたぶんを **古い順に捨てる**(LRU)。
+   *
+   * 捨てた lid は pending に戻す ── 表示要求が来れば読み直され、保存側は
+   * `isBodyPending` で空の上書きを止める。**編集中と選択中は捨てない**
+   * (今まさに使っているものを捨てると、読み直しが即発生して無意味)。
+   */
+  function evictOverLimit(): void {
+    if (residentChars <= BODY_CACHE_LIMIT_CHARS) return;
+    const st = dispatcher.getState();
+    const keep = new Set([st.selectedLid, st.editingLid].filter(Boolean) as string[]);
+    const victims: string[] = [];
+    for (const [lid, chars] of resident) {
+      if (residentChars <= BODY_CACHE_LIMIT_CHARS) break;
+      if (keep.has(lid)) continue;
+      victims.push(lid);
+      resident.delete(lid);
+      residentChars -= chars;
+      pending.add(lid);
+      attempts.delete(lid); // 追い出しは失敗ではない ── 再読込の権利を戻す
+    }
+    if (victims.length > 0) {
+      dispatcher.dispatch({ type: 'SYS_BODIES_EVICTED', lids: victims });
+      // 🔴 store の baseline からも落とす ── ここを忘れると、保存のたびに
+      //    baseline が hydrate 済み本文を掴み直し、**実運用では 1 バイトも
+      //    解放されない**(2026-07-28、B14 の点検で発見)。
+      if (cid) store.noteBodiesEvicted?.(cid, victims);
+    }
+  }
+
+  /**
+   * idle backfill: 少しずつ hydrate する。
+   *
+   * ⚠ **上限に達したら止める**(2026-07-28)。以前は「最終的に全 hydrate へ
+   *    収束」する設計で、deferred read の効果を自分で打ち消していた。
+   */
   function scheduleIdleBackfill(): void {
+    if (residentChars >= BODY_CACHE_LIMIT_CHARS) return;
     const todo = [...pending].filter((l) => !unreadable.has(l));
     if (idleTimer !== null || todo.length === 0) return;
     idleTimer = setTimeout(() => {
@@ -177,6 +253,7 @@ export function mountBodyWorkingSet(
   const handle: BodyWorkingSetHandle = {
     ensure,
     ensureAll,
+    residentChars: () => residentChars,
     isPending: (c, lid) => c === cid && pending.has(lid),
     pendingCount: () => pending.size,
     dispose: () => {
@@ -189,5 +266,10 @@ export function mountBodyWorkingSet(
   initFromState();
   scheduleIdleBackfill();
   active = handle;
+  // 計器: 本文の常駐量を harness から読む(P4b の効果判定はこれで行う)。
+  (globalThis as unknown as Record<string, unknown>).__pkc2BodyWorkingSet = {
+    residentChars: () => handle.residentChars(),
+    pendingCount: () => handle.pendingCount(),
+  };
   return handle;
 }

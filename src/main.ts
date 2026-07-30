@@ -10,7 +10,8 @@ import {
   refreshStorageEstimate,
 } from './runtime/debug-flags';
 import { createDispatcher } from './adapter/state/dispatcher';
-import { render } from './adapter/ui/renderer';
+import { render, didEnsureVisibleScrollEntryList } from './adapter/ui/renderer';
+import { BLOCK_WINDOW_PAINTED } from './adapter/ui/center-block-controller';
 import { computeRenderScope } from './adapter/ui/render-scope';
 import { getFilterIndexes } from './adapter/ui/filter-cache';
 import type { AppState } from './adapter/state/app-state';
@@ -20,6 +21,7 @@ import { preferredEditFocusSelector } from './adapter/ui/edit-focus';
 import {
   captureRenderContinuity,
   restoreRenderContinuity,
+  withoutScrollRegion,
 } from './adapter/ui/render-continuity';
 import { installCaretIndicator } from './adapter/ui/caret-indicator';
 import { installHtmlSandboxResizer } from './features/markdown/html-sandbox';
@@ -49,6 +51,7 @@ import { registerBuiltinKeymaps } from './adapter/ui/keymap-binder';
 import { wireTabStrip, restoreTabState } from './adapter/ui/tab-strip';
 import { mountStartupNotice } from './adapter/ui/startup-notice';
 import { mountAssetDebugOverlay } from './adapter/ui/asset-debug-overlay';
+import { mountRenderLoopDebugOverlay } from './adapter/ui/render-loop-debug-overlay';
 import { wireEntryWindowViewBodyRefresh } from './adapter/ui/entry-window-view-body-refresh';
 import { wireEntryWindowTitleRefresh } from './adapter/ui/entry-window-title-refresh';
 import { wireEntryWindowMonitorRefresh } from './adapter/ui/entry-window-monitor-refresh';
@@ -77,6 +80,7 @@ import {
 } from './adapter/platform/idb-warning-banner';
 import { mountPersistence, loadFromStore, notePersistedBaseline } from './adapter/platform/persistence';
 import { mountBodyWorkingSet } from './adapter/platform/body-working-set';
+import { mountRevisionResidency } from './adapter/platform/revision-residency';
 import { registerExportStore } from './adapter/platform/idb-store';
 import { mountWorkingSet } from './adapter/platform/asset-working-set';
 import { mountAssetMetaIndex } from './adapter/platform/asset-meta-index';
@@ -184,6 +188,26 @@ async function boot(): Promise<void> {
   // can carry quota numbers without a Promise round-trip at click time.
   installDebugErrorCapture();
   void refreshStorageEstimate();
+  // P2(wasm-sqlite 設計 §7、dev/storage-sqlite):sqlite 動作実証フック。
+  // worker 常駐版(§8-1: SAHPool は worker 専用)── 使い捨て worker を起動し、
+  // :memory: CRUD / SAHPool roundtrip を worker 内で確かめて terminate する。
+  // **呼ばれるまで worker も wasm も一切 load しない**(dynamic import)。
+  // 実ブラウザ検証は tests/bench/sqlite-spike.mjs がこの hook を叩く。
+  (window as unknown as Record<string, unknown>).__pkc2SqliteProbe = () =>
+    import('./adapter/platform/storage/sqlite/sqlite-client').then((m) => m.probeSqliteWasm());
+  (window as unknown as Record<string, unknown>).__pkc2SqlitePersistProbe = () =>
+    import('./adapter/platform/storage/sqlite/sqlite-client').then((m) => m.probeSqlitePersistence());
+  // グラフアルゴリズム PoC(2026-07-27、user 要望「cytoscape で描画したい」)。
+  // cytoscape は mermaid の依存として**既に bundle 内にある**ため追加コストが
+  // ほぼ無い ── その実証と、現行 PKC2 に無いグラフ演算(中心性 / PageRank /
+  // 連結成分 / 最短経路)の実測用。**UI からは到達しない debug hook**。
+  (window as unknown as Record<string, unknown>).__pkc2GraphProbe = () => {
+    const c = dispatcher.getState().container;
+    if (!c) return Promise.resolve({ ok: false, error: 'container 未読込' });
+    return import('./features/relation/graph-algorithms-poc').then((m) =>
+      m.probeGraphAlgorithms(c.relations, c.entries.map((e) => e.lid)),
+    );
+  };
   const root = document.getElementById(SLOT.ROOT);
   if (!root) {
     console.error(`[PKC2] #${SLOT.ROOT} not found`);
@@ -224,6 +248,11 @@ async function boot(): Promise<void> {
   // only on ticket advances. Must be declared outside the onState
   // closure so its internal `lastTicket` survives between ticks.
   const locationNavTracker = createLocationNavTracker();
+
+  // `?pkc-debug=render-loop`(2026-07-29):再描画ループ診断の観測点。
+  // renderer を書き換えずに回数を数えられるよう、hook を 1 本だけ通す。
+  // debug flag が無ければ登録者ゼロ = 空配列の for ループだけで no-op。
+  const renderHooks: Array<() => void> = [];
 
   // #938 R11: render subscriber 本体。従来は onState に直接渡していた
   // closure を named function に切り出し、下の coalescing wrapper 経由で
@@ -273,7 +302,12 @@ async function boot(): Promise<void> {
       // touches center-pane preview Blobs and is also center-only.
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       populateAttachmentPreviews(root, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
@@ -290,7 +324,12 @@ async function boot(): Promise<void> {
       cleanupBlobUrls(root);
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       populateAttachmentPreviews(root, dispatcher);
       populateInlineAssetPreviews(root, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
@@ -305,7 +344,12 @@ async function boot(): Promise<void> {
       cleanupBlobUrls(root);
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       populateAttachmentPreviews(root, dispatcher);
       populateInlineAssetPreviews(root, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
@@ -319,7 +363,12 @@ async function boot(): Promise<void> {
       // hydration 系 hook は不要。continuity は center scroll / focus 維持用。
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       locationNavTracker.consume(root, state.pendingNav ?? null);
       prevRenderState = state;
       return;
@@ -335,7 +384,12 @@ async function boot(): Promise<void> {
       cleanupBlobUrls(root);
       const continuity = captureRenderContinuity(root);
       render(state, root, prevRenderState);
-      restoreRenderContinuity(root, continuity);
+      // L3-S5: ensure-visible が選択行を見せるために scroll したときは、
+      // その region の復元を外す(復元が勝つと「選んだのに見えない」)。
+      restoreRenderContinuity(
+        root,
+        didEnsureVisibleScrollEntryList() ? withoutScrollRegion(continuity, 'entry-list') : continuity,
+      );
       populateAttachmentPreviews(root, dispatcher);
       populateInlineAssetPreviews(root, dispatcher);
       locationNavTracker.consume(root, state.pendingNav ?? null);
@@ -365,6 +419,7 @@ async function boot(): Promise<void> {
     cleanupBlobUrls(root);
 
     render(state, root, prevRenderState);
+    for (const hook of renderHooks) hook();
 
     // PR-2T(2026-05-12):render 後の inline color に WCAG resolver を適用。
     // `theme.wcag_auto_shift` flag が OFF なら no-op、ON なら同系色 shift。
@@ -425,6 +480,19 @@ async function boot(): Promise<void> {
     renderOnState(dispatcher.getState()),
   );
   dispatcher.onState(() => coalescedRender());
+
+  // C3(2026-07-29、既定 ON 昇格に合わせて追加):中央ペインの窓を描き替えた
+  // ときは**後処理を回し直す**。
+  //
+  // 🔴 `populateAttachmentPreviews` / `populateInlineAssetPreviews` は
+  //   render cycle でしか走らないので、窓化するとスクロールで入ってきた
+  //   ブロックに届かない ── PDF / 音声 / 動画の inline プレビューが
+  //   「下のほうのブロックだけ無言で出ない」形で欠ける(例外も test failure
+  //   も出ない)。窓の描き替えは render とは独立に起きるので、event で拾う。
+  root.addEventListener(BLOCK_WINDOW_PAINTED, () => {
+    populateAttachmentPreviews(root, dispatcher);
+    populateInlineAssetPreviews(root, dispatcher);
+  });
 
   // 2a-A4. Collapsed-folder persistence (viewer-local). Writes
   // through to localStorage whenever `state.collapsedFolders`
@@ -671,7 +739,47 @@ async function boot(): Promise<void> {
   // set to 'opfs' and OPFS is usable (secure context — NOT file://), the
   // store is OPFS-backed, migrating the existing IDB default container
   // across once. Falls back to IDB safely otherwise.
-  const { store, fsaPending } = await createConfiguredStoreFromEnv();
+  const { store, fsaPending, backend, sqlite, migrated } = await createConfiguredStoreFromEnv();
+  // P2 計器用の印: bench / roundtrip harness が「本当に sqlite backend で
+  // 動いているか」を実行時に確かめる(harness が誤って IDB を測る事故防止)。
+  (window as unknown as Record<string, unknown>).__pkc2StorageInfo = {
+    backend,
+    sqlite: sqlite === true,
+    migrated,
+    // L4: sqlite の実体が **exe の host プロセス**か **worker(wasm+OPFS)**か。
+    // 両者は同じ op 語彙で動くので、計器が区別できないと「どちらを測ったのか
+    // わからないベンチ」になる。
+    host:
+      (globalThis as unknown as Record<string, unknown>).__pkc2StorageHost !== undefined,
+  };
+  // 実ブラウザ harness(tests/bench/sqlite-roundtrip.mjs)が store 契約を
+  // 直接検証するためのデバッグ導線。製品 UI からは参照しない。
+  (window as unknown as Record<string, unknown>).__pkc2StoreDebug = store;
+  /**
+   * P4b の計器: **本文が本当にメモリから外れているか**を実行時に数える窓口。
+   *
+   * これが無いと「deferred にした」「上限を付けた」と言いながら、実際には
+   * 全件常駐している状態を検出できない(実際 2026-07-28 に、boot で運ぶのを
+   * やめても idle backfill が全件読み戻していて**何も減っていなかった**)。
+   */
+  (window as unknown as Record<string, unknown>).__pkc2BodyResidency = () => {
+    const st = dispatcher.getState();
+    const entries = st.container?.entries ?? [];
+    let nonEmpty = 0;
+    let chars = 0;
+    for (const e of entries) {
+      if (e.body !== '') {
+        nonEmpty++;
+        chars += e.body.length;
+      }
+    }
+    return {
+      entries: entries.length,
+      bodiesResident: nonEmpty,
+      residentChars: chars,
+      bodiesPending: st.bodiesPending === true,
+    };
+  };
   // #940: FSA 選択中に permission が prompt に落ちて IDB へ fallback した
   // boot では、silent に「新規コンテナ状態」で開いたように見せず、再接続
   // バナーを常駐表示する。ボタン click = user gesture で requestPermission
@@ -719,6 +827,9 @@ async function boot(): Promise<void> {
   // #956: `?pkc-debug=assets` 診断 overlay(user 報告切り分け用)。
   // debug flag が無ければ完全 no-op。
   mountAssetDebugOverlay(dispatcher, store);
+  // 2026-07-29: `?pkc-debug=render-loop` 再描画ループ診断(user 実機報告
+  // 「ランチャーが暴走」の切り分け ── 手元で再現しないので観測点を渡す)。
+  mountRenderLoopDebugOverlay(dispatcher, root, (hook) => renderHooks.push(hook));
   // 段階4 (#868): resident asset-metadata index so storage profile /
   // guardrails / orphan count / paste dedupe report on the FULL store, not
   // just the resident working-set. Memory-safe backfill + persisted index.
@@ -1126,8 +1237,10 @@ async function boot(): Promise<void> {
     let idbContainer: Container | null = null;
     let bodiesDeferred: boolean | undefined;
     let storedInline = false;
+    let revisionsDeferred = false;
     try {
-      ({ container: idbContainer, bodiesDeferred, storedInline } = await loadFromStore(store));
+      ({ container: idbContainer, bodiesDeferred, storedInline, revisionsDeferred } =
+        await loadFromStore(store));
     } catch (storeErr) {
       console.warn('[PKC2] store load failed — booting without browser storage:', storeErr);
     }
@@ -1220,6 +1333,14 @@ async function boot(): Promise<void> {
         // (選択/編集は即時、全文系は barrier、保存は復元完了まで保留)。
         if (bodiesDeferred) {
           mountBodyWorkingSet(dispatcher, { store });
+        }
+        // P4a(wasm-sqlite §7-d): revisions の要求時読み。COUNT 索引 +
+        // 選択 entry の需要駆動 hydrate + export / purge の全量 barrier。
+        if (revisionsDeferred) {
+          mountRevisionResidency(dispatcher, {
+            store,
+            cid: container.meta.container_id,
+          });
         }
         restoreSettingsFromContainer(dispatcher, container);
         primeFlagsFromContainer(container);

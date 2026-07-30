@@ -29,6 +29,7 @@
  */
 
 import type { OptimizeParams, OptimizeResult } from './optimizer';
+import { registerIdleDisposable } from '../../platform/idle-dispose';
 
 type OptimizeOk = {
   ok: true;
@@ -49,6 +50,29 @@ const pending = new Map<number, {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
 }>();
+
+/**
+ * 画像最適化 worker の idle 破棄(B8、2026-07-27)。attach worker と同じ理由:
+ * **初回の貼り付けで作られたきり terminate されず、セッション中ずっと居座る**
+ * (terminate は test 専用 reset にしか無かった)。画像を貼るのは断続的な操作で、
+ * 常駐させ続ける理由が無い。OffscreenCanvas を持つぶん attach worker より重い。
+ */
+const OPTIMIZE_WORKER_IDLE_MS = 30_000;
+const touchOptimizeWorker = registerIdleDisposable({
+  name: 'image-optimize-worker',
+  idleMs: OPTIMIZE_WORKER_IDLE_MS,
+  dispose: () => {
+    if (pending.size > 0) return false; // 変換中は殺さない
+    if (!workerInstance) return false;
+    try {
+      workerInstance.terminate();
+    } catch {
+      /* ignore */
+    }
+    workerInstance = null;
+    return true;
+  },
+});
 
 /**
  * Worker logic. Self-contained — captured outer scope is invisible
@@ -183,6 +207,7 @@ function buildWorker(): Worker | null {
       const handlers = pending.get(data.id);
       if (!handlers) return;
       pending.delete(data.id);
+      touchOptimizeWorker(); // 完了時にも武装し直す(最後の 1 件から idle を計る)
       if (data.ok) {
         handlers.resolve(data);
       } else {
@@ -226,6 +251,7 @@ function postRequest<T>(payload: { kind: 'optimize' | 'hasAlpha'; file: File; pa
       resolve: resolve as (value: unknown) => void,
       reject,
     });
+    touchOptimizeWorker();
     worker.postMessage({ id, ...payload });
   });
 }

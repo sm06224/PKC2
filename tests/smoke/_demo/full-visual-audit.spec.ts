@@ -53,7 +53,7 @@ async function seed(page: Page, flags: Record<string, unknown>): Promise<void> {
       const assets = cont.assets;
       await new Promise<void>((res, rej) => {
         // ⚠ version 指定なしで開くこと。storage v3 で DB_VERSION=3 になったため
-        //    `indexedDB.open('pkc2', 2)` は VersionError になる。
+        //    `indexedDB.open('pkc2')` は VersionError になる。
         const req = indexedDB.open('pkc2');
         req.onerror = (): void => rej(req.error);
         req.onsuccess = (): void => {

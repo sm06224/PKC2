@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   checkAssetDuplicate,
+  __assetDedupeCacheSize,
   __resetAssetDedupeCacheForTest,
 } from '@adapter/ui/asset-dedupe';
 import type { Container } from '@core/model/container';
@@ -182,5 +183,80 @@ describe('findDuplicateAssetKey — metaIndex path (段階4 #868)', () => {
     expect(findDuplicateAssetKey(data, meta.size, c, metaIndex)).toBe('k2');
     // Size mismatch → no false positive.
     expect(findDuplicateAssetKey(data, meta.size + 1, c, metaIndex)).toBeNull();
+  });
+});
+
+/**
+ * B13(2026-07-27):memo が **判定しただけの候補**を掴み続けないこと。
+ *
+ * 旧実装は `Map<base64本文, hash>` で、キー = base64 本文だった。Map のキーは
+ * 強参照なので、**保存もしていない候補ファイル**(重複判定に通しただけの
+ * drop / paste)の base64 が上限なく焼き付いた。node 実測で 5MB×20 件を
+ * 「判定しただけ」で heapUsed +99.0 MB(修正後 +4.0 MB)。
+ *
+ * 観測点は保持数(`__assetDedupeCacheSize`)── heap を test で測るのは不安定
+ * なので、「memo は**生きている asset の数を超えない**」という構造の性質で pin する。
+ */
+describe('asset dedupe memo の保持範囲(B13)', () => {
+  beforeEach(() => {
+    __resetAssetDedupeCacheForTest();
+  });
+
+  function containerWith(assets: Record<string, string>): Container {
+    return {
+      meta: {
+        container_id: 'c-b13',
+        title: 'C',
+        created_at: T,
+        updated_at: T,
+        schema_version: 1,
+      },
+      entries: [],
+      relations: [],
+      revisions: [],
+      assets,
+    } as unknown as Container;
+  }
+
+  it('保存していない候補は memo に残らない', () => {
+    const container = containerWith({});
+    for (let i = 0; i < 5; i++) {
+      expect(checkAssetDuplicate(`candidate-${i}-`.repeat(64), 1024, container)).toBe(false);
+    }
+    // container.assets は空 ── memo も空でなければ候補を掴んでいる
+    expect(__assetDedupeCacheSize()).toBe(0);
+  });
+
+  it('memo の保持数は生きている asset を超えない(削除ぶんは落ちる)', () => {
+    const assets: Record<string, string> = { a: 'AAAA', b: 'BBBB', c: 'CCCC' };
+    const container = containerWith(assets);
+    checkAssetDuplicate('ZZZZ', 4, container);
+    expect(__assetDedupeCacheSize()).toBe(3);
+
+    delete assets.b;
+    checkAssetDuplicate('ZZZZ', 4, container);
+    expect(__assetDedupeCacheSize()).toBe(2);
+  });
+
+  it('値が差し替わったら hash を取り直す(同じ key の使い回しで誤判定しない)', () => {
+    const assets: Record<string, string> = { a: 'AAAA' };
+    const container = containerWith(assets);
+    const entries = [
+      {
+        lid: 'e1',
+        title: 'a',
+        archetype: 'attachment',
+        created_at: T,
+        updated_at: T,
+        body: JSON.stringify({ asset_key: 'a', size: 4 }),
+      },
+    ];
+    (container as unknown as { entries: unknown[] }).entries = entries;
+
+    expect(checkAssetDuplicate('AAAA', 4, container)).toBe(true);
+    // 同じ key のまま中身だけ差し替える
+    assets.a = 'BBBB';
+    expect(checkAssetDuplicate('AAAA', 4, container)).toBe(false);
+    expect(checkAssetDuplicate('BBBB', 4, container)).toBe(true);
   });
 });

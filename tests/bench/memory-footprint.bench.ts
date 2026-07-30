@@ -61,7 +61,7 @@ async function seed(page: Page, nEntries: number, nAssets: number, assetCharLen:
         assets,
       };
       await new Promise<void>((res, rej) => {
-        const req = indexedDB.open('pkc2', 2);
+        const req = indexedDB.open('pkc2');
         req.onerror = (): void => rej(req.error);
         req.onsuccess = (): void => {
           const db = req.result;
@@ -85,7 +85,7 @@ async function loadedInfo(page: Page): Promise<{ domLids: number; idbEntries: nu
     () =>
       new Promise<{ domLids: number; idbEntries: number }>((res) => {
         const domLids = document.querySelectorAll('[data-pkc-lid]').length;
-        const req = indexedDB.open('pkc2', 2);
+        const req = indexedDB.open('pkc2');
         req.onsuccess = (): void => {
           const db = req.result;
           try {
@@ -203,7 +203,7 @@ test('visual pop-in parity: lazy-loaded image renders after selection (段階3 #
         assets: {},
       };
       await new Promise<void>((res, rej) => {
-        const req = indexedDB.open('pkc2', 2);
+        const req = indexedDB.open('pkc2');
         req.onerror = (): void => rej(req.error);
         req.onsuccess = (): void => {
           const db = req.result;
@@ -273,7 +273,7 @@ test('段階5: large referenced workspace does not resident-load the whole store
         entries, relations: [], revisions: [], assets,
       };
       await new Promise<void>((res, rej) => {
-        const req = indexedDB.open('pkc2', 2);
+        const req = indexedDB.open('pkc2');
         req.onerror = (): void => rej(req.error);
         req.onsuccess = (): void => {
           const db = req.result;

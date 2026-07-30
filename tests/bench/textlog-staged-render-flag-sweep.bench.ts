@@ -107,7 +107,7 @@ async function seedIDB(
   await page.evaluate(async (containerJson: string) => {
     const cont = JSON.parse(containerJson) as { meta: { container_id: string } };
     await new Promise<void>((resolveOpen, rejectOpen) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = (): void => rejectOpen(req.error);
       req.onsuccess = (): void => {
         const db = req.result;

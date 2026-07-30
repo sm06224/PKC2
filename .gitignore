@@ -14,3 +14,29 @@ bench-results/
 # ⚠ パターンは **接頭辞**で書く。`*-rev.json` だけだと `--deleted` を足した
 #    `c-5000-rev-del.json` が漏れて 25MB を commit しかける(2026-07-26 に実際に踏んだ)。
 bench-fixtures/c-*-rev*.json
+
+# P2: build 前段で node_modules からコピーされる生成物(copy-sqlite-wasm.cjs)
+src/adapter/platform/storage/sqlite/sqlite3.wasm*.bin
+# P2: sqlite-wasm の worker チャンク(worker1 API は未使用。単一 HTML には載らない)
+dist/assets/
+
+# 調査時の使い捨てスクリプト(2026-07-27)。サブエージェントや手検証が repo ルートに
+# 作る一時ファイルが `git add -A` で紛れ込むのを止める ── 実際に 4 本が
+# aa9716aa に混入し、次の commit で削除する羽目になった。
+# **ルート直下のドット始まり .mjs / .cjs / .ts は成果物ではない**、を規約にする。
+/.*-tmp.mjs
+/.*-tmp.cjs
+/.*-tmp.ts
+/.*-probe.mjs
+/.*-probe.ts
+
+# L4: デスクトップ単一実行ファイルの **生 exe**(62〜114MB)は commit しない。
+# 配布用の xz 圧縮版だけを `release-artifacts/` に置く(user 要望「ブランチ pr に
+# 含めてよ」2026-07-28)── 生の方まで入れると 1 回の rebuild で 274MB 増える。
+# ⚠ **dist/ の下に置いてはいけない**: `npm run build` は emptyOutDir なので
+#    dist/ を丸ごと消す ── 実際 1 度消して git checkout で戻した(2026-07-28)。
+dist/pkc2-desktop
+dist/pkc2-desktop.exe
+dist/pkc2-desktop-linux-x64
+dist/pkc2-desktop-darwin-arm64
+dist/pkc2-desktop-windows-x64.exe

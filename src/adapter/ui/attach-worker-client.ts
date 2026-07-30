@@ -30,6 +30,8 @@
  * is correct either way; only wall-clock differs.
  */
 
+import { registerIdleDisposable } from '../platform/idle-dispose';
+
 export interface ProcessedFile {
   base64: string;
   hash: string;
@@ -44,6 +46,40 @@ const pending = new Map<number, {
   resolve: (value: ProcessedFile) => void;
   reject: (error: Error) => void;
 }>();
+
+/**
+ * 添付処理 worker の idle 破棄(B8、2026-07-27)。
+ *
+ * > 「使った後に破棄するようにできないか?…連続で使われないなら、時間で破棄みたいな」
+ * > (user 指示 2026-07-27)
+ *
+ * この worker は**初回の添付で作られたあと、二度と terminate されなかった**
+ * (terminate は test 専用 reset にしか無かった)。worker は独立した JS realm
+ * なので、1 個で数 MB の常駐になる ── しかも添付は「たまに 1 回」の操作で、
+ * セッション中ずっと持ち続ける理由が無い。
+ *
+ * 30 秒は sqlite worker(L1)と揃えた値。連続で添付している間は touch のたびに
+ * 武装し直すので畳まれない。
+ */
+const ATTACH_WORKER_IDLE_MS = 30_000;
+const touchAttachWorker = registerIdleDisposable({
+  name: 'attach-worker',
+  idleMs: ATTACH_WORKER_IDLE_MS,
+  dispose: () => {
+    // ⚠ 処理中に殺さない。完了時にも touch するので、最後の 1 件が終わってから
+    //    改めて idle が計られる。
+    if (pending.size > 0) return false;
+    if (!workerInstance) return false;
+    try {
+      workerInstance.terminate();
+    } catch {
+      /* ignore */
+    }
+    workerInstance = null;
+    // workerFailed は立てない ── 意図的に畳んだだけで、次回は作り直す。
+    return true;
+  },
+});
 
 /**
  * Worker logic. Defined as a top-level function so we can stringify
@@ -165,6 +201,7 @@ function buildWorker(): Worker | null {
       const handlers = pending.get(data.id);
       if (!handlers) return;
       pending.delete(data.id);
+      touchAttachWorker(); // 完了時にも武装し直す(最後の 1 件から idle を計る)
       if (data.ok && data.base64 !== undefined && data.hash !== undefined) {
         handlers.resolve({
           base64: data.base64,
@@ -227,6 +264,7 @@ async function processOnMainThread(file: File): Promise<ProcessedFile> {
 export function processFileViaWorker(file: File): Promise<ProcessedFile> {
   const worker = getWorker();
   if (!worker) return processOnMainThread(file);
+  touchAttachWorker();
   return new Promise<ProcessedFile>((resolve, reject) => {
     const id = ++nextRequestId;
     pending.set(id, { resolve, reject });

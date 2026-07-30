@@ -114,6 +114,12 @@ export type DomainEvent =
    */
   | { type: 'WORKING_SET_UPDATED' }
   | { type: 'BODIES_HYDRATED' }
+  /**
+   * P4a(wasm-sqlite §7-d): 要求時読みの revisions が常駐 set へ merge された。
+   * SAVE_TRIGGERS 非対象(hydrate は mutation ではない ── storage にある行を
+   * メモリへ戻しただけ)。
+   */
+  | { type: 'REVISIONS_HYDRATED' }
   | { type: 'ERROR_OCCURRED'; error: string };
 
 /** Extract the type literal from a DomainEvent. */

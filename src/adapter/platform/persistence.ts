@@ -510,16 +510,31 @@ export async function loadFromStore(
    * true のときだけ、boot 由来の起動時保存を無駄書きとして止めてよい。
    */
   storedInline: boolean;
+  /** P4a: revisions が要求時読み(caller が revision-residency を mount)。 */
+  revisionsDeferred: boolean;
 }> {
   try {
     // #940 案 A 段階2: meta-first。v2 storage では本文を読まず即返し、
     // caller(main.ts)が background で loadBodies → SYS_BODIES_LOADED。
-    const { container, bodiesDeferred, storedInline } = await store.loadDefaultMetaShallow();
+    const { container, bodiesDeferred, storedInline, revisionsDeferred } =
+      await store.loadDefaultMetaShallow();
     if (container) {
-      return { source: 'idb', container, bodiesDeferred, storedInline };
+      return {
+        source: 'idb',
+        container,
+        bodiesDeferred,
+        storedInline,
+        revisionsDeferred: revisionsDeferred === true,
+      };
     }
   } catch (err) {
     console.warn('[PKC2] IDB load failed, falling back to pkc-data:', err);
   }
-  return { source: 'none', container: null, bodiesDeferred: false, storedInline: false };
+  return {
+    source: 'none',
+    container: null,
+    bodiesDeferred: false,
+    storedInline: false,
+    revisionsDeferred: false,
+  };
 }

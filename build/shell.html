@@ -50,6 +50,15 @@
       script.id = 'pkc-core';
       script.textContent = await gunzip('pkc-core-gz');
       document.body.appendChild(script);
+      /* 2026-07-27 常駐削減: 展開済みの gz ペイロードは **もう誰も読まない**。
+         読み手はこの loader だけで、export は展開後の #pkc-core / #pkc-styles を
+         読む(exporter.ts:189-191 で確認済み)。base64 テキストは Blink の
+         ParkableString として常駐するため(空アプリの parkable_strings 20.6MB の
+         主要項)、textContent を空にして返す。要素自体は残す ── 構造契約
+         (runtime/contract.ts の SLOT)と、将来の読み手が「無い」ではなく
+         「空」を見るようにするため。 */
+      document.getElementById('pkc-core-gz').textContent = '';
+      document.getElementById('pkc-css-gz').textContent = '';
     } catch (e) {
       document.getElementById('pkc-root').textContent =
         'PKC2 の読み込みに失敗しました: ' + ((e && e.message) || e);

@@ -14,6 +14,8 @@
  * adapter/ui — DOM access is allowed here (unlike features/).
  */
 
+import { revealCenterBlock } from './center-block-controller';
+
 /** Accepted shapes of the `subId` field in `AppState.pendingNav`. */
 export type LocationSubId =
   | `heading:${string}`
@@ -117,7 +119,16 @@ export function createLocationNavTracker(): LocationNavTracker {
       if (!pending) return false;
       if (pending.ticket === lastTicket) return false;
       lastTicket = pending.ticket;
-      const target = findLocationTarget(root, pending.subId);
+      let target = findLocationTarget(root, pending.subId);
+      if (!target) {
+        // C3-e:中央ペインが窓化されていると、深い位置の見出し / log は
+        // **DOM に存在しない**ので `querySelector` が null を返し、deep link が
+        // 無言で不発になる。ブロックを窓に入れてから探し直す。
+        const needle = pending.subId.slice(pending.subId.indexOf(':') + 1);
+        if (needle && revealCenterBlock(root, (html: string) => html.includes(needle))) {
+          target = findLocationTarget(root, pending.subId);
+        }
+      }
       if (!target) return false;
       highlightLocationTarget(target);
       return true;

@@ -48,17 +48,45 @@ test('M1. Ctrl+click on deep heading → editing, caret at clicked line, line in
   await bootWithEntry(page);
 
   // Chapter 25 の見出し(source line 75)を center 内で可視化して実クリック。
+  //
+  // ⚠ **窓化(C3、2026-07-29 既定 ON)以降、深い位置の要素は最初 DOM に居ない。**
+  //   `querySelector` 一発では見つからないので、**スクロールして描き足させてから**
+  //   探す ── user が実際にやることと同じ手順にする。
   const targetLine = 25 * 3;
-  const center = await page.evaluate((line: number) => {
-    const el = document.querySelector<HTMLElement>(
-      `[data-pkc-region="center"] [data-pkc-source-line="${line}"]`,
-    );
+  const sel = `[data-pkc-region="center"] [data-pkc-source-line="${targetLine}"]`;
+  // ① 目的の行が DOM に載るまでスクロールする。
+  let found = false;
+  for (let i = 0; i < 80 && !found; i += 1) {
+    found = await page.evaluate((s: string) => document.querySelector(s) !== null, sel);
+    if (found) break;
+    const moved = await page.evaluate(() => {
+      const sc = document.querySelector('.pkc-center-content');
+      if (!sc) return false;
+      const before = sc.scrollTop;
+      sc.scrollTop += sc.clientHeight;
+      return sc.scrollTop > before;
+    });
+    await page.waitForTimeout(60);
+    if (!moved && i > 3) break;
+  }
+  expect(found, 'anchored heading must exist in view render').toBe(true);
+
+  // ② 画面中央へ寄せ、**落ち着かせてから**座標を読む。
+  //   ⚠ `scrollIntoView` は scroll を起こし、窓化(C3)の描き替えが
+  //     **その後の tick で**走る。同じ evaluate 内で読んだ rect は
+  //     描き替え前の値になり、クリックが別の要素に当たる(実測で
+  //     source line 75 → 84 にずれた)。読むのは落ち着いた後。
+  await page.evaluate((s: string) => {
+    document.querySelector<HTMLElement>(s)?.scrollIntoView({ block: 'center' });
+  }, sel);
+  await page.waitForTimeout(400);
+  const center = await page.evaluate((s: string) => {
+    const el = document.querySelector<HTMLElement>(s);
     if (!el) return null;
-    el.scrollIntoView({ block: 'center' });
     const r = el.getBoundingClientRect();
     return { x: r.left + Math.min(r.width, 200) / 2, y: r.top + r.height / 2 };
-  }, targetLine);
-  expect(center, 'anchored heading must exist in view render').not.toBeNull();
+  }, sel);
+  expect(center, 'anchored heading must stay in view after settling').not.toBeNull();
 
   await page.keyboard.down('Control');
   await page.mouse.click(center!.x, center!.y);

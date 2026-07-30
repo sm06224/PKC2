@@ -20,7 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 async function seedContainer(page: Page, container: Record<string, unknown>): Promise<void> {
   await page.evaluate(async (cont) => {
     await new Promise<void>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = (): void => rej(req.error);
       req.onsuccess = (): void => {
         const db = req.result;

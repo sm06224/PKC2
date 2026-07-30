@@ -43,7 +43,7 @@ test('parity: 既定(OFF)で実 IDB に inline 保存され、reload 後も完�
   // 実 IndexedDB を直接観測: split marker / __entry__: record が無い(inline)
   const storageShape = await page.evaluate(async () => {
     return new Promise<{ split: boolean; entryRecords: number; cores: number }>((res, rej) => {
-      const req = indexedDB.open('pkc2', 2);
+      const req = indexedDB.open('pkc2');
       req.onerror = (): void => rej(req.error);
       req.onsuccess = (): void => {
         const db = req.result;

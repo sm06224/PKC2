@@ -45,31 +45,79 @@ import { showToast } from './toast';
 import { createZipBlob } from '../platform/zip-package';
 // user direction 2026-06-03「他のプロダクトを参考にするとか一旦依存するとかで
 // まともになりませんか?」 fix:自前 SVG chart を捨て Chart.js に置換。
-// chart.js v4(treeshakable、~150KB bundle)を auto register で取り込み。
-import {
-  Chart,
-  CategoryScale,
-  LinearScale,
-  RadialLinearScale,
-  BarController, BarElement,
-  LineController, LineElement, PointElement,
-  PieController, DoughnutController, ArcElement,
-  ScatterController,
-  PolarAreaController,
-  RadarController,
-  Tooltip, Legend, Title,
-  type ChartConfiguration,
-} from 'chart.js';
-Chart.register(
-  CategoryScale, LinearScale, RadialLinearScale,
-  BarController, BarElement,
-  LineController, LineElement, PointElement,
-  PieController, DoughnutController, ArcElement,
-  ScatterController,
-  PolarAreaController,
-  RadarController,
-  Tooltip, Legend, Title,
-);
+// chart.js v4(treeshakable、~150KB bundle)。
+//
+// 🔴 **type-only import にしてある**(2026-07-27、B7)。値として import すると
+// module body が **boot で評価される** ── 実測: 評価マーカーを仕込んだ build を
+// 起動直後に読むと `{"chartjs":2}` で、chart は 1 枚も無いのに評価済みだった。
+// 同じ計測で mermaid / pptxgenjs / exceljs / docx は**評価されていない**ので、
+// この bundle(rolldown + inlineDynamicImports)では **dynamic import は
+// 評価まで遅延する** ── バイト列は 1 chunk に畳まれるが、module body は
+// 初回 `import()` まで走らない。chart.js だけが static import で取り残されていた。
+import type { Chart as ChartType, ChartConfiguration } from 'chart.js';
+/**
+ * 生きている Chart インスタンスの集合(2026-07-27、常駐棚卸しの裏取りで訂正)。
+ *
+ * 🔴 **最初の修正(aa9716aa)は空振りだった**: `WeakMap<wrap, Chart>` にしたが、
+ * `renderChart` は呼ばれるたび **新しい figure** を作る(:247)ので `get` は
+ * 常に undefined になり、destroy は一度も走っていなかった。
+ * `Chart.getChart(canvas)` も canvas ごと作り直されるので同じく引けない。
+ *
+ * chart.js は module-level の `instances` object(chart.js:5606)に
+ * **生成時に登録し、`destroy()` の中でしか削除しない**(:6258)。到達しなければ
+ * canvas backing store・dataset・resize listener ごと**上限なく積む**。
+ *
+ * ∴ 「どの要素に紐づくか」ではなく **「まだ destroy していないもの」** を
+ * 直接持つ。再描画・領域再構築・presenter の unmount で全部畳む。
+ */
+const liveCharts = new Set<ChartType>();
+
+/**
+ * chart.js の遅延読み込み(B7)。初回の chart 描画まで module body を走らせない。
+ *
+ * register は「読み込めた直後に 1 回だけ」。controller / scale / element を
+ * 登録しないと `new Chart` が "not a registered controller" で落ちるので、
+ * **loader の中に閉じ込めて呼び忘れを構造的に不可能にする**。
+ */
+let chartModulePromise: Promise<typeof import('chart.js')> | null = null;
+async function loadChartJs(): Promise<typeof import('chart.js')> {
+  chartModulePromise ??= import('chart.js').then((mod) => {
+    mod.Chart.register(
+      mod.CategoryScale, mod.LinearScale, mod.RadialLinearScale,
+      mod.BarController, mod.BarElement,
+      mod.LineController, mod.LineElement, mod.PointElement,
+      mod.PieController, mod.DoughnutController, mod.ArcElement,
+      mod.ScatterController,
+      mod.PolarAreaController,
+      mod.RadarController,
+      mod.Tooltip, mod.Legend, mod.Title,
+    );
+    return mod;
+  });
+  return chartModulePromise;
+}
+
+/** 計器: chart.js が既に評価されたか(bench harness / test 用)。 */
+export function __chartJsLoaded(): boolean {
+  return chartModulePromise !== null;
+}
+
+/** 生きている chart を全部破棄する(再描画 / 領域再構築 / unmount 時)。 */
+function destroyLiveCharts(): void {
+  for (const c of liveCharts) {
+    try {
+      c.destroy();
+    } catch {
+      /* 既に破棄済み */
+    }
+  }
+  liveCharts.clear();
+}
+
+/** 計器(bench harness が「本当に破棄されたか」を読む窓口)。 */
+export function __liveChartCount(): number {
+  return liveCharts.size;
+}
 
 // user direction 2026-06-02「デフォのセル数少なすぎ」 → 5x6 → 12x20。
 // Excel ライクに広い canvas を最初から表示。
@@ -274,6 +322,9 @@ function renderChart(doc: Document, body: SpreadsheetBody, chart: ChartConfig): 
     try {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
+      // ここから先は chart.js の module が要る。**評価は初回描画まで遅延**する
+      // (B7)ので、cfg の組み立てまで済ませてから読み込みを待つ。
+
       // 円系(pie / doughnut / polarArea)は category ごとに色違いで、
       // それ以外は dataset ごとに統一色。
       const isCategoryColored = chart.kind === 'pie' || chart.kind === 'doughnut' || chart.kind === 'polarArea';
@@ -320,9 +371,33 @@ function renderChart(doc: Document, body: SpreadsheetBody, chart: ChartConfig): 
         },
       };
       // 既存 chart instance があれば destroy(再描画 race 回避)
-      const existing = Chart.getChart(canvas);
-      if (existing) existing.destroy();
-      new Chart(ctx, cfg);
+      //
+      // 🔴 **canvas 側の照会だけでは足りない**(2026-07-27 の常駐棚卸し)。
+      // 再描画のたびに canvas 要素ごと作り直される経路では `Chart.getChart(canvas)`
+      // は常に undefined になり、**古いインスタンスが chart.js の module-level
+      // registry に残り続ける**(canvas バッキングストア + dataset + resize
+      // listener ごと)。上限が無いので**再描画回数に比例して線形に増える**。
+      // → wrap 側に自前のハンドルを持ち、そちらを必ず destroy する。
+      // canvas 側の照会も一応残す(同一 canvas に二重生成する経路の保険)。
+      void loadChartJs()
+        .then(({ Chart }) => {
+          // ⚠ **読み込みを待つ間に描画が入れ替わりうる**。剥がれた canvas に
+          // 生成すると、誰も destroy できない chart が registry に積まれる
+          // (mermaid で踏んだのと同じ形 ── 閉じた popup の判定には
+          // `isConnected` だけでは足りず、document の window まで見る)。
+          const view = canvas.ownerDocument.defaultView;
+          if (!canvas.isConnected || view === null || view.closed) return;
+          const existing = Chart.getChart(canvas);
+          if (existing) {
+            existing.destroy();
+            liveCharts.delete(existing);
+          }
+          const instance = new Chart(ctx, cfg);
+          liveCharts.add(instance);
+        })
+        .catch(() => {
+          // chart.js を読めない環境では描画を諦める(表本体は出ている)
+        });
     } catch {
       // canvas 未対応環境(test 等)では silent skip
     }
@@ -469,6 +544,9 @@ function rebuildGrid(wrapper: HTMLElement, body: SpreadsheetBody, focusAt: { row
 }
 
 function rebuildChartsArea(wrapper: HTMLElement, body: SpreadsheetBody): void {
+  // 🔴 remove() だけでは chart.js の module-level registry から消えない
+  // (destroy() の中でしか delete しない)。**先に破棄する**。
+  destroyLiveCharts();
   const old = wrapper.querySelector('[data-pkc-region="spreadsheet-charts"]');
   if (old) old.remove();
   if (!body.charts || body.charts.length === 0) return;
@@ -965,6 +1043,9 @@ function startColResize(wrapper: HTMLElement, colIdx: number, startX: number): v
   const body = readBodyState(wrapper);
   const startW = colWidthAt(body, colIdx);
   const onMove = (e: MouseEvent): void => {
+    // B12(2026-07-28): window の外で離すと `mouseup` が届かず、**押していない
+    // のに列幅が動き続ける**。`buttons === 0` を drag 終了として扱う。
+    if (e.buttons === 0) { onUp(e); return; }
     const dx = e.clientX - startX;
     const newW = Math.max(MIN_COL_WIDTH, startW + dx);
     applyColWidthLive(wrapper, colIdx, newW);
@@ -1019,6 +1100,8 @@ function startRowResize(wrapper: HTMLElement, rowIdx: number, startY: number): v
   const body = readBodyState(wrapper);
   const startH = rowHeightAt(body, rowIdx);
   const onMove = (e: MouseEvent): void => {
+    // B12: 同上(行高の drag)。
+    if (e.buttons === 0) { onUp(e); return; }
     const dy = e.clientY - startY;
     const newH = Math.max(MIN_ROW_HEIGHT, startH + dy);
     applyRowHeightLive(wrapper, rowIdx, newH);
