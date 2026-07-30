@@ -64,10 +64,33 @@ async function trial(label, query, tiles) {
     page.on('pageerror', (e) => errors.push(String(e.message).slice(0, 140)));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text().slice(0, 140)); });
 
-    await page.goto(URL_);
+    // 🔴 **seed も測定と同じ flag で開く。** flag 無しで開いて seed すると
+    //   idb の store に書くことになり、sqlite の腕はそのデータを見られない。
+    await page.goto(URL_ + query);
     await page.waitForSelector('#pkc-root[data-pkc-phase="ready"]', { timeout: 60000 });
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(900);
 
+    // 🔴 **この腕が本当にそのエンジンで動いているかを先に確かめる。**
+    //   flag を立てても `file://` や OPFS 不可の環境では**黙って idb へ
+    //   落ちる**(2026-07-28 実測、commit 3f19821a)。確かめずに測ると
+    //   「sqlite でも同じでした」という**嘘の結論**になる。
+    const engine = await page.evaluate(() => globalThis.__pkc2StorageEngine ?? null);
+    const wantSqlite = query.includes('storage.sqlite_backend=true');
+    if (wantSqlite && engine?.kind !== 'wasm-sqlite') {
+      return {
+        label,
+        fatal: `sqlite を要求したのに ${engine?.kind ?? '(不明)'} で動いている`
+          + `${engine?.requestedButUnavailable ? ` ── ${engine.requestedButUnavailable}` : ''}`,
+      };
+    }
+
+    // 🔴 **seed は「動いている store」経由で書く**(2026-07-30)。
+    //   IndexedDB を直に叩く seed は **idb backend 専用**である ── sqlite は
+    //   OPFS(SAHPool)に置くので、直書きしたデータは sqlite 側からは
+    //   存在しない。最初これで sqlite の腕を回して「差が無い」と読んでいたが、
+    //   その腕は**そもそも sqlite のデータを見ていなかった**。
+    //   `__pkc2StoreDebug` は main.ts が公開している実 store なので、
+    //   どの backend が有効でもそこへ書ける。
     await page.evaluate(async (n) => {
       const T = '2026-07-01T00:00:00.000Z';
       // 32x32 相当の PNG(実アイコンの桁に寄せる ── 1x1 だと working-set の
@@ -100,23 +123,15 @@ async function trial(label, query, tiles) {
         meta: { container_id: 'l100', title: 'l100', created_at: T, updated_at: T, schema_version: 1 },
         entries, relations: [], revisions: [], assets: {},
       };
-      const db = await new Promise((res, rej) => { const q = indexedDB.open('pkc2'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
-      const names = [...db.objectStoreNames];
-      if (!names.includes('assets')) throw new Error('assets store が無い(DB version が古い)');
-      await new Promise((res, rej) => {
-        const t = db.transaction(['containers', 'assets'], 'readwrite');
-        t.objectStore('containers').clear();
-        t.objectStore('assets').clear();
-        t.objectStore('containers').put(cont, 'l100');
-        t.objectStore('containers').put('l100', '__default__');
-        const a = t.objectStore('assets');
-        for (let i = 0; i < n; i += 1) {
-          a.put(px, `l100:icon${i}`);
-          a.put(px, `l100:html${i}`);
-        }
-        t.oncomplete = () => res(); t.onerror = () => rej(t.error);
-      });
-      db.close();
+      const store = window.__pkc2StoreDebug;
+      if (!store) throw new Error('__pkc2StoreDebug が無い(seed 経路が使えない)');
+      await store.clearAll();
+      await store.save(cont);
+      await store.setDefaultContainer('l100');
+      for (let i = 0; i < n; i += 1) {
+        await store.saveAsset('l100', `icon${i}`, px);
+        await store.saveAsset('l100', `html${i}`, px);
+      }
     }, tiles);
 
     await page.goto(URL_ + query);
@@ -165,6 +180,12 @@ async function trial(label, query, tiles) {
         w.__tiles.push(document.querySelectorAll('[data-pkc-region="launcher-tile-wrap"]').length);
         w.__assets.push(document.querySelectorAll('[data-pkc-region="launcher-tile-wrap"] img').length);
       }, 250);
+      // 仮説の観測点:container が読み直されるたび working-set は破棄される
+      // (`asset-working-set.ts` が CONTAINER_LOADED で cache.clear())。
+      // それが繰り返されていれば「アイコンが消えてまた出る」になる。
+      w.__loads = 0;
+      w.__ev = (e) => { w.__loads += 1; };
+      document.addEventListener('pkc:container-loaded', w.__ev, true);
     });
     await page.waitForTimeout(SECONDS * 1000);
     const r = await page.evaluate(() => {
@@ -177,17 +198,19 @@ async function trial(label, query, tiles) {
         imgRange: `${Math.min(...im)}〜${Math.max(...im)}`, imgFlips: flips(im),
       };
     });
-    return { label, geom, ...r, errors: [...new Set(errors)].slice(0, 2) };
+    return { label, geom, engine, ...r, errors: [...new Set(errors)].slice(0, 2) };
   } finally {
     await b.close();
     await new Promise((r) => setTimeout(r, 700));
   }
 }
 
+// 🔴 user 報告 2026-07-30:「**フラグとして sqlite がオンの時に発生する**」。
+//   条件が絞れたので、腕を storage backend の対比に張り替える。
 const ARMS = [
-  ['既定(全 OFF)', ''],
-  ['窓化 ON', '?pkc-flag=center.block_window=true'],
-  ['サイドバー窓化 OFF', '?pkc-flag=sidebar.virtual_list=false'],
+  ['idb(既定)', ''],
+  ['🔴 sqlite backend', '?pkc-flag=storage.sqlite_backend=true'],
+  ['sqlite + 窓化', '?pkc-flag=storage.sqlite_backend=true&pkc-flag=center.block_window=true'],
 ];
 
 console.log(`■ ランチャー ${TILES} 枚・無操作 ${SECONDS} 秒(スクロール発生を前提に assert)\n`);
@@ -200,6 +223,10 @@ for (const [label, q] of ARMS) {
   }
   const g = r.geom;
   console.log(`   ${label}`);
+  console.log(`      エンジン: ${r.engine?.kind ?? '(不明)'}`
+    + `${r.engine?.vfs ? ` / vfs=${r.engine.vfs}` : ''}`
+    + `${r.engine?.version ? ` / sqlite ${r.engine.version}` : ''}`
+    + `${r.engine?.persistent === false ? '  ⚠ 揮発' : ''}`);
   console.log(`      タイル ${g.tiles} 枚 / スクロール ${g.scrollHeight}px(表示 ${g.clientHeight}px)`);
   console.log(`      DOM: 合計 ${g.nodesTotal} ノード、1 枚あたり ${g.nodesPerTile}`);
   console.log(`      無操作 ${SECONDS}s: DOM 変化 ${r.mut} 回、タイル数 ${r.tileRange}(振動 ${r.tileFlips})、`
